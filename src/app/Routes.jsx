@@ -1,12 +1,15 @@
 import { Routes, Route } from "react-router-dom";
-import { Index } from "../shared/pages/Index";
-import { Login } from "../features/auth/pages/login";
+import { Login } from "../features/auth/pages/Login";
+import { Register } from "../features/auth/pages/Register";
+import { ClientPage } from "../features/clients/pages/ClientPage";
 
 const AppRoutes = () => {
   return (
     <Routes>
-      <Route path="/" element={<Index />} />
-      <Route path="/login" element={<Login />} />
+      <Route path="/" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      
+      <Route path="/c" element={<ClientPage />} />
     </Routes>
   );
 };
