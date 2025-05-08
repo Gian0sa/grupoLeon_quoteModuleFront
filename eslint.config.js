@@ -4,7 +4,7 @@ import pluginReact from "eslint-plugin-react";
 import { defineConfig } from "eslint/config";
 
 export default defineConfig([
-  pluginReact.configs.flat.recommended, // Primero aplicas el preset
+  pluginReact.configs.flat.recommended,
   {
     files: ["**/*.{js,mjs,cjs,jsx}"],
     plugins: { js, react: pluginReact },
@@ -12,7 +12,8 @@ export default defineConfig([
       globals: globals.browser,
     },
     rules: {
-      "react/react-in-jsx-scope": "off", // Luego sobreescribes la regla
+      "react/react-in-jsx-scope": "off",
+      "react/prop-types": "off"
     },
   },
 ]);
