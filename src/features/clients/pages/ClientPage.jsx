@@ -5,7 +5,7 @@ export function ClientPage(){
   const [searchTerm, setSearchTerm] = useState("");
   console.log(searchTerm);
     return (
-        <div> 
+        <div>
           <ClientSearch onSearch={setSearchTerm} />
           <Button onClick={() => console.log(searchTerm)}>Buscar</Button>
         </div>

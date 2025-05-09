@@ -4,8 +4,8 @@ import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../stores/useAuthStore";
 
 export function useAuthMutations(){
-    const {login} = useAuthStore
-    const navigate= useNavigate
+    const {login} = useAuthStore();
+    const navigate= useNavigate();
 
     const loginMutation = useMutation({
         mutationFn: loginUser,
