@@ -1,6 +1,7 @@
 
 
 export function useClientMutations(){
+
     const updateClientMutation = useMutation({
         mutationFn: updateClient,
         onSuccess: () => {
@@ -31,6 +32,6 @@ export function useClientMutations(){
             isPending: createClientMutation.isPending,
             isError: createClientMutation.isError,
             error: createClientMutation.error,
-        },
+        }
     };
 }
