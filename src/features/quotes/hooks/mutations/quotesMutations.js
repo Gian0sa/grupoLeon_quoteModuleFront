@@ -26,5 +26,14 @@
             console.log(error)
         },
     })
-    return { createQuoteMutation, updateQuoteMutation }
+    const approveQuoteMutation = useMutation({
+        mutationFn: approveQuote,
+        onSuccess: (data) => {
+            console.log(data)
+        },
+        onError: (error) => {
+            console.log(error)
+        },
+    })
+    return { createQuoteMutation, updateQuoteMutation, approveQuoteMutation }
 }
