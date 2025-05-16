@@ -44,7 +44,7 @@ import {
   
             <DrawerBody>
                 <Flex direction='column' gap='2'>
-                    <Button onClick={() => navigate('/quotes')}>Cotizar</Button>
+                    <Button onClick={() => navigate('/client')}>Cotizar</Button>
                     <Button onClick={() => navigate('/history')}>Historial</Button>
                 </Flex>
             </DrawerBody>

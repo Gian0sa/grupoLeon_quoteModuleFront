@@ -8,10 +8,16 @@ import {
     Heading,
     Input,
     VStack,
+    RadioGroup,
+    Radio,
+    Flex,
   } from "@chakra-ui/react";
   import { useForm } from "react-hook-form";
   import { MainLayout } from "../../../components/layouts/MainLayout";
+  import { adaptUsertoRegister } from "../adapters/authAdapter";
+  import { useAuthMutations } from "../hooks/mutations/authMutations";
   
+
   export function Register() {
     const {
       handleSubmit,
@@ -19,9 +25,13 @@ import {
       watch,
       formState: { errors },
     } = useForm();
+
+    const { registerMutation } = useAuthMutations();
   
     const onSubmit = (data) => {
-      console.log("Datos enviados:", data);
+      const user = adaptUsertoRegister(data);
+      console.log("Datos enviados:", user); 
+      registerMutation.mutate(user);
     };
   
     const password = watch("password");
@@ -37,7 +47,7 @@ import {
                 <FormLabel>Nombre</FormLabel>
                 <Input
                   type="text"
-                  placeholder="Tu nombre"
+                  placeholder="Nombre"
                   {...register("name", {
                     required: "El nombre es obligatorio",
                     minLength: { value: 2, message: "Mínimo 2 caracteres" },
@@ -88,7 +98,30 @@ import {
                 />
                 <FormErrorMessage>{errors.confirmPassword && errors.confirmPassword.message}</FormErrorMessage>
               </FormControl>
-  
+
+              <FormControl isInvalid={errors.role}>
+                <FormLabel>Rol</FormLabel>
+                <Flex gap="4">
+                  <label>
+                    <input
+                      type="radio"
+                      value="SUPERVISOR"
+                      {...register("role", { required: "El rol es obligatorio" })}
+                    />
+                    Supervisor
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      value="SELLER"
+                      {...register("role", { required: "El rol es obligatorio" })}
+                    />
+                    Vendedor
+                  </label>
+                </Flex>
+                <FormErrorMessage>{errors.role && errors.role.message}</FormErrorMessage>
+              </FormControl>
+
               <Button colorScheme="teal" type="submit" width="full">
                 Registrarse
               </Button>

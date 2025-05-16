@@ -5,6 +5,11 @@ export const getSupervisorQuotes = async () => {
     return response.data
 }
 
+export const getSupervisorQuoteDetail = async (quoteId) => {
+    const response = await axiosInstance.get(`/supervisor/quotes/${quoteId}`)
+    return response.data
+}
+
 export const approveQuote = async (quoteId) => {
     const response = await axiosInstance.put(`/supervisor/quotes/${quoteId}/approve`)
     return response.data

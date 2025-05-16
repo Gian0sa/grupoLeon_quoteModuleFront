@@ -19,12 +19,15 @@ export function useAuthMutations(){
       });
     const registerMutation = useMutation({
         mutationFn: registerUser,
-        onSuccess: (response) => {
-            login(response.token);
+        onSuccess: () => {
             navigate("/dashboard");
         },
         onError: (error) => {
-            console.error("Error al registrar usuario:", error);
+            if (error.response && error.response.data && error.response.data.message) {
+                console.error("Error al registrar usuario:", error.response.data.message);
+            } else {
+                console.error("Error al registrar usuario:", error);
+            }
         },
     });
     const logoutMutation = useMutation({
@@ -45,7 +48,7 @@ export function useAuthMutations(){
           isError: loginMutation.isError,
           error: loginMutation.error
         },
-        register : {
+        registerMutation : {
           mutate: registerMutation.mutate,
           isPending: registerMutation.isPending,
           isError: registerMutation.isError,

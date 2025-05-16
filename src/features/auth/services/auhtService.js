@@ -8,11 +8,11 @@ export const loginUser = async (credentials) => {
 };
 
 export const registerUser = async (credentials) => {
-  const response = await axiosInstance.post("/v1/register", credentials);
+  const response = await axiosInstance.post("/register", credentials);
   return response.data;
 };
 
 export const logoutUser = async () => {
-  const response = await axiosInstance.post("/v1/logout");
+  const response = await axiosInstance.post("/logout");
   return response.data;
 };

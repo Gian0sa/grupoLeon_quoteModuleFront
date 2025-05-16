@@ -10,7 +10,7 @@ import {
   VStack,
 } from "@chakra-ui/react";
 import { useForm } from "react-hook-form";
-import { MainLayout } from "../../../components/layouts/MainLayout";
+import { LoginLayout } from "../../../components/layouts/LoginLayout";
 import { useAuthMutations } from "../hooks/mutations/authMutations";
 import styles from "./Login.module.css";  
 import { useColorModeValue } from "@chakra-ui/react";
@@ -31,7 +31,7 @@ export function Login() {
   };
 
   return (
-    <MainLayout>
+    <LoginLayout>
       <Center as="form" onSubmit={handleSubmit(onSubmit)}>
         <Box  bg={boxBg} p={6} borderWidth={1} borderRadius="md" boxShadow="md" width="auto" maxW="md" minWidth={400}>
           <VStack spacing={4} align="stretch">
@@ -78,6 +78,6 @@ export function Login() {
           </VStack>
         </Box>
       </Center>
-    </MainLayout>
+    </LoginLayout>
   );
 }
