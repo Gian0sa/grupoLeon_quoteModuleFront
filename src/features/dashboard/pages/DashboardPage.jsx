@@ -15,12 +15,12 @@ export function DashboardPage(){
                 templateRows='repeat(2, 1fr)'
                 gap={4}
                 >
-                <GridItem colSpan={2} bg='tomato' >
-                    <TopProducts />
-                </GridItem>
-                <GridItem colSpan={2} bg='tomato' >
+                    {/* <GridItem colSpan={2} bg='tomato' >
+                        <TopProducts />
+                    </GridItem> */}
+                {/* <GridItem colSpan={2} bg='tomato' >
                     <Promotions />
-                </GridItem>
+                </GridItem> */}
                 </Grid>
         </MainLayout>
     )

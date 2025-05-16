@@ -2,27 +2,24 @@ import { ProductSection } from "../components/ProductSection";
 import { ClientSection } from "../components/ClientSection";
 import { MainLayout } from "../../../components/layouts/MainLayout";
 import { Button, Flex } from "@chakra-ui/react";
-import { useNavigate } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 
-export function QuotesPage( {route} ){
-    const navigate = useNavigate();
-    const { client } = route.params;
-    
-    const HandleAprove = () => {
-        console.log("Aprobar");
-    }
-    const HandleSave = () => {
-        console.log("Guardar");
-    }
+export function QuotesPage() {
+    const location = useLocation();
+    const { data } = location.state || {};
 
-    return(
+    console.log("el cliente que pasa a quote es: ", data);
+    const client = data ;
+
+    return (
         <MainLayout>
             <ClientSection client={client} />
             <ProductSection />
             <Flex>
-                <Button onClick={HandleSave}>Guardar</Button>
-                <Button onClick={HandleAprove}>Aprobar</Button>
+                <Button onClick={() => console.log("Guardar")}>Guardar</Button>
+                <Button onClick={() => console.log("Aprobar")}>Aprobar</Button>
             </Flex>
         </MainLayout>
-    )
+    );
 }
+

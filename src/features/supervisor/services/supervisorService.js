@@ -19,8 +19,3 @@ export const rejectQuote = async (quoteId) => {
     const response = await axiosInstance.put(`/supervisor/quotes/${quoteId}/reject`)
     return response.data
 }
-
-
-
-
-

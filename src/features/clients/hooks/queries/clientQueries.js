@@ -11,7 +11,7 @@ export function useClientQueries(code) {
   });
 
   return {
-    client: data ? adaptClientFromApi(data) : null,
+    data,
     isLoading,
     error,
   };

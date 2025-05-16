@@ -8,8 +8,6 @@ import {
     Heading,
     Input,
     VStack,
-    RadioGroup,
-    Radio,
     Flex,
   } from "@chakra-ui/react";
   import { useForm } from "react-hook-form";

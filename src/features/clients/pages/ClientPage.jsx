@@ -3,13 +3,16 @@ import { useState } from "react";
 import { MainLayout } from "../../../components/layouts/MainLayout";
 import { useClientQueries } from "../hooks/queries/clientQueries";
 import { useNavigate } from "react-router-dom";
+import { adaptClientFromApi } from "../adapters/clientAdapter";
 
 export function ClientPage() {
   const [inputValue, setInputValue] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const navigate = useNavigate();
   
-  const { client, isLoading, error } = useClientQueries(searchTerm);
+  const { data, isLoading, error } = useClientQueries(searchTerm);
+
+  const client = data ? adaptClientFromApi(data) : null;
 
   const handleSearch = () => {
     setSearchTerm(inputValue);
@@ -45,11 +48,12 @@ export function ClientPage() {
         {client && !isLoading && (
           <Flex direction="column" mt="4" p="4" borderWidth="1px" borderRadius="md">
             <Text fontWeight="bold">Cliente encontrado:</Text>
-            <Text>Nombre: {client.name}</Text>
-            <Text>Código: {client.code}</Text>
+            <Text>Nombre: {client.firstName}</Text>
+            <Text>Código: {client.id}</Text>
+            <Text>Dirección: {client.lastName}</Text>
+            <Text>Teléfono: {client.phone}</Text>
             <Button onClick={() => {
-              navigate(`quotes`,{client});
-              console.log(client);
+              navigate("/quotes", { state: { data } });
             }}>Cotizar</Button>
           </Flex>
         )}
