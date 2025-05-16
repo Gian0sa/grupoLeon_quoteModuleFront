@@ -7,9 +7,7 @@ export function Header() {
 
   return (
     <HStack as="header" justify="space-between" p={4} boxShadow="sm">
-      <Text fontSize="xl" fontWeight="bold">
-        Logo
-      </Text>
+      <img src="/src/assets/logo.svg" alt="logo" width={100} />
       <IconButton
         aria-label="Toggle Theme"
         icon={colorMode === "light" ? <MoonIcon /> : <SunIcon />}

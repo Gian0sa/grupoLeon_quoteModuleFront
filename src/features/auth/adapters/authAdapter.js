@@ -1,6 +1,6 @@
 export function adaptUsertoSession(user) {
     return {
-        UserName: user.email,
-        clave: user.password,
+        email: user.email,
+        password: user.password,
     }
 }

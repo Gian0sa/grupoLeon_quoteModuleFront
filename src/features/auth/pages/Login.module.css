@@ -1,0 +1,14 @@
+.containerlogo {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.logo {
+    width: 200px;
+}
+
+.container {
+    background-color: white;
+}

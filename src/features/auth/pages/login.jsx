@@ -12,6 +12,8 @@ import {
 import { useForm } from "react-hook-form";
 import { MainLayout } from "../../../components/layouts/MainLayout";
 import { useAuthMutations } from "../hooks/mutations/authMutations";
+import styles from "./Login.module.css";  
+import { useColorModeValue } from "@chakra-ui/react";
 
 export function Login() {
   const {
@@ -22,6 +24,8 @@ export function Login() {
 
   const { login } = useAuthMutations();
 
+  const boxBg = useColorModeValue("white", "gray.800");
+
   const onSubmit = (data) => {
     login.mutate(data);
   };
@@ -29,9 +33,9 @@ export function Login() {
   return (
     <MainLayout>
       <Center as="form" onSubmit={handleSubmit(onSubmit)}>
-        <Box p={6} borderWidth={1} borderRadius="md" boxShadow="md" width="100%" maxW="md">
+        <Box  bg={boxBg} p={6} borderWidth={1} borderRadius="md" boxShadow="md" width="auto" maxW="md" minWidth={400}>
           <VStack spacing={4} align="stretch">
-            <Heading textAlign="center">Login</Heading>
+            <Heading textAlign="center" className={styles.containerlogo}><img src="/src/assets/logo.svg" alt="logo" className={styles.logo }/></Heading>
 
             <FormControl isInvalid={errors.email}>
               <FormLabel>Email</FormLabel>
@@ -63,7 +67,7 @@ export function Login() {
             </FormControl>
 
             <Button
-              colorScheme="teal"
+              colorScheme="green"
               type="submit"
               width="full"
               isLoading={login.isPending}

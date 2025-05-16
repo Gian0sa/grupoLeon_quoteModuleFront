@@ -5,6 +5,7 @@ import { ClientPage } from "../features/clients/pages/ClientPage";
 import { DashboardPage } from "../features/dashboard/pages/DashboardPage";
 import { QuotesPage } from "../features/quotes/pages/QuotesPage";
 import { SupervisorPage } from "../features/supervisor/pages/SupervisorPage";
+import { ProductosPage } from "../features/products/pages/ProductosPage";
 const AppRoutes = () => {
   return (
     <Routes>
@@ -14,6 +15,7 @@ const AppRoutes = () => {
       <Route path="/dashboard" element={<DashboardPage />} />
       <Route path="/quotes" element={<QuotesPage />} />
       <Route path="/supervisor" element={<SupervisorPage />} />
+      <Route path="/products" element={<ProductosPage />} />
     </Routes>
   );
 };

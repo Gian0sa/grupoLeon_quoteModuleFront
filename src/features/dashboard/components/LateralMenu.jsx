@@ -13,9 +13,16 @@ import {
   import React from 'react'
   import { useDisclosure } from '@chakra-ui/react'
   import { useNavigate } from 'react-router-dom'
+  import { useAuthStore } from '../../auth/stores/useAuthStore'
   
   export function LateralMenu(){
       const { isOpen, onOpen, onClose } = useDisclosure()
+      const { token , logout} = useAuthStore()
+
+      const handleLogout = () => {
+        logout()
+        navigate('/')
+      }
     const btnRef = React.useRef()
     const navigate = useNavigate()
 
@@ -43,7 +50,9 @@ import {
             </DrawerBody>
   
             <DrawerFooter>
-             
+              {token && (
+                <Button onClick={handleLogout}>Cerrar sesión</Button> 
+              )}
             </DrawerFooter>
           </DrawerContent>
         </Drawer>
