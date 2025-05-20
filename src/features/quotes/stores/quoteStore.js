@@ -1,13 +1,14 @@
 import { create } from 'zustand'
 
 export const useQuoteStore = create((set) => ({
-  clientId: null,
+  client: null, // antes era solo clientId
   products: [],
-  setClient: (id) => set({ clientId: id }),
+  
+  setClient: (clientData) => set({ client: clientData }),
 
   addProduct: (product) =>
     set((state) => {
-      const existe = state.products.find((p) => p.id === product.id)
+      const existe = state.products.find((p) => p.id === product.id);
       if (existe) {
         return {
           products: state.products.map((p) =>
@@ -15,9 +16,9 @@ export const useQuoteStore = create((set) => ({
               ? { ...p, quantity: p.quantity + product.quantity }
               : p
           ),
-        }
+        };
       }
-      return { products: [...state.products, product] }
+      return { products: [...state.products, product] };
     }),
 
   removeProduct: (id) =>
@@ -25,5 +26,5 @@ export const useQuoteStore = create((set) => ({
       products: state.products.filter((p) => p.id !== id),
     })),
 
-  clear: () => set({ clientId: null, products: [] }),
-}))
+  clear: () => set({ client: null, products: [] }),
+}));

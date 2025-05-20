@@ -4,11 +4,12 @@ import { useNavigate } from "react-router-dom"
 
 export function ProductSection(){
     const products = useQuoteStore((state) => state.products)
+    console.log("products", products);
     const removeProduct = useQuoteStore((state) => state.removeProduct)
     const navigate = useNavigate()
     return(
         <div>
-        <h2>Productos en la cotización</h2>
+        <h2> en la cotización</h2>
         <ul>
             {products.map((product) => (
             <li key={product.id}>
@@ -17,7 +18,7 @@ export function ProductSection(){
             </li>
             ))}
         </ul>
-        <Button onClick={navigate('/products')}>Añadir</Button>
+        <Button onClick={() => navigate('/products')}>Añadir</Button>
         </div>
     )
 }

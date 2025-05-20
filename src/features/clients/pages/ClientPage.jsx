@@ -4,11 +4,13 @@ import { MainLayout } from "../../../components/layouts/MainLayout";
 import { useClientQueries } from "../hooks/queries/clientQueries";
 import { useNavigate } from "react-router-dom";
 import { adaptClientFromApi } from "../adapters/clientAdapter";
+import { useQuoteStore } from "../../quotes/stores/quoteStore";
 
 export function ClientPage() {
   const [inputValue, setInputValue] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const navigate = useNavigate();
+  const setClient = useQuoteStore((state) => state.setClient);
   
   const { data, isLoading, error } = useClientQueries(searchTerm);
 
@@ -53,6 +55,7 @@ export function ClientPage() {
             <Text>Dirección: {client.lastName}</Text>
             <Text>Teléfono: {client.phone}</Text>
             <Button onClick={() => {
+              setClient(data);
               navigate("/quotes", { state: { data } });
             }}>Cotizar</Button>
           </Flex>

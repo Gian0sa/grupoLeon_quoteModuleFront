@@ -2,6 +2,7 @@ import { Text } from "@chakra-ui/react";
 import { adaptBusinessPartner } from "../adapters/quotesAdapter";
 
 export function ClientSection({ client }){
+    console.log("client", client);
     const clientAdapted = adaptBusinessPartner(client);
     return(
         <div>
