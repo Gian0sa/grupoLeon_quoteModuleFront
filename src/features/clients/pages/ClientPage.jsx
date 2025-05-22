@@ -17,6 +17,7 @@ export function ClientPage() {
   const client = data ? adaptClientFromApi(data) : null;
 
   const handleSearch = () => {
+    console.log("inputValue", inputValue);
     setSearchTerm(inputValue);
   };
 
@@ -53,7 +54,6 @@ export function ClientPage() {
             <Text>Nombre: {client.firstName}</Text>
             <Text>Código: {client.id}</Text>
             <Text>Dirección: {client.lastName}</Text>
-            <Text>Teléfono: {client.phone}</Text>
             <Button onClick={() => {
               setClient(data);
               navigate("/quotes", { state: { data } });

@@ -21,3 +21,10 @@ export const adaptHistory = (data) => {
         price: history.price,
     }));
 };
+
+export const adaptDraftQuotes = (data) => {
+    return data.map(draftQuote => ({
+        id: draftQuote.id,
+        name: draftQuote.name,
+    }));
+};

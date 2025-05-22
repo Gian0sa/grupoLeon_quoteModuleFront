@@ -1,13 +1,12 @@
- import { createQuote } from "../../services/quoteService"
  import { useMutation } from "@tanstack/react-query"
  import { useQuoteStore } from "../../stores/quoteStore"
  import { useNavigate } from "react-router-dom"
-
+ import { createQuoteDraft, updateQuoteDraft, createConfirmedQuote } from "../../services/quoteService"
 
  export function useQuoteMutations() {
     const navigate = useNavigate()
-    const createQuoteMutation = useMutation({
-        mutationFn: createQuote,
+    const createQuoteDraftMutation = useMutation({
+        mutationFn: createQuoteDraft,
         onSuccess: (data) => {
             console.log(data)
             useQuoteStore.getState().clear()
@@ -17,8 +16,8 @@
             console.log(error)
         },
     })
-    const updateQuoteMutation = useMutation({
-        mutationFn: updateQuote,
+    const updateQuoteDraftMutation = useMutation({
+        mutationFn: updateQuoteDraft,
         onSuccess: (data) => {
             console.log(data)
         },
@@ -27,13 +26,15 @@
         },
     })
     const approveQuoteMutation = useMutation({
-        mutationFn: approveQuote,
+        mutationFn: createConfirmedQuote,
         onSuccess: (data) => {
             console.log(data)
+            useQuoteStore.getState().clear()
+            navigate("/dashboard")
         },
         onError: (error) => {
             console.log(error)
         },
     })
-    return { createQuoteMutation, updateQuoteMutation, approveQuoteMutation }
+    return { createQuoteDraftMutation, updateQuoteDraftMutation, approveQuoteMutation }
 }

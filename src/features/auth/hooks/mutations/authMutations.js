@@ -10,7 +10,7 @@ export function useAuthMutations(){
     const loginMutation = useMutation({
         mutationFn: loginUser,
         onSuccess: (response) => {
-          login(response.token);
+          login(response.token , response.role, response.userId);
           navigate("/dashboard");
         },
         onError: (error) => {

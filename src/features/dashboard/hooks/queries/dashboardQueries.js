@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { getTopProducts, getPromotions, getHistory } from "../../services/dashboardService";
-import { adaptTopProducts, adaptPromotions, adaptHistory } from "../../adapters/dashboardAdapter";
+import { adaptTopProducts, adaptPromotions, adaptHistory, adaptDraftQuotes } from "../../adapters/dashboardAdapter";
 
 export function useDashboardQueries(){
     const { data: topProducts, isLoading: topProductsLoading, error: topProductsError } = useQuery({

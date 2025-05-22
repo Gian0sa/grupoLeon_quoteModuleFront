@@ -1,17 +1,25 @@
-import { useDashboardQueries } from "../hooks/queries/DashboardQueries"
 import { Skeleton } from "@chakra-ui/react";
+import { useGetQuotesDraft } from "../../quotes/hooks/queries/quotesQueries";
+import { useNavigate } from "react-router-dom";
+import { Button } from "@chakra-ui/react";
 
 export function History(){
-    const { history, historyLoading, historyError } = useDashboardQueries();
-    if (historyLoading) return <Skeleton height="20px" width="200px" />;
-    if (historyError) return <div>Error: {historyError.message}</div>;
+    const { data: draftQuotes, isLoading: draftQuotesLoading, error: draftQuotesError } = useGetQuotesDraft();
+    const navigate = useNavigate();
+    console.log(draftQuotes);
+    if (draftQuotesLoading) return <Skeleton height="20px" width="200px" />;
+    if (draftQuotesError) return <div>Error: {draftQuotesError.message}</div>;
     return (
         <div>
             <h1>History</h1>
-            {history.map((item) => (
-                <div key={item.id}>
-                    <h2>{item.name}</h2>
-                </div>
+            {draftQuotes.map((item) => (
+                <>
+                    <div key={item.id}>
+                        <h2>{item.id}</h2>
+                        <h2>{item.clientId}</h2>
+                    </div>
+                    <Button onClick={() => navigate(`/quotes/${item.id}`)}>Ver</Button>
+                </>
             ))}
         </div>
     );

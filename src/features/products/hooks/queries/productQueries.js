@@ -1,7 +1,7 @@
 // hooks/queries/productQueries.js
 import { useQuery } from "@tanstack/react-query";
 import { getProducts, getProductDetail } from "../../services/productService";
-import { productsAdapter, productDetailsAdapter } from "../../adapters/productAdapter";
+import { productsAdapter } from "../../adapters/productAdapter";
 
 export const useProductList = (field, value) => {
     const { data, isLoading, error } = useQuery({

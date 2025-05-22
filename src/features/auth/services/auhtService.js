@@ -2,7 +2,6 @@ import { axiosInstance } from "../../../shared/lib/axiosInstance";
 import { adaptUsertoSession } from "../adapters/authAdapter";
 
 export const loginUser = async (credentials) => {
-  console.log(adaptUsertoSession(credentials));
   const response = await axiosInstance.post("/login", adaptUsertoSession(credentials));
   return response.data;
 };
