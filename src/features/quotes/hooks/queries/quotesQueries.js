@@ -1,4 +1,4 @@
-import { getQuoteDraft, getQuoteConfirmed, getQuoteDraftById } from "../../services/quoteService"
+import { getQuoteDraft, getQuoteConfirmed, getQuoteDraftById, getTransports } from "../../services/quoteService"
 import { useQuery } from "@tanstack/react-query"
 
 export const useGetQuotesDraft = () => {
@@ -36,3 +36,10 @@ export const useGetQuoteConfirmedById = (id) => {
     return { data, isLoading, error }
 }
 
+export const useGetTransports = () => {
+    const {data , isLoading , error } = useQuery({
+        queryKey: ["quoteTransports"],
+        queryFn: () => getTransports(),
+    })
+    return{ dataTransports : data , isLoadingTransports:isLoading , errorTransports:error }
+}

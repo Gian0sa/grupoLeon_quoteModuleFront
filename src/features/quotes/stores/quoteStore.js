@@ -1,10 +1,26 @@
-import { create } from 'zustand'
+import { create } from 'zustand';
 
 export const useQuoteStore = create((set) => ({
-  client: null, // antes era solo clientId
+  draftId: null,
+  client: null,
   products: [],
-  
+
+  selectedPoint: null,
+  selectedTransport: "",
+  paymentMethod: "",
+  deposit: "",
+  bank: "",
+  check: "",
+
   setClient: (clientData) => set({ client: clientData }),
+  setDraftId: (id) => set({ draftId: id }),
+
+  setSelectedPoint: (point) => set({ selectedPoint: point }),
+  setSelectedTransport: (transport) => set({ selectedTransport: transport }),
+  setPaymentMethod: (method) => set({ paymentMethod: method }),
+  setDeposit: (amount) => set({ deposit: amount }),
+  setBank: (bankName) => set({ bank: bankName }),
+  setCheck: (checkNumber) => set({ check: checkNumber }),
 
   addProduct: (product) =>
     set((state) => {
@@ -26,5 +42,15 @@ export const useQuoteStore = create((set) => ({
       products: state.products.filter((p) => p.id !== id),
     })),
 
-  clear: () => set({ client: null, products: [] }),
+  clear: () =>
+    set({
+      client: null,
+      products: [],
+      selectedPoint: null,
+      selectedTransport: "",
+      paymentMethod: "",
+      deposit: "",
+      bank: "",
+      check: "",
+    }),
 }));

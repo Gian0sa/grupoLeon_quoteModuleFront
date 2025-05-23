@@ -29,7 +29,7 @@ export function ProductDetail({ code }) {
         };
 
         addProduct(product);
-        navigate('/quotes');
+        navigate('/newquotes');
     };
 
     return (

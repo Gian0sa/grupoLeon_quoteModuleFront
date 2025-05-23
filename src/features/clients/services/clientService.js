@@ -6,7 +6,7 @@ export const fetchClientByCode = async (code) => {
 }
 
 export const fetchDeliveryPoints = async (id) => {
-  const response = await axiosInstance.get(`/delivery-points/${id}`);
+  const response = await axiosInstance.get(`/clients/${id}/delivery-point`);
   return response.data;
 }
 

@@ -48,5 +48,10 @@ export const updateConfirmedQuote = async (quote) => {
     return response.data
 }
 
+export const getTransports = async () => {
+    const response = await axiosInstance.get(`/transports/clients`);
+    return response.data;
+
+  };
 
 

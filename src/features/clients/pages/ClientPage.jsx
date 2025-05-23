@@ -56,7 +56,7 @@ export function ClientPage() {
             <Text>Dirección: {client.lastName}</Text>
             <Button onClick={() => {
               setClient(data);
-              navigate("/quotes", { state: { data } });
+              navigate("/newquotes");
             }}>Cotizar</Button>
           </Flex>
         )}

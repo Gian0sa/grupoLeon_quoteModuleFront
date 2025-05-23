@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchClientByCode } from "../../services/clientService";
+import { fetchClientByCode, fetchDeliveryPoints } from "../../services/clientService";
 
 export function useClientQueries(code) {
   const { data, isLoading, error } = useQuery({
@@ -28,4 +28,17 @@ export function useClientQueriesById(id) {
     isLoading,
     error,
   };
+}
+
+export function useClientPointsDelivery(id){
+  const { data , isLoading , error } = useQuery({
+    queryKey: ["deliveryPoints" , id],
+    queryFn: () => fetchDeliveryPoints(id),
+    enabled: !!id,
+  });
+  return{
+    dataDeliveryPoints: data,
+    isLoadingDeliveryPoints: isLoading,
+    errorDeliveryPoints: error,
+  }
 }

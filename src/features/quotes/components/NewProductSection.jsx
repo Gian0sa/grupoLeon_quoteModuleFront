@@ -2,7 +2,7 @@ import { useQuoteStore } from "../stores/quoteStore"
 import { Button } from "@chakra-ui/react"
 import { useNavigate } from "react-router-dom"
 
-export function ProductSection({products}){
+export function NewProductSection({products}){
     const removeProduct = useQuoteStore((state) => state.removeProduct)
     const navigate = useNavigate()
     return(
