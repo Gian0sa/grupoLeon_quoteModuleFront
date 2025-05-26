@@ -10,12 +10,17 @@ import {
   VStack,
 } from "@chakra-ui/react";
 import { adaptBusinessPartner } from "../adapters/quotesAdapter";
-import { useState } from "react";
 
 export function NewClientSection({
   client,
   deliveryPoints,
   transports,
+  selectedPoint,
+  selectedTransport,
+  paymentMethod,
+  deposit,
+  bank,
+  check,
   setSelectedPoint,
   setSelectedTransport,
   setPaymentMethod,
@@ -24,10 +29,6 @@ export function NewClientSection({
   setCheck,
 }) {
   const clientAdapted = adaptBusinessPartner(client);
-
-  const [localSelectedPoint, setLocalSelectedPoint] = useState("");
-  const [localSelectedTransport, setLocalSelectedTransport] = useState("");
-  const [localPaymentMethod, setLocalPaymentMethod] = useState("");
 
   return (
     <Box>
@@ -38,13 +39,12 @@ export function NewClientSection({
 
       <Box mt={4}>
         <FormLabel>Punto de llegada</FormLabel>
-          <Select
+        <Select
           placeholder="Selecciona un punto de llegada"
-          value={localSelectedPoint?.AddressName || ""}
+          value={selectedPoint?.AddressName || ""}
           onChange={(e) => {
             const selected = deliveryPoints.find(p => p.AddressName === e.target.value);
-            setLocalSelectedPoint(selected);
-            setSelectedPoint(selected); 
+            setSelectedPoint(selected);
           }}
         >
           {deliveryPoints.map((point, index) => (
@@ -59,17 +59,15 @@ export function NewClientSection({
         <FormLabel>Transporte</FormLabel>
         <Select
           placeholder="Selecciona un transporte"
-          value={localSelectedTransport}
+          value={selectedTransport?.Name || ""}
           onChange={(e) => {
-            const value = e.target.value;
-            setLocalSelectedTransport(value);
-            setSelectedTransport(value);
+            const selected = transports.find(t => t.Name === e.target.value);
+            setSelectedTransport(selected);
           }}
         >
           {transports.map((transport, index) => (
-            <option key={index} value={transport}>
-              Nombre : {transport.Name} 
-              Direccion : {transport.U_TQC_DIREC}
+            <option key={index} value={transport.Name}>
+              {`Nombre: ${transport.Name} | Dirección: ${transport.U_TQC_DIREC}`}
             </option>
           ))}
         </Select>
@@ -78,15 +76,12 @@ export function NewClientSection({
       <Box mt={6}>
         <FormLabel>Método de pago</FormLabel>
         <RadioGroup
-          onChange={(value) => {
-            setLocalPaymentMethod(value);
-            setPaymentMethod(value);
-          }}
-          value={localPaymentMethod}
+          value={paymentMethod}
+          onChange={(value) => setPaymentMethod(value)}
         >
           <Stack direction="row" wrap="wrap">
             <Radio value="contado">Contado</Radio>
-            <Radio value="boleta">Boleta</Radio>  
+            <Radio value="boleta">Boleta</Radio>
             <Radio value="letra">Letra</Radio>
             <Radio value="credito">Crédito</Radio>
             <Radio value="factura">Factura</Radio>
@@ -100,6 +95,7 @@ export function NewClientSection({
           <FormLabel>Abono/Transferencia</FormLabel>
           <Input
             placeholder="Ej: S/ 500.00"
+            value={deposit}
             onChange={(e) => setDeposit(e.target.value)}
           />
         </Box>
@@ -108,6 +104,7 @@ export function NewClientSection({
           <FormLabel>Banco</FormLabel>
           <Input
             placeholder="Nombre del banco"
+            value={bank}
             onChange={(e) => setBank(e.target.value)}
           />
         </Box>
@@ -116,6 +113,7 @@ export function NewClientSection({
           <FormLabel>CH (Cheque)</FormLabel>
           <Input
             placeholder="Número de cheque"
+            value={check}
             onChange={(e) => setCheck(e.target.value)}
           />
         </Box>
