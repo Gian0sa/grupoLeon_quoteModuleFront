@@ -1,7 +1,6 @@
 import {
   Box,
   Text,
-  Select,
   Input,
   RadioGroup,
   Stack,
@@ -9,6 +8,7 @@ import {
   FormLabel,
   VStack,
 } from "@chakra-ui/react";
+import ReactSelect from "react-select";
 import { adaptBusinessPartner } from "../adapters/quotesAdapter";
 
 export function NewClientSection({
@@ -30,47 +30,104 @@ export function NewClientSection({
 }) {
   const clientAdapted = adaptBusinessPartner(client);
 
+  // Opciones para react-select (puntos de llegada)
+  const deliveryOptions = deliveryPoints.map((point) => ({
+    value: point.AddressName,
+    label: `${point.AddressName} - ${point.Street}`,
+  }));
+
+  // Opciones para react-select (transportes), con multilínea usando React Fragment
+  const transportOptions = transports.map((transport) => ({
+    value: transport.Name,
+    label: (
+      <div>
+        <div><strong>Nombre:</strong> {transport.Name}</div>
+        <div style={{ fontSize: "smaller", color: "Black" }}>
+          Dirección: {transport.U_TQC_DIREC}
+        </div>
+      </div>
+    ),
+  }));
+
   return (
     <Box>
-      <Text fontSize="xl" fontWeight="bold" mb={4}>Client Section</Text>
+      <Text fontSize="xl" fontWeight="bold" mb={4}>
+        Client Section
+      </Text>
 
       <Text>Nombre: {clientAdapted.cardName}</Text>
       <Text>Dirección: {clientAdapted.address}</Text>
 
       <Box mt={4}>
         <FormLabel>Punto de llegada</FormLabel>
-        <Select
-          placeholder="Selecciona un punto de llegada"
-          value={selectedPoint?.AddressName || ""}
-          onChange={(e) => {
-            const selected = deliveryPoints.find(p => p.AddressName === e.target.value);
-            setSelectedPoint(selected);
+        <ReactSelect
+          options={deliveryOptions}
+          value={
+            selectedPoint
+              ? { value: selectedPoint.AddressName, label: `${selectedPoint.AddressName} - ${selectedPoint.Street}` }
+              : null
+          }
+          onChange={(selected) => {
+            const selectedObj = deliveryPoints.find(
+              (p) => p.AddressName === selected.value
+            );
+            setSelectedPoint(selectedObj);
           }}
-        >
-          {deliveryPoints.map((point, index) => (
-            <option key={index} value={point.AddressName}>
-              {point.AddressName} - {point.Street}
-            </option>
-          ))}
-        </Select>
+          placeholder="Selecciona un punto de llegada"
+          styles={{
+            container: (provided) => ({
+              ...provided,
+              maxWidth: "800px",
+              width: "100%",
+              color: "black",
+            }),
+          }}
+        />
       </Box>
 
       <Box mt={4}>
         <FormLabel>Transporte</FormLabel>
-        <Select
-          placeholder="Selecciona un transporte"
-          value={selectedTransport?.Name || ""}
-          onChange={(e) => {
-            const selected = transports.find(t => t.Name === e.target.value);
-            setSelectedTransport(selected);
+        <ReactSelect
+          options={transportOptions}
+          value={
+            selectedTransport
+              ? {
+                  value: selectedTransport.Name,
+                  label: (
+                    <div>
+                      <div style={{ fontSize: "smaller", color: "Black" }}>Nombre: {selectedTransport.Name}</div>
+                      <div style={{ fontSize: "smaller", color: "Black" }}>
+                        Dirección: {selectedTransport.U_TQC_DIREC}
+                      </div>
+                    </div>
+                  ),
+                }
+              : null
+          }
+          onChange={(selected) => {
+            const selectedObj = transports.find(
+              (t) => t.Name === selected.value
+            );
+            setSelectedTransport(selectedObj);
           }}
-        >
-          {transports.map((transport, index) => (
-            <option key={index} value={transport.Name}>
-              {`Nombre: ${transport.Name} | Dirección: ${transport.U_TQC_DIREC}`}
-            </option>
-          ))}
-        </Select>
+          placeholder="Selecciona un transporte"
+          styles={{
+            container: (provided) => ({
+              ...provided,
+              maxWidth: "800px",
+              width: "100%",
+              color: "black",
+            }),
+            singleValue: (provided) => ({
+              ...provided,
+              whiteSpace: "normal", // Para que el texto multilínea no se corte
+            }),
+            option: (provided) => ({
+              ...provided,
+              whiteSpace: "normal",
+            }),
+          }}
+        />
       </Box>
 
       <Box mt={6}>

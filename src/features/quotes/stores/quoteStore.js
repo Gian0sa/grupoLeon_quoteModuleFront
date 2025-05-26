@@ -41,6 +41,12 @@ export const useQuoteStore = create((set) => ({
     set((state) => ({
       products: state.products.filter((p) => p.id !== id),
     })),
+  updateProduct: (id, updatedFields) =>
+  set((state) => ({
+    products: state.products.map((product) =>
+      product.id === id ? { ...product, ...updatedFields } : product
+    ),
+  })),
 
   clear: () =>
     set({

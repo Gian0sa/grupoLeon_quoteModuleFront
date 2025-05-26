@@ -33,22 +33,10 @@ export function NewQuotesPage() {
   const { dataDeliveryPoints, isLoadingDeliveryPoints } = useClientPointsDelivery(client?.CardCode);
   console.log(dataDeliveryPoints);
 
-  console.log("selected point", selectedPoint);
-  console.log("selected transport : ",selectedTransport);
-
   const { createQuoteDraftMutation } = useQuoteMutations();
 
   const handleSave = () => {
     const {
-      selectedPoint,
-      selectedTransport,
-      paymentMethod,
-      deposit,
-      bank,
-      check,
-    } = useQuoteStore.getState();
-
-    console.log("Guardar cotización:", {
       client,
       products,
       selectedPoint,
@@ -57,10 +45,40 @@ export function NewQuotesPage() {
       deposit,
       bank,
       check,
-    });
-
-    // Aquí iría tu lógica para guardar el borrador (ej. createQuoteDraftMutation.mutate(...))
+    } = useQuoteStore.getState();
+  
+    if (!client || products.length === 0) {
+      console.warn("Faltan datos del cliente o productos");
+      return;
+    }
+  
+    const payload = {
+      clientName: client.CardName,
+      clientDocument: client.LicTradNum,
+      clientAddress: client.Address,
+      deliveryPoint: selectedPoint?.name || "",
+      transport: selectedTransport?.name || "",
+      transportDirection: selectedTransport?.address || "",
+      paymentMethod: paymentMethod || "",
+      abonado: deposit || "0.00",
+      bankName: bank || "",
+      checkNumber: check || "",
+      userId: 1,
+      status: "draft",
+      items: products.map((product) => ({
+        productCode: product.code,
+        productName: product.name,
+        unitPrice: product.price,
+        quantity: product.quantity,
+        totalPrice: Number(product.quantity) * Number(product.price),
+      })),
+    };
+  
+    console.log("Payload para guardar cotización:", payload);
+  
+    createQuoteDraftMutation.mutate(payload);
   };
+  
 
   const handleApprove = () => {
     console.log("Aprobar");
@@ -88,9 +106,9 @@ export function NewQuotesPage() {
         setCheck={setCheck}
       />
 
+      <NewProductSection products={products} /> 
 
       <Flex gap={4} mt={6}>
-        <NewProductSection products={products} />
         <Button onClick={handleSave} colorScheme="blue">
           Guardar
         </Button>
