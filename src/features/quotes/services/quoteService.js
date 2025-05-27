@@ -1,4 +1,6 @@
 import { axiosInstance } from "../../../shared/lib/axiosInstance"
+import { useAuthStore } from "../../auth/stores/useAuthStore"
+import axios from "axios"
 
 export const getQuoteDraft = async () => {
     const response = await axiosInstance.get('/getQuoteDrafts')
@@ -52,6 +54,32 @@ export const getTransports = async () => {
     const response = await axiosInstance.get(`/transports/clients`);
     return response.data;
 
+};
+
+export const uploadImage = async (file) => {
+    const formData = new FormData();
+    formData.append("image", file);
+  
+    const token = useAuthStore.getState().token;
+  
+    const response = await axios.post(
+      `${import.meta.env.VITE_API_URL}/upload-image`,
+      formData,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+  
+    console.log(response.data);
+    return response.data;
   };
-
-
+  
+  export const deleteImage = async (imagePath) => {
+    const response = await axiosInstance.delete(`/delete-image`, {
+      data: { imagePath },
+    });
+    return response.data;
+  };
+  

@@ -10,6 +10,7 @@ import {
 } from "@chakra-ui/react";
 import ReactSelect from "react-select";
 import { adaptBusinessPartner } from "../adapters/quotesAdapter";
+import { useQuoteMutations } from "../hooks/mutations/quotesMutations";
 
 export function NewClientSection({
   client,
@@ -18,30 +19,41 @@ export function NewClientSection({
   selectedPoint,
   selectedTransport,
   paymentMethod,
-  deposit,
-  bank,
-  check,
+  paymentImg,
   setSelectedPoint,
   setSelectedTransport,
   setPaymentMethod,
-  setDeposit,
-  setBank,
-  setCheck,
+  setPaymentImg,
 }) {
+
+  const {uploadImageMutation , deleteImageMutation} = useQuoteMutations();
+
+  const handleUploadPaymentImage = async (file) => {
+    try {
+      if (paymentImg) {
+        deleteImageMutation.mutate(paymentImg);
+      }
+  
+      uploadImageMutation.mutate(file); // ✅ NO intentes capturar el retorno
+    } catch (error) {
+      console.error("Error al subir imagen:", error);
+    }
+  };
+  
   const clientAdapted = adaptBusinessPartner(client);
 
-  // Opciones para react-select (puntos de llegada)
   const deliveryOptions = deliveryPoints.map((point) => ({
     value: point.AddressName,
     label: `${point.AddressName} - ${point.Street}`,
   }));
 
-  // Opciones para react-select (transportes), con multilínea usando React Fragment
   const transportOptions = transports.map((transport) => ({
     value: transport.Name,
     label: (
       <div>
-        <div><strong>Nombre:</strong> {transport.Name}</div>
+        <div>
+          <strong>Nombre:</strong> {transport.Name}
+        </div>
         <div style={{ fontSize: "smaller", color: "Black" }}>
           Dirección: {transport.U_TQC_DIREC}
         </div>
@@ -51,10 +63,7 @@ export function NewClientSection({
 
   return (
     <Box>
-      <Text fontSize="xl" fontWeight="bold" mb={4}>
-        Client Section
-      </Text>
-
+      <Text>Codigo: {clientAdapted.cardCode}</Text>
       <Text>Nombre: {clientAdapted.cardName}</Text>
       <Text>Dirección: {clientAdapted.address}</Text>
 
@@ -64,7 +73,10 @@ export function NewClientSection({
           options={deliveryOptions}
           value={
             selectedPoint
-              ? { value: selectedPoint.AddressName, label: `${selectedPoint.AddressName} - ${selectedPoint.Street}` }
+              ? {
+                  value: selectedPoint.AddressName,
+                  label: `${selectedPoint.AddressName} - ${selectedPoint.Street}`,
+                }
               : null
           }
           onChange={(selected) => {
@@ -95,7 +107,9 @@ export function NewClientSection({
                   value: selectedTransport.Name,
                   label: (
                     <div>
-                      <div style={{ fontSize: "smaller", color: "Black" }}>Nombre: {selectedTransport.Name}</div>
+                      <div style={{ fontSize: "smaller", color: "Black" }}>
+                        Nombre: {selectedTransport.Name}
+                      </div>
                       <div style={{ fontSize: "smaller", color: "Black" }}>
                         Dirección: {selectedTransport.U_TQC_DIREC}
                       </div>
@@ -130,49 +144,25 @@ export function NewClientSection({
         />
       </Box>
 
-      <Box mt={6}>
-        <FormLabel>Método de pago</FormLabel>
-        <RadioGroup
-          value={paymentMethod}
-          onChange={(value) => setPaymentMethod(value)}
-        >
-          <Stack direction="row" wrap="wrap">
-            <Radio value="contado">Contado</Radio>
-            <Radio value="boleta">Boleta</Radio>
-            <Radio value="letra">Letra</Radio>
-            <Radio value="credito">Crédito</Radio>
-            <Radio value="factura">Factura</Radio>
-            <Radio value="plazo">Plazo</Radio>
-          </Stack>
-        </RadioGroup>
-      </Box>
-
       <VStack spacing={4} mt={6} align="stretch">
         <Box>
-          <FormLabel>Abono/Transferencia</FormLabel>
+          <FormLabel>Comprobante</FormLabel>
           <Input
-            placeholder="Ej: S/ 500.00"
-            value={deposit}
-            onChange={(e) => setDeposit(e.target.value)}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) {
+                handleUploadPaymentImage(file);
+              }
+            }}
           />
-        </Box>
-
-        <Box>
-          <FormLabel>Banco</FormLabel>
-          <Input
-            placeholder="Nombre del banco"
-            value={bank}
-            onChange={(e) => setBank(e.target.value)}
-          />
-        </Box>
-
-        <Box>
-          <FormLabel>CH (Cheque)</FormLabel>
-          <Input
-            placeholder="Número de cheque"
-            value={check}
-            onChange={(e) => setCheck(e.target.value)}
-          />
+          {paymentImg && (
+            <Box mt={2}>
+              <img src={`${import.meta.env.VITE_API_URL}/${paymentImg}`} />
+            </Box>
+          )}
         </Box>
       </VStack>
     </Box>

@@ -8,9 +8,7 @@ export const useQuoteStore = create((set) => ({
   selectedPoint: null,
   selectedTransport: "",
   paymentMethod: "",
-  deposit: "",
-  bank: "",
-  check: "",
+  paymentImg: null,
 
   setClient: (clientData) => set({ client: clientData }),
   setDraftId: (id) => set({ draftId: id }),
@@ -18,9 +16,7 @@ export const useQuoteStore = create((set) => ({
   setSelectedPoint: (point) => set({ selectedPoint: point }),
   setSelectedTransport: (transport) => set({ selectedTransport: transport }),
   setPaymentMethod: (method) => set({ paymentMethod: method }),
-  setDeposit: (amount) => set({ deposit: amount }),
-  setBank: (bankName) => set({ bank: bankName }),
-  setCheck: (checkNumber) => set({ check: checkNumber }),
+  setPaymentImg: (file) => set({ paymentImg: file }),
 
   addProduct: (product) =>
     set((state) => {

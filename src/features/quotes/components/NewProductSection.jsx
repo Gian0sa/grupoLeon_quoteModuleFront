@@ -10,39 +10,35 @@ import {
   Th,
   Thead,
   Tr,
-  Text,
   TableContainer,
 } from "@chakra-ui/react";
 import { DeleteIcon } from "@chakra-ui/icons";
 import { useNavigate } from "react-router-dom";
 
 export function NewProductSection({ products }) {
-    console.log(products)
   const removeProduct = useQuoteStore((state) => state.removeProduct);
   const updateProduct = useQuoteStore((state) => state.updateProduct);
   const navigate = useNavigate();
 
   return (
     <Box mt={6}>
-      <Text fontSize="xl" fontWeight="bold" mb={4}>
-        Productos en la cotización
-      </Text>
-
       <TableContainer>
         <Table variant="simple">
           <Thead>
             <Tr>
-              <Th>Codigo</Th>
+              <Th>Detalle</Th>
               <Th>Cantidad</Th>
-              <Th>Precio $  </Th>
+              <Th>Precio $ </Th>
               <Th>Total $</Th>
             </Tr>
           </Thead>
           <Tbody>
             {products.map((product) => (
               <Tr key={product.id}>
-                <Td>{product.id}<br></br>
-                {product.name}
+                <Td>
+                  {product.id}
+                  <br></br>
+                  {product.name}
                 </Td>
                 <Td>
                   <Input
@@ -58,8 +54,8 @@ export function NewProductSection({ products }) {
                     width="40px"
                   />
                 </Td>
-                <Td>{Number(product.price).toFixed(2)}</Td>
-                <Td>{(product.quantity * product.price).toFixed(2)}</Td>
+                <Td>{Number(product.importe).toFixed(2)}</Td>
+                <Td>{(product.quantity * product.importe).toFixed(2)}</Td>
                 <Td>
                   <IconButton
                     icon={<DeleteIcon />}
