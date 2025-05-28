@@ -51,8 +51,6 @@ export const useQuoteStore = create((set) => ({
       selectedPoint: null,
       selectedTransport: "",
       paymentMethod: "",
-      deposit: "",
-      bank: "",
-      check: "",
+      paymentImg: null,
     }),
 }));

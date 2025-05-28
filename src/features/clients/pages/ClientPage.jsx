@@ -17,7 +17,6 @@ export function ClientPage() {
   const client = data ? adaptClientFromApi(data) : null;
 
   const handleSearch = () => {
-    console.log("inputValue", inputValue);
     setSearchTerm(inputValue);
   };
 

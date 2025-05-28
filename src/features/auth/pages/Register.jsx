@@ -28,7 +28,6 @@ import {
   
     const onSubmit = (data) => {
       const user = adaptUsertoRegister(data);
-      console.log("Datos enviados:", user); 
       registerMutation.mutate(user);
     };
   

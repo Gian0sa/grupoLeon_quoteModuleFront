@@ -3,7 +3,6 @@ import { useAuthStore } from "../../auth/stores/useAuthStore";
 
 export const fetchClientByCode = async (code) => {
   const response = await axiosInstance.get(`/clients/${code}`);
-  console.log(axiosInstance);
   return response.data;
 }
 

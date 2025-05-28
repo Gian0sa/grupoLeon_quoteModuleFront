@@ -57,7 +57,6 @@ axiosInstance.interceptors.response.use(
       }
 
       isRefreshing = true;
-      console.log("esta probando con el refrehs ");
       try {
         const res = await axios.post(`${import.meta.env.VITE_API_URL}/refresh-token`, {}, {
           withCredentials: true, 
@@ -65,7 +64,7 @@ axiosInstance.interceptors.response.use(
 
         console.log(res.data);
         const newToken = res.data.token;
-        useAuthStore.getState().login(newToken); 
+        useAuthStore.getState().setToken(newToken); 
 
         axiosInstance.defaults.headers.common["Authorization"] = "Bearer " + newToken;
         processQueue(null, newToken);

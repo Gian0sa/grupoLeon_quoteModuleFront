@@ -34,7 +34,7 @@ export function NewClientSection({
         deleteImageMutation.mutate(paymentImg);
       }
   
-      uploadImageMutation.mutate(file); // ✅ NO intentes capturar el retorno
+      uploadImageMutation.mutate(file);
     } catch (error) {
       console.error("Error al subir imagen:", error);
     }

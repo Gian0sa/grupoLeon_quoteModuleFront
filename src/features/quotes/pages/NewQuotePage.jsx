@@ -14,6 +14,7 @@ import {
   Text,
 } from "@chakra-ui/react";
 import { useQuoteStore } from "../stores/quoteStore";
+import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { useQuoteMutations } from "../hooks/mutations/quotesMutations";
 import { useGetTransports } from "../hooks/queries/quotesQueries";
 import { useClientPointsDelivery } from "../../clients/hooks/queries/clientQueries";
@@ -30,16 +31,16 @@ export function NewQuotesPage() {
     setPaymentImg,
   } = useQuoteStore();
 
+  const { userId } = useAuthStore();
+
   const setSelectedPoint = useQuoteStore((state) => state.setSelectedPoint);
   const setSelectedTransport = useQuoteStore(
     (state) => state.setSelectedTransport
   );
 
   const { dataTransports, isLoadingTransports } = useGetTransports();
-  console.log(dataTransports);
   const { dataDeliveryPoints, isLoadingDeliveryPoints } =
     useClientPointsDelivery(client?.CardCode);
-  console.log(dataDeliveryPoints);
 
   const { createQuoteDraftMutation } = useQuoteMutations();
 
@@ -53,6 +54,12 @@ export function NewQuotesPage() {
       paymentImg,
     } = useQuoteStore.getState();
 
+    const { userId } = useAuthStore.getState();
+
+    console.log("el selecete point es ",selectedPoint);
+    console.log("el transport es ",selectedTransport);
+    console.log("el user id es: ",userId);
+
     if (!client || products.length === 0) {
       console.warn("Faltan datos del cliente o productos");
       return;
@@ -60,24 +67,27 @@ export function NewQuotesPage() {
 
     const payload = {
       clientName: client.CardName,
-      clientDocument: client.LicTradNum,
+      clientDocument: client.CardCode,
       clientAddress: client.Address,
-      deliveryPoint: selectedPoint?.name || "",
-      transport: selectedTransport?.name || "",
-      transportDirection: selectedTransport?.address || "",
-      paymentMethod: paymentMethod || "",
-      paymentImg : paymentImg || "",
-      userId: 1,
-      status: "draft",
+      deliveryPoint: selectedPoint || [],
+      transport: selectedTransport.Name || "",
+      transportDirection: selectedTransport?.U_TQC_DIREC || "",
+      paymentType: paymentMethod || null,
+      pathImg: paymentImg || "",
+      userId: Number(userId),
+      state: "draft",
       items: products.map((product) => ({
-        productCode: product.code,
+        sigla: product.sigla,
+        productCode: product.id,
         productName: product.name,
-        unitPrice: product.price,
-        quantity: product.quantity,
-        totalPrice: Number(product.quantity) * Number(product.price),
+        unitPrice: Number(product.price),
+        discount:  Number(product.discount) || 0,
+        importe:  Number(product.importe) || 0,
+        quantity:  Number(product.quantity),
+        totalPrice: Number(product.quantity) * Number(product.importe),
       })),
     };
-
+    
     console.log("Payload para guardar cotización:", payload);
 
     createQuoteDraftMutation.mutate(payload);

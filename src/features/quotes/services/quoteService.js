@@ -9,9 +9,7 @@ export const getQuoteDraft = async () => {
 
 export const getQuoteDraftById = async (id) => {
     try {
-        console.log("id del service", id);
         const response = await axiosInstance.get(`/getQuoteDraft/${id}`);
-        console.log("response", response.data);
         return response.data;
     } catch (error) {
         console.error("Error al obtener la cotización:", error);

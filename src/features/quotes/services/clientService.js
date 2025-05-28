@@ -1,58 +1,37 @@
-import { axiosInstance } from "../../../shared/lib/axiosInstance";
+import { useEffect } from "react";
+import { useGetQuoteDraftById, useGetTransports } from "../hooks/queries/quotesQueries";
+import { useClientPointsDelivery } from "../../clients/hooks/queries/clientQueries";
+import { adaptQuoteDraft } from "../adapters/quotesAdapter";
+import { useQuoteStore } from "../stores/quoteStore";
 
-export async function unifiedClientData(id) {
-    
-  const getDetailsClient = async (id) => {
-    const { data } = await axiosInstance.get(`/getQuoteDraft/${id}`);
-    const { client, products } = splitQuoteDraft(data);
-    
-    return { client, products };
+export function useClientService(draftId) {
+  const { setClient, addProduct } = useQuoteStore();
+
+  const { data, isLoading, error } = useGetQuoteDraftById(draftId);
+  const cardcode = data?.clientDocument;
+console.log("mi cardcode es : ",cardcode);
+  const { dataTransports, isLoadingTransports } = useGetTransports();
+  const {
+    data: dataDeliveryPoints,
+    isLoading: isLoadingDeliveryPoints,
+    error: errorDeliveryPoints, 
+  } = useClientPointsDelivery(cardcode);
+
+  useEffect(() => {
+    if (!isLoading && data) {
+      const { client, products } = adaptQuoteDraft(data);
+      setClient(client);
+      products.forEach(addProduct);
+    }
+  }, [isLoading, data, setClient, addProduct]);
+
+  const isGlobalLoading = isLoading || isLoadingTransports || isLoadingDeliveryPoints;
+  const hasError = error || errorDeliveryPoints;
+
+  return {
+    isLoading: isGlobalLoading,
+    error: hasError,
+    dataTransports,
+    dataDeliveryPoints,
   };
-
-  const { client, products } = await getDetailsClient(id);
-
-  const clientcode= client.document
-  console.log("clientcode",clientcode);
-
-  const getDeliveryPoints = async (clientcode) => {
-    const { data } = await axiosInstance.get(`/clients/${clientcode}/delivery-point`);
-    return data;
-  };
-
-  const getTransports = async () => {
-    const { data } = await axiosInstance.get(`/transports/clients`);
-    return data;
-  };
-
-  function splitQuoteDraft(quoteDraft) {
-    const client = {
-      id: quoteDraft.id,
-      name: quoteDraft.clientName,
-      document: quoteDraft.clientDocument,
-      address: quoteDraft.clientAddress,
-      deliveryPoint: quoteDraft.deliveryPoint,
-      transport: quoteDraft.transport,
-      transportDirection: quoteDraft.transportDirection,
-      paymentMethod: quoteDraft.paymentMethod,
-      abonado: quoteDraft.abonado,
-      bankName: quoteDraft.bankName,
-      checkNumber: quoteDraft.checkNumber,
-    };
-    const products = quoteDraft.items.map((item) => ({
-      id:         item.id,
-      code:       item.productCode,
-      name:       item.productName,
-      unitPrice:  item.unitPrice,
-      quantity:   item.quantity,
-      totalPrice: item.totalPrice,
-    }));
-    return { client, products };
-  }
-
-  const [deliveryPoints, transports] = await Promise.all([
-    getDeliveryPoints(client.id),
-    getTransports(client.id),
-  ]);
-
-  return { clientHistory, productsHistory, deliveryPointsHistory, transportsHistory };
 }
