@@ -8,12 +8,16 @@ import {
   Heading,
   Input,
   VStack,
+  Spinner,
 } from "@chakra-ui/react";
 import { useForm } from "react-hook-form";
 import { LoginLayout } from "../../../components/layouts/LoginLayout";
 import { useAuthMutations } from "../hooks/mutations/authMutations";
 import styles from "./Login.module.css";  
 import { useColorModeValue } from "@chakra-ui/react";
+import { useNavigate } from "react-router-dom";
+import { useAuthStore } from "../stores/useAuthStore";
+import { useEffect } from "react";
 
 export function Login() {
   const {
@@ -21,6 +25,22 @@ export function Login() {
     register,
     formState: { errors },
   } = useForm();
+
+  const navigate = useNavigate();
+  const token = useAuthStore((state)=>state.token)
+  useEffect(() => {
+    if (token) {
+      navigate("/dashboard");
+    }
+  }, [token, navigate]);
+
+  if (token) {
+    return (
+      <Center height="100vh">
+        <Spinner size="xl" />
+      </Center>
+    );
+  }
 
   const { login } = useAuthMutations();
 
