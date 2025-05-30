@@ -31,8 +31,6 @@ export function NewQuotesPage() {
     setPaymentImg,
   } = useQuoteStore();
 
-  const { userId } = useAuthStore();
-
   const setSelectedPoint = useQuoteStore((state) => state.setSelectedPoint);
   const setSelectedTransport = useQuoteStore(
     (state) => state.setSelectedTransport
@@ -55,11 +53,6 @@ export function NewQuotesPage() {
     } = useQuoteStore.getState();
 
     const { userId } = useAuthStore.getState();
-
-    console.log("el selecete point es ",selectedPoint);
-    console.log("el transport es ",selectedTransport);
-    console.log("el user id es: ",userId);
-
     if (!client || products.length === 0) {
       console.warn("Faltan datos del cliente o productos");
       return;
@@ -88,8 +81,6 @@ export function NewQuotesPage() {
       })),
     };
     
-    console.log("Payload para guardar cotización:", payload);
-
     createQuoteDraftMutation.mutate(payload);
   };
 

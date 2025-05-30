@@ -14,11 +14,6 @@ export function adaptQuoteDraft(data) {
     CardName: data.clientName,
     CardCode: data.clientDocument,
     Address: data.clientAddress,
-    transport: data.transport,
-    transportDirection: data.transportDirection,
-    deliveryPoint: data.deliveryPoint,
-    paymentMethod: data.paymentType,
-    pathImg: data.pathImg,
   };
 
   const products = data.items.map((item) => ({

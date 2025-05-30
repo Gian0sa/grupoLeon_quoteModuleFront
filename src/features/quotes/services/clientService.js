@@ -5,21 +5,35 @@ import { adaptQuoteDraft } from "../adapters/quotesAdapter";
 import { useQuoteStore } from "../stores/quoteStore";
 
 export function useClientService(draftId) {
-  const { setClient, addProduct } = useQuoteStore();
+  console.log(draftId);
+  const { setClient, addProduct , setSelectedPoint , setSelectedTransport , setPaymentImg , setPaymentMethod } = useQuoteStore();
 
   const { data, isLoading, error } = useGetQuoteDraftById(draftId);
   const cardcode = data?.clientDocument;
-console.log("mi cardcode es : ",cardcode);
   const { dataTransports, isLoadingTransports } = useGetTransports();
   const {
-    data: dataDeliveryPoints,
-    isLoading: isLoadingDeliveryPoints,
-    error: errorDeliveryPoints, 
+    dataDeliveryPoints,
+    isLoadingDeliveryPoints,
+    errorDeliveryPoints, 
   } = useClientPointsDelivery(cardcode);
 
   useEffect(() => {
     if (!isLoading && data) {
       const { client, products } = adaptQuoteDraft(data);
+      
+      const transport = {
+        Name: data.transport,
+        U_TQC_DIREC: data.transportDirection,
+      };
+
+      const deliveryPoint = data.deliveryPoint;
+      const paymentMethod = data.paymentType;
+      const pathImg = data.pathImg;
+
+      setSelectedTransport(transport);
+      setPaymentMethod(paymentMethod);
+      setSelectedPoint(deliveryPoint);
+      setPaymentImg(pathImg);
       setClient(client);
       products.forEach(addProduct);
     }

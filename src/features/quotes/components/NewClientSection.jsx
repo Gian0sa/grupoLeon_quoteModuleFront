@@ -2,9 +2,6 @@ import {
   Box,
   Text,
   Input,
-  RadioGroup,
-  Stack,
-  Radio,
   FormLabel,
   VStack,
 } from "@chakra-ui/react";
@@ -113,7 +110,7 @@ export function NewClientSection({
                       <div style={{ fontSize: "smaller", color: "Black" }}>
                         Dirección: {selectedTransport.U_TQC_DIREC}
                       </div>
-                    </div>
+                    </div>  
                   ),
                 }
               : null

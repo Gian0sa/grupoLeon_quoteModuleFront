@@ -24,6 +24,7 @@ export const createQuoteDraft = async (quote) => {
 }
 
 export const updateQuoteDraft = async (quote) => {
+    console.log(quote);
     const response = await axiosInstance.put(`/updateQuoteDraft/${quote.id}`, quote)
     return response.data
 }

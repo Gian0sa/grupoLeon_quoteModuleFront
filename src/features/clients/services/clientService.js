@@ -2,7 +2,7 @@ import { axiosInstance } from "../../../shared/lib/axiosInstance";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 
 export const fetchClientByCode = async (code) => {
-  const response = await axiosInstance.get(`/clients/${code}`);
+  const response = await axiosInstance.get(`/quotes/clients/${code}`);
   return response.data;
 }
 

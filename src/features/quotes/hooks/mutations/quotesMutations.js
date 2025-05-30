@@ -22,6 +22,8 @@
         mutationFn: updateQuoteDraft,
         onSuccess: (data) => {
             console.log(data)
+            useQuoteStore.getState().clear()
+            navigate("/dashboard")
         },
         onError: (error) => {
             console.log(error)

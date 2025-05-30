@@ -10,13 +10,11 @@ export const useGetQuotesDraft = () => {
 }
 
 export const useGetQuoteDraftById = (id) => {
-    console.log("id adsa",id);
     const { data, isLoading, error } = useQuery({
         queryKey: ["quoteDraftById", id],
         queryFn:  () => getQuoteDraftById(id),
         enabled: !!id,
     })
-    console.log("data",data);
     return { data, isLoading, error }
 }
 

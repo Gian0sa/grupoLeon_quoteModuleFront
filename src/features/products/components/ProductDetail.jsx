@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom"
 
 export function ProductDetail({ code }) {
     const { productDetail, isLoadingDetail, errorDetail } = useProductDetail(code);
+    const { draftId } = useQuoteStore();
     const addProduct = useQuoteStore((state) => state.addProduct);
 
     const [quantity, setQuantity] = useState(1);
@@ -28,7 +29,13 @@ export function ProductDetail({ code }) {
         };
 
         addProduct(product);
-        navigate('/newquotes');
+        console.log("existe drat id? : ",draftId)
+        if (draftId) {
+            navigate('/historyquotes');
+          } else {
+            navigate('/newquotes');
+          }
+          
     };
 
     return (
