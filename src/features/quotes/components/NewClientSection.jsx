@@ -157,7 +157,7 @@ export function NewClientSection({
           />
           {paymentImg && (
             <Box mt={2}>
-              <img src={`${import.meta.env.VITE_API_URL}/${paymentImg}`} />
+              <img src={`${import.meta.env.VITE_API_URL}/quotes/${paymentImg}`} />
             </Box>
           )}
         </Box>

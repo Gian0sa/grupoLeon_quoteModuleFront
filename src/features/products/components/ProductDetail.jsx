@@ -4,8 +4,9 @@ import { useQuoteStore } from "../../quotes/stores/quoteStore"
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 
-export function ProductDetail({ code }) {
-    const { productDetail, isLoadingDetail, errorDetail } = useProductDetail(code);
+export function ProductDetail( code ) {
+    const { productDetail, isLoadingDetail, errorDetail } = useProductDetail(code.value);
+    console.log(productDetail);
     const { draftId } = useQuoteStore();
     const addProduct = useQuoteStore((state) => state.addProduct);
 

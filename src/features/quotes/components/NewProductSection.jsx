@@ -51,7 +51,7 @@ export function NewProductSection({ products }) {
                       })
                     }
                     size="sm"
-                    width="40px"
+                    width="60px"
                   />
                 </Td>
                 <Td>{Number(product.importe).toFixed(2)}</Td>

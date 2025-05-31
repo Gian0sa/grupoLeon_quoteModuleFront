@@ -7,17 +7,17 @@ export const fetchClientByCode = async (code) => {
 }
 
 export const fetchDeliveryPoints = async (id) => {
-  const response = await axiosInstance.get(`/clients/${id}/delivery-point`);
+  const response = await axiosInstance.get(`/quotes/clients/${id}/delivery-points`);
   return response.data;
 }
 
 export const createClient = async (client) => {
-  const response = await axiosInstance.post(`/clients`, client);
+  const response = await axiosInstance.post(`/quotes/clients`, client);
   return response.data;
 }
 
 export const updateClient = async (client) => {
-  const response = await axiosInstance.put(`/clients/${client.id}`, client);
+  const response = await axiosInstance.put(`/quotes/clients/${client.id}`, client);
   return response.data;
 }
 

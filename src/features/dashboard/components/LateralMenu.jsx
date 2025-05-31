@@ -17,7 +17,7 @@ import {
   
   export function LateralMenu(){
       const { isOpen, onOpen, onClose } = useDisclosure()
-      const { token , logout} = useAuthStore()
+      const { token , logout , role} = useAuthStore()
 
       const handleLogout = () => {
         logout()
@@ -46,6 +46,10 @@ import {
                 <Flex direction='column' gap='2'>
                     <Button onClick={() => navigate('/client')}>Cotizar</Button>
                     <Button onClick={() => navigate('/history')}>Historial</Button>
+                    {role === "ADMIN" && (
+                      <Button onClick={() => navigate('/register')}>Registrar</Button>
+                    )}
+
                 </Flex>
             </DrawerBody>
   

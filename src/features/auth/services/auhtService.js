@@ -7,16 +7,16 @@ export const loginUser = async (credentials) => {
 };
 
 export const registerUser = async (credentials) => {
-  const response = await axiosInstance.post("/register", credentials);
+  const response = await axiosInstance.post("/auth/register", credentials);
   return response.data;
 };
 
 export const logoutUser = async () => {
-  const response = await axiosInstance.post("/logout");
+  const response = await axiosInstance.post("/auth/logout");
   return response.data;
 };
 
 export const refreshAccessToken = async () => {
-  const response = await axiosInstance.get("/refresh-token");
+  const response = await axiosInstance.get("/auth/refresh-token");
   return response.data.token;
 };

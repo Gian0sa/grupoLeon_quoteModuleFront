@@ -1,13 +1,11 @@
-import { Input, Button, FormControl, FormLabel, Select } from "@chakra-ui/react";
+import { Input, Button, FormControl, FormLabel} from "@chakra-ui/react";
 
-export function ProductSearch({ setField, setValue }) {
+export function ProductSearch({ setValue }) {
   const handleSubmit = (e) => {
     e.preventDefault();
-    const field = e.target.field.value;
     const value = e.target.search.value;
-    setField(field);
     setValue(value);
-    console.log("search by:", field, "value:", value);
+    console.log("value:", value);
   };
 
   return (
@@ -15,11 +13,7 @@ export function ProductSearch({ setField, setValue }) {
       <h1>Product Search</h1>
       <form onSubmit={handleSubmit}>
         <FormControl>
-          <FormLabel>Search by</FormLabel>
-          <Select name="field" defaultValue="ItemName">
-            <option value="ItemName">Name</option>
-            <option value="ItemCode">Code</option>
-          </Select>
+          <FormLabel>Search by  Code</FormLabel>
           <Input type="text" placeholder="Search..." name="search" />
         </FormControl>
         <Button type="submit">Search</Button>
