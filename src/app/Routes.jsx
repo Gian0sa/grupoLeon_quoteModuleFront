@@ -1,15 +1,15 @@
 import { Routes, Route } from "react-router-dom";
-import { Login } from "../features/auth/pages/Login";
-import { Register } from "../features/auth/pages/Register";
-import { ClientPage } from "../features/clients/pages/ClientPage";
-import { DashboardPage } from "../features/dashboard/pages/DashboardPage";
-import { NewQuotesPage } from "../features/quotes/pages/NewQuotePage";
-import { SupervisorPage } from "../features/supervisor/pages/SupervisorPage";
-import { ProductosPage } from "../features/products/pages/ProductosPage";
-import { PrivateRoute } from "../app/middlewares/privateRoute";
-import { RoleRoute } from "../app/middlewares/roleRoute";
-import { History } from "../features/dashboard/components/History";
-import { HistoryQuotesPage } from "../features/quotes/pages/HistoryQuotesPage";
+import { Login } from "../features/auth/pages/Login.jsx";
+import { Register } from "../features/auth/pages/Register.jsx";
+import { ClientPage } from "../features/clients/pages/ClientPage.jsx";
+import { DashboardPage } from "../features/dashboard/pages/DashboardPage.jsx";
+import { NewQuotesPage } from "../features/quotes/pages/NewQuotePage.jsx";
+import { SupervisorPage } from "../features/supervisor/pages/SupervisorPage.jsx";
+import { ProductosPage } from "../features/products/pages/ProductosPage.jsx";
+import { PrivateRoute } from "../app/middlewares/privateRoute.jsx";
+import { RoleRoute } from "../app/middlewares/roleRoute.jsx";
+import { History } from "../features/dashboard/components/History.jsx";
+import { HistoryQuotesPage } from "../features/quotes/pages/HistoryQuotesPage.jsx";
 
 const AppRoutes = () => {
   return (
