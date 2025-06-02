@@ -1,4 +1,5 @@
 import { Routes, Route } from "react-router-dom";
+import { Login } from "../features/auth/pages/Login";
 import { Register } from "../features/auth/pages/Register";
 import { ClientPage } from "../features/clients/pages/ClientPage";
 import { DashboardPage } from "../features/dashboard/pages/DashboardPage";
@@ -13,6 +14,8 @@ import { HistoryQuotesPage } from "../features/quotes/pages/HistoryQuotesPage";
 const AppRoutes = () => {
   return (
     <Routes>
+
+      <Route path="/" element={<Login />} />
 
       <Route path="/register" element={
         <PrivateRoute>
