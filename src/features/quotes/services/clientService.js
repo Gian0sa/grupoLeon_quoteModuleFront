@@ -5,11 +5,13 @@ import { adaptQuoteDraft } from "../adapters/quotesAdapter";
 import { useQuoteStore } from "../stores/quoteStore";
 
 export function useClientService(draftId) {
-  console.log(draftId);
+  console.log("el draft id es : ",draftId);
   const { setClient, addProduct , setSelectedPoint , setSelectedTransport , setPaymentImg , setPaymentMethod } = useQuoteStore();
 
   const { data, isLoading, error } = useGetQuoteDraftById(draftId);
-  const cardcode = data?.clientDocument;
+  console.log("la data q se recpera ",data)
+  const cardcode = data?.clientDocument;  
+  console.log(cardcode);
   const { dataTransports, isLoadingTransports } = useGetTransports();
   const {
     dataDeliveryPoints,

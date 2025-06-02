@@ -24,7 +24,6 @@ export const axiosInstance = axios.create({
   },
 });
 
-// Request: siempre usa el token actualizado
 axiosInstance.interceptors.request.use(
   (config) => {
     const token = useAuthStore.getState().token;
@@ -36,11 +35,12 @@ axiosInstance.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response: intenta refresh si el token expiró
 axiosInstance.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+
+    
 
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
@@ -58,7 +58,7 @@ axiosInstance.interceptors.response.use(
 
       isRefreshing = true;
       try {
-        const res = await axios.post(`${import.meta.env.VITE_API_URL}/quotes/refresh-token`, {}, {
+        const res = await axios.post(`${import.meta.env.VITE_API_URL}/auth/refresh-token`, {}, {
           withCredentials: true, 
         });
 

@@ -37,6 +37,9 @@ export function NewClientSection({
     }
   };
   
+  console.log(client);
+  if (!client) return <Text>Cargando cliente...</Text>; // Protege de `undefined`
+
   const clientAdapted = adaptBusinessPartner(client);
 
   const deliveryOptions = deliveryPoints.map((point) => ({
