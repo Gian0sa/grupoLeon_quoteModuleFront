@@ -7,7 +7,7 @@ export function adaptBusinessPartner(data) {
 }
 
 
-export function adaptQuoteDraft(data) {
+export function adaptQuote(data) {
   if (!data) return { client: null, products: [] };
 
   const client = {

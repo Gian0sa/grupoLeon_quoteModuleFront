@@ -2,21 +2,21 @@ import { axiosInstance } from "../../../shared/lib/axiosInstance";
 import { adaptUsertoSession } from "../adapters/authAdapter";
 
 export const loginUser = async (credentials) => {
-  const response = await axiosInstance.post("/auth/login", adaptUsertoSession(credentials));
+  const response = await axiosInstance.post("/authModule/login", adaptUsertoSession(credentials));
   return response.data;
 };
 
 export const registerUser = async (credentials) => {
-  const response = await axiosInstance.post("/auth/register", credentials);
+  const response = await axiosInstance.post("/authModule/register", credentials);
   return response.data;
 };
 
 export const logoutUser = async () => {
-  const response = await axiosInstance.post("/auth/logout");
+  const response = await axiosInstance.post("/authModule/logout");
   return response.data;
 };
 
 export const refreshAccessToken = async () => {
-  const response = await axiosInstance.get("/auth/refresh-token");
+  const response = await axiosInstance.get("/authModule/refresh-token");
   return response.data.token;
 };

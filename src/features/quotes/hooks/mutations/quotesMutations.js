@@ -1,14 +1,14 @@
  import { useMutation } from "@tanstack/react-query"
  import { useQuoteStore } from "../../stores/quoteStore"
  import { useNavigate } from "react-router-dom"
- import { createQuoteDraft, updateQuoteDraft, createConfirmedQuote , uploadImage , deleteImage } from "../../services/quoteService"
+ import { createQuote, updateQuote , uploadImage , deleteImage } from "../../services/quoteService"
 
 
  export function useQuoteMutations() {
     const { setPaymentImg } = useQuoteStore();
     const navigate = useNavigate()
-    const createQuoteDraftMutation = useMutation({
-        mutationFn: createQuoteDraft,
+    const createQuoteMutation = useMutation({
+        mutationFn: createQuote,
         onSuccess: (data) => {
             console.log(data)
             useQuoteStore.getState().clear()
@@ -18,19 +18,8 @@
             console.log(error)
         },
     })
-    const updateQuoteDraftMutation = useMutation({
-        mutationFn: updateQuoteDraft,
-        onSuccess: (data) => {
-            console.log(data)
-            useQuoteStore.getState().clear()
-            navigate("/dashboard")
-        },
-        onError: (error) => {
-            console.log(error)
-        },
-    })
-    const approveQuoteMutation = useMutation({
-        mutationFn: createConfirmedQuote,
+    const updateQuoteMutation = useMutation({
+        mutationFn: updateQuote,
         onSuccess: (data) => {
             console.log(data)
             useQuoteStore.getState().clear()
@@ -60,5 +49,5 @@
             console.log(error)
         }
     })
-    return { createQuoteDraftMutation, updateQuoteDraftMutation, approveQuoteMutation , uploadImageMutation , deleteImageMutation }
+    return { createQuoteMutation, updateQuoteMutation , uploadImageMutation , deleteImageMutation }
 }

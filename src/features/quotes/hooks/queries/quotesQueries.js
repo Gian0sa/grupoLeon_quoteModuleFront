@@ -1,43 +1,27 @@
-import { getQuoteDraft, getQuoteConfirmed, getQuoteDraftById, getTransports } from "../../services/quoteService"
+import { getQuote, getQuoteById, getTransports } from "../../services/quoteService"
 import { useQuery } from "@tanstack/react-query"
 
-export const useGetQuotesDraft = () => {
+export const useGetQuotes = () => {
     const { data, isLoading, error } = useQuery({
-        queryKey: ["quoteDraft"],
-        queryFn: () => getQuoteDraft(),
+        queryKey: ["quotes"],
+        queryFn: () => getQuote(),
     })
     return { data, isLoading, error }
 }
 
-export const useGetQuoteDraftById = (id) => {
+export const useGetQuoteById = (id) => {
     const { data, isLoading, error } = useQuery({
-        queryKey: ["quoteDraftById", id],
-        queryFn:  () => getQuoteDraftById(id),
+        queryKey: ["quoteById", id],
+        queryFn:  () => getQuoteById(id),
         enabled: !!id,
     })
     return { data, isLoading, error }
 }
 
-export const useGetQuotesConfirmed = () => {
-    const { data, isLoading, error } = useQuery({
-        queryKey: ["quoteConfirmed"],
-        queryFn: () => getQuoteConfirmed(),
-    })
-    return { data, isLoading, error }
-}
-
-export const useGetQuoteConfirmedById = (id) => {
-    const { data, isLoading, error } = useQuery({
-        queryKey: ["quoteConfirmedById", id],
-        queryFn: () => getQuoteConfirmedById(id),
-    })
-    return { data, isLoading, error }
-}
-
 export const useGetTransports = () => {
-    const {data , isLoading , error } = useQuery({
-        queryKey: ["quoteTransports"],
+    const { data, isLoading, error } = useQuery({
+        queryKey: ["transports"],
         queryFn: () => getTransports(),
     })
-    return{ dataTransports : data , isLoadingTransports:isLoading , errorTransports:error }
+    return { dataTransports: data, isLoadingTransports: isLoading, errorTransports: error }
 }

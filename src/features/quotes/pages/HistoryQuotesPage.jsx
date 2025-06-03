@@ -19,8 +19,8 @@ import {
 } from "@chakra-ui/react";
 
 export function HistoryQuotesPage() {
-  const { draftId } = useQuoteStore.getState();
-  const { id , isLoading, error, dataTransports, dataDeliveryPoints } = useClientService(draftId);
+  const { quoteId } = useQuoteStore.getState();
+  const { id , isLoading, error, dataTransports, dataDeliveryPoints } = useClientService(quoteId);
 
   const {
     client,
@@ -33,9 +33,10 @@ export function HistoryQuotesPage() {
     setSelectedTransport,
     setPaymentMethod,
     setPaymentImg,
-  } = useQuoteStore(); 
+  } = useQuoteStore();
+  console.log("products : ",products);
 
-  const { updateQuoteDraftMutation } = useQuoteMutations();
+  const { updateQuoteMutation } = useQuoteMutations();
 
    const handleSave = () => {
       const {
@@ -55,7 +56,7 @@ export function HistoryQuotesPage() {
       }
   
       const payload = {
-        id: Number(draftId),
+        id: Number(quoteId),
         clientName: client.CardName,
         clientDocument: client.CardCode,
         clientAddress: client.Address,
@@ -78,12 +79,55 @@ export function HistoryQuotesPage() {
         })),
       };
       
+      console.log(payload);
   
-      updateQuoteDraftMutation.mutate(payload);
+      updateQuoteMutation.mutate(payload);
     };
   
     const handleApprove = () => {
-      console.log("Aprobar");
+      const {
+        client,
+        products,
+        selectedPoint,
+        selectedTransport,
+        paymentMethod,
+        paymentImg,
+      } = useQuoteStore.getState();
+  
+      const { userId } = useAuthStore.getState();
+  
+      if (!client || products.length === 0) {
+        console.warn("Faltan datos del cliente o productos");
+        return;
+      }
+  
+      const payload = {
+        id: Number(quoteId),
+        clientName: client.CardName,
+        clientDocument: client.CardCode,
+        clientAddress: client.Address,
+        deliveryPoint: selectedPoint || [],
+        transport: selectedTransport.Name || "",
+        transportDirection: selectedTransport?.U_TQC_DIREC || "",
+        paymentType: paymentMethod || null,
+        pathImg: paymentImg || "",
+        userId: Number(userId),
+        state: "approved_seller",
+        items: products.map((product) => ({
+          sigla: product.sigla,
+          productCode: product.id,
+          productName: product.name,
+          unitPrice: Number(product.price),
+          discount:  Number(product.discount) || 0,
+          importe:  Number(product.importe) || 0,
+          quantity:  Number(product.quantity),
+          totalPrice: Number(product.quantity) * Number(product.importe),
+        })),
+      };
+      
+      console.log(payload);
+  
+      updateQuoteMutation.mutate(payload);
     };
   
 

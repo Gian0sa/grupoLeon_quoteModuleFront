@@ -40,7 +40,7 @@ export function NewQuotesPage() {
   const { dataDeliveryPoints, isLoadingDeliveryPoints } =
     useClientPointsDelivery(client?.CardCode);
 
-  const { createQuoteDraftMutation } = useQuoteMutations();
+  const { createQuoteMutation } = useQuoteMutations();
 
   const handleSave = () => {
     const {
@@ -81,11 +81,49 @@ export function NewQuotesPage() {
       })),
     };
     
-    createQuoteDraftMutation.mutate(payload);
+    createQuoteMutation.mutate(payload);
   };
 
   const handleApprove = () => {
-    console.log("Aprobar");
+    const {
+      client,
+      products,
+      selectedPoint,
+      selectedTransport,
+      paymentMethod,
+      paymentImg,
+    } = useQuoteStore.getState();
+
+    const { userId } = useAuthStore.getState();
+    if (!client || products.length === 0) {
+      console.warn("Faltan datos del cliente o productos");
+      return;
+    }
+
+    const payload = {
+      clientName: client.CardName,
+      clientDocument: client.CardCode,
+      clientAddress: client.Address,
+      deliveryPoint: selectedPoint || [],
+      transport: selectedTransport.Name || "",
+      transportDirection: selectedTransport?.U_TQC_DIREC || "",
+      paymentType: paymentMethod || null,
+      pathImg: paymentImg || "",
+      userId: Number(userId),
+      state: "approved_seller",
+      items: products.map((product) => ({
+        sigla: product.sigla,
+        productCode: product.id,
+        productName: product.name,
+        unitPrice: Number(product.price),
+        discount:  Number(product.discount) || 0,
+        importe:  Number(product.importe) || 0,
+        quantity:  Number(product.quantity),
+        totalPrice: Number(product.quantity) * Number(product.importe),
+      })),
+    };
+    
+    createQuoteMutation.mutate(payload);
   };
 
   if (isLoadingTransports || isLoadingDeliveryPoints)

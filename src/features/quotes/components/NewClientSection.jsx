@@ -38,7 +38,7 @@ export function NewClientSection({
   };
   
   console.log(client);
-  if (!client) return <Text>Cargando cliente...</Text>; // Protege de `undefined`
+  if (!client) return <Text>Cargando cliente...</Text>;
 
   const clientAdapted = adaptBusinessPartner(client);
 
@@ -134,7 +134,7 @@ export function NewClientSection({
             }),
             singleValue: (provided) => ({
               ...provided,
-              whiteSpace: "normal", // Para que el texto multilínea no se corte
+              whiteSpace: "normal",
             }),
             option: (provided) => ({
               ...provided,
@@ -160,7 +160,7 @@ export function NewClientSection({
           />
           {paymentImg && (
             <Box mt={2}>
-              <img src={`${import.meta.env.VITE_API_URL}/quotes/${paymentImg}`} />
+              <img src={`${import.meta.env.VITE_API_URL}/quoteModule/${paymentImg}`} />
             </Box>
           )}
         </Box>

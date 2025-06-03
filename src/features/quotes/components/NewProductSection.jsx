@@ -16,6 +16,7 @@ import { DeleteIcon } from "@chakra-ui/icons";
 import { useNavigate } from "react-router-dom";
 
 export function NewProductSection({ products }) {
+  console.log(products)
   const removeProduct = useQuoteStore((state) => state.removeProduct);
   const updateProduct = useQuoteStore((state) => state.updateProduct);
   const navigate = useNavigate();

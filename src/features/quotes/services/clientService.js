@@ -1,45 +1,50 @@
 import { useEffect } from "react";
-import { useGetQuoteDraftById, useGetTransports } from "../hooks/queries/quotesQueries";
+import { useGetQuoteById, useGetTransports } from "../hooks/queries/quotesQueries";
 import { useClientPointsDelivery } from "../../clients/hooks/queries/clientQueries";
-import { adaptQuoteDraft } from "../adapters/quotesAdapter";
+import { adaptQuote } from "../adapters/quotesAdapter";
 import { useQuoteStore } from "../stores/quoteStore";
 
-export function useClientService(draftId) {
-  console.log("el draft id es : ",draftId);
-  const { setClient, addProduct , setSelectedPoint , setSelectedTransport , setPaymentImg , setPaymentMethod } = useQuoteStore();
+export function useClientService(quoteId) {
+  const {
+    clear,
+    setClient,
+    setSelectedPoint,
+    setSelectedTransport,
+    setPaymentImg,
+    setPaymentMethod,
+    setProducts,
+  } = useQuoteStore();
 
-  const { data, isLoading, error } = useGetQuoteDraftById(draftId);
-  console.log("la data q se recpera ",data)
-  const cardcode = data?.clientDocument;  
-  console.log(cardcode);
+  const { data, isLoading, error } = useGetQuoteById(quoteId);
+  const cardcode = data?.clientDocument;
+  
   const { dataTransports, isLoadingTransports } = useGetTransports();
   const {
     dataDeliveryPoints,
     isLoadingDeliveryPoints,
-    errorDeliveryPoints, 
+    errorDeliveryPoints,
   } = useClientPointsDelivery(cardcode);
 
   useEffect(() => {
     if (!isLoading && data) {
-      const { client, products } = adaptQuoteDraft(data);
-      
+      clear();
+
+      const { client, products } = adaptQuote(data);
+
       const transport = {
         Name: data.transport,
         U_TQC_DIREC: data.transportDirection,
       };
 
-      const deliveryPoint = data.deliveryPoint;
-      const paymentMethod = data.paymentType;
-      const pathImg = data.pathImg;
-
       setSelectedTransport(transport);
-      setPaymentMethod(paymentMethod);
-      setSelectedPoint(deliveryPoint);
-      setPaymentImg(pathImg);
+      setPaymentMethod(data.paymentType);
+      setSelectedPoint(data.deliveryPoint);
+      setPaymentImg(data.pathImg);
       setClient(client);
-      products.forEach(addProduct);
+      
+      setProducts(products);
     }
-  }, [isLoading, data, setClient, addProduct]);
+  }, [isLoading, data]);
 
   const isGlobalLoading = isLoading || isLoadingTransports || isLoadingDeliveryPoints;
   const hasError = error || errorDeliveryPoints;

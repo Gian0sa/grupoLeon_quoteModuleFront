@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 export const useQuoteStore = create((set) => ({
-  draftId: null,
+  quoteId: null,
   client: null,
   products: [],
 
@@ -11,7 +11,7 @@ export const useQuoteStore = create((set) => ({
   paymentImg: null,
 
   setClient: (clientData) => set({ client: clientData }),
-  setDraftId: (id) => set({ draftId: id }),
+  setQuoteId: (id) => set({ quoteId: id }),
 
   setSelectedPoint: (point) => set({ selectedPoint: point }),
   setSelectedTransport: (transport) => set({ selectedTransport: transport }),
@@ -33,16 +33,19 @@ export const useQuoteStore = create((set) => ({
       return { products: [...state.products, product] };
     }),
 
+  setProducts: (products) => set({ products }),
+
   removeProduct: (id) =>
     set((state) => ({
       products: state.products.filter((p) => p.id !== id),
     })),
+
   updateProduct: (id, updatedFields) =>
-  set((state) => ({
-    products: state.products.map((product) =>
-      product.id === id ? { ...product, ...updatedFields } : product
-    ),
-  })),
+    set((state) => ({
+      products: state.products.map((product) =>
+        product.id === id ? { ...product, ...updatedFields } : product
+      ),
+    })),
 
   clear: () =>
     set({
