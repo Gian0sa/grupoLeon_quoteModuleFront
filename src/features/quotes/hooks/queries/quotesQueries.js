@@ -1,4 +1,4 @@
-import { getQuote, getQuoteById, getTransports } from "../../services/quoteService"
+import { getQuote, getQuoteById, getTransports ,getPaymentType , getDeliveryForms} from "../../services/quoteService"
 import { useQuery } from "@tanstack/react-query"
 
 export const useGetQuotes = () => {
@@ -24,4 +24,21 @@ export const useGetTransports = () => {
         queryFn: () => getTransports(),
     })
     return { dataTransports: data, isLoadingTransports: isLoading, errorTransports: error }
+}
+
+export const useGetPaymentType = () => {
+    const { data, isLoading, error } = useQuery({
+        queryKey: ["paymentType"],
+        queryFn: () => getPaymentType(),
+    })
+    return { dataPaymentType : data, isLoadingPaymentType: isLoading, errorPaymentType: error }
+}
+
+export const useGetDeliveryForms = () => {
+    const { data, isLoading, error } = useQuery({
+        queryKey: ["deliveryForms"],
+        queryFn: () => getDeliveryForms(),
+    })
+    return { dataDeliveryForms: data, isLoadingDeliveryForms: isLoading, errorDeliveryForms: error }
+
 }

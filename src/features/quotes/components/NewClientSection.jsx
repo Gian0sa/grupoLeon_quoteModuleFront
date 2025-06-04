@@ -4,25 +4,36 @@ import {
   Input,
   FormLabel,
   VStack,
+  Textarea,
 } from "@chakra-ui/react";
 import ReactSelect from "react-select";
 import { adaptBusinessPartner } from "../adapters/quotesAdapter";
 import { useQuoteMutations } from "../hooks/mutations/quotesMutations";
+import { DatePickerField } from "../../../components/DatePickerField";
 
 export function NewClientSection({
   client,
-  deliveryPoints,
   transports,
+  deliveryPoints,
+  deliveryForms,
+  paymentTypes,
+  selectedPaymentType,
+  setPaymentType,
   selectedPoint,
   selectedTransport,
-  paymentMethod,
+  selectedDeliveryForm,
+  setSelectedDeliveryForm,
   paymentImg,
-  setSelectedPoint,
   setSelectedTransport,
-  setPaymentMethod,
-  setPaymentImg,
+  setSelectedPoint,
+  comment,
+  setComment,
+  deliveryDate,
+  setDeliveryDate,
 }) {
 
+  console.log(deliveryForms);
+  console.log(paymentTypes);
   const {uploadImageMutation , deleteImageMutation} = useQuoteMutations();
 
   const handleUploadPaymentImage = async (file) => {
@@ -61,11 +72,80 @@ export function NewClientSection({
     ),
   }));
 
+  const deliveryFormsOptions = Array.isArray(deliveryForms)
+  ? deliveryForms.map((deliveryForm) => ({
+      value: deliveryForm.Name,
+      label: deliveryForm.Description,
+    }))
+  : [];
+
+const paymentTypesOptions = Array.isArray(paymentTypes)
+  ? paymentTypes.map((type) => ({
+      value: type.GroupNum,
+      label: type.PymntGroup,
+    }))
+  : [];
+
+
+  
   return (
     <Box>
       <Text>Codigo: {clientAdapted.cardCode}</Text>
       <Text>Nombre: {clientAdapted.cardName}</Text>
       <Text>Dirección: {clientAdapted.address}</Text>
+
+      <Box mt={4}>
+  <FormLabel>Forma de entrega</FormLabel>
+  <ReactSelect
+    options={deliveryFormsOptions}
+    value={
+      selectedDeliveryForm
+        ? {
+            value: selectedDeliveryForm.Name,
+            label: selectedDeliveryForm.Description,
+          }
+        : null
+    }
+    onChange={(selected) => {
+      const selectedObj = deliveryForms.find(
+        (form) => form.Name === selected.value
+      );
+      setSelectedDeliveryForm(selectedObj);
+    }}
+    placeholder="Selecciona una forma de entrega"
+    styles={{
+      container: (provided) => ({
+        ...provided,
+        maxWidth: "800px",
+        width: "100%",
+        color: "black",
+      }),
+    }}
+  />
+</Box>
+
+
+<Box mt={4}>
+        <FormLabel>Tipo de pago</FormLabel>
+        <ReactSelect
+          options={paymentTypesOptions}
+          value={
+            paymentTypesOptions.find((opt) => opt.value === paymentMethod.PymntGroup) || null
+          }
+          onChange={(selected) => {
+            setPaymentMethod(selected.value);
+          }}
+          placeholder="Selecciona un tipo de pago"
+          styles={{
+            container: (provided) => ({
+              ...provided,
+              maxWidth: "800px",
+              width: "100%",
+              color: "black",
+            }),
+          }}
+        />
+      </Box>
 
       <Box mt={4}>
         <FormLabel>Punto de llegada</FormLabel>
@@ -144,6 +224,14 @@ export function NewClientSection({
         />
       </Box>
 
+
+      <DatePickerField
+        label="Fecha de entrega"
+        selectedDate={deliveryDate} 
+        setSelectedDate={setDeliveryDate}
+      />
+
+
       <VStack spacing={4} mt={6} align="stretch">
         <Box>
           <FormLabel>Comprobante</FormLabel>
@@ -163,6 +251,15 @@ export function NewClientSection({
               <img src={`${import.meta.env.VITE_API_URL}/quoteModule/${paymentImg}`} />
             </Box>
           )}
+        </Box>
+
+        <Box>
+          <FormLabel>Comentarios</FormLabel>
+          <Textarea
+            placeholder="Ingrese comentarios adicionales..."
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+          />
         </Box>
       </VStack>
     </Box>

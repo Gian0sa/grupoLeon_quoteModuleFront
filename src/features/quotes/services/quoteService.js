@@ -34,6 +34,18 @@ export const getTransports = async () => {
 
 };
 
+export const getPaymentType = async () => {
+    const response = await axiosInstance.get(`/quoteModule/clients/payment-terms`);
+    console.log("response.data de payment types : ", response.data.value)
+    return response.data;
+}
+
+export const getDeliveryForms = async () => {
+    const response = await axiosInstance.get(`/quoteModule/clients/delivery-forms`);
+    console.log("response.data de delivery forms : ", response.data)
+    return response.data;
+}
+
 export const uploadImage = async (file) => {
     const formData = new FormData();
     formData.append("image", file);

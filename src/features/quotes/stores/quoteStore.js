@@ -7,16 +7,21 @@ export const useQuoteStore = create((set) => ({
 
   selectedPoint: null,
   selectedTransport: "",
-  paymentMethod: "",
+  selectedDeliveryForm: "",
+  selectedPaymentType: "",
   paymentImg: null,
+  comment: null,
+  deliveryDate: null,
 
   setClient: (clientData) => set({ client: clientData }),
   setQuoteId: (id) => set({ quoteId: id }),
 
   setSelectedPoint: (point) => set({ selectedPoint: point }),
   setSelectedTransport: (transport) => set({ selectedTransport: transport }),
-  setPaymentMethod: (method) => set({ paymentMethod: method }),
+  setSelectedDeliveryForm: (form) => set({ selectedDeliveryForm: form }),
   setPaymentImg: (file) => set({ paymentImg: file }),
+  setComment: (comment) => set({ comment }),
+  setDeliveryDate: (date) => set({ deliveryDate: date }),
 
   addProduct: (product) =>
     set((state) => {

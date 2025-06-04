@@ -16,7 +16,7 @@ import {
 import { useQuoteStore } from "../stores/quoteStore";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { useQuoteMutations } from "../hooks/mutations/quotesMutations";
-import { useGetTransports } from "../hooks/queries/quotesQueries";
+import { useGetDeliveryForms, useGetPaymentType, useGetTransports } from "../hooks/queries/quotesQueries";
 import { useClientPointsDelivery } from "../../clients/hooks/queries/clientQueries";
 
 export function NewQuotesPage() {
@@ -25,113 +25,35 @@ export function NewQuotesPage() {
     products,
     selectedPoint,
     selectedTransport,
-    paymentMethod,
     paymentImg,
-    setPaymentMethod,
-    setPaymentImg,
+    selectedDeliveryForm,
+    selectedPaymentType,
+    comment,
+    deliveryDate,
   } = useQuoteStore();
 
   const setSelectedPoint = useQuoteStore((state) => state.setSelectedPoint);
-  const setSelectedTransport = useQuoteStore(
-    (state) => state.setSelectedTransport
-  );
+  const setSelectedTransport = useQuoteStore((state) => state.setSelectedTransport);
+  const setSelectedPaymentType = useQuoteStore((state) => state.setSelectedPaymentType);
+  const setSelectedDeliveryForm = useQuoteStore((state) => state.setSelectedDeliveryForm);
+  const setComment = useQuoteStore((state) => state.setComment);
+  const setDeliveryDate = useQuoteStore((state) => state.setDeliveryDate);
 
   const { dataTransports, isLoadingTransports } = useGetTransports();
-  const { dataDeliveryPoints, isLoadingDeliveryPoints } =
-    useClientPointsDelivery(client?.CardCode);
+  const { dataDeliveryPoints, isLoadingDeliveryPoints } = useClientPointsDelivery(client?.CardCode);
+  const { dataDeliveryForms, isLoadingDeliveryForms } = useGetDeliveryForms();
+  const { dataPaymentTypes, isLoadingPaymentTypes } = useGetPaymentType();
 
   const { createQuoteMutation } = useQuoteMutations();
 
-  const handleSave = () => {
-    const {
-      client,
-      products,
-      selectedPoint,
-      selectedTransport,
-      paymentMethod,
-      paymentImg,
-    } = useQuoteStore.getState();
+ 
 
-    const { userId } = useAuthStore.getState();
-    if (!client || products.length === 0) {
-      console.warn("Faltan datos del cliente o productos");
-      return;
-    }
-
-    const payload = {
-      clientName: client.CardName,
-      clientDocument: client.CardCode,
-      clientAddress: client.Address,
-      deliveryPoint: selectedPoint || [],
-      transport: selectedTransport.Name || "",
-      transportDirection: selectedTransport?.U_TQC_DIREC || "",
-      paymentType: paymentMethod || null,
-      pathImg: paymentImg || "",
-      userId: Number(userId),
-      state: "draft",
-      items: products.map((product) => ({
-        sigla: product.sigla,
-        productCode: product.id,
-        productName: product.name,
-        unitPrice: Number(product.price),
-        discount:  Number(product.discount) || 0,
-        importe:  Number(product.importe) || 0,
-        quantity:  Number(product.quantity),
-        totalPrice: Number(product.quantity) * Number(product.importe),
-      })),
-    };
-    
-    createQuoteMutation.mutate(payload);
-  };
-
-  const handleApprove = () => {
-    const {
-      client,
-      products,
-      selectedPoint,
-      selectedTransport,
-      paymentMethod,
-      paymentImg,
-    } = useQuoteStore.getState();
-
-    const { userId } = useAuthStore.getState();
-    if (!client || products.length === 0) {
-      console.warn("Faltan datos del cliente o productos");
-      return;
-    }
-
-    const payload = {
-      clientName: client.CardName,
-      clientDocument: client.CardCode,
-      clientAddress: client.Address,
-      deliveryPoint: selectedPoint || [],
-      transport: selectedTransport.Name || "",
-      transportDirection: selectedTransport?.U_TQC_DIREC || "",
-      paymentType: paymentMethod || null,
-      pathImg: paymentImg || "",
-      userId: Number(userId),
-      state: "approved_seller",
-      items: products.map((product) => ({
-        sigla: product.sigla,
-        productCode: product.id,
-        productName: product.name,
-        unitPrice: Number(product.price),
-        discount:  Number(product.discount) || 0,
-        importe:  Number(product.importe) || 0,
-        quantity:  Number(product.quantity),
-        totalPrice: Number(product.quantity) * Number(product.importe),
-      })),
-    };
-    
-    createQuoteMutation.mutate(payload);
-  };
-
-  if (isLoadingTransports || isLoadingDeliveryPoints)
+  if (isLoadingTransports || isLoadingDeliveryPoints || isLoadingDeliveryForms || isLoadingPaymentTypes)
     return <Skeleton height="100vh" />;
 
   return (
     <MainLayout>
-      <Accordion allowMultiple>
+      <Accordion allowMultiple defaultIndex={[1]}>
         <AccordionItem>
           <h2>
             <AccordionButton>
@@ -148,6 +70,8 @@ export function NewQuotesPage() {
               client={client}
               transports={dataTransports}
               deliveryPoints={dataDeliveryPoints}
+              deliveryForms= {dataDeliveryForms}
+              paymentTypes= {dataPaymentTypes}
               selectedPoint={selectedPoint}
               selectedTransport={selectedTransport}
               paymentMethod={paymentMethod}
@@ -155,7 +79,10 @@ export function NewQuotesPage() {
               setSelectedTransport={setSelectedTransport}
               setSelectedPoint={setSelectedPoint}
               setPaymentMethod={setPaymentMethod}
-              setPaymentImg={setPaymentImg}
+              comment={comment}
+              setComment={setComment}
+              deliveryDate={deliveryDate}
+              setDeliveryDate={setDeliveryDate}
             />
           </AccordionPanel>
         </AccordionItem>

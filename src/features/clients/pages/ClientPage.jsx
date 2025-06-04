@@ -13,7 +13,7 @@ export function ClientPage() {
   const setClient = useQuoteStore((state) => state.setClient);
   
   const { data, isLoading, error } = useClientQueries(searchTerm);
-
+  console.log(data)
   const client = data ? adaptClientFromApi(data) : null;
 
   const handleSearch = () => {
@@ -52,7 +52,7 @@ export function ClientPage() {
             <Text fontWeight="bold">Cliente encontrado:</Text>
             <Text>Nombre: {client.firstName}</Text>
             <Text>Código: {client.id}</Text>
-            <Text>Dirección: {client.lastName}</Text>
+            <Text>Dirección: {client.address}</Text>
             <Button onClick={() => {
               setClient(data);
               navigate("/newquotes");
