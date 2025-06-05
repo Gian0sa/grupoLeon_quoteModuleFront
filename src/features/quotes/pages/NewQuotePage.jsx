@@ -47,6 +47,100 @@ export function NewQuotesPage() {
   const { createQuoteMutation } = useQuoteMutations();
 
  
+  const handleSave = () => {
+    const {
+      client,
+      products,
+      selectedPoint,
+      selectedTransport,
+      paymentImg,
+      selectedDeliveryForm,
+      selectedPaymentType,
+      comment,
+      deliveryDate,
+    } = useQuoteStore.getState();
+
+    const { userId } = useAuthStore.getState();
+    if (!client || products.length === 0) {
+      console.warn("Faltan datos del cliente o productos");
+      return;
+    }
+
+    const payload = {
+      clientName: client.CardName,
+      clientDocument: client.CardCode,
+      clientAddress: client.Address,
+      deliveryPoint: selectedPoint || [],
+      deliveryForm: selectedDeliveryForm?.TrnspName || "",
+      transport: selectedTransport?.Name || "",
+      transportDirection: selectedTransport?.U_TQC_DIREC || "",
+      paymentType: selectedPaymentType?.GroupNum || null,
+      pathImg: paymentImg || "",
+      userId: Number(userId),
+      comment: comment || "",
+      deliveryDate: deliveryDate || null,
+      state: "draft",
+      items: products.map((product) => ({
+        sigla: product.sigla,
+        productCode: product.id,
+        productName: product.name,
+        unitPrice: Number(product.price),
+        discount: Number(product.discount) || 0,
+        importe: Number(product.importe) || 0,
+        quantity: Number(product.quantity),
+        totalPrice: Number(product.quantity) * Number(product.importe),
+      })),
+    };
+    console.log(payload);
+    
+    createQuoteMutation.mutate(payload);
+  };
+
+  const handleApprove = () => {
+    const {
+      client,
+      products,
+      selectedPoint,
+      selectedTransport,
+      
+      paymentImg,
+    } = useQuoteStore.getState();
+
+    const { userId } = useAuthStore.getState();
+    if (!client || products.length === 0) {
+      console.warn("Faltan datos del cliente o productos");
+      return;
+    }
+
+    const payload = {
+      clientName: client.CardName,
+      clientDocument: client.CardCode,
+      clientAddress: client.Address,
+      deliveryPoint: selectedPoint || [],
+      deliveryForm: selectedDeliveryForm?.TrnspName || "",
+      transport: selectedTransport?.Name || "",
+      transportDirection: selectedTransport?.U_TQC_DIREC || "",
+      paymentType: selectedPaymentType?.Name || null,
+      pathImg: paymentImg || "",
+      userId: Number(userId),
+      comment: comment || "",
+      deliveryDate: deliveryDate || null,
+      state: "approved_seller",
+      items: products.map((product) => ({
+        sigla: product.sigla,
+        productCode: product.id,
+        productName: product.name,
+        unitPrice: Number(product.price),
+        discount: Number(product.discount) || 0,
+        importe: Number(product.importe) || 0,
+        quantity: Number(product.quantity),
+        totalPrice: Number(product.quantity) * Number(product.importe),
+      })),
+    };
+    
+    createQuoteMutation.mutate(payload);
+  };
+
 
   if (isLoadingTransports || isLoadingDeliveryPoints || isLoadingDeliveryForms || isLoadingPaymentTypes)
     return <Skeleton height="100vh" />;
@@ -74,11 +168,13 @@ export function NewQuotesPage() {
               paymentTypes= {dataPaymentTypes}
               selectedPoint={selectedPoint}
               selectedTransport={selectedTransport}
-              paymentMethod={paymentMethod}
+              selectedDeliveryForm={selectedDeliveryForm}
+              selectedPaymentType={selectedPaymentType}
               paymentImg= {paymentImg}
               setSelectedTransport={setSelectedTransport}
               setSelectedPoint={setSelectedPoint}
-              setPaymentMethod={setPaymentMethod}
+              setSelectedPaymentType={setSelectedPaymentType}
+              setSelectedDeliveryForm={setSelectedDeliveryForm}
               comment={comment}
               setComment={setComment}
               deliveryDate={deliveryDate}

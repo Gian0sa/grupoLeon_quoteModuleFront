@@ -30,8 +30,15 @@ export const useGetPaymentType = () => {
     const { data, isLoading, error } = useQuery({
         queryKey: ["paymentType"],
         queryFn: () => getPaymentType(),
+        select: (data) => {
+            console.log("data en hook de payment types:", data);
+            if (data && data.value) {
+                return data.value;
+            }
+            return data || [];
+        },
     })
-    return { dataPaymentType : data, isLoadingPaymentType: isLoading, errorPaymentType: error }
+    return { dataPaymentTypes: data, isLoadingPaymentTypes: isLoading, errorPaymentTypes: error }
 }
 
 export const useGetDeliveryForms = () => {

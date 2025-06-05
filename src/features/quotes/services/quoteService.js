@@ -36,13 +36,12 @@ export const getTransports = async () => {
 
 export const getPaymentType = async () => {
     const response = await axiosInstance.get(`/quoteModule/clients/payment-terms`);
-    console.log("response.data de payment types : ", response.data.value)
-    return response.data;
+    console.log("response data : " , response.data.value);
+    return response.data.value;
 }
 
 export const getDeliveryForms = async () => {
     const response = await axiosInstance.get(`/quoteModule/clients/delivery-forms`);
-    console.log("response.data de delivery forms : ", response.data)
     return response.data;
 }
 
