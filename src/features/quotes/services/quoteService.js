@@ -30,7 +30,7 @@ export const updateQuote = async (quote) => {
 
 export const getTransports = async () => {
     const response = await axiosInstance.get(`/quoteModule/clients/transports`);
-    return response.data;
+    return response.data.value;
 
 };
 
