@@ -33,6 +33,8 @@ export function NewClientSection({
 }) {
   const { uploadImageMutation, deleteImageMutation } = useQuoteMutations();
 
+  console.log("los transportistas son : ",transports);
+
   const handleUploadPaymentImage = async (file) => {
     try {
       if (paymentImg) {
