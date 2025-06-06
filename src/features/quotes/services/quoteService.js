@@ -42,7 +42,7 @@ export const getPaymentType = async () => {
 
 export const getDeliveryForms = async () => {
     const response = await axiosInstance.get(`/quoteModule/clients/delivery-forms`);
-    return response.data;
+    return response.data.value;
 }
 
 export const uploadImage = async (file) => {
