@@ -228,6 +228,10 @@ export function NewClientSection({
           <Input
             type="file"
             accept="image/*"
+            onClick={(e) => {
+              // Android fix: permitir volver a tomar o subir la misma imagen
+              e.target.value = null;
+            }}
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) {
