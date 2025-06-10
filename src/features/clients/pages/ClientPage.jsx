@@ -13,7 +13,6 @@ export function ClientPage() {
   const setClient = useQuoteStore((state) => state.setClient);
   
   const { data, isLoading, error } = useClientQueries(searchTerm);
-  console.log(data)
   const client = data ? adaptClientFromApi(data) : null;
 
   const handleSearch = () => {

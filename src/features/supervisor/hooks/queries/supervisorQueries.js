@@ -6,11 +6,10 @@ export function useSupervisorQueries(quoteId) {
         queryKey: ["supervisorQuotes"],
         queryFn: () => getSupervisorQuotes(),
     })
-    const { data: quoteDetail, isLoading: quoteDetailLoading, error: quoteDetailError } = useQuery({    
-        queryKey: ["supervisorQuoteDetail", quoteId], 
+    const { data: quoteDetail, isLoading: quoteDetailLoading, error: quoteDetailError } = useQuery({
+        queryKey: ["supervisorQuoteDetail", quoteId],
         queryFn: () => getSupervisorQuoteDetail(quoteId),
         enabled: !!quoteId,
     })
     return { data, isLoading, error, quoteDetail, quoteDetailLoading, quoteDetailError }
 }
-

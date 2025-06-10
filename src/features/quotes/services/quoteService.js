@@ -36,13 +36,11 @@ export const getTransports = async () => {
 
 export const getPaymentType = async () => {
     const response = await axiosInstance.get(`/quoteModule/clients/payment-terms`);
-    console.log("response data : " , response.data.value);
     return response.data.value;
 }
 
 export const getDeliveryForms = async () => {
     const response = await axiosInstance.get(`/quoteModule/clients/delivery-forms`);
-    console.log("response data : " , response.data);
     return response.data;
 }
 
@@ -62,7 +60,6 @@ export const uploadImage = async (file) => {
       }
     );
   
-    console.log(response.data);
     return response.data;
   };
   

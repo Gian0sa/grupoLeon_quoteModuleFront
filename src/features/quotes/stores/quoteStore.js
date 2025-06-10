@@ -12,6 +12,7 @@ export const useQuoteStore = create((set) => ({
   quoteId: null,
   client: null,
   products: [],
+  opNum: null,
 
   selectedPoint: null,
   selectedTransport: "",
@@ -31,6 +32,7 @@ export const useQuoteStore = create((set) => ({
   setPaymentImg: (file) => set({ paymentImg: file }),
   setComment: (comment) => set({ comment }),
   setDeliveryDate: (date) => set({ deliveryDate: date }),
+  setOpNum: (opNum) => set({ opNum }), 
 
   addProduct: (product) =>
     set((state) => {

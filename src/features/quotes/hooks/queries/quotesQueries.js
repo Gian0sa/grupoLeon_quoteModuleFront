@@ -31,7 +31,6 @@ export const useGetPaymentType = () => {
         queryKey: ["paymentType"],
         queryFn: () => getPaymentType(),
         select: (data) => {
-            console.log("data en hook de payment types:", data);
             if (data && data.value) {
                 return data.value;
             }

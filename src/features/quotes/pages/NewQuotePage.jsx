@@ -18,6 +18,7 @@ import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { useQuoteMutations } from "../hooks/mutations/quotesMutations";
 import { useGetDeliveryForms, useGetPaymentType, useGetTransports } from "../hooks/queries/quotesQueries";
 import { useClientPointsDelivery } from "../../clients/hooks/queries/clientQueries";
+import { useState } from "react";
 
 export function NewQuotesPage() {
   const {
@@ -30,14 +31,22 @@ export function NewQuotesPage() {
     selectedPaymentType,
     comment,
     deliveryDate,
+    opNum,
   } = useQuoteStore();
+
+  const { uploadImageMutation, deleteImageMutation } = useQuoteMutations();
 
   const setSelectedPoint = useQuoteStore((state) => state.setSelectedPoint);
   const setSelectedTransport = useQuoteStore((state) => state.setSelectedTransport);
   const setSelectedPaymentType = useQuoteStore((state) => state.setSelectedPaymentType);
   const setSelectedDeliveryForm = useQuoteStore((state) => state.setSelectedDeliveryForm);
   const setComment = useQuoteStore((state) => state.setComment);
+  const setPaymentImg = useQuoteStore((state) => state.setPaymentImg);
   const setDeliveryDate = useQuoteStore((state) => state.setDeliveryDate);
+  const setOpNum = useQuoteStore((state) => state.setOpNum);
+  const [tempImage, setTempImage] = useState(null);
+
+
 
   const { dataTransports, isLoadingTransports } = useGetTransports();
   const { dataDeliveryPoints, isLoadingDeliveryPoints } = useClientPointsDelivery(client?.CardCode);
@@ -47,25 +56,37 @@ export function NewQuotesPage() {
   const { createQuoteMutation } = useQuoteMutations();
 
  
-  const handleSave = () => {
+  const handleSave = async () => {
     const {
       client,
       products,
       selectedPoint,
       selectedTransport,
-      paymentImg,
       selectedDeliveryForm,
       selectedPaymentType,
       comment,
       deliveryDate,
     } = useQuoteStore.getState();
-
+  
     const { userId } = useAuthStore.getState();
-    if (!client || products.length === 0) {
-      console.warn("Faltan datos del cliente o productos");
-      return;
+  
+    let imagePath = paymentImg;
+    if (tempImage) {
+      const formData = new FormData();
+      formData.append("file", tempImage);
+      try {
+        const response = await uploadImageMutation.mutateAsync(tempImage);
+        if (response?.imagePath) {
+          imagePath = response.imagePath;
+        } else {
+          throw new Error("No se pudo obtener el nombre de archivo de la imagen subida.");
+        }
+      } catch (error) {
+        console.error("Error subiendo imagen", error);
+        return;
+      }
     }
-
+  
     const payload = {
       clientName: client.CardName,
       clientDocument: client.CardCode,
@@ -75,7 +96,7 @@ export function NewQuotesPage() {
       transport: selectedTransport?.Name || "",
       transportDirection: selectedTransport?.U_TQC_DIREC || "",
       paymentType: selectedPaymentType?.GroupNum || null,
-      pathImg: paymentImg || "",
+      pathImg: imagePath || "",
       userId: Number(userId),
       comment: comment || "",
       deliveryDate: deliveryDate || null,
@@ -91,10 +112,12 @@ export function NewQuotesPage() {
         totalPrice: Number(product.quantity) * Number(product.importe),
       })),
     };
-    console.log(payload);
-    
-    createQuoteMutation.mutate(payload);
+
+    console.log("el payload de creacion es : ",payload);
+  
+    //createQuoteMutation.mutate(payload);
   };
+  
 
   const handleApprove = () => {
     const {
@@ -179,6 +202,11 @@ export function NewQuotesPage() {
               setComment={setComment}
               deliveryDate={deliveryDate}
               setDeliveryDate={setDeliveryDate}
+              tempImage={tempImage}
+              setTempImage={setTempImage}
+              setPaymentImg={setPaymentImg}
+              opNum={opNum}
+              setOpNum={setOpNum}
             />
           </AccordionPanel>
         </AccordionItem>
