@@ -253,11 +253,9 @@ export function NewClientSection({
               <img
                 src={
                   typeof paymentImg === 'string' && paymentImg.startsWith('blob:')
-                    ? paymentImg // Vista previa local
-                    : `http://localhost:3000/uploads/${paymentImg}` // Imagen guardada
+                    ? paymentImg // vista previa local
+                    : `http://localhost:3000/${paymentImg.replace(/^uploads\//, '')}`
                 }
-                alt="Comprobante"
-                style={{ maxWidth: "100%", borderRadius: "8px" }}
               />
               <Button
                 mt={2}
