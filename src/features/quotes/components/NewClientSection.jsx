@@ -254,7 +254,7 @@ export function NewClientSection({
                 src={
                   typeof paymentImg === 'string' && paymentImg.startsWith('blob:')
                     ? paymentImg // vista previa local
-                    : `http://localhost:3000/quoteModule/${paymentImg}`
+                    : `http://localhost:3000/${paymentImg}`
                 }
               />
               <Button
