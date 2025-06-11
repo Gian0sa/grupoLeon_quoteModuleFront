@@ -63,13 +63,19 @@ export const useQuoteStore = create((set) => ({
       ),
     })),
 
-  clear: () =>
-    set({
-      client: null,
-      products: [],
-      selectedPoint: null,
-      selectedTransport: "",
-      paymentMethod: "",
-      paymentImg: null,
-    }),
+    clear: () =>
+      set({
+        quoteId: null,
+        client: null,
+        products: [],
+        opNum: null,
+        selectedPoint: null,
+        selectedTransport: "",
+        selectedDeliveryForm: "",
+        selectedPaymentType: "",
+        paymentImg: null,
+        comment: null,
+        deliveryDate: null,
+      }),
+    
 }));

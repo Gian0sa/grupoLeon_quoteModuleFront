@@ -66,6 +66,7 @@ export function NewQuotesPage() {
       selectedPaymentType,
       comment,
       deliveryDate,
+      opNum,
     } = useQuoteStore.getState();
   
     const { userId } = useAuthStore.getState();
@@ -100,6 +101,7 @@ export function NewQuotesPage() {
       userId: Number(userId),
       comment: comment || "",
       deliveryDate: deliveryDate || null,
+      opNum: opNum || null,
       state: "draft",
       items: products.map((product) => ({
         sigla: product.sigla,
@@ -115,7 +117,7 @@ export function NewQuotesPage() {
 
     console.log("el payload de creacion es : ",payload);
   
-    //createQuoteMutation.mutate(payload);
+    createQuoteMutation.mutate(payload);
   };
   
 
@@ -148,6 +150,7 @@ export function NewQuotesPage() {
       userId: Number(userId),
       comment: comment || "",
       deliveryDate: deliveryDate || null,
+      opNum: opNum || null,
       state: "approved_seller",
       items: products.map((product) => ({
         sigla: product.sigla,

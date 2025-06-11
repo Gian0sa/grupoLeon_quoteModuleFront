@@ -229,7 +229,6 @@ export function NewClientSection({
             type="file"
             accept="image/*"
             onClick={(e) => {
-              // Android fix: permitir volver a tomar o subir la misma imagen
               e.target.value = null;
             }}
             onChange={(e) => {
@@ -241,18 +240,22 @@ export function NewClientSection({
             }}
           />
           <Box>
-            <FormLabel>Número de Operación</FormLabel>
-            <Input
-              type="number"
-              placeholder="Ingrese el número de operación"
-              value={opNum ?? ""}
-              onChange={(e) => setOpNum(Number(e.target.value))}
-            />
+          <FormLabel>Número de Operación</FormLabel>
+          <Input
+            type="text"
+            placeholder="Ingrese el número de operación"
+            value={opNum ?? ""}
+            onChange={(e) => setOpNum(e.target.value)}
+          />
           </Box>
           {paymentImg && (
             <Box mt={2}>
               <img
-                src={paymentImg}
+                src={
+                  typeof paymentImg === 'string' && paymentImg.startsWith('blob:')
+                    ? paymentImg // Vista previa local
+                    : `http://localhost:3000/uploads/${paymentImg}` // Imagen guardada
+                }
                 alt="Comprobante"
                 style={{ maxWidth: "100%", borderRadius: "8px" }}
               />
@@ -269,6 +272,7 @@ export function NewClientSection({
               </Button>
             </Box>
           )}
+
         </Box>
       </VStack>
     </Box>

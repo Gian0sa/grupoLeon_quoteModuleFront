@@ -5,6 +5,7 @@ import { useQuoteStore } from "../stores/quoteStore";
 import { MainLayout } from "../../../components/layouts/MainLayout";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { useQuoteMutations } from "../hooks/mutations/quotesMutations";
+import { useState } from "react";
 import {
   Button,
   Flex,
@@ -20,69 +21,103 @@ import {
 
 export function HistoryQuotesPage() {
   const { quoteId } = useQuoteStore.getState();
-  const { id , isLoading, error, dataTransports, dataDeliveryPoints } = useClientService(quoteId);
+  const { id , isLoading, error, dataTransports, dataDeliveryPoints , dataDeliveryForms , dataPaymentTypes } = useClientService(quoteId);
 
+  
+  const { uploadImageMutation, deleteImageMutation } = useQuoteMutations();
+  const { createQuoteMutation } = useQuoteMutations();
   const {
     client,
     products,
     selectedPoint,
     selectedTransport,
-    paymentMethod,
     paymentImg,
+    selectedDeliveryForm,
+    selectedPaymentType,
+    comment,
+    deliveryDate,
+    opNum,
     setSelectedPoint,
     setSelectedTransport,
-    setPaymentMethod,
     setPaymentImg,
+    setSelectedDeliveryForm,
+    setSelectedPaymentType,
+    setComment,
+    setDeliveryDate,
+    setOpNum,
+
   } = useQuoteStore();
   console.log("products : ",products);
 
+  
+    const [tempImage, setTempImage] = useState(null);
+
   const { updateQuoteMutation } = useQuoteMutations();
 
-   const handleSave = () => {
-      const {
-        client,
-        products,
-        selectedPoint,
-        selectedTransport,
-        paymentMethod,
-        paymentImg,
-      } = useQuoteStore.getState();
+  const handleSave = async () => {
+    const {
+      client,
+      products,
+      selectedPoint,
+      selectedTransport,
+      selectedDeliveryForm,
+      selectedPaymentType,
+      comment,
+      deliveryDate,
+      opNum,
+    } = useQuoteStore.getState();
   
-      const { userId } = useAuthStore.getState();
+    const { userId } = useAuthStore.getState();
   
-      if (!client || products.length === 0) {
-        console.warn("Faltan datos del cliente o productos");
+    let imagePath = paymentImg;
+    if (tempImage) {
+      const formData = new FormData();
+      formData.append("file", tempImage);
+      try {
+        const response = await uploadImageMutation.mutateAsync(tempImage);
+        if (response?.imagePath) {
+          imagePath = response.imagePath;
+        } else {
+          throw new Error("No se pudo obtener el nombre de archivo de la imagen subida.");
+        }
+      } catch (error) {
+        console.error("Error subiendo imagen", error);
         return;
       }
+    }
   
-      const payload = {
-        id: Number(quoteId),
-        clientName: client.CardName,
-        clientDocument: client.CardCode,
-        clientAddress: client.Address,
-        deliveryPoint: selectedPoint || [],
-        transport: selectedTransport.Name || "",
-        transportDirection: selectedTransport?.U_TQC_DIREC || "",
-        paymentType: paymentMethod || null,
-        pathImg: paymentImg || "",
-        userId: Number(userId),
-        state: "draft",
-        items: products.map((product) => ({
-          sigla: product.sigla,
-          productCode: product.id,
-          productName: product.name,
-          unitPrice: Number(product.price),
-          discount:  Number(product.discount) || 0,
-          importe:  Number(product.importe) || 0,
-          quantity:  Number(product.quantity),
-          totalPrice: Number(product.quantity) * Number(product.importe),
-        })),
-      };
-      
-      console.log(payload);
-  
-      updateQuoteMutation.mutate(payload);
+    const payload = {
+      id: Number(quoteId),
+      clientName: client.CardName,
+      clientDocument: client.CardCode,
+      clientAddress: client.Address,
+      deliveryPoint: selectedPoint || [],
+      deliveryForm: selectedDeliveryForm?.TrnspName || "",
+      transport: selectedTransport?.Name || "",
+      transportDirection: selectedTransport?.U_TQC_DIREC || "",
+      paymentType: selectedPaymentType?.GroupNum || null,
+      pathImg: imagePath || "",
+      userId: Number(userId),
+      comment: comment || "",
+      deliveryDate: deliveryDate || null,
+      opNum: opNum || null,
+      state: "draft",
+      items: products.map((product) => ({
+        sigla: product.sigla,
+        productCode: product.id,
+        productName: product.name,
+        unitPrice: Number(product.price),
+        discount: Number(product.discount) || 0,
+        importe: Number(product.importe) || 0,
+        quantity: Number(product.quantity),
+        totalPrice: Number(product.quantity) * Number(product.importe),
+      })),
     };
+
+    console.log("el payload de creacion es : ",payload);
+  
+    updateQuoteMutation.mutate(payload);
+  };
   
     const handleApprove = () => {
       const {
@@ -97,7 +132,7 @@ export function HistoryQuotesPage() {
       const { userId } = useAuthStore.getState();
   
       if (!client || products.length === 0) {
-        console.warn("Faltan datos del cliente o productos");
+        console.warn("Faltan datos del cliente o productos"); 
         return;
       }
   
@@ -107,20 +142,24 @@ export function HistoryQuotesPage() {
         clientDocument: client.CardCode,
         clientAddress: client.Address,
         deliveryPoint: selectedPoint || [],
-        transport: selectedTransport.Name || "",
+        deliveryForm: selectedDeliveryForm?.TrnspName || "",
+        transport: selectedTransport?.Name || "",
         transportDirection: selectedTransport?.U_TQC_DIREC || "",
-        paymentType: paymentMethod || null,
-        pathImg: paymentImg || "",
+        paymentType: selectedPaymentType?.GroupNum || null,
+        pathImg: imagePath || "",
         userId: Number(userId),
+        comment: comment || "",
+        deliveryDate: deliveryDate || null,
+        opNum: opNum || null,
         state: "approved_seller",
         items: products.map((product) => ({
           sigla: product.sigla,
           productCode: product.id,
           productName: product.name,
           unitPrice: Number(product.price),
-          discount:  Number(product.discount) || 0,
-          importe:  Number(product.importe) || 0,
-          quantity:  Number(product.quantity),
+          discount: Number(product.discount) || 0,
+          importe: Number(product.importe) || 0,
+          quantity: Number(product.quantity),
           totalPrice: Number(product.quantity) * Number(product.importe),
         })),
       };
@@ -149,19 +188,31 @@ export function HistoryQuotesPage() {
                 </AccordionButton>
               </h2>
               <AccordionPanel pb={4}>
-                <NewClientSection
-                  client={client}
-                  transports={dataTransports}
-                  deliveryPoints={dataDeliveryPoints}
-                  selectedPoint={selectedPoint}
-                  selectedTransport={selectedTransport}
-                  paymentMethod={paymentMethod}
-                  paymentImg= {paymentImg}
-                  setSelectedTransport={setSelectedTransport}
-                  setSelectedPoint={setSelectedPoint}
-                  setPaymentMethod={setPaymentMethod}
-                  setPaymentImg={setPaymentImg}
-                />
+              <NewClientSection
+                client={client}
+                transports={dataTransports}
+                deliveryPoints={dataDeliveryPoints}
+                deliveryForms= {dataDeliveryForms}
+                paymentTypes= {dataPaymentTypes}
+                selectedPoint={selectedPoint}
+                selectedTransport={selectedTransport}
+                selectedDeliveryForm={selectedDeliveryForm}
+                selectedPaymentType={selectedPaymentType}
+                paymentImg= {paymentImg}
+                setSelectedTransport={setSelectedTransport}
+                setSelectedPoint={setSelectedPoint}
+                setSelectedPaymentType={setSelectedPaymentType}
+                setSelectedDeliveryForm={setSelectedDeliveryForm}
+                comment={comment}
+                setComment={setComment}
+                deliveryDate={deliveryDate}
+                setDeliveryDate={setDeliveryDate}
+                tempImage={tempImage}
+                setTempImage={setTempImage}
+                setPaymentImg={setPaymentImg}
+                opNum={opNum}
+                setOpNum={setOpNum}
+              />
               </AccordionPanel>
             </AccordionItem>
     
