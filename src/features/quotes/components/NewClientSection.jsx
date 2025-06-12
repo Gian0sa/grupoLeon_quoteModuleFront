@@ -82,11 +82,14 @@ export function NewClientSection({
     label: type.PymntGroup,
   }));
 
-  const isPickupInStoreForm = (form) =>
-    form?.TrnspCode === "04";
+  console.log(selectedDeliveryForm);
 
+  const isPickupInStoreForm = (form) =>
+    Number(form?.TrnspCode) === 1;
+  
   const isOwnPickupInStoreForm = (form) =>
-    form?.TrnspCode === "05";
+    Number(form?.TrnspCode) === 2;
+  
 
   const isPickupInStore = isPickupInStoreForm(selectedDeliveryForm)
 
