@@ -254,7 +254,7 @@ export function NewClientSection({
                 src={
                   typeof paymentImg === 'string' && paymentImg.startsWith('blob:')
                     ? paymentImg // vista previa local
-                    : `${import.meta.env.VITE_API_URL}/${paymentImg}`
+                    : `${import.meta.env.VITE_API_URL}/quoteModule/${paymentImg}`
                 }
               />
               <Button
