@@ -83,11 +83,14 @@ export function NewClientSection({
   }));
 
   const isPickupInStoreForm = (form) =>
-    form?.TrnspName?.toLowerCase().includes("recojo") ||
-    form?.TrnspName?.toLowerCase().includes("tienda") ||
     form?.TrnspCode === "04";
 
-  const isPickupInStore = isPickupInStoreForm(selectedDeliveryForm);
+  const isOwnPickupInStoreForm = (form) =>
+    form?.TrnspCode === "05";
+
+  const isPickupInStore = isPickupInStoreForm(selectedDeliveryForm)
+
+  const isOwnPickupInStore = isOwnPickupInStoreForm(selectedDeliveryForm)
 
   const handleDeliveryFormChange = (selected) => {
     const selectedObj = deliveryForms.find(
@@ -171,7 +174,7 @@ export function NewClientSection({
       )}
 
       {/* Transporte */}
-      {!isPickupInStore && (
+      {!(isPickupInStore || isOwnPickupInStore)&& (
         <Box mt={4}>
           <FormLabel>Transporte</FormLabel>
           <ReactSelect
