@@ -35,7 +35,7 @@ export function ClientPage() {
 
     const isNumeric = /^\d+$/.test(trimmedInput);
     setIsSearchingByCode(isNumeric);
-    setSearchTerm(trimmedInput);
+    setSearchTerm(isNumeric ? `CL${trimmedInput}` : trimmedInput);
   };
 
   const handleKeyPress = (e) => {
