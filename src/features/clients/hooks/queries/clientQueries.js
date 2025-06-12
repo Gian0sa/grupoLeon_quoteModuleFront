@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchClientByCode, fetchDeliveryPoints } from "../../services/clientService";
+import { fetchClientByCode, fetchDeliveryPoints , fetchClientByName} from "../../services/clientService";
 
 export function useClientQueries(code) {
   const { data, isLoading, error } = useQuery({
@@ -16,11 +16,11 @@ export function useClientQueries(code) {
   };
 }
 
-export function useClientQueriesById(id) {
+export function useClientQueriesByName(name) {
   const { data, isLoading, error } = useQuery({
-    queryKey: ["client", id],
-    queryFn: () => fetchClientById(id),
-    enabled: !!id,
+    queryKey: ["client", name],
+    queryFn: () => fetchClientByName(name),
+    enabled: !!name,
   });
 
   return {

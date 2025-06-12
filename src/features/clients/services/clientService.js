@@ -5,6 +5,11 @@ export const fetchClientByCode = async (code) => {
   return response.data;
 }
 
+export const fetchClientByName = async (name) => {
+  const response = await axiosInstance.get(`/quoteModule/clients/name/${name}`);
+  return response.data;
+}
+
 export const fetchDeliveryPoints = async (id) => {
   const response = await axiosInstance.get(`/quoteModule/clients/${id}/delivery-points`);
   return response.data;
