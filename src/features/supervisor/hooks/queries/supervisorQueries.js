@@ -1,15 +1,19 @@
-import { getSupervisorQuotes } from "../../services/supervisorService"
+import { getRequestQuote , getRequestQuoteById } from "../../services/supervisorService"
 import { useQuery } from "@tanstack/react-query"
 
-export function useSupervisorQueries(quoteId) {
+export const useGetRequestQuotes = () => {
     const { data, isLoading, error } = useQuery({
-        queryKey: ["supervisorQuotes"],
-        queryFn: () => getSupervisorQuotes(),
+        queryKey: ["RequestQuotes"],
+        queryFn: () => getRequestQuote(),
     })
-    const { data: quoteDetail, isLoading: quoteDetailLoading, error: quoteDetailError } = useQuery({
-        queryKey: ["supervisorQuoteDetail", quoteId],
-        queryFn: () => getSupervisorQuoteDetail(quoteId),
-        enabled: !!quoteId,
+    return { data, isLoading, error }
+}
+
+export const useGetRequestQuoteById = (id) => {
+    const { data, isLoading, error } = useQuery({
+        queryKey: ["requestQuoteById", id],
+        queryFn:  () => getRequestQuoteById(id),
+        enabled: !!id,
     })
-    return { data, isLoading, error, quoteDetail, quoteDetailLoading, quoteDetailError }
+    return { data, isLoading, error }
 }

@@ -2,9 +2,10 @@ import { Skeleton, Box, Stack, Heading, Text, Button } from "@chakra-ui/react";
 import { useGetQuotes } from "../../quotes/hooks/queries/quotesQueries";
 import { useNavigate } from "react-router-dom";
 import { useQuoteStore } from "../../quotes/stores/quoteStore";
+import { useGetRequestQuotes } from "../../supervisor/hooks/queries/supervisorQueries";
 
-export function History() {
-  const { data: Quotes, isLoading: quotesLoading, error: quotesError } = useGetQuotes();
+export function Requests() {
+  const { data: Quotes, isLoading: quotesLoading, error: quotesError } = useGetRequestQuotes();
   const setQuoteId = useQuoteStore((state) => state.setQuoteId);
   const navigate = useNavigate();
 
@@ -38,6 +39,7 @@ export function History() {
             <Text>Cliente: {item.clientId}</Text>
             <Button
               mt={2}
+              colorScheme="teal"
               onClick={() => {
                 setQuoteId(item.id);
                 navigate(`/historyquotes`);

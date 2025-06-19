@@ -10,6 +10,7 @@ import { PrivateRoute } from "../app/middlewares/privateRoute.jsx";
 import { RoleRoute } from "../app/middlewares/roleRoute.jsx";
 import { History } from "../features/dashboard/components/History.jsx";
 import { HistoryQuotesPage } from "../features/quotes/pages/HistoryQuotesPage.jsx";
+import { Requests } from "../features/dashboard/components/Requests.jsx";
 
 const AppRoutes = () => {
   return (
@@ -32,6 +33,7 @@ const AppRoutes = () => {
       <Route path="/supervisor" element={<SupervisorPage />} />
       <Route path="/products" element={<ProductosPage />} />
       <Route path="/history" element={<History />} />
+      <Route path="/requests" element={ <Requests />} />
     </Routes> 
   );
 };

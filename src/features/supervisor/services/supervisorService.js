@@ -1,21 +1,21 @@
 import { axiosInstance } from "../../../shared/lib/axiosInstance"
 
-export const getSupervisorQuotes = async () => {
-    const response = await axiosInstance.get('/supervisor/quotes')
+export const getRequestQuote = async () => {
+    const response = await axiosInstance.get('/approveModule/requestQuotes')
     return response.data
 }
 
-export const getSupervisorQuoteDetail = async (quoteId) => {
-    const response = await axiosInstance.get(`/supervisor/quotes/${quoteId}`)
-    return response.data
+export const getRequestQuoteById = async (id) => {
+    try {
+        const response = await axiosInstance.get(`/approveModule/requestQuotes/${id}`);
+        return response.data;
+    } catch (error) {
+        console.error("Error al obtener la cotización:", error);
+        return null;
+    }
 }
 
-export const approveQuote = async (quoteId) => {
-    const response = await axiosInstance.put(`/supervisor/quotes/${quoteId}/approve`)
-    return response.data
-}
-
-export const rejectQuote = async (quoteId) => {
-    const response = await axiosInstance.put(`/supervisor/quotes/${quoteId}/reject`)
+export const updateRequestQuote = async (quote) => {
+    const response = await axiosInstance.put(`/approveModule/requestQuotes/${quote.id}`)
     return response.data
 }

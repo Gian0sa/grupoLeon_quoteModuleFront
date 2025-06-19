@@ -49,6 +49,9 @@ import {
                     {role === "ADMIN" && (
                       <Button onClick={() => navigate('/register')}>Registrar</Button>
                     )}
+                    {role === "ADMIN" && (
+                      <Button onClick={() => navigate('/requests')}>Solicitudes</Button>
+                    )}
 
                 </Flex>
             </DrawerBody>
