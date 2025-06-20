@@ -44,6 +44,26 @@ export const getDeliveryForms = async () => {
     return response.data;
 }
 
+export const getExchangeRate = async () => {
+    const response = await axiosInstance.get(`/quoteModule/exchange-rate`);
+    return response.data;
+}
+
+export const createExchangeRate = async (data) => {
+    const response = await axiosInstance.post(`/quoteModule/exchange-rate`, data);
+    return response.data;
+}
+
+export const updateExchangeRate = async (data) => {
+    const response = await axiosInstance.put(`/quoteModule/exchange-rate`, data);
+    return response.data;
+}
+
+export const getIgvRate = async () => {
+    const response = await axiosInstance.get(`/quoteModule/igv`);
+    return response.data;
+}
+
 export const uploadImage = async (file) => {
     const formData = new FormData();
     formData.append("image", file);

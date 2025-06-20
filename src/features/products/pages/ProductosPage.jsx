@@ -9,9 +9,9 @@ export function ProductosPage() {
     return (
         <MainLayout>
             
-            <ProductSearch setValue={setValue}/>
-            {value && <ProductDetail value={value} />}
-
+            <div>
+                CATALAGO EN PROCESO -----
+            </div>
         </MainLayout>
     )
 }

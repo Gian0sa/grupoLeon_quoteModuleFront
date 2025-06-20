@@ -4,7 +4,7 @@ import { useQuoteStore } from "../../quotes/stores/quoteStore"
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 
-export function ProductDetail( code ) {
+export function ProductDetail({ code, onSuccess } ) {
     const { productDetail, isLoadingDetail, errorDetail } = useProductDetail(code.value);
     console.log(productDetail);
     const { quoteId } = useQuoteStore();
@@ -30,12 +30,7 @@ export function ProductDetail( code ) {
         };
 
         addProduct(product);
-        if (quoteId) {
-            navigate('/historyquotes');
-          } else {
-            navigate('/newquotes');
-          }
-          
+        if (onSuccess) onSuccess(); 
     };
 
     return (

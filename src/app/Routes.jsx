@@ -11,6 +11,7 @@ import { RoleRoute } from "../app/middlewares/roleRoute.jsx";
 import { History } from "../features/dashboard/components/History.jsx";
 import { HistoryQuotesPage } from "../features/quotes/pages/HistoryQuotesPage.jsx";
 import { Requests } from "../features/dashboard/components/Requests.jsx";
+import { RequestQuotePage } from "../features/supervisor/pages/RequestQuotePage.jsx";
 
 const AppRoutes = () => {
   return (
@@ -30,10 +31,10 @@ const AppRoutes = () => {
       <Route path="/dashboard" element={<DashboardPage />} />
       <Route path="/newquotes" element={<NewQuotesPage />} />
       <Route path="/historyquotes" element={< HistoryQuotesPage/>}/>
-      <Route path="/supervisor" element={<SupervisorPage />} />
       <Route path="/products" element={<ProductosPage />} />
       <Route path="/history" element={<History />} />
       <Route path="/requests" element={ <Requests />} />
+      <Route path="/detailRequests" element={<RequestQuotePage />} />
     </Routes> 
   );
 };

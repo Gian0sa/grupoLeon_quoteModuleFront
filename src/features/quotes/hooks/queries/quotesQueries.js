@@ -46,5 +46,13 @@ export const useGetDeliveryForms = () => {
         queryFn: () => getDeliveryForms(),
     })
     return { dataDeliveryForms: data, isLoadingDeliveryForms: isLoading, errorDeliveryForms: error }
+}
+
+export const useGetExchangeRate = () => {
+    const { data, isLoading, error } = useQuery({
+        queryKey: ["ExchangeRatio"],
+        queryFn: () => getDeliveryForms(),
+    })
+    return { dataDeliveryForms: data, isLoadingDeliveryForms: isLoading, errorDeliveryForms: error }
 
 }

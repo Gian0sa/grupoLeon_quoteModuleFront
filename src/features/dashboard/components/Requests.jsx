@@ -42,7 +42,7 @@ export function Requests() {
               colorScheme="teal"
               onClick={() => {
                 setQuoteId(item.id);
-                navigate(`/historyquotes`);
+                navigate(`/detailRequests`);
               }}
             >
               Ver detalles
