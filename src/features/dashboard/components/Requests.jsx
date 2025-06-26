@@ -3,6 +3,7 @@ import { useGetQuotes } from "../../quotes/hooks/queries/quotesQueries";
 import { useNavigate } from "react-router-dom";
 import { useQuoteStore } from "../../quotes/stores/quoteStore";
 import { useGetRequestQuotes } from "../../supervisor/hooks/queries/supervisorQueries";
+import { BackButton } from "../../../components/BackButton";
 
 export function Requests() {
   const { data: Quotes, isLoading: quotesLoading, error: quotesError } = useGetRequestQuotes();
@@ -25,6 +26,7 @@ export function Requests() {
 
   return (
     <Box p={6}>
+      <BackButton />
       <Heading size="lg" mb={4}>Historial de Cotizaciones</Heading>
       <Stack spacing={4}>
         {Quotes.map((item) => (

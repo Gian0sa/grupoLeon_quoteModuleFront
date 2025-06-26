@@ -6,6 +6,7 @@ import { useClientQueriesByName } from "../hooks/queries/clientQueries";
 import { useNavigate } from "react-router-dom";
 import { adaptClientFromApi } from "../adapters/clientAdapter";
 import { useQuoteStore } from "../../quotes/stores/quoteStore";
+import { BackButton } from "../../../components/BackButton";
 
 export function ClientPage() {
   const [inputValue, setInputValue] = useState("");
@@ -74,6 +75,7 @@ export function ClientPage() {
 
   return (
     <MainLayout>
+      <BackButton />
       <Flex direction="column" gap="4" justify="center">
         <Input
           placeholder="Buscar cliente por RUC/DNI o nombre"

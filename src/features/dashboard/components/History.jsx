@@ -2,6 +2,7 @@ import { Skeleton, Box, Stack, Heading, Text, Button } from "@chakra-ui/react";
 import { useGetQuotes } from "../../quotes/hooks/queries/quotesQueries";
 import { useNavigate } from "react-router-dom";
 import { useQuoteStore } from "../../quotes/stores/quoteStore";
+import { BackButton } from "../../../components/BackButton";
 
 export function History() {
   const { data: Quotes, isLoading: quotesLoading, error: quotesError } = useGetQuotes();
@@ -24,6 +25,7 @@ export function History() {
 
   return (
     <Box p={6}>
+      <BackButton />
       <Heading size="lg" mb={4}>Historial de Cotizaciones</Heading>
       <Stack spacing={4}>
         {Quotes.map((item) => (

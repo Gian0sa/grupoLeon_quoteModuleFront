@@ -9,6 +9,7 @@ import {
   Box,
   Text,
 } from "@chakra-ui/react";
+import { BackButton } from "../../../components/BackButton";
 
 export function RequestQuotePage() {
   const { quoteId } = useQuoteStore.getState();
@@ -32,6 +33,7 @@ export function RequestQuotePage() {
 
   return (
     <MainLayout>
+      <BackButton />
       <Box px={6} py={4}>
         <RequestQuoteClientSection client={data} />
         <RequestQuoteProductSection products={data.items} />

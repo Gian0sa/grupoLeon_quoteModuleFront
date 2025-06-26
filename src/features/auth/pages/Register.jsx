@@ -21,6 +21,7 @@ import { useSellersData } from "../hooks/queries/authQueries";
 import Select from "react-select";
 import { useEffect, useState } from "react";
 import { ViewIcon, ViewOffIcon } from "@chakra-ui/icons";
+import { BackButton } from "../../../components/BackButton";
 
 
 export function Register() {
@@ -87,6 +88,7 @@ export function Register() {
 
   return (
     <MainLayout>
+      <BackButton />
       <Center as="form" onSubmit={handleSubmit(onSubmit)}>
         <Box p={6} borderWidth={1} borderRadius="md" boxShadow="md" width="100%">
           <VStack spacing={4} align="stretch">
