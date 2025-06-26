@@ -113,7 +113,7 @@ export function NewProductSection({ products }) {
                         placeholder="Ej: DL-3001"
                         pr="2.5rem"
                         value={searchCode}
-                        onChange={(e) => setSearchCode(e.target.value)}
+                        onChange={(e) => setSearchCode(e.target.value.toUpperCase())}
                       />
                       <InputRightElement width="2.5rem">
                         <IconButton
@@ -134,22 +134,6 @@ export function NewProductSection({ products }) {
             <Tr>
               <Td colSpan={3} textAlign="right" fontWeight="bold">
                 Total Final sin IGV:
-              </Td>
-              <Td colSpan={2} fontWeight="bold">
-                ${totalFinal.toFixed(2)}
-              </Td>
-            </Tr>
-             <Tr>
-              <Td colSpan={3} textAlign="right" fontWeight="bold">
-                Total Final con IGV:
-              </Td>
-              <Td colSpan={2} fontWeight="bold">
-                ${totalFinal.toFixed(2)}
-              </Td>
-            </Tr>
-             <Tr>
-              <Td colSpan={3} textAlign="right" fontWeight="bold">
-                Total Final Soles:
               </Td>
               <Td colSpan={2} fontWeight="bold">
                 ${totalFinal.toFixed(2)}
