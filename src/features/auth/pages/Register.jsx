@@ -124,6 +124,27 @@ export function Register() {
                   <Spinner />
                 ) : (
                   <Select
+                    styles={{
+                      control: (base) => ({
+                        ...base,
+                        backgroundColor: "#f0f4f8", 
+                        borderColor: "#cbd5e0",    
+                        minHeight: "40px",
+                        boxShadow: "none",
+                        "&:hover": {
+                          borderColor: "#a0aec0",
+                        },
+                      }),
+                      menu: (base) => ({
+                        ...base,
+                        backgroundColor: "#ffffff",
+                      }),
+                      option: (base, { isFocused }) => ({
+                        ...base,
+                        backgroundColor: isFocused ? "#e2e8f0" : "#ffffff",
+                        color: "#2d3748",
+                      }),
+                    }}
                     options={
                       sellers?.sellers?.value
                         ?.filter((s) => s.SalesEmployeeCode !== -1 && s.Active === "tYES")
