@@ -20,3 +20,8 @@ export const refreshAccessToken = async () => {
   const response = await axiosInstance.get("/authModule/refresh-token");
   return response.data.token;
 };
+
+export const sellersData = async () => {
+  const response = await axiosInstance.get("/authModule/sellers");
+  return response.data;
+};
