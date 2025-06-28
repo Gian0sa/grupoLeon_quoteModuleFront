@@ -39,6 +39,8 @@ export function NewClientSection({
 }) {
   const { uploadImageMutation, deleteImageMutation } = useQuoteMutations();
 
+  console.log("el tipo de pago seleccionado es : ",selectedPaymentType);
+
   const handleUploadPaymentImage = async (file) => {
     try {
       if (paymentImg) {

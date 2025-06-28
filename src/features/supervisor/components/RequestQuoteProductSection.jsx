@@ -36,7 +36,7 @@ export function RequestQuoteProductSection({ products }) {
                 <Td>
                   <Text fontWeight="medium">{product.name}</Text>
                   <Text fontSize="sm" color="gray.500">
-                    Código: {product.id}
+                    {product.productName}
                   </Text>
                 </Td>
                 <Td isNumeric>{product.quantity}</Td>

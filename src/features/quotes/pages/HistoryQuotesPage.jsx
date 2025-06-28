@@ -50,6 +50,9 @@ export function HistoryQuotesPage() {
   console.log("products : ",products);
 
   
+  console.log("el selected type en la vista padre es : ",selectedPaymentType);
+
+  
     const [tempImage, setTempImage] = useState(null);
 
   const { updateQuoteMutation } = useQuoteMutations();
@@ -66,6 +69,7 @@ export function HistoryQuotesPage() {
       deliveryDate,
       opNum,
     } = useQuoteStore.getState();
+
   
     const { userId } = useAuthStore.getState();
   
@@ -95,7 +99,7 @@ export function HistoryQuotesPage() {
       deliveryForm: selectedDeliveryForm?.TrnspName || "",
       transport: selectedTransport?.Name || "",
       transportDirection: selectedTransport?.U_TQC_DIREC || "",
-      paymentType: selectedPaymentType?.GroupNum || null,
+      paymentType: selectedPaymentType || null,
       pathImg: imagePath || "",
       userId: Number(userId),
       comment: comment || "",
@@ -119,55 +123,75 @@ export function HistoryQuotesPage() {
     updateQuoteMutation.mutate(payload);
   };
   
-    const handleApprove = () => {
-      const {
-        client,
-        products,
-        selectedPoint,
-        selectedTransport,
-        paymentMethod,
-        paymentImg,
-      } = useQuoteStore.getState();
+  const handleApprove = async () => {
+    const {
+      client,
+      products,
+      selectedPoint,
+      selectedTransport,
+      selectedDeliveryForm,
+      selectedPaymentType,
+      comment,
+      deliveryDate,
+      opNum,
+    } = useQuoteStore.getState();
   
-      const { userId } = useAuthStore.getState();
+    const { userId } = useAuthStore.getState();
   
-      if (!client || products.length === 0) {
-        console.warn("Faltan datos del cliente o productos"); 
+    if (!client || products.length === 0) {
+      console.warn("Faltan datos del cliente o productos");
+      return;
+    }
+  
+    let imagePath = paymentImg;
+    if (tempImage) {
+      const formData = new FormData();
+      formData.append("file", tempImage);
+      try {
+        const response = await uploadImageMutation.mutateAsync(tempImage);
+        if (response?.imagePath) {
+          imagePath = response.imagePath;
+        } else {
+          throw new Error("No se pudo obtener el nombre de archivo de la imagen subida.");
+        }
+      } catch (error) {
+        console.error("Error subiendo imagen", error);
         return;
       }
+    }
   
-      const payload = {
-        id: Number(quoteId),
-        clientName: client.CardName,
-        clientDocument: client.CardCode,
-        clientAddress: client.Address,
-        deliveryPoint: selectedPoint || [],
-        deliveryForm: selectedDeliveryForm?.TrnspName || "",
-        transport: selectedTransport?.Name || "",
-        transportDirection: selectedTransport?.U_TQC_DIREC || "",
-        paymentType: selectedPaymentType?.GroupNum || null,
-        pathImg: imagePath || "",
-        userId: Number(userId),
-        comment: comment || "",
-        deliveryDate: deliveryDate || null,
-        opNum: opNum || null,
-        state: "approved_seller",
-        items: products.map((product) => ({
-          sigla: product.sigla,
-          productCode: product.id,
-          productName: product.name,
-          unitPrice: Number(product.price),
-          discount: Number(product.discount) || 0,
-          importe: Number(product.importe) || 0,
-          quantity: Number(product.quantity),
-          totalPrice: Number(product.quantity) * Number(product.importe),
-        })),
-      };
-      
-      console.log(payload);
-  
-      updateQuoteMutation.mutate(payload);
+    const payload = {
+      id: Number(quoteId),
+      clientName: client.CardName,
+      clientDocument: client.CardCode,
+      clientAddress: client.Address,
+      deliveryPoint: selectedPoint || [],
+      deliveryForm: selectedDeliveryForm?.TrnspName || "",
+      transport: selectedTransport?.Name || "",
+      transportDirection: selectedTransport?.U_TQC_DIREC || "",
+      paymentType: selectedPaymentType || 0,
+      pathImg: imagePath || "",
+      userId: Number(userId),
+      comment: comment || "",
+      deliveryDate: deliveryDate || null,
+      opNum: opNum || null,
+      state: "approved_seller",
+      items: products.map((product) => ({
+        sigla: product.sigla,
+        productCode: product.id,
+        productName: product.name,
+        unitPrice: Number(product.price),
+        discount: Number(product.discount) || 0,
+        importe: Number(product.importe) || 0,
+        quantity: Number(product.quantity),
+        totalPrice: Number(product.quantity) * Number(product.importe),
+      })),
     };
+  
+    console.log("Payload de aprobación: ", payload);
+  
+    updateQuoteMutation.mutate(payload);
+  };  
   
 
   if (isLoading) return <Skeleton height="100vh" />;

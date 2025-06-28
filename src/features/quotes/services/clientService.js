@@ -57,7 +57,7 @@ export function useClientService(quoteId) {
 
       const paymentType =
         dataPaymentTypes?.find(
-          (type) => String(type.GroupNum) === String(data.paymentType)
+          (type) => String(type.GroupNum) === String(data.paymentType.GroupNum)
         ) || null;
         
       const deliveryForm =

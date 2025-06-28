@@ -43,7 +43,7 @@ export function RequestQuoteClientSection({ client }) {
           <ReactSelect
             value={{
               value: client.paymentType,
-              label: `Tipo de pago #${client.paymentType}`,
+              label: `${client.paymentType.PymntGroup}`,
             }}
             isDisabled
           />
