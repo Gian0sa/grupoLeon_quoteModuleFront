@@ -12,6 +12,7 @@ import { adaptBusinessPartner } from "../adapters/quotesAdapter";
 import { useQuoteMutations } from "../hooks/mutations/quotesMutations";
 import { DatePickerField } from "../../../components/DatePickerField";
 import Tesseract from "tesseract.js";
+import { useState } from "react";
 
 export function NewClientSection({
   client,
@@ -308,7 +309,7 @@ export function NewClientSection({
               </Button>
             </Box>
           )}
-          
+
             {ocrText && (
               <Box mt={4} p={2} bg="gray.100" borderRadius="md">
                 <Text fontSize="sm" color="gray.700" whiteSpace="pre-wrap">
