@@ -39,13 +39,17 @@ export function NewClientSection({
   setOpNum
 }) {
   const { uploadImageMutation, deleteImageMutation } = useQuoteMutations();
+  const [ocrText, setOcrText] = useState("");
+  
+
 
   const extractOperationNumber = async (imageFile, setOpNum) => {
     try {
       const { data } = await Tesseract.recognize(imageFile, "spa", {
-        logger: (m) => console.log(m), // opcional: para ver progreso
+        logger: (m) => console.log(m),
       });
-  
+      setOcrText(data.text); // 👈 Guardamos el texto detectado
+
       const text = data.text;
       console.log("Texto detectado:", text);
   
@@ -61,6 +65,8 @@ export function NewClientSection({
       console.error("Error usando OCR:", err);
     }
   };
+
+  
 
   console.log("el tipo de pago seleccionado es : ",selectedPaymentType);
 
@@ -302,6 +308,14 @@ export function NewClientSection({
               </Button>
             </Box>
           )}
+          
+            {ocrText && (
+              <Box mt={4} p={2} bg="gray.100" borderRadius="md">
+                <Text fontSize="sm" color="gray.700" whiteSpace="pre-wrap">
+                  {ocrText}
+                </Text>
+              </Box>
+            )}
 
         </Box>
       </VStack>
