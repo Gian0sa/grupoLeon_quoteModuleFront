@@ -50,7 +50,7 @@ export function NewClientSection({
       console.log("Texto detectado:", text);
   
       // Busca el número de operación por un patrón
-      const match = text.match(/(?:operación|número de operación|op\.?|nº)[^\d]*(\d{6,})/i);
+      const match = text.match(/(?:n[úu]m(?:ero)?|nmr|op(?:eraci[oó]n)?)[^\d]{0,10}(\d[\d\.]{6,})/i);
       if (match) {
         setOpNum(match[1]);
       } else {
