@@ -11,6 +11,7 @@ import ReactSelect from "react-select";
 import { adaptBusinessPartner } from "../adapters/quotesAdapter";
 import { useQuoteMutations } from "../hooks/mutations/quotesMutations";
 import { DatePickerField } from "../../../components/DatePickerField";
+import Tesseract from "tesseract.js";
 
 export function NewClientSection({
   client,
@@ -38,6 +39,27 @@ export function NewClientSection({
   setOpNum
 }) {
   const { uploadImageMutation, deleteImageMutation } = useQuoteMutations();
+
+  const extractOperationNumber = async (imageFile, setOpNum) => {
+    try {
+      const { data } = await Tesseract.recognize(imageFile, "spa", {
+        logger: (m) => console.log(m), // opcional: para ver progreso
+      });
+  
+      const text = data.text;
+      console.log("Texto detectado:", text);
+  
+      // Busca el número de operación por un patrón
+      const match = text.match(/(?:operación|número de operación|op\.?|nº)[^\d]*(\d{6,})/i);
+      if (match) {
+        setOpNum(match[1]);
+      } else {
+        console.warn("No se detectó el número de operación.");
+      }
+    } catch (err) {
+      console.error("Error usando OCR:", err);
+    }
+  };
 
   console.log("el tipo de pago seleccionado es : ",selectedPaymentType);
 
@@ -244,6 +266,7 @@ export function NewClientSection({
               if (file) {
                 setTempImage(file);
                 setPaymentImg(URL.createObjectURL(file));
+                extractOperationNumber(file, setOpNum);
               }
             }}
           />
