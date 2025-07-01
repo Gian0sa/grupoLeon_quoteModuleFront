@@ -30,7 +30,7 @@ export const updateQuote = async (quote) => {
 
 export const getTransports = async () => {
     const response = await axiosInstance.get(`/quoteModule/clients/transports`);
-    return response.data.value;
+    return response.data;
 
 };
 
@@ -41,21 +41,6 @@ export const getPaymentType = async () => {
 
 export const getDeliveryForms = async () => {
     const response = await axiosInstance.get(`/quoteModule/clients/delivery-forms`);
-    return response.data;
-}
-
-export const getExchangeRate = async () => {
-    const response = await axiosInstance.get(`/quoteModule/exchange-rate`);
-    return response.data;
-}
-
-export const createExchangeRate = async (data) => {
-    const response = await axiosInstance.post(`/quoteModule/exchange-rate`, data);
-    return response.data;
-}
-
-export const updateExchangeRate = async (data) => {
-    const response = await axiosInstance.put(`/quoteModule/exchange-rate`, data);
     return response.data;
 }
 
