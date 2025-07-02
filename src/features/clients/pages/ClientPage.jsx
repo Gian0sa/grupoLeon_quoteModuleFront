@@ -27,6 +27,8 @@ export function ClientPage() {
     error: errorByName,
   } = useClientQueriesByName(!isSearchingByCode ? searchTerm : null);
 
+  console.log(dataByName);
+
   const isLoading = isSearchingByCode ? isLoadingByCode : isLoadingByName;
   const error = isSearchingByCode ? errorByCode : errorByName;
 

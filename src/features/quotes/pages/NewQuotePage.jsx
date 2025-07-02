@@ -1,5 +1,6 @@
 import { NewProductSection } from "../components/NewProductSection";
 import { NewClientSection } from "../components/NewClientSection";
+import { NewSellTerms } from "../components/NewSellTerms";
 import { MainLayout } from "../../../components/layouts/MainLayout";
 import {
   Button,
@@ -173,7 +174,7 @@ export function NewQuotesPage() {
 
   return (
     <MainLayout>
-      <Accordion allowMultiple defaultIndex={[1]}>
+      <Accordion allowMultiple defaultIndex={[0, 1]}>
         <AccordionItem>
           <h2>
             <AccordionButton>
@@ -188,28 +189,6 @@ export function NewQuotesPage() {
           <AccordionPanel pb={4}>
             <NewClientSection
               client={client}
-              transports={dataTransports}
-              deliveryPoints={dataDeliveryPoints}
-              deliveryForms= {dataDeliveryForms}
-              paymentTypes= {dataPaymentTypes}
-              selectedPoint={selectedPoint}
-              selectedTransport={selectedTransport}
-              selectedDeliveryForm={selectedDeliveryForm}
-              selectedPaymentType={selectedPaymentType}
-              paymentImg= {paymentImg}
-              setSelectedTransport={setSelectedTransport}
-              setSelectedPoint={setSelectedPoint}
-              setSelectedPaymentType={setSelectedPaymentType}
-              setSelectedDeliveryForm={setSelectedDeliveryForm}
-              comment={comment}
-              setComment={setComment}
-              deliveryDate={deliveryDate}
-              setDeliveryDate={setDeliveryDate}
-              tempImage={tempImage}
-              setTempImage={setTempImage}
-              setPaymentImg={setPaymentImg}
-              opNum={opNum}
-              setOpNum={setOpNum}
             />
           </AccordionPanel>
         </AccordionItem>
@@ -229,6 +208,46 @@ export function NewQuotesPage() {
             <NewProductSection products={products} />
           </AccordionPanel>
         </AccordionItem>
+
+        <AccordionItem>
+            <h2>
+                <AccordionButton>
+                  <Box as='span' flex='1' textAlign='left'>
+                    <Text fontSize="xl" fontWeight="bold" mb={4}>
+                      Seccion de Terminos de Venta
+                    </Text>
+                  </Box>
+                  <AccordionIcon />
+                </AccordionButton>
+              </h2>
+              <AccordionPanel pb={4}>
+            <NewSellTerms
+                client={client}
+                transports={dataTransports}
+                deliveryPoints={dataDeliveryPoints}
+                deliveryForms= {dataDeliveryForms}
+                paymentTypes= {dataPaymentTypes}
+                selectedPoint={selectedPoint}
+                selectedTransport={selectedTransport}
+                selectedDeliveryForm={selectedDeliveryForm}
+                selectedPaymentType={selectedPaymentType}
+                paymentImg= {paymentImg}
+                setSelectedTransport={setSelectedTransport}
+                setSelectedPoint={setSelectedPoint}
+                setSelectedPaymentType={setSelectedPaymentType}
+                setSelectedDeliveryForm={setSelectedDeliveryForm}
+                comment={comment}
+                setComment={setComment}
+                deliveryDate={deliveryDate}
+                setDeliveryDate={setDeliveryDate}
+                tempImage={tempImage}
+                setTempImage={setTempImage}
+                setPaymentImg={setPaymentImg}
+                opNum={opNum}
+                setOpNum={setOpNum}
+              />
+              </AccordionPanel>
+            </AccordionItem>
       </Accordion>
 
       <Flex gap={4} mt={6}>

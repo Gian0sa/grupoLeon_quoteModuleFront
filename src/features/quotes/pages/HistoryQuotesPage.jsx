@@ -1,6 +1,7 @@
 import { useClientService } from "../services/clientService";
 import { NewProductSection } from "../components/NewProductSection";
 import { NewClientSection } from "../components/NewClientSection";
+import { NewSellTerms } from "../components/NewSellTerms";
 import { useQuoteStore } from "../stores/quoteStore";
 import { MainLayout } from "../../../components/layouts/MainLayout";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
@@ -253,6 +254,46 @@ export function HistoryQuotesPage() {
               </h2>
               <AccordionPanel pb={4}>
                 <NewProductSection products={products} />
+              </AccordionPanel>
+            </AccordionItem>
+
+            <AccordionItem>
+            <h2>
+                <AccordionButton>
+                  <Box as='span' flex='1' textAlign='left'>
+                    <Text fontSize="xl" fontWeight="bold" mb={4}>
+                      Seccion de Cliente
+                    </Text>
+                  </Box>
+                  <AccordionIcon />
+                </AccordionButton>
+              </h2>
+              <AccordionPanel pb={4}>
+            <NewSellTerms
+                client={client}
+                transports={dataTransports}
+                deliveryPoints={dataDeliveryPoints}
+                deliveryForms= {dataDeliveryForms}
+                paymentTypes= {dataPaymentTypes}
+                selectedPoint={selectedPoint}
+                selectedTransport={selectedTransport}
+                selectedDeliveryForm={selectedDeliveryForm}
+                selectedPaymentType={selectedPaymentType}
+                paymentImg= {paymentImg}
+                setSelectedTransport={setSelectedTransport}
+                setSelectedPoint={setSelectedPoint}
+                setSelectedPaymentType={setSelectedPaymentType}
+                setSelectedDeliveryForm={setSelectedDeliveryForm}
+                comment={comment}
+                setComment={setComment}
+                deliveryDate={deliveryDate}
+                setDeliveryDate={setDeliveryDate}
+                tempImage={tempImage}
+                setTempImage={setTempImage}
+                setPaymentImg={setPaymentImg}
+                opNum={opNum}
+                setOpNum={setOpNum}
+              />
               </AccordionPanel>
             </AccordionItem>
           </Accordion>
