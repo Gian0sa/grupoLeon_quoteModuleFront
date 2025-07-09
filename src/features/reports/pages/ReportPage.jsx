@@ -1,10 +1,8 @@
 
 import { MainLayout } from "../../../components/layouts/MainLayout";
 import { LateralMenu } from "../components/LateralMenu";
-import { TopProducts } from "../components/TopProducts";
-import { Promotions } from "../components/Promotions";
 import { Grid, GridItem } from "@chakra-ui/react";
-import SalespersonReports from "../../reports/components/SalesReport";
+import SalespersonReports from "../components/SalesReport";
 
 export function DashboardPage(){
     return(
@@ -14,16 +12,8 @@ export function DashboardPage(){
                 h='100%'
                 w='100%'
                 templateRows='repeat(2, 1fr)'
-                gap={4}
-                >
-                    {/* <GridItem colSpan={2} bg='tomato' >
-                        <TopProducts />
-                    </GridItem> */}
-                {/* <GridItem colSpan={2} bg='tomato' >
-                    <Promotions />
-                </GridItem> */}
+                gap={4}>
                 <SalespersonReports salespersonId={8} />
-
                 </Grid>
         </MainLayout>
     )
