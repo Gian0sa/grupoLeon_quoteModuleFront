@@ -40,6 +40,7 @@ export function Register() {
   const confirmPassword = watch("confirmPassword");
 
   const { data: sellers, isLoading } = useSellersData();
+  console.log(sellers)
   const [selectedSeller, setSelectedSeller] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);

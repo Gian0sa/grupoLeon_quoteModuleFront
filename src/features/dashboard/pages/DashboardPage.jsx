@@ -1,30 +1,23 @@
-
 import { MainLayout } from "../../../components/layouts/MainLayout";
-import { LateralMenu } from "../components/LateralMenu";
-import { TopProducts } from "../components/TopProducts";
-import { Promotions } from "../components/Promotions";
-import { Grid, GridItem } from "@chakra-ui/react";
+import { Grid } from "@chakra-ui/react";
 import SalespersonReports from "../../reports/components/SalesReport";
+import { useAuthStore } from "../../auth/stores/useAuthStore";
 
-export function DashboardPage(){
-    return(
-        <MainLayout>
-            <LateralMenu />
-            <Grid
-                h='100%'
-                w='100%'
-                templateRows='repeat(2, 1fr)'
-                gap={4}
-                >
-                    {/* <GridItem colSpan={2} bg='tomato' >
-                        <TopProducts />
-                    </GridItem> */}
-                {/* <GridItem colSpan={2} bg='tomato' >
-                    <Promotions />
-                </GridItem> */}
-                <SalespersonReports salespersonId={8} />
+export function DashboardPage() {
+  const { salesEmployeeCode } = useAuthStore();
 
-                </Grid>
-        </MainLayout>
-    )
+  const safeSalespersonId = salesEmployeeCode ?? '';
+
+  return (
+    <MainLayout>
+      <Grid
+        h="100%"
+        w="100%"
+        templateRows="repeat(2, 1fr)"
+        gap={4}
+      >
+        <SalespersonReports salespersonId={12} />
+      </Grid>
+    </MainLayout>
+  );
 }

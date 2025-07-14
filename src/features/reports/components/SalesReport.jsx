@@ -40,6 +40,7 @@ export default function SalespersonReports({ salespersonId }) {
   const [estadoOrdenFiltro, setEstadoOrdenFiltro] = useState(null);
   const [ordenSeleccionada, setOrdenSeleccionada] = useState(null);
 
+  console.log(salespersonId);
 
 
   const { data, isLoading, error } = useGetSalespersonReports(
@@ -54,7 +55,7 @@ export default function SalespersonReports({ salespersonId }) {
 
   const { resumen, paginacion, detalle } = data;
 
-  console.log(detalle);
+  console.log(data);
 
   const abrirModalPendientes = (productos) => {
     setProductosPendientes(productos);
@@ -109,12 +110,10 @@ export default function SalespersonReports({ salespersonId }) {
 
       {detalle.map((orden, idx) => (
         <Box key={idx} p={4} border="1px solid #ccc" borderRadius="lg" mb={4}>
-          <Text><b>Cliente:</b> {orden.cliente.nombre} ({orden.cliente.codigo})</Text>
+          <Text>{orden.cliente.nombre}</Text>
           <Text><b>Orden:</b> #{orden.orden.numero}</Text>
           <Text><b>Fecha:</b> {orden.orden.fechaCreacion}</Text>
-          <Text><b>Estado de Orden:</b> {orden.estadoOrden}</Text>
-          <Text><b>Cerrada:</b> {orden.cerrada ? "Sí" : "No"}</Text>
-
+          <Text>{orden.estadoOrden}</Text>
          
             <Button
             mt={2}

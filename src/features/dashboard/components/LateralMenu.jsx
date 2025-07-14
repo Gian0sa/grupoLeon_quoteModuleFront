@@ -14,6 +14,8 @@ import {
   import { useDisclosure } from '@chakra-ui/react'
   import { useNavigate } from 'react-router-dom'
   import { useAuthStore } from '../../auth/stores/useAuthStore'
+  import { IconButton } from '@chakra-ui/react';
+import { HamburgerIcon } from '@chakra-ui/icons';
   
   export function LateralMenu(){
       const { isOpen, onOpen, onClose } = useDisclosure()
@@ -28,9 +30,13 @@ import {
 
       return(
           <>
-          <Button ref={btnRef} colorScheme='teal' onClick={onOpen}>
-          Open
-        </Button>
+          <IconButton
+            ref={btnRef}
+            icon={<HamburgerIcon />}
+            colorScheme='teal'
+            onClick={onOpen}
+            aria-label='Abrir menú'
+          />
         <Drawer
           isOpen={isOpen}
           placement='left'

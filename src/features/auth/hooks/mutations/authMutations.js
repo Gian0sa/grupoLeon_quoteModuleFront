@@ -8,9 +8,10 @@ export function useAuthMutations() {
   const navigate = useNavigate();
 
   const loginMutation = useMutation({
-    mutationFn: loginUser,
+  mutationFn: loginUser,
     onSuccess: (response) => {
-      login(response.token, response.role, response.userId);
+      const { token, role, userId, salesEmployeeCode } = response;
+      login(token, role, userId, salesEmployeeCode);
       navigate("/dashboard");
     }
   });

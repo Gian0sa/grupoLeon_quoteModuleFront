@@ -13,7 +13,7 @@ export function DashboardPage(){
                 w='100%'
                 templateRows='repeat(2, 1fr)'
                 gap={4}>
-                <SalespersonReports salespersonId={8} />
+                <SalespersonReports salespersonId={10} />
                 </Grid>
         </MainLayout>
     )

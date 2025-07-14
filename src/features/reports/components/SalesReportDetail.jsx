@@ -47,16 +47,27 @@ const TrackingPage = ({ orden }) => {
   const bgCard = useColorModeValue("white", "#13132A");
   const textMuted = useColorModeValue("gray.600", "gray.400");
 
-  // Define estado de pasos
   const steps = [
     { title: "Orden de Venta", status: "complete" },
-    { title: "Preparando Entrega", status: entregas.length > 0 ? "complete" : "pending" },
+    {
+      title: "Preparando Entrega",
+      status: entregas.length > 0 ? "complete" : "pending",
+    },
     {
       title: "Entrega",
-      status: productos.some(p => p.cantidadPendiente > 0) ? "warning" : "complete",
+      status:
+        entregas.length > 0
+          ? productos.some((p) => p.cantidadPendiente > 0)
+            ? "warning" // Hay entrega pero no completa
+            : "complete" // Entrega completa
+          : "pending", // Aún no hay entrega
     },
-    { title: "Facturado", status: facturas.length > 0 ? "complete" : "pending" },
+    {
+      title: "Facturado",
+      status: facturas.length > 0 ? "complete" : "pending",
+    },
   ];
+
 
   return (
     <Box bg={bgMain} p={6} borderRadius="xl" boxShadow="xl">
@@ -85,13 +96,28 @@ const TrackingPage = ({ orden }) => {
               </Tr>
             </Thead>
             <Tbody>
-              {productos.map((prod, idx) => (
-                <Tr key={idx}>
-                  <Td color="white">{prod.descripcion}</Td>
-                  <Td color="white">{prod.cantidadOrdenada}</Td>
-                  <Td color="white">{prod.cantidadEntregada}</Td>
-                </Tr>
-              ))}
+              {productos.map((prod, idx) => {
+                const esPendiente = prod.cantidadPendiente > 0;
+
+                return (
+                  <Tr
+                    key={idx}
+                    bg={esPendiente ? "orange.100" : "transparent"}
+                    _dark={{ bg: esPendiente ? "orange.900" : "transparent" }}
+                  >
+                    <Td color="white">
+                      {prod.descripcion}
+                      {esPendiente && (
+                        <Text as="span" ml={2} fontSize="xs" color="orange.300">
+                          (Pendiente)
+                        </Text>
+                      )}
+                    </Td>
+                    <Td color="white">{prod.cantidadOrdenada}</Td>
+                    <Td color="white">{prod.cantidadEntregada}</Td>
+                  </Tr>
+                );
+              })}
             </Tbody>
           </Table>
         </Box>
