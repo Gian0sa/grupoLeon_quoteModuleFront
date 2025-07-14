@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Box,
   Flex,
@@ -46,6 +46,9 @@ const TrackingPage = ({ orden }) => {
   const bgMain = useColorModeValue("gray.100", "#0B0B1C");
   const bgCard = useColorModeValue("white", "#13132A");
   const textMuted = useColorModeValue("gray.600", "gray.400");
+
+  const [startDate, setStartDate] = useState('');
+const [endDate, setEndDate] = useState('');
 
   const steps = [
     { title: "Orden de Venta", status: "complete" },

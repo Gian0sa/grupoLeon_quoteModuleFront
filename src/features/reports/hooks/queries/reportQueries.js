@@ -8,11 +8,33 @@ import {
   getPdfByCode,
 } from "../../services/reportService";
 
-// Reportes por vendedor
-export const useGetSalespersonReports = (id, pagina = 1, porPagina = 10, estadoOrdenFiltro = null) => {
+export const useGetSalespersonReports = (
+  id,
+  pagina = 1,
+  porPagina = 10,
+  estadoOrdenFiltro = null,
+  startDate = null,
+  endDate = null
+) => {
   return useQuery({
-    queryKey: ["salespersonReports", id, pagina, porPagina, estadoOrdenFiltro],
-    queryFn: () => getReportsBySalesperson(id, pagina, porPagina, estadoOrdenFiltro),
+    queryKey: [
+      "salespersonReports",
+      id,
+      pagina,
+      porPagina,
+      estadoOrdenFiltro,
+      startDate,
+      endDate,
+    ],
+    queryFn: () =>
+      getReportsBySalesperson(
+        id,
+        pagina,
+        porPagina,
+        estadoOrdenFiltro,
+        startDate,
+        endDate
+      ),
     keepPreviousData: true,
   });
 };

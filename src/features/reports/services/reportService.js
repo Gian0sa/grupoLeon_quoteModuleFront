@@ -1,14 +1,26 @@
 import { axiosInstance } from "../../../shared/lib/axiosInstance";
 
-export const getReportsBySalesperson = async (id, pagina = 1, porPagina = 10, estadoOrdenFiltro = null) => {
+export const getReportsBySalesperson = async (
+  id,
+  pagina = 1,
+  porPagina = 10,
+  estadoOrdenFiltro = null,
+  startDate = null,
+  endDate = null
+) => {
   try {
+    const params = {
+      pagina,
+      porPagina,
+      ...(estadoOrdenFiltro ? { estadoOrdenFiltro } : {}),
+      ...(startDate ? { startDate } : {}),
+      ...(endDate ? { endDate } : {}),
+    };
+
     const response = await axiosInstance.get(`/reportModule/reports/${id}`, {
-      params: {
-        pagina,
-        porPagina,
-        ...(estadoOrdenFiltro ? { estadoOrdenFiltro } : {}),
-      },
+      params,
     });
+
     return response.data;
   } catch (error) {
     console.error("Error al obtener los reportes:", error);
