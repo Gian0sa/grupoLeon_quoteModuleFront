@@ -16,6 +16,12 @@ import {
   useBreakpointValue
 } from "@chakra-ui/react";
 import { Check, AlertTriangle } from "lucide-react";
+import ModalOrdenDetalle from "./modals/ModalOrdenDetalle";
+import ModalEntregaDetalle from "./modals/ModalEntregaDetalle";
+import ModalFacturaDetalle from "./modals/ModalFacturaDetalle";
+import { useDisclosure } from "@chakra-ui/react";
+import { useState } from "react";
+
 
 const Step = ({ title, status }) => {
   const icon = {
@@ -50,6 +56,15 @@ const TrackingPage = ({ orden }) => {
   const textMuted = useColorModeValue("gray.600", "gray.400");
   const textBase = useColorModeValue("gray.800", "white");
 
+  const [ordenDetalle, setOrdenDetalle] = useState(null);
+  const [entregaDetalle, setEntregaDetalle] = useState(null);
+  const [facturaDetalle, setFacturaDetalle] = useState(null);
+
+  const { isOpen: isOpenOrden, onOpen: onOpenOrden, onClose: onCloseOrden } = useDisclosure();
+  const { isOpen: isOpenEntrega, onOpen: onOpenEntrega, onClose: onCloseEntrega } = useDisclosure();
+  const { isOpen: isOpenFactura, onOpen: onOpenFactura, onClose: onCloseFactura } = useDisclosure();
+
+
   const steps = [
     { title: "Orden de Venta", status: "complete" },
     {
@@ -71,19 +86,24 @@ const TrackingPage = ({ orden }) => {
     },
   ];
 
-  const handleVerOrden = () => {
-    console.log("Detalles de orden:", orden.orden);
+ const handleVerOrden = () => {
+    setOrdenDetalle(orden.orden.id);
+    onOpenOrden();
   };
 
   const handleVerEntrega = (entrega) => {
-    console.log("Detalles de entrega:", entrega);
+    setEntregaDetalle(entrega.id);
+    onOpenEntrega();
   };
 
   const handleVerFactura = (factura) => {
-    console.log("Detalles de factura:", factura);
+    setFacturaDetalle(factura.id);
+    onOpenFactura();
   };
 
+
   return (
+    <>
     <Box
       bg={bgMain}
       p={{ base: 4, md: 6 }}
@@ -191,6 +211,23 @@ const TrackingPage = ({ orden }) => {
         </Flex>
       </Grid>
     </Box>
+     {/* 🧩 MODALES DE DETALLE */}
+    <ModalOrdenDetalle
+      isOpen={isOpenOrden}
+      onClose={onCloseOrden}
+      ordenId={ordenDetalle}
+    />
+    <ModalEntregaDetalle
+      isOpen={isOpenEntrega}
+      onClose={onCloseEntrega}
+      entregaId={entregaDetalle}
+    />
+    <ModalFacturaDetalle
+      isOpen={isOpenFactura}
+      onClose={onCloseFactura}
+      facturaId={facturaDetalle}
+    />
+    </>
   );
 };
 

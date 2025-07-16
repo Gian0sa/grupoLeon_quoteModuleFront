@@ -69,7 +69,7 @@ export default function OrdersList({ detalle, onVerSeguimiento }) {
             <Flex align="center" gap={2}>
               <Image src="/src/assets/icons/calendario.png" boxSize="16px" alt="Fecha" />
               <Text fontSize="sm" color="gray.600">
-                {orden.orden.fechaCreacion}
+                {orden.orden.fechaCreacion} - {orden.orden.horaCreacion}
               </Text>
             </Flex>
           </Box>

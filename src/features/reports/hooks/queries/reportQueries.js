@@ -39,7 +39,6 @@ export const useGetSalespersonReports = (
   });
 };
 
-// Orden por código
 export const useGetOrderByCode = (code, enabled = true) => {
   return useQuery({
     queryKey: ["orderByCode", code],
@@ -48,7 +47,6 @@ export const useGetOrderByCode = (code, enabled = true) => {
   });
 };
 
-// Nota de entrega por código
 export const useGetDeliveryNoteByCode = (code, enabled = true) => {
   return useQuery({
     queryKey: ["deliveryNoteByCode", code],
@@ -57,7 +55,6 @@ export const useGetDeliveryNoteByCode = (code, enabled = true) => {
   });
 };
 
-// Factura por código
 export const useGetInvoiceByCode = (code, enabled = true) => {
   return useQuery({
     queryKey: ["invoiceByCode", code],
@@ -66,7 +63,6 @@ export const useGetInvoiceByCode = (code, enabled = true) => {
   });
 };
 
-// PDF por código
 export const useGetPdfByCode = (code, enabled = true) => {
   return useQuery({
     queryKey: ["pdfByCode", code],

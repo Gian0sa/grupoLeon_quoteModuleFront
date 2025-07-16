@@ -2,6 +2,7 @@ import { MainLayout } from "../../../components/layouts/MainLayout";
 import { Grid , Box } from "@chakra-ui/react";
 import SalespersonReports from "../../reports/components/SalesReport";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
+import { ReportPage } from "../../reports/pages/ReportPage";
 
 export function DashboardPage() {
   const { salesEmployeeCode } = useAuthStore();
@@ -11,7 +12,7 @@ export function DashboardPage() {
   return (
     <MainLayout>
       <Box w="100%">
-        <SalespersonReports salespersonId={safeSalespersonId} />
+        <ReportPage salespersonId={safeSalespersonId} />
       </Box>
     </MainLayout>
   );
