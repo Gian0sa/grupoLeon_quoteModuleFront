@@ -7,8 +7,11 @@ import FiltersWithSummary from "./FilterWithSummary";
 import OrdenesLista from "./OrdersList";
 import Paginacion from "./Pagination";
 import ModalSeguimiento from "./ModalSeguimiento";
+import SellerSelectReport from "./SellerSelectReport";
+import { useAuthStore } from "../../auth/stores/useAuthStore";
 
 export default function SalespersonReports({ salespersonId }) {
+  const role = useAuthStore((state) => state.role);
 
   const [pagina, setPagina] = useState(1);
   const porPagina = 10;
@@ -26,8 +29,12 @@ export default function SalespersonReports({ salespersonId }) {
     "Pedido anulado",
   ];
 
+  
+  const [selectedSeller, setSelectedSeller] = useState(null);
+  const dynamicSalespersonId = selectedSeller?.value ?? salespersonId ?? "";
+
   const { data, isLoading, error } = useGetSalespersonReports(
-    salespersonId,
+    dynamicSalespersonId,
     pagina,
     porPagina,
     estadoOrdenFiltro,
@@ -42,6 +49,8 @@ export default function SalespersonReports({ salespersonId }) {
     onOpen();
   };
 
+  console.log(data);
+
   if (isLoading) return <Spinner size="xl" />;
   if (error || !data) return <Text color="red.500">Error cargando datos.</Text>;
 
@@ -49,15 +58,24 @@ export default function SalespersonReports({ salespersonId }) {
 
   return (
     <Box
-      p={5}
       maxW="1000px"
-      mx="auto"
       fontFamily="'InterVariable', sans-serif"
-      pb="200px" // 👈 espacio para el filtro fijo
+      pb="180px"
     >
       <Heading size="lg" mb={6} fontWeight="bold">
         Reporte de Órdenes
       </Heading>
+
+       <Box mb={4}>
+        {role === "ADMIN" && (
+          <SellerSelectReport
+              selectedSeller={selectedSeller}
+              setSelectedSeller={setSelectedSeller}
+              setValue={() => {}}
+              error={null}
+            />
+          )}
+      </Box>
 
       <OrdenesLista detalle={detalle} onVerSeguimiento={abrirModal} />
 

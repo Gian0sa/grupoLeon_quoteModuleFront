@@ -39,19 +39,29 @@ export default function OrdersList({ detalle, onVerSeguimiento }) {
       >
         <Flex align="center" justify="space-between" mb={3}>
           <Box>
+            {/* Orden */}
+            <Flex align="center" gap={2} mb={1}>
+              <Image src="/src/assets/icons/orden.png" boxSize="16px" alt="Orden" />
+              <Text fontSize="md" fontWeight="bold">
+                #{orden.orden.numero}
+              </Text>
+            </Flex>
+
+
             {/* Cliente */}
             <Flex align="center" gap={2} mb={1}>
               <Image src="/src/assets/icons/usuario.png" boxSize="16px" alt="Cliente" />
-              <Text fontWeight="bold" fontSize="md">
+              <Text fontSize="sm">
                 {orden.cliente.nombre}
               </Text>
             </Flex>
 
-            {/* Orden */}
+          
+
             <Flex align="center" gap={2} mb={1}>
-              <Image src="/src/assets/icons/orden.png" boxSize="16px" alt="Orden" />
-              <Text fontSize="sm" color="gray.600">
-                #{orden.orden.numero}
+              <Image src="/src/assets/icons/usuario.png" boxSize="16px" alt="Cliente" />
+              <Text fontSize="sm">
+                {orden.vendedor}
               </Text>
             </Flex>
 

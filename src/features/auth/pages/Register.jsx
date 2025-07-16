@@ -22,6 +22,7 @@ import Select from "react-select";
 import { useEffect, useState } from "react";
 import { ViewIcon, ViewOffIcon } from "@chakra-ui/icons";
 import { BackButton } from "../../../components/BackButton";
+import SellerSelect from "../../../components/SellerSelect";
 
 
 export function Register() {
@@ -121,51 +122,12 @@ export function Register() {
 
             {/* Selección de vendedor si es SELLER */}
             {role === "SELLER" && (
-              <FormControl isInvalid={errors.salesPerson}>
-                <FormLabel>Selecciona un Vendedor</FormLabel>
-                {isLoading ? (
-                  <Spinner />
-                ) : (
-                  <Select
-                    styles={{
-                      control: (base) => ({
-                        ...base,
-                        backgroundColor: "#f0f4f8", 
-                        borderColor: "#cbd5e0",    
-                        minHeight: "40px",
-                        boxShadow: "none",
-                        "&:hover": {
-                          borderColor: "#a0aec0",
-                        },
-                      }),
-                      menu: (base) => ({
-                        ...base,
-                        backgroundColor: "#ffffff",
-                      }),
-                      option: (base, { isFocused }) => ({
-                        ...base,
-                        backgroundColor: isFocused ? "#e2e8f0" : "#ffffff",
-                        color: "#2d3748",
-                      }),
-                    }}
-                    options={
-                      sellers?.sellers?.value
-                        ?.filter((s) => s.SalesEmployeeCode !== -1 && s.Active === "tYES")
-                        .map((s) => ({
-                          value: s.SalesEmployeeCode,
-                          label: s.SalesEmployeeName,
-                          email: s.Email,
-                        })) || []
-                    }
-                    onChange={(selected) => {
-                      setSelectedSeller(selected);
-                      setValue("salesPerson", selected);
-                    }}
-                    placeholder="Selecciona un vendedor"
-                  />
-                )}
-                <FormErrorMessage>{errors.salesPerson?.message}</FormErrorMessage>
-              </FormControl>
+              <SellerSelect
+                selectedSeller={selectedSeller}
+                setSelectedSeller={setSelectedSeller}
+                setValue={setValue}
+                error={errors.salesPerson}
+              />
             )}
 
             {/* Nombre (autocompletado si es SELLER) */}
