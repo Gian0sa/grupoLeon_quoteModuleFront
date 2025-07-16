@@ -1,16 +1,72 @@
-// OrdenesLista.jsx
-import { Box, Text, Button } from "@chakra-ui/react";
+import {
+  Box,
+  Text,
+  Flex,
+  Image,
+  useColorModeValue,
+} from "@chakra-ui/react";
+import OrderStatusProgress from "./OrderStatusProgress";
 
-export default function OrdenesLista({ detalle, onVerSeguimiento }) {
-  return detalle.map((orden, idx) => (
-    <Box key={idx} p={4} border="1px solid #ccc" borderRadius="lg" mb={4}>
-      <Text>{orden.cliente.nombre}</Text>
-      <Text><b>Orden:</b> #{orden.orden.numero}</Text>
-      <Text><b>Fecha:</b> {orden.orden.fechaCreacion}</Text>
-      <Text>{orden.estadoOrden}</Text>
-      <Button mt={2} size="sm" colorScheme="blue" onClick={() => onVerSeguimiento(orden)}>
-        Ver seguimiento
-      </Button>
-    </Box>
-  ));
+const statusColors = {
+  "Pedido sin preparar": "gray.300",
+  "Pedido preparado parcialmente": "yellow.300",
+  "Pedido preparado": "green.300",
+  "Pedido finalizado": "green.400",
+  "Finalizado con pendientes": "yellow.400",
+  "Pedido anulado": "red.300",
+};
+
+export default function OrdersList({ detalle, onVerSeguimiento }) {
+  const bgCard = useColorModeValue("white", "gray.800");
+  const borderColorDefault = useColorModeValue("gray.200", "gray.700");
+
+  return detalle.map((orden, idx) => {
+    const color = statusColors[orden.estadoOrden] || borderColorDefault;
+
+    return (
+      <Box
+        key={idx}
+        bg={bgCard}
+        p={5}
+        borderRadius="xl"
+        shadow="md"
+        mb={4}
+        borderLeft="6px solid"
+        borderColor={color}
+        transition="all 0.2s"
+        _hover={{ transform: "scale(1.01)", shadow: "lg", cursor: "pointer" }}
+        onClick={() => onVerSeguimiento(orden)}
+      >
+        <Flex align="center" justify="space-between" mb={3}>
+          <Box>
+            {/* Cliente */}
+            <Flex align="center" gap={2} mb={1}>
+              <Image src="/src/assets/icons/usuario.png" boxSize="16px" alt="Cliente" />
+              <Text fontWeight="bold" fontSize="md">
+                {orden.cliente.nombre}
+              </Text>
+            </Flex>
+
+            {/* Orden */}
+            <Flex align="center" gap={2} mb={1}>
+              <Image src="/src/assets/icons/orden.png" boxSize="16px" alt="Orden" />
+              <Text fontSize="sm" color="gray.600">
+                #{orden.orden.numero}
+              </Text>
+            </Flex>
+
+            {/* Fecha */}
+            <Flex align="center" gap={2}>
+              <Image src="/src/assets/icons/calendario.png" boxSize="16px" alt="Fecha" />
+              <Text fontSize="sm" color="gray.600">
+                {orden.orden.fechaCreacion}
+              </Text>
+            </Flex>
+          </Box>
+
+          <OrderStatusProgress estado={orden.estadoOrden} />
+        </Flex>
+      </Box>
+    );
+  });
 }
