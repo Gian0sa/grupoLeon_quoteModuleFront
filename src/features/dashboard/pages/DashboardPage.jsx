@@ -3,18 +3,16 @@ import { Grid , Box } from "@chakra-ui/react";
 import SalespersonReports from "../../reports/components/SalesReport";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 
-
 export function DashboardPage() {
   const { salesEmployeeCode } = useAuthStore();
 
-  const safeSalespersonId = salesEmployeeCode ?? '';
+  const safeSalespersonId = salesEmployeeCode ?? "";
 
   return (
-   <MainLayout>
+    <MainLayout>
       <Box w="100%">
-        <SalespersonReports salespersonId={12} />
+        <SalespersonReports salespersonId={safeSalespersonId} />
       </Box>
     </MainLayout>
-
   );
 }

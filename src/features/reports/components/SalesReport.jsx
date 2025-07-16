@@ -9,6 +9,7 @@ import Paginacion from "./Pagination";
 import ModalSeguimiento from "./ModalSeguimiento";
 
 export default function SalespersonReports({ salespersonId }) {
+
   const [pagina, setPagina] = useState(1);
   const porPagina = 10;
   const [estadoOrdenFiltro, setEstadoOrdenFiltro] = useState(null);

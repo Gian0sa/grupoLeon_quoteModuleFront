@@ -1,18 +1,41 @@
 import { create } from 'zustand';
 
+const getSafeValue = (key) => {
+  const value = localStorage.getItem(key);
+  return (value === null || value === "null" || value === "undefined") ? null : value;
+};
+
 export const useAuthStore = create((set) => ({
-  userId: localStorage.getItem('userId'),
-  token: localStorage.getItem('token'),
-  role: localStorage.getItem('role'),
-  salesEmployeeCode: localStorage.getItem('salesEmployeeCode'),
-  isAuthenticated: !!localStorage.getItem('token'),
+  userId: getSafeValue('userId'),
+  token: getSafeValue('token'),
+  role: getSafeValue('role'),
+  salesEmployeeCode: getSafeValue('salesEmployeeCode'),
+  isAuthenticated: !!getSafeValue('token'),
 
   login: (token, role, userId, salesEmployeeCode) => {
-    localStorage.setItem('token', token);
-    localStorage.setItem('role', role);
-    localStorage.setItem('userId', userId);
-    localStorage.setItem('salesEmployeeCode', salesEmployeeCode);
-    set({ token, role, userId, salesEmployeeCode, isAuthenticated: true });
+    // Asegúrate de no guardar "null" como string
+    const safeValues = {
+      token: token || null,
+      role: role || null,
+      userId: userId || null,
+      salesEmployeeCode: salesEmployeeCode || null
+    };
+
+    Object.entries(safeValues).forEach(([key, value]) => {
+      if (value !== null) {
+        localStorage.setItem(key, value);
+      } else {
+        localStorage.removeItem(key);
+      }
+    });
+
+    set({ 
+      token: safeValues.token, 
+      role: safeValues.role, 
+      userId: safeValues.userId, 
+      salesEmployeeCode: safeValues.salesEmployeeCode, 
+      isAuthenticated: !!safeValues.token 
+    });
   },
 
   logout: () => {
@@ -24,7 +47,12 @@ export const useAuthStore = create((set) => ({
   },
 
   setToken: (token) => {
-    localStorage.setItem('token', token);
-    set({ token, isAuthenticated: true });
+    const safeToken = token || null;
+    if (safeToken) {
+      localStorage.setItem('token', safeToken);
+    } else {
+      localStorage.removeItem('token');
+    }
+    set({ token: safeToken, isAuthenticated: !!safeToken });
   },
 }));
