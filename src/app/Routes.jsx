@@ -12,6 +12,7 @@ import { History } from "../features/dashboard/components/History.jsx";
 import { HistoryQuotesPage } from "../features/quotes/pages/HistoryQuotesPage.jsx";
 import { Requests } from "../features/dashboard/components/Requests.jsx";
 import { RequestQuotePage } from "../features/supervisor/pages/RequestQuotePage.jsx";
+import { ReportPage } from "../features/reports/pages/ReportPage.jsx";
 
 const AppRoutes = () => {
   return (
@@ -35,6 +36,7 @@ const AppRoutes = () => {
       <Route path="/history" element={<History />} />
       <Route path="/requests" element={ <Requests />} />
       <Route path="/detailRequests" element={<RequestQuotePage />} />
+      <Route path="/reports" element={<ReportPage />} />
     </Routes> 
   );
 };

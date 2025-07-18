@@ -9,10 +9,11 @@ export function DashboardPage() {
 
   const safeSalespersonId = salesEmployeeCode ?? "";
 
+  console.log(safeSalespersonId);
+
   return (
     <MainLayout>
       <Box w="100%">
-        <ReportPage salespersonId={safeSalespersonId} />
       </Box>
     </MainLayout>
   );

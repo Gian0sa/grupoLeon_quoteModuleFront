@@ -1,14 +1,48 @@
 .containerlogo {
     display: flex;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
     margin-bottom: 20px;
 }
+.containerlogo h2{
+    font-size: 15px;
+    font-weight: 500;
+    color: gray;
+}
 
-.logo {
-    width: 200px;
+.btnInicioSesion{
+    border-radius: 30px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.checkboxlogin{
+    border-radius: 10px;
+    font-size: 10px;
 }
 
 .container {
     background-color: white;
+}
+
+.ImageLogin {
+  background-image: url('src/assets/frame-2-bg.png');
+  background-size: cover;       
+  background-position: center;  
+  height: 100%;
+  border-radius: 0px 0px 70px 0px;
+}
+
+.PoweredBy{
+    font-size: 12px;
+    color: #939393;
+    display: flex;
+    justify-content: center;
+    padding-top: 10px;
+}
+
+.LogoImg{
+    width: 32%;
+    height: auto;
 }

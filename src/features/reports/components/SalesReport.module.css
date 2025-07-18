@@ -1,0 +1,23 @@
+.heading{
+    display: flex;
+    background: #1c5911;
+    background: linear-gradient(153deg,rgba(28, 89, 17, 1) 0%, rgba(5, 20, 7, 1) 100%);
+    padding: 10px 0px 40px;
+    color: white;
+    font-size: 20px;
+    border-radius: 0px 0 20px 20px;
+}
+
+.topHeader{
+   display: flex;
+    width: 100%;
+    flex-direction: column;
+    padding: 0 7%;
+}
+
+.reportTitle{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-bottom: 15px;
+}

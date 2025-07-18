@@ -9,6 +9,8 @@ import Paginacion from "./Pagination";
 import ModalSeguimiento from "./ModalSeguimiento";
 import SellerSelectReport from "./SellerSelectReport";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
+import { BackButton } from "../../../components/BackButton";
+import styles from "./SalesReport.module.css";  
 
 export default function SalespersonReports({ salespersonId }) {
   const role = useAuthStore((state) => state.role);
@@ -62,19 +64,25 @@ export default function SalespersonReports({ salespersonId }) {
       fontFamily="'InterVariable', sans-serif"
       pb="180px"
     >
-      <Heading size="lg" mb={6} fontWeight="bold">
-        Reporte de Órdenes
-      </Heading>
-
-       <Box mb={4}>
-        {role === "ADMIN" && (
-          <SellerSelectReport
-              selectedSeller={selectedSeller}
-              setSelectedSeller={setSelectedSeller}
-              setValue={() => {}}
-              error={null}
-            />
-          )}
+      <Box size="lg" mb={6} fontWeight="bold" className={styles.heading}>
+        <div className={styles.topHeader}>
+          <div className={styles.reportTitle}>
+            <div>
+              Reporte de Órdenes
+            </div>
+            <div>
+              <BackButton/>
+            </div>
+          </div>
+          <div>
+            <SellerSelectReport
+                selectedSeller={selectedSeller}
+                setSelectedSeller={setSelectedSeller}
+                setValue={() => {}}
+                error={null}
+              />
+          </div>
+        </div>
       </Box>
 
       <OrdenesLista detalle={detalle} onVerSeguimiento={abrirModal} />

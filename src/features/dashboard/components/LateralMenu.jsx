@@ -52,13 +52,9 @@ import { HamburgerIcon } from '@chakra-ui/icons';
                 <Flex direction='column' gap='2'>
                     <Button onClick={() => navigate('/client')}>Cotizar</Button>
                     <Button onClick={() => navigate('/history')}>Historial</Button>
-                    {role === "ADMIN" && (
-                      <Button onClick={() => navigate('/register')}>Registrar</Button>
-                    )}
-                    {role === "ADMIN" && (
-                      <Button onClick={() => navigate('/requests')}>Solicitudes</Button>
-                    )}
-
+                    <Button onClick={() => navigate('/register')}>Registrar</Button>
+                    <Button onClick={() => navigate('/requests')}>Solicitudes</Button>
+                    <Button onClick={() => navigate('/reports')}>Reportes</Button>
                 </Flex>
             </DrawerBody>
   
