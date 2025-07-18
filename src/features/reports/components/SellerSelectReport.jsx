@@ -29,9 +29,11 @@ export default function SellerSelectReport({ selectedSeller, setSelectedSeller, 
             control: (base) => ({
               ...base,
               backgroundColor: "#f0f4f8",
+              fontSize: "10px",
               borderColor: "#cbd5e0",
               minHeight: "40px",
               boxShadow: "none",
+              borderRadius: "20px", 
               "&:hover": {
                 borderColor: "#a0aec0",
               },

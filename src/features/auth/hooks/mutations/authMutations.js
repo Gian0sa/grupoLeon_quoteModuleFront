@@ -9,9 +9,14 @@ export function useAuthMutations() {
 
   const loginMutation = useMutation({
   mutationFn: loginUser,
-    onSuccess: (response) => {
-      const { token, role, userId, salesEmployeeCode } = response;
-      login(token, role, userId, salesEmployeeCode);
+    onSuccess: (res) => {
+      login({
+        token: res.token,
+        userId: res.userId,
+        username: res.username,
+        salesEmployeeCode: res.salesEmployeeCode,
+        endpoints: res.endpoints,
+      });
       navigate("/dashboard");
     }
   });

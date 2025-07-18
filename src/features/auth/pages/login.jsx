@@ -21,7 +21,7 @@ import {
   import { useNavigate } from "react-router-dom";
   import { useAuthStore } from "../stores/useAuthStore";
   import { useEffect } from "react";
-  import logoGuruverso from '../../../assets/icons/logo-guruverso-g.png'; // ajusta la ruta según tu estructura
+  import logoGuruverso from '../../../assets/icons/logo-guruverso-g.png';
 
   
   export function Login() {

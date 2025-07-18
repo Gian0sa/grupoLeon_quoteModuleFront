@@ -70,11 +70,11 @@ export default function SalespersonReports({ salespersonId }) {
             <div>
               Reporte de Órdenes
             </div>
-            <div>
+            <div className={styles.backbtn}>
               <BackButton/>
             </div>
           </div>
-          <div>
+          <div className={styles.salereport}>
             <SellerSelectReport
                 selectedSeller={selectedSeller}
                 setSelectedSeller={setSelectedSeller}
@@ -85,7 +85,10 @@ export default function SalespersonReports({ salespersonId }) {
         </div>
       </Box>
 
-      <OrdenesLista detalle={detalle} onVerSeguimiento={abrirModal} />
+      <Box px={6}>
+        <Text fontWeight="bold" py={2}>Todas las órdenes</Text>
+        <OrdenesLista detalle={detalle} onVerSeguimiento={abrirModal} />
+      </Box>
 
       <Paginacion
         totalPaginas={paginacion.totalPaginas}

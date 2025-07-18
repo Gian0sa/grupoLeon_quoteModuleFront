@@ -32,8 +32,9 @@ import { HamburgerIcon } from '@chakra-ui/icons';
           <>
           <IconButton
             ref={btnRef}
-            icon={<HamburgerIcon />}
-            colorScheme='teal'
+            icon={<HamburgerIcon color="white" />}
+            bg="rgba(42, 97, 63, 1)"  // Color de fondo azul
+            _hover={{ bg: " rgba(42, 97, 63, 1)" }}  // Color al hacer hover
             onClick={onOpen}
             aria-label='Abrir menú'
           />

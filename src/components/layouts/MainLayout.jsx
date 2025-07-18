@@ -8,7 +8,7 @@ export function MainLayout({ children }) {
   useEffect(() => {
     const handleBeforeUnload = (e) => {
       e.preventDefault();
-      e.returnValue = ""; // Requerido para activar el diálogo de confirmación en la mayoría de navegadores
+      e.returnValue = "";
     };
   
     window.addEventListener("beforeunload", handleBeforeUnload);
@@ -20,8 +20,8 @@ export function MainLayout({ children }) {
   return (
     <Flex direction="column" minHeight="100vh" >
       <Header/>
-      <Box as="main" p={4} flex="1">
-        <Box maxW="6xl" mx="auto" width="100%">
+      <Box as="main" flex="1">
+        <Box width="100vw">
           {children}
         </Box>
       </Box>

@@ -4,6 +4,7 @@ import {
   Flex,
   Image,
   useColorModeValue,
+  Button,
 } from "@chakra-ui/react";
 import OrderStatusProgress from "./OrderStatusProgress";
 
@@ -16,12 +17,25 @@ const statusColors = {
   "Pedido anulado": "red.300",
 };
 
+// Esta función puede ir fuera del componente
+const getEstadoGeneral = (estadoOrden) => {
+  const estadoMap = {
+    "Pedido sin preparar": "En progreso",
+    "Pedido preparado parcialmente": "En progreso",
+    "Pedido preparado": "En progreso",
+    "Finalizado con pendientes": "Completado",
+    "Pedido finalizado": "Completado",
+    "Pedido anulado": "Cancelado",
+  };
+  return estadoMap[estadoOrden] || "Desconocido";
+};
+
 export default function OrdersList({ detalle, onVerSeguimiento }) {
   const bgCard = useColorModeValue("white", "gray.800");
-  const borderColorDefault = useColorModeValue("gray.200", "gray.700");
 
   return detalle.map((orden, idx) => {
-    const color = statusColors[orden.estadoOrden] || borderColorDefault;
+    const color = statusColors[orden.estadoOrden] || "gray.300";
+    const estadoGeneral = getEstadoGeneral(orden.estadoOrden); // 👈 Aquí llamamos la función
 
     return (
       <Box
@@ -37,44 +51,62 @@ export default function OrdersList({ detalle, onVerSeguimiento }) {
         _hover={{ transform: "scale(1.01)", shadow: "lg", cursor: "pointer" }}
         onClick={() => onVerSeguimiento(orden)}
       >
-        <Flex align="center" justify="space-between" mb={3}>
+        <Flex justify="space-between" align="start">
+          {/* CONTENIDO PRINCIPAL */}
           <Box>
-            {/* Orden */}
-            <Flex align="center" gap={2} mb={1}>
-              <Image src="/src/assets/icons/orden.png" boxSize="16px" alt="Orden" />
-              <Text fontSize="md" fontWeight="bold">
+            {/* Nro de orden */}
+            <Flex align="center" gap={2} mb={2}>
+              <Image src="/src/assets/icons/etiqueta.png" boxSize="16px" />
+              <Text fontSize="md" fontWeight="bold" color="green.600">
                 #{orden.orden.numero}
               </Text>
             </Flex>
 
-
             {/* Cliente */}
-            <Flex align="center" gap={2} mb={1}>
-              <Image src="/src/assets/icons/usuario.png" boxSize="16px" alt="Cliente" />
-              <Text fontSize="sm">
-                {orden.cliente.nombre}
-              </Text>
-            </Flex>
-
-          
-
-            <Flex align="center" gap={2} mb={1}>
-              <Image src="/src/assets/icons/usuario.png" boxSize="16px" alt="Cliente" />
-              <Text fontSize="sm">
-                {orden.vendedor}
-              </Text>
+            <Flex align="center" gap={2} mb={2}>
+              <Image src="/src/assets/icons/ubicacion.png" boxSize="16px" />
+              <Text fontSize="sm">{orden.cliente.nombre}</Text>
             </Flex>
 
             {/* Fecha */}
-            <Flex align="center" gap={2}>
-              <Image src="/src/assets/icons/calendario.png" boxSize="16px" alt="Fecha" />
-              <Text fontSize="sm" color="gray.600">
+            <Flex align="center" gap={2} mb={4}>
+              <Image src="/src/assets/icons/reloj.png" boxSize="16px" />
+              <Text fontSize="sm">
                 {orden.orden.fechaCreacion} - {orden.orden.horaCreacion}
               </Text>
             </Flex>
+
+            {/* Asesor */}
+            <Flex align="center" gap={3} mb={2}>
+              <Box>
+                <Text fontWeight="semibold" fontSize="sm" color="green.600"></Text>
+                <Text>{orden.vendedor}</Text>
+                <Text fontSize="xs">Asesor de ventas</Text>
+              </Box>
+            </Flex>
           </Box>
 
-          <OrderStatusProgress estado={orden.estadoOrden} />
+          {/* STATUS BAR */}
+          <Box ml={4}>
+            <OrderStatusProgress estado={orden.estadoOrden} />
+            <Button
+              size="xs"
+              mt={2}
+              colorScheme={
+                estadoGeneral === "En progreso"
+                  ? "purple"
+                  : estadoGeneral === "Completado"
+                  ? "green"
+                  : estadoGeneral === "Cancelado"
+                  ? "red"
+                  : "gray"
+              }
+              variant="outline"
+              borderRadius="full"
+            >
+              {estadoGeneral}
+            </Button>
+          </Box>
         </Flex>
       </Box>
     );
