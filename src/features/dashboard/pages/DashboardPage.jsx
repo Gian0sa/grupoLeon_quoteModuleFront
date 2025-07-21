@@ -17,6 +17,8 @@ import { MoonIcon, SunIcon ,BellIcon } from "@chakra-ui/icons";
 import { LateralMenu } from "../components/LateralMenu";
 import { useAuthStore } from "../../../features/auth/stores/useAuthStore";
 import styles from "./DashboardPage.module.css";  
+import { format } from "date-fns";
+import { es } from "date-fns/locale"; // Si quieres formato en español
 
 
 export function DashboardPage() { 
@@ -28,8 +30,8 @@ export function DashboardPage() {
  
   const cardBg = useColorModeValue("white", "gray.800");
   const textColor = useColorModeValue("gray.600", "gray.300");
-
-  console.log(safeSalespersonId, userId, username, endpoints); 
+  
+  const today = format(new Date(), "EEEE, d 'de' MMMM 'del' yyyy", { locale: es });
 
   return ( 
       <Box w="100vw" minH="100vh">
@@ -39,36 +41,39 @@ export function DashboardPage() {
           position="relative"
         > 
         <Box className={styles.headerMain}>
-            <HStack justify="space-between" align="top" p={4} boxShadow="sm">
-              <div>
-                 <Flex justify="space-between" align="center" mb={6}>
-                            <VStack align="start" spacing={0}>
-                              <Text fontSize="2xl" fontWeight="bold">
-                                Hola, {username}.
-                              </Text>
-                              <Text fontSize="sm" opacity={0.9}>
-                                Jueves, 17 de julio del 2025
-                              </Text>
-                            </VStack>
-                          </Flex>
-              </div>
-              <div>
-                <IconButton
-                  aria-label="Toggle Theme"
-                  icon={colorMode === "light" ? <MoonIcon /> : <SunIcon />}
-                  onClick={toggleColorMode}
-                  variant="ghost"
-                />
-                <IconButton
-                  icon={<BellIcon />}
-                  colorScheme='teal'
-                  variant='ghost'
-                  aria-label='Notificaciones'
-                  onClick={() => console.log("Notificaciones")}
-                />
-                <LateralMenu />
-              </div>
+           <Flex justify="space-between" align="center" p={4} boxShadow="sm" gap={4}>
+            {/* Bloque del saludo */}
+            <Box flex="1" minW="0">
+              <VStack align="start" spacing={0}>
+                <Text fontSize="2xl" fontWeight="bold" whiteSpace="normal">
+                  Hola, {username}.
+                </Text>
+                <Text fontSize="sm" opacity={0.9}>
+                  {today.charAt(0).toUpperCase() + today.slice(1)}
+                </Text>
+              </VStack>
+            </Box>
+
+            {/* Bloque de íconos */}
+            <HStack spacing={2} flexShrink={0}>
+              <IconButton
+                aria-label="Toggle Theme"
+                icon={colorMode === "light" ? <MoonIcon /> : <SunIcon />}
+                onClick={toggleColorMode}
+                variant="ghost"
+              />
+              <IconButton
+                icon={<BellIcon />}
+                colorScheme="teal"
+                variant="ghost"
+                aria-label="Notificaciones"
+                onClick={() => console.log("Notificaciones")}
+              />
+              <LateralMenu />
             </HStack>
+          </Flex>
+
+
           <HStack className={styles.btnsgroup}>
             <Button
               bg="whiteAlpha.200"

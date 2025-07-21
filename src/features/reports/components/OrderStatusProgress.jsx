@@ -3,10 +3,10 @@ import { Box, CircularProgress, CircularProgressLabel, Text, VStack } from "@cha
 // Mapea los estados a un porcentaje de progreso
 const getProgressData = (estado) => {
   const estadoMap = {
-    "Pedido sin preparar": { percent: 25, color: "gray" , estate : "En progreso" },
-    "Pedido preparado parcialmente": { percent: 50, color: "yellow" , estate : "En progreso" },
-    "Pedido preparado": { percent: 50, color: "green" , estate : "En progreso" },
-    "Finalizado con pendientes": { percent: 100, color: "green" , estate : "Completado"},
+    "Pedido sin preparar": { percent: 20, color: "gray" , estate : "En progreso" },
+    "Pedido parcial": { percent: 40, color: "green" , estate : "En progreso" },
+    "Pedido preparado": { percent: 60, color: "green" , estate : "En progreso" },
+    "Finalizado con pendientes": { percent: 80, color: "green" , estate : "Completado"},
     "Pedido finalizado": { percent: 100, color: "green", estate : "Completado" },
     "Pedido anulado": { percent: 100, color: "red", estate : "Cancelado" },
   };

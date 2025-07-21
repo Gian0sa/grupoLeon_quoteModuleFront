@@ -1,0 +1,7 @@
+.rayita {
+    width: calc(100% - 2.5rem);
+    height: 1px;
+    background-color: black;
+    margin: auto;
+    margin-bottom: 10px;
+}

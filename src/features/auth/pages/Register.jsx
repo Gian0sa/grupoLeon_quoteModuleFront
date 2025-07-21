@@ -15,7 +15,7 @@ import {
 } from "@chakra-ui/react";
 import { useForm } from "react-hook-form";
 import { MainLayout } from "../../../components/layouts/MainLayout";
-import { adaptUsertoRegister } from "../adapters/authAdapter";  
+import { adaptUsertoRegister } from "../adapters/authAdapter";
 import { useAuthMutations } from "../hooks/mutations/authMutations";
 import { useSellersData } from "../hooks/queries/authQueries";
 import Select from "react-select";
@@ -23,14 +23,16 @@ import { useEffect, useState } from "react";
 import { ViewIcon, ViewOffIcon } from "@chakra-ui/icons";
 import { BackButton } from "../../../components/BackButton";
 import SellerSelect from "../../../components/SellerSelect";
-
+import { useNavigate } from "react-router-dom";
 
 export function Register() {
+  const navigate = useNavigate();
   const {
     handleSubmit,
     register,
     watch,
     setValue,
+    setError, // <- AÑADIDO
     formState: { errors },
   } = useForm();
 
@@ -41,13 +43,19 @@ export function Register() {
   const confirmPassword = watch("confirmPassword");
 
   const { data: sellers, isLoading } = useSellersData();
-  console.log(sellers)
   const [selectedSeller, setSelectedSeller] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-
   const onSubmit = (data) => {
+    if (data.password !== data.confirmPassword) {
+      setError("confirmPassword", {
+        type: "manual",
+        message: "Las contraseñas no coinciden",
+      });
+      return;
+    }
+
     const user = {
       role: data.role,
       username: data.name,
@@ -55,14 +63,14 @@ export function Register() {
       password: data.password,
       salesEmployeeCode: role === "SELLER" ? data.salesPerson.value : undefined,
     };
-    console.log(user);
+
     registerMutation.mutate(user, {
       onSuccess: () => {
         navigate("/dashboard");
       },
       onError: (error) => {
         const message = error?.response?.data?.message || "Error al registrar";
-    
+
         if (message.includes("email")) {
           setError("email", {
             type: "manual",
@@ -78,7 +86,6 @@ export function Register() {
         }
       },
     });
-    
   };
 
   useEffect(() => {
@@ -96,7 +103,6 @@ export function Register() {
           <VStack spacing={4} align="stretch">
             <Heading textAlign="center">Registro</Heading>
 
-            {/* Campo de Rol */}
             <FormControl isInvalid={errors.role}>
               <FormLabel>Rol</FormLabel>
               <Flex gap="4">
@@ -120,7 +126,6 @@ export function Register() {
               <FormErrorMessage>{errors.role?.message}</FormErrorMessage>
             </FormControl>
 
-            {/* Selección de vendedor si es SELLER */}
             {role === "SELLER" && (
               <SellerSelect
                 selectedSeller={selectedSeller}
@@ -130,7 +135,6 @@ export function Register() {
               />
             )}
 
-            {/* Nombre (autocompletado si es SELLER) */}
             <FormControl isInvalid={errors.name}>
               <FormLabel>Nombre</FormLabel>
               <Input
@@ -144,7 +148,6 @@ export function Register() {
               <FormErrorMessage>{errors.name?.message}</FormErrorMessage>
             </FormControl>
 
-            {/* Email (autocompletado si es SELLER) */}
             <FormControl isInvalid={errors.email}>
               <FormLabel>Email</FormLabel>
               <Input
@@ -161,7 +164,6 @@ export function Register() {
               <FormErrorMessage>{errors.email?.message}</FormErrorMessage>
             </FormControl>
 
-            {/* Contraseña para ambos roles */}
             <FormControl isInvalid={errors.password}>
               <FormLabel>Contraseña</FormLabel>
               <InputGroup>
@@ -182,7 +184,6 @@ export function Register() {
               <FormErrorMessage>{errors.password?.message}</FormErrorMessage>
             </FormControl>
 
-
             <FormControl isInvalid={errors.confirmPassword}>
               <FormLabel>Repetir Contraseña</FormLabel>
               <InputGroup>
@@ -190,17 +191,21 @@ export function Register() {
                   type={showConfirmPassword ? "text" : "password"}
                   placeholder="********"
                   {...register("confirmPassword", {
-                    required: "La contraseña es obligatoria",
+                    required: "La confirmación es obligatoria",
                     minLength: { value: 6, message: "Mínimo 6 caracteres" },
                   })}
                 />
                 <InputRightElement>
-                  <Button variant="ghost" size="sm" onClick={() => setShowConfirmPassword(!showConfirmPassword)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  >
                     {showConfirmPassword ? <ViewOffIcon /> : <ViewIcon />}
                   </Button>
                 </InputRightElement>
               </InputGroup>
-              <FormErrorMessage>{errors.password?.message}</FormErrorMessage>
+              <FormErrorMessage>{errors.confirmPassword?.message}</FormErrorMessage>
             </FormControl>
 
             <Button colorScheme="teal" type="submit" width="full">

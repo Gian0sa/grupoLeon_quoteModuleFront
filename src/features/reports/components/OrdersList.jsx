@@ -5,23 +5,23 @@ import {
   Image,
   useColorModeValue,
   Button,
+  Grid,
 } from "@chakra-ui/react";
 import OrderStatusProgress from "./OrderStatusProgress";
 
 const statusColors = {
   "Pedido sin preparar": "gray.300",
-  "Pedido preparado parcialmente": "yellow.300",
+  "Pedido parcial": "green.300",
   "Pedido preparado": "green.300",
   "Pedido finalizado": "green.400",
-  "Finalizado con pendientes": "yellow.400",
+  "Finalizado con pendientes": "green.400",
   "Pedido anulado": "red.300",
 };
 
-// Esta función puede ir fuera del componente
 const getEstadoGeneral = (estadoOrden) => {
   const estadoMap = {
     "Pedido sin preparar": "En progreso",
-    "Pedido preparado parcialmente": "En progreso",
+    "Pedido parcial": "En progreso",
     "Pedido preparado": "En progreso",
     "Finalizado con pendientes": "Completado",
     "Pedido finalizado": "Completado",
@@ -51,7 +51,7 @@ export default function OrdersList({ detalle, onVerSeguimiento }) {
         _hover={{ transform: "scale(1.01)", shadow: "lg", cursor: "pointer" }}
         onClick={() => onVerSeguimiento(orden)}
       >
-        <Flex justify="space-between" align="start">
+        <Grid templateColumns="1fr auto" gap={6} alignItems="center">
           {/* CONTENIDO PRINCIPAL */}
           <Box>
             {/* Nro de orden */}
@@ -107,7 +107,7 @@ export default function OrdersList({ detalle, onVerSeguimiento }) {
               {estadoGeneral}
             </Button>
           </Box>
-        </Flex>
+        </Grid>
       </Box>
     );
   });

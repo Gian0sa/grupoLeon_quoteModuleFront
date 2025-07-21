@@ -12,7 +12,7 @@ export const useGetSalespersonReports = (
   id,
   pagina = 1,
   porPagina = 10,
-  estadoOrdenFiltro = null,
+  estadoOrdenFiltro = [],
   startDate = null,
   endDate = null
 ) => {
@@ -22,7 +22,7 @@ export const useGetSalespersonReports = (
       id,
       pagina,
       porPagina,
-      estadoOrdenFiltro,
+      estadoOrdenFiltro?.join(","),
       startDate,
       endDate,
     ],

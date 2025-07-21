@@ -83,10 +83,13 @@ import {
         maxW="md"
       >
         <VStack spacing={4} align="stretch">
-          <Heading textAlign="center" className={styles.containerlogo}>
-            <h1>¡Hola de nuevo!</h1>
-            <h2>Accede a tu cuenta</h2>
+          <Heading as="h1" textAlign="center" className={styles.containerlogo}>
+            ¡Hola de nuevo!
+            <Box as="span" display="block" fontSize="md" fontWeight="normal">
+              Accede a tu cuenta
+            </Box>
           </Heading>
+
 
           {/* Email */}
           <FormControl isInvalid={errors.email}>

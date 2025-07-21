@@ -4,7 +4,7 @@ export const getReportsBySalesperson = async (
   id,
   pagina = 1,
   porPagina = 10,
-  estadoOrdenFiltro = null,
+  estadoOrdenFiltro = [],
   startDate = null,
   endDate = null
 ) => {
@@ -12,7 +12,9 @@ export const getReportsBySalesperson = async (
     const params = {
       pagina,
       porPagina,
-      ...(estadoOrdenFiltro ? { estadoOrdenFiltro } : {}),
+      ...(estadoOrdenFiltro.length > 0
+        ? { estadoOrdenFiltro: estadoOrdenFiltro.join(",") } // 👈 importante
+        : {}),
       ...(startDate ? { startDate } : {}),
       ...(endDate ? { endDate } : {}),
     };
