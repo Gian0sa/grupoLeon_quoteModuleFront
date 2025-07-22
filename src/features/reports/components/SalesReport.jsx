@@ -23,7 +23,8 @@ import ModalSeguimiento from "./ModalSeguimiento";
 import SellerSelectReport from "./SellerSelectReport";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { BackButton } from "../../../components/BackButton";
-import ActiveFilters from "./ActiveFilters"; // ajusta la ruta si está en otro lugar
+import ActiveFilters from "./ActiveFilters";
+import { useRules } from "../hooks/queries/configQueries";
 
 import styles from "./SalesReport.module.css";
 
@@ -33,6 +34,8 @@ export default function SalespersonReports({ salespersonId }) {
   const btnRef = useRef();
 
   const hasAccess = (endpoint) => endpoints?.includes(endpoint);
+  const { data: reglas = [], isLoading: reglasLoading } = useRules();
+
 
   const [estadoOrdenFiltro, setEstadoOrdenFiltro] = useState([]);
   const [tempEstadoOrdenFiltro, setTempEstadoOrdenFiltro] = useState([]);
@@ -170,14 +173,12 @@ const [tempEndDate, setTempEndDate] = useState(null);
             </DrawerHeader>
             <DrawerBody p={4}>
              <FiltersWithSummary
-                statuses={[
-                  "Pedido sin preparar",
-                  "Pedido preparado parcialmente",
-                  "Pedido preparado",
-                  "Pedido finalizado",
-                  "Finalizado con pendientes",
-                  "Pedido anulado",
-                ]}
+               statuses={reglas.map((regla) => ({
+                  label: regla.name,
+                  value: regla.name,
+                  color: regla.color,
+                  progress: regla.progress,
+                }))}
                 activeStatuses={tempEstadoOrdenFiltro}
                 setStatuses={setTempEstadoOrdenFiltro}
                 setStartDate={setTempStartDate}
@@ -189,6 +190,7 @@ const [tempEndDate, setTempEndDate] = useState(null);
                   setEstadoOrdenFiltro(tempEstadoOrdenFiltro);
                   setStartDate(tempStartDate);
                   setEndDate(tempEndDate);
+                  setPagina(1);
                   closeDrawer();
                 }}
               />

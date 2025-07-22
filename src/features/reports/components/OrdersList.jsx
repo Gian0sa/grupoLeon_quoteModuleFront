@@ -9,33 +9,12 @@ import {
 } from "@chakra-ui/react";
 import OrderStatusProgress from "./OrderStatusProgress";
 
-const statusColors = {
-  "Pedido sin preparar": "gray.300",
-  "Pedido parcial": "green.300",
-  "Pedido preparado": "green.300",
-  "Pedido finalizado": "green.400",
-  "Finalizado con pendientes": "green.400",
-  "Pedido anulado": "red.300",
-};
-
-const getEstadoGeneral = (estadoOrden) => {
-  const estadoMap = {
-    "Pedido sin preparar": "En progreso",
-    "Pedido parcial": "En progreso",
-    "Pedido preparado": "En progreso",
-    "Finalizado con pendientes": "Completado",
-    "Pedido finalizado": "Completado",
-    "Pedido anulado": "Cancelado",
-  };
-  return estadoMap[estadoOrden] || "Desconocido";
-};
-
 export default function OrdersList({ detalle, onVerSeguimiento }) {
   const bgCard = useColorModeValue("white", "gray.800");
 
   return detalle.map((orden, idx) => {
-    const color = statusColors[orden.estadoOrden] || "gray.300";
-    const estadoGeneral = getEstadoGeneral(orden.estadoOrden); // 👈 Aquí llamamos la función
+    const color = orden.estadoMeta?.color || "gray.300";
+    const estadoGeneral = orden.estadoMeta?.status || "Desconocido";
 
     return (
       <Box
@@ -88,18 +67,15 @@ export default function OrdersList({ detalle, onVerSeguimiento }) {
 
           {/* STATUS BAR */}
           <Box ml={4}>
-            <OrderStatusProgress estado={orden.estadoOrden} />
+            <OrderStatusProgress
+              estadoMeta={orden.estadoMeta}
+              estadoOrden={orden.estadoOrden}
+            />
             <Button
               size="xs"
               mt={2}
               colorScheme={
-                estadoGeneral === "En progreso"
-                  ? "purple"
-                  : estadoGeneral === "Completado"
-                  ? "green"
-                  : estadoGeneral === "Cancelado"
-                  ? "red"
-                  : "gray"
+               `${orden.estadoMeta.color}`
               }
               variant="outline"
               borderRadius="full"

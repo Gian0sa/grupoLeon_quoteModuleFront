@@ -1,7 +1,16 @@
-import { Box, Flex, Button, Input, Image, Text, VStack, HStack, Circle } from "@chakra-ui/react";
+import {
+  Box,
+  Flex,
+  Button,
+  Input,
+  Text,
+  VStack,
+  HStack,
+  Circle,
+} from "@chakra-ui/react";
 
 export default function FiltersWithSummary({
-  statuses,
+  statuses, // Ahora es un array de objetos: [{label, value, color, progress}, ...]
   activeStatuses,
   setStatuses,
   setStartDate,
@@ -11,32 +20,12 @@ export default function FiltersWithSummary({
   summary,
   onFilterApplied,
 }) {
-  const statusIcons = {
-    "Pedido sin preparar": "/src/assets/icons/order.png",
-    "Pedido preparado parcialmente": "/src/assets/icons/package.png",
-    "Pedido preparado": "/src/assets/icons/package.png",
-    "Pedido finalizado": "/src/assets/icons/factura.png",
-    "Finalizado con pendientes": "/src/assets/icons/factura.png",
-    "Pedido anulado": "/src/assets/icons/portapapeles.png",
-  };
-
-  // Colores para los círculos según el estado
-  const statusColors = {
-    "Pedido sin preparar": "gray.500",
-    "Pedido preparado parcialmente": "gray.500", 
-    "Pedido preparado": "gray.500",
-    "Pedido finalizado": "gray.500",
-    "Finalizado con pendientes": "gray.500",
-    "Pedido anulado": "gray.500",
-  };
-
-  const yellowStatuses = ["Pedido preparado parcialmente", "Finalizado con pendientes"];
-  const redStatuses = ["Pedido anulado"];
-
-  const handleStatusChange = (status) => {
-    const newActiveStatuses = activeStatuses.includes(status)
-      ? activeStatuses.filter((s) => s !== status)
-      : [...activeStatuses, status];
+  console.log("los statuses son : ", statuses);
+  
+  const handleStatusChange = (statusValue) => {
+    const newActiveStatuses = activeStatuses.includes(statusValue)
+      ? activeStatuses.filter((s) => s !== statusValue)
+      : [...activeStatuses, statusValue];
     setStatuses(newActiveStatuses);
   };
 
@@ -51,15 +40,25 @@ export default function FiltersWithSummary({
     setEndDate("");
   };
 
+  const getStatusColor = (statusValue) => {
+    // Primero busca el color en el objeto status
+    const statusObj = statuses.find(s => s.value === statusValue);
+    if (statusObj?.color) {
+      return statusObj.color;
+    }
+    // Si no está en el objeto status, busca en summary como fallback
+    return summary?.metaPorEstado?.[statusValue]?.color ?? "gray";
+  };
+
   return (
     <Box bg="gray.50" p={6} borderRadius="lg">
       <VStack spacing={6} align="stretch">
-        {/* Estados */}
+        {/* ESTADOS */}
         <Box>
-          <Text 
-            fontSize="sm" 
-            fontWeight="semibold" 
-            mb={4} 
+          <Text
+            fontSize="sm"
+            fontWeight="semibold"
+            mb={4}
             color="green.600"
             textTransform="uppercase"
           >
@@ -71,55 +70,62 @@ export default function FiltersWithSummary({
             pr={2}
             sx={{
               "&::-webkit-scrollbar": { width: "6px" },
-              "&::-webkit-scrollbar-thumb": { bg: "gray.400", borderRadius: "4px" },
+              "&::-webkit-scrollbar-thumb": {
+                bg: "gray.400",
+                borderRadius: "4px",
+              },
             }}
           >
-            {statuses.map((status) => {
-              const count = summary?.porEstado?.[status] || 0;
+            {statuses.map((statusObj) => {
+              const statusValue = statusObj.value;
+              const statusLabel = statusObj.label;
+              const count = summary?.porEstado?.[statusValue] || 0;
+              
               if (count === 0) return null;
 
-              const isActive = activeStatuses.includes(status);
+              const isActive = activeStatuses.includes(statusValue);
+              const dynamicColor = getStatusColor(statusValue);
 
               return (
                 <Button
-                  key={`${status}-${isActive}`}
+                  key={`${statusValue}-${isActive}`}
                   size="lg"
                   width="100%"
                   justifyContent="space-between"
-                  onClick={() => handleStatusChange(status)}
+                  onClick={() => handleStatusChange(statusValue)}
                   px={4}
                   py={2}
-                  bg={isActive ? "gray.100" : "gray.100"}
-                  color={isActive ? "green.500" : "gray.700"}
+                  bg="gray.100"
+                  color={isActive ? "green.600" : "gray.700"}
                   border="2px solid"
                   borderColor={isActive ? "green.500" : "gray.200"}
                   borderRadius="full"
                   _hover={{
                     borderColor: "green.500",
                     transform: "translateY(-1px)",
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.1)"
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
                   }}
                   _active={{
-                    transform: "translateY(0px)"
+                    transform: "translateY(0px)",
                   }}
                   boxShadow={isActive ? "0 2px 8px rgba(0,0,0,0.1)" : "none"}
                   h="60px"
                 >
                   <HStack spacing={3} flex={1}>
-                    <Circle size="20px" bg={isActive ? "green.500" : statusColors[status]} />
-                    <Text 
-                      fontSize="sm" 
-                      textAlign="left" 
-                      flex="1" 
+                    <Circle size="20px" bg={dynamicColor} />
+                    <Text
+                      fontSize="sm"
+                      textAlign="left"
+                      flex="1"
                       whiteSpace="normal"
                       fontWeight="normal"
                     >
-                      {status}
+                      {statusLabel}
                     </Text>
                   </HStack>
                   <Box
-                    bg={isActive ? "green.500" : statusColors[status]}
-                    color={isActive ? "white" : "white"}
+                    bg={dynamicColor}
+                    color="white"
                     px={3}
                     py={1}
                     borderRadius="full"
@@ -136,12 +142,12 @@ export default function FiltersWithSummary({
           </Flex>
         </Box>
 
-        {/* Filtro por Fecha */}
+        {/* FECHAS */}
         <Box>
-          <Text 
-            fontSize="sm" 
-            fontWeight="semibold" 
-            mb={4} 
+          <Text
+            fontSize="sm"
+            fontWeight="semibold"
+            mb={4}
             color="green.600"
             textTransform="uppercase"
           >
@@ -166,7 +172,7 @@ export default function FiltersWithSummary({
                   boxShadow: "0 0 0 1px green.500",
                 }}
                 _hover={{
-                  borderColor: "gray.300"
+                  borderColor: "gray.300",
                 }}
                 h="50px"
               />
@@ -189,17 +195,17 @@ export default function FiltersWithSummary({
                   boxShadow: "0 0 0 1px green.500",
                 }}
                 _hover={{
-                  borderColor: "gray.300"
+                  borderColor: "gray.300",
                 }}
                 h="50px"
               />
             </Box>
           </HStack>
 
-          {/* Botones */}
+          {/* BOTONES */}
           <VStack spacing={3}>
-            <Button 
-              colorScheme="green" 
+            <Button
+              colorScheme="green"
               size="lg"
               width="100%"
               borderRadius="full"
@@ -211,9 +217,9 @@ export default function FiltersWithSummary({
               Aplicar Filtros
             </Button>
 
-            <Button 
-              variant="outline" 
-              colorScheme="gray" 
+            <Button
+              variant="outline"
+              colorScheme="gray"
               size="lg"
               width="100%"
               borderRadius="full"
@@ -225,7 +231,7 @@ export default function FiltersWithSummary({
               borderColor="gray.300"
               _hover={{
                 borderColor: "gray.400",
-                bg: "gray.50"
+                bg: "gray.50",
               }}
             >
               Limpiar Filtros
