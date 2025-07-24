@@ -11,6 +11,7 @@ export default function OrderStatusProgress({ estadoMeta, estadoOrden }) {
   const percent = estadoMeta?.progress ?? 0;
   const color = estadoMeta?.color ?? "gray";
 
+  console.log(percent)
   return (
     <VStack spacing={1}>
       <CircularProgress

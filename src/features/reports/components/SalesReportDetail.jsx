@@ -53,11 +53,23 @@ const TrackingPage = ({ orden }) => {
   const entregas = orden.entrega || [];
   const facturas = orden.factura || [];
 
-  console.log(orden)  
+  const orderId = orden?.orden?.id;
+  const entregaId = orden?.entrega?.[0]?.id;
+  const facturaId = orden?.factura?.[0]?.id;
 
-  const { data: ordenDetalle, isLoading: loadingOrden } = useGetOrderByCode(orden.orden.id);
-  const { data: entregaDetalle, isLoading: loadingDetalle } = useGetDeliveryNoteByCode(orden.entrega[0].id);
-  const { data: invoiceDetalle, isLoading:loagindInvoice } = useGetInvoiceByCode(orden.factura[0].id);
+  const { data: ordenDetalle, isLoading: loadingOrden } = useGetOrderByCode(orderId ?? '', {
+    enabled: !!orderId,
+  });
+
+  const { data: entregaDetalle, isLoading: loadingDetalle } = useGetDeliveryNoteByCode(entregaId ?? '', {
+    enabled: !!entregaId,
+  });
+
+  const { data: invoiceDetalle, isLoading: loagindInvoice } = useGetInvoiceByCode(facturaId ?? '', {
+    enabled: !!facturaId,
+  });
+
+
 
   console.log("EL ORDEN DETALLE ES : ", ordenDetalle);
 

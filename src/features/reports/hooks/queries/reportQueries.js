@@ -43,7 +43,7 @@ export const useGetOrderByCode = (code, enabled = true) => {
   return useQuery({
     queryKey: ["orderByCode", code],
     queryFn: () => getOrderByCode(code),
-    enabled: !!code && enabled,
+    enabled: Boolean(code) && Boolean(enabled),
   });
 };
 
@@ -51,7 +51,7 @@ export const useGetDeliveryNoteByCode = (code, enabled = true) => {
   return useQuery({
     queryKey: ["deliveryNoteByCode", code],
     queryFn: () => getDeliveryNoteByCode(code),
-    enabled: !!code && enabled,
+    enabled: Boolean(code) && Boolean(enabled),
   });
 };
 
@@ -59,7 +59,7 @@ export const useGetInvoiceByCode = (code, enabled = true) => {
   return useQuery({
     queryKey: ["invoiceByCode", code],
     queryFn: () => getInvoiceByCode(code),
-    enabled: !!code && enabled,
+    enabled: Boolean(code) && Boolean(enabled),
   });
 };
 
@@ -67,6 +67,6 @@ export const useGetPdfByCode = (code, enabled = true) => {
   return useQuery({
     queryKey: ["pdfByCode", code],
     queryFn: () => getPdfByCode(code),
-    enabled: !!code && enabled,
+    enabled: Boolean(code) && Boolean(enabled),
   });
 };
