@@ -12,14 +12,17 @@ export function useAuthMutations() {
     onSuccess: (res) => {
       login({
         token: res.token,
+        refreshToken: res.refreshToken,
         userId: res.userId,
         username: res.username,
         salesEmployeeCode: res.salesEmployeeCode,
         endpoints: res.endpoints,
+        sapCookies: res.sapCookies,
       });
       navigate("/dashboard");
     }
   });
+
 
   const registerMutation = useMutation({
     mutationFn: registerUser,

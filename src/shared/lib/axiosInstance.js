@@ -30,17 +30,30 @@ axiosInstance.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+
+    // Obtener las cookies SAP desde el store
+    const sapCookies = useAuthStore.getState().sapCookies;
+
+    if (sapCookies && sapCookies.length > 0) {
+      // Extraemos solo el NAME=VALUE para cada cookie, descartando opciones
+      const sapCookiesStr = sapCookies
+        .map(cookieStr => cookieStr.split(';')[0].trim())
+        .join('; ');
+
+      // Enviar en header personalizado (no en Cookie)
+      config.headers['X-SAP-Cookies'] = sapCookiesStr;
+    }
+
     return config;
   },
   (error) => Promise.reject(error)
 );
 
+
 axiosInstance.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
-
-    
 
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
@@ -58,13 +71,16 @@ axiosInstance.interceptors.response.use(
 
       isRefreshing = true;
       try {
-        const res = await axios.post(`${import.meta.env.VITE_API_URL}/authModule/refresh-token`, {}, {
-          withCredentials: true, 
-        });
+        const res = await axios.post(
+          `${import.meta.env.VITE_API_URL}/authModule/refresh-token`,
+          {},
+          {
+            withCredentials: true,
+          }
+        );
 
-        console.log(res.data);
         const newToken = res.data.token;
-        useAuthStore.getState().setToken(newToken); 
+        useAuthStore.getState().setToken(newToken);
 
         axiosInstance.defaults.headers.common["Authorization"] = "Bearer " + newToken;
         processQueue(null, newToken);
@@ -72,7 +88,7 @@ axiosInstance.interceptors.response.use(
         return axiosInstance(originalRequest);
       } catch (err) {
         processQueue(err, null);
-        useAuthStore.getState().logout(); 
+        useAuthStore.getState().logout();
         return Promise.reject(err);
       } finally {
         isRefreshing = false;

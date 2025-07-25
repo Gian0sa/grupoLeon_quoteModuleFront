@@ -18,23 +18,27 @@ export const useAuthStore = create((set) => ({
   userId: getSafeValue('userId'),
   username: getSafeValue('username'),
   token: getSafeValue('token'),
+  refreshToken: getSafeValue('refreshToken'),       // nuevo
   salesEmployeeCode: getSafeValue('salesEmployeeCode'),
   endpoints: getSafeJsonValue('endpoints'),
+  sapCookies: getSafeJsonValue('sapCookies'),       // nuevo
   isAuthenticated: !!getSafeValue('token'),
 
-  login: ({ token, userId, username, salesEmployeeCode, endpoints }) => {
+  login: ({ token, refreshToken, userId, username, salesEmployeeCode, endpoints, sapCookies }) => {
     const safeValues = {
       token: token || null,
+      refreshToken: refreshToken || null,
       userId: userId?.toString() || null,
       username: username || null,
       salesEmployeeCode: salesEmployeeCode || null,
       endpoints: endpoints || [],
+      sapCookies: sapCookies || [],
     };
 
     // Guardar en localStorage
     Object.entries(safeValues).forEach(([key, value]) => {
       if (value !== null && value !== undefined) {
-        if (key === "endpoints") {
+        if (key === "endpoints" || key === "sapCookies") {
           localStorage.setItem(key, JSON.stringify(value));
         } else {
           localStorage.setItem(key, value);
@@ -47,25 +51,29 @@ export const useAuthStore = create((set) => ({
     // Actualizar estado
     set({
       token: safeValues.token,
+      refreshToken: safeValues.refreshToken,
       userId: safeValues.userId,
       username: safeValues.username,
       salesEmployeeCode: safeValues.salesEmployeeCode,
       endpoints: safeValues.endpoints,
+      sapCookies: safeValues.sapCookies,
       isAuthenticated: !!safeValues.token,
     });
   },
 
   logout: () => {
-    ['token', 'userId', 'username', 'salesEmployeeCode', 'endpoints'].forEach((key) =>
+    ['token', 'refreshToken', 'userId', 'username', 'salesEmployeeCode', 'endpoints', 'sapCookies'].forEach((key) =>
       localStorage.removeItem(key)
     );
 
     set({
       token: null,
+      refreshToken: null,
       userId: null,
       username: null,
       salesEmployeeCode: null,
       endpoints: null,
+      sapCookies: null,
       isAuthenticated: false,
     });
   },
