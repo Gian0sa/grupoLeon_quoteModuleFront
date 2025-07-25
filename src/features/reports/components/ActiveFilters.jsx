@@ -33,7 +33,7 @@ export default function ActiveFilters({
 
   return (
     <HStack spacing={2} mb={4} flexWrap="wrap">
-      {activeTags.map((tag, idx) => (
+     {[...activeTags].reverse().map((tag, idx) => (
         <Tag size="md" key={idx} variant="subtle" colorScheme="white">
           <TagLabel>{tag.label}</TagLabel>
           <TagCloseButton onClick={tag.onClear} />

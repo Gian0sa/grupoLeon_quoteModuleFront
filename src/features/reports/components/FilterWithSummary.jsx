@@ -20,7 +20,6 @@ export default function FiltersWithSummary({
   summary,
   onFilterApplied,
 }) {
-  console.log("los statuses son : ", statuses);
   
   const handleStatusChange = (statusValue) => {
     const newActiveStatuses = activeStatuses.includes(statusValue)
@@ -41,7 +40,6 @@ export default function FiltersWithSummary({
   };
 
   const getStatusColor = (statusValue) => {
-    // Primero busca el color en el objeto status
     const statusObj = statuses.find(s => s.value === statusValue);
     if (statusObj?.color) {
       return statusObj.color;
@@ -76,7 +74,7 @@ export default function FiltersWithSummary({
               },
             }}
           >
-            {statuses.map((statusObj) => {
+            {statuses.slice().reverse().map((statusObj) => {
               const statusValue = statusObj.value;
               const statusLabel = statusObj.label;
               const count = summary?.porEstado?.[statusValue] || 0;

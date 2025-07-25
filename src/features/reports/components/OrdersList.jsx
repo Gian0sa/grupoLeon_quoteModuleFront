@@ -8,9 +8,12 @@ import {
   Grid,
 } from "@chakra-ui/react";
 import OrderStatusProgress from "./OrderStatusProgress";
+import { useHasAccess } from "../../../shared/utils/permissions";
 
 export default function OrdersList({ detalle, onVerSeguimiento }) {
   const bgCard = useColorModeValue("white", "gray.800");
+
+  const hasAccess = useHasAccess();
 
   return detalle.map((orden, idx) => {
     const color = orden.estadoMeta?.color || "gray.300";
@@ -44,25 +47,27 @@ export default function OrdersList({ detalle, onVerSeguimiento }) {
             {/* Cliente */}
             <Flex align="center" gap={2} mb={2}>
               <Image src="/src/assets/icons/ubicacion.png" boxSize="16px" />
-              <Text fontSize="sm">{orden.cliente.nombre}</Text>
+              <Text fontSize="xs">{orden.cliente.nombre}</Text>
             </Flex>
 
             {/* Fecha */}
             <Flex align="center" gap={2} mb={4}>
               <Image src="/src/assets/icons/reloj.png" boxSize="16px" />
-              <Text fontSize="sm">
+              <Text fontSize="xs">
                 {orden.orden.fechaCreacion} - {orden.orden.horaCreacion}
               </Text>
             </Flex>
 
             {/* Asesor */}
+            {hasAccess("GET:/sellers") && (
             <Flex align="center" gap={3} mb={2}>
               <Box>
                 <Text fontWeight="semibold" fontSize="sm" color="green.600"></Text>
-                <Text>{orden.vendedor}</Text>
-                <Text fontSize="xs">Asesor de ventas</Text>
+                <Text fontSize="xs" fontWeight="bold">{orden.vendedor}</Text>
+                <Text fontSize="2xs" color="green.600">Asesor de ventas</Text>
               </Box>
             </Flex>
+            )}
           </Box>
 
           {/* STATUS BAR */}

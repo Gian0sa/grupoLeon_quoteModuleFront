@@ -1,8 +1,18 @@
-import { FormControl, FormLabel, Spinner, FormErrorMessage } from "@chakra-ui/react";
+import {
+  FormControl,
+  FormLabel,
+  Skeleton,
+  FormErrorMessage,
+} from "@chakra-ui/react";
 import Select from "react-select";
 import { useSellersData } from "../../auth/hooks/queries/authQueries";
 
-export default function SellerSelectReport({ selectedSeller, setSelectedSeller, setValue, error }) {
+export default function SellerSelectReport({
+  selectedSeller,
+  setSelectedSeller,
+  setValue,
+  error,
+}) {
   const { data: sellers, isLoading } = useSellersData();
 
   const rawSellers = (sellers?.sellers || [])
@@ -21,16 +31,21 @@ export default function SellerSelectReport({ selectedSeller, setSelectedSeller, 
   return (
     <FormControl isInvalid={!!error}>
       {isLoading ? (
-        <Spinner size="sm" color="white" />
+        <Skeleton
+          height="32px"
+          borderRadius="20px"
+          startColor="#e2e8f0"
+          endColor="#cbd5e0"
+        />
       ) : (
         <Select
           styles={{
             control: (base) => ({
               ...base,
               backgroundColor: "#f0f4f8",
-              fontSize: "12px", // Reducido de 10px a 12px para mejor legibilidad
+              fontSize: "12px",
               borderColor: "#cbd5e0",
-              minHeight: "32px", // Reducido de 40px a 32px
+              minHeight: "32px",
               height: "32px",
               boxShadow: "none",
               borderRadius: "20px",
@@ -40,7 +55,7 @@ export default function SellerSelectReport({ selectedSeller, setSelectedSeller, 
             }),
             valueContainer: (base) => ({
               ...base,
-              padding: "0 8px", // Reducir padding interno
+              padding: "0 8px",
               fontSize: "12px",
             }),
             input: (base) => ({
@@ -61,28 +76,28 @@ export default function SellerSelectReport({ selectedSeller, setSelectedSeller, 
               color: "#2d3748",
             }),
             indicatorSeparator: () => ({
-              display: "none", // Ocultar el separador
+              display: "none",
             }),
             dropdownIndicator: (base) => ({
               ...base,
-              padding: "4px", // Reducir padding del icono
+              padding: "4px",
             }),
             menu: (base) => ({
               ...base,
               backgroundColor: "#ffffff",
               fontSize: "12px",
-              zIndex: 9999, // Asegurar que esté por encima
+              zIndex: 9999,
             }),
             option: (base, { isFocused, isSelected }) => ({
               ...base,
-              backgroundColor: isSelected 
-                ? "#4299e1" 
-                : isFocused 
-                ? "#e2e8f0" 
+              backgroundColor: isSelected
+                ? "#4299e1"
+                : isFocused
+                ? "#e2e8f0"
                 : "#ffffff",
               color: isSelected ? "#ffffff" : "#2d3748",
               fontSize: "12px",
-              padding: "8px 12px", // Reducir padding de opciones
+              padding: "8px 12px",
               "&:active": {
                 backgroundColor: "#4299e1",
               },
@@ -96,7 +111,7 @@ export default function SellerSelectReport({ selectedSeller, setSelectedSeller, 
           value={selectedSeller}
           placeholder="Selecciona un vendedor"
           isSearchable={true}
-          menuPosition="fixed" // Mejor posicionamiento del menú
+          menuPosition="fixed"
         />
       )}
       <FormErrorMessage>{error?.message}</FormErrorMessage>

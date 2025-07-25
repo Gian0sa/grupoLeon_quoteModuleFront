@@ -13,7 +13,7 @@ export const getReportsBySalesperson = async (
       pagina,
       porPagina,
       ...(estadoOrdenFiltro.length > 0
-        ? { estadoOrdenFiltro: estadoOrdenFiltro.join(",") } // 👈 importante
+        ? { estadoOrdenFiltro: estadoOrdenFiltro.join(",") }
         : {}),
       ...(startDate ? { startDate } : {}),
       ...(endDate ? { endDate } : {}),

@@ -12,6 +12,7 @@ import {
   DrawerCloseButton,
   Flex,
   Button,
+  Skeleton
 } from "@chakra-ui/react";
 import { useDisclosure } from "@chakra-ui/react";
 
@@ -25,6 +26,7 @@ import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { BackButton } from "../../../components/BackButton";
 import ActiveFilters from "./ActiveFilters";
 import { useRules } from "../hooks/queries/configQueries";
+import { useHasAccess } from "../../../shared/utils/permissions";
 
 import styles from "./SalesReport.module.css";
 
@@ -33,7 +35,7 @@ export default function SalespersonReports({ salespersonId }) {
   const { endpoints } = useAuthStore();
   const btnRef = useRef();
 
-  const hasAccess = (endpoint) => endpoints?.includes(endpoint);
+  const hasAccess = useHasAccess();
   const { data: reglas = [], isLoading: reglasLoading } = useRules();
 
 
@@ -79,7 +81,18 @@ const [tempEndDate, setTempEndDate] = useState(null);
     openModal();
   };
 
-  if (isLoading) return <Spinner size="xl" />;
+  if (isLoading) {
+    return (
+      <Box px={6} pt={4}>
+        <Skeleton height="90px" width="100%" mb={4} />
+        <Skeleton height="120px" mb={4} />
+        {[...Array(5)].map((_, i) => (
+          <Skeleton key={i} height="150px" mb={3} borderRadius="md" />
+        ))}
+      </Box>
+    );
+  }
+
   if (error || !data) return <Text color="red.500">Error cargando datos.</Text>;
 
   const { resumen, paginacion, detalle } = data;
@@ -101,7 +114,6 @@ const [tempEndDate, setTempEndDate] = useState(null);
             </div>
           </div>
 
-          {/* 🔹 Renderiza SellerSelectReport solo si el usuario tiene acceso */}
           {hasAccess("GET:/sellers") && (
             <div className={styles.salereport}>
               <SellerSelectReport
