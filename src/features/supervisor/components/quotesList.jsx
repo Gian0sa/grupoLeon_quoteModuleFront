@@ -5,7 +5,6 @@ export function QuotesList() {
     if (error) return <div>Error: {error.message}</div>
     const handleDetail = (quoteId) => {
         navigate(`/supervisor/quotes/${quoteId}`)
-        console.log(quoteId)
     }
     return (
         <div>

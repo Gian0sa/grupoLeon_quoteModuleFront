@@ -6,7 +6,6 @@ import { useNavigate } from "react-router-dom"
 
 export function ProductDetail({ code, onSuccess } ) {
     const { productDetail, isLoadingDetail, errorDetail } = useProductDetail(code.value);
-    console.log(productDetail);
     const { quoteId } = useQuoteStore();
     const addProduct = useQuoteStore((state) => state.addProduct);
 

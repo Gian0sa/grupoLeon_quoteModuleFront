@@ -1,10 +1,8 @@
-import React from "react";
+import { useState } from "react";
 import {
   Box,
   Flex,
   Text,
-  Heading,
-  Grid,
   Table,
   Thead,
   Tbody,
@@ -19,34 +17,13 @@ import {
   Divider,
   Badge
 } from "@chakra-ui/react";
-import { Check, AlertTriangle, X } from "lucide-react";
-import logoImage from "../../../assets/LogoAutopartes.jpg"; // ajusta el path según tu estructura
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
-import { useGetOrderByCode , useGetDeliveryNoteByCode , useGetInvoiceByCode} from "../hooks/queries/reportQueries";
-
-const Step = ({ title, status }) => {
-  const icon = {
-    complete: <Check color="green" size={20} />,
-    warning: <AlertTriangle color="orange" size={20} />,
-    pending: <Box w={3} h={3} bg="gray.400" borderRadius="full" />,
-  }[status];
-
-  const color = {
-    complete: "green.400",
-    warning: "orange.300",
-    pending: "gray.400",
-  }[status];
-
-  return (
-    <Flex direction="column" align="center" gap={1} flex={1}>
-      {icon}
-      <Text fontSize="xs" fontWeight="semibold" color={color} textAlign="center">
-        {title}
-      </Text>
-    </Flex>
-  );
-};
+import { Check } from "lucide-react";
+import { getOrderByCode , getDeliveryNoteByCode , getInvoiceByCode } from "../services/reportService";
+import {
+  generateOrderPDF,
+  generateDeliveryPDF,
+  downloadInvoicePDF
+} from "../utils/pdfGenerators";
 
 const TrackingPage = ({ orden }) => {
   const productos = orden.productos || [];
@@ -57,21 +34,10 @@ const TrackingPage = ({ orden }) => {
   const entregaId = orden?.entrega?.[0]?.id;
   const facturaId = orden?.factura?.[0]?.id;
 
-  const { data: ordenDetalle, isLoading: loadingOrden } = useGetOrderByCode(orderId ?? '', {
-    enabled: !!orderId,
-  });
-
-  const { data: entregaDetalle, isLoading: loadingDetalle } = useGetDeliveryNoteByCode(entregaId ?? '', {
-    enabled: !!entregaId,
-  });
-
-  const { data: invoiceDetalle, isLoading: loagindInvoice } = useGetInvoiceByCode(facturaId ?? '', {
-    enabled: !!facturaId,
-  });
-
-
-
-  console.log("EL ORDEN DETALLE ES : ", ordenDetalle);
+  
+  const [loadingOrden, setLoadingOrden] = useState(false);
+  const [loadingEntrega, setLoadingEntrega] = useState(false);
+  const [loadingFactura, setLoadingFactura] = useState(false);
 
   const bgMain = useColorModeValue("white", "gray.800");
   const bgSection = useColorModeValue("gray.50", "gray.700");
@@ -100,297 +66,42 @@ const TrackingPage = ({ orden }) => {
     },
   ];
 
-  // Función para convertir imagen a base64
-  const getImageDataURL = (img) => {
-    return new Promise((resolve) => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      
-      canvas.width = img.width;
-      canvas.height = img.height;
-      
-      ctx.drawImage(img, 0, 0);
-      resolve(canvas.toDataURL('image/jpeg', 0.8));
-    });
-  };
-
   const handleVerOrden = async () => {
-    if (!ordenDetalle) return;
-
-    const doc = new jsPDF();
-
-    // Fuente por defecto
-    doc.setFont("helvetica", "normal");
-
-    // === ENCABEZADO ===
-    doc.setLineWidth(0.5);
-    for (let i = 0; i < 15; i++) {
-      doc.line(14 + (i * 2), 8, 14 + (i * 2), 12);
-    }
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(24);
-    doc.text("orden de venta", 14, 25);
-
-    // === AGREGAR LOGO ===
-    try {
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
-        img.src = logoImage;
-      });
-
-      const imageDataURL = await getImageDataURL(img);
-      
-      // Agregar la imagen al PDF (posición x, y, ancho, alto)
-      doc.addImage(imageDataURL, 'JPEG', 165, 5, 30, 30);
-      
-    } catch (error) {
-      console.warn("No se pudo cargar el logo, usando placeholder:", error);
-      // Fallback: círculo con texto si no se puede cargar la imagen
-      doc.setLineWidth(1);
-      doc.circle(180, 20, 15);
-      doc.setFontSize(10);
-      doc.text("LOGO", 175, 22);
-    }
-
-    // === INFO EMPRESA ===
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.text("DE", 14, 45);
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.text("Autopartes SA", 14, 52);
-
-    // === INFO DOCUMENTO ===
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.text("N° DE ORDEN", 140, 45);
-    doc.text("FECHA", 140, 52);
-    doc.text("HORA", 140, 59);
-
-    doc.text(`${String(ordenDetalle.docNum || "")}`, 180, 45);
-    doc.text(String(ordenDetalle.docDate?.slice(0, 10) || "-"), 180, 52);
-    doc.text(String(ordenDetalle.time || "-"), 180, 59);
-
-    // === CLIENTE ===
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.text("DATOS DEL CLIENTE", 14, 80);
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.text(String(ordenDetalle.cardName || "-"), 14, 87);
-    doc.text(String(ordenDetalle.cardCode || "-"), 14, 92);
-    doc.text(String(ordenDetalle.address || "-"), 14, 97);
-
-    // === TABLA ===
-    const tableData = ordenDetalle.lines.map((line, index) => [
-      String(index + 1),
-      String(line.itemCode || "-"),
-      String(line.description || "-"),
-      String(line.quantity || "1"),
-      String(parseFloat(line.unitPrice || 0).toFixed(2)),
-      String(parseFloat(line.lineTotal || 0).toFixed(2))
-    ]);
-
-    autoTable(doc, {
-      startY: 110,
-      head: [["#", "CÓDIGO", "DESCRIPCIÓN", "CANT.", "PRECIO", "TOTAL"]],
-      body: tableData,
-      styles: {
-        fontSize: 8,
-        cellPadding: 2
-      },
-      headStyles: {
-        fillColor: [255, 255, 255],
-        textColor: [0, 0, 0],
-        fontStyle: 'bold',
-        lineWidth: 0.3,
-        lineColor: [0, 0, 0]
-      },
-      columnStyles: {
-        0: { cellWidth: 10, halign: 'center' },
-        1: { cellWidth: 25 },
-        2: { cellWidth: 70 },
-        3: { cellWidth: 15, halign: 'right' },
-        4: { cellWidth: 20, halign: 'right' },
-        5: { cellWidth: 25, halign: 'right' }
-      },
-      margin: { left: 14 }
-    });
-
-    const finalY = doc.lastAutoTable.finalY;
-
-    // === TOTALES CALCULADOS (sin confiar en backend) ===
-    const subtotal = ordenDetalle.lines.reduce((acc, item) => {
-      const sinIGV = parseFloat(item.lineTotal || 0) / 1.18;
-      return acc + sinIGV;
-    }, 0);
-
-    const igv = subtotal * 0.18;
-    const total = subtotal + igv;
-
-    // Subtotal
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.text("Subtotal", 155, finalY + 15);
-    doc.text(subtotal.toFixed(2), 185, finalY + 15);
-
-    // IGV
-    doc.text("IGV 18.0%", 155, finalY + 22);
-    doc.text(igv.toFixed(2), 185, finalY + 22);
-
-    // TOTAL
-    doc.setLineWidth(1);
-    doc.rect(145, finalY + 30, 50, 12);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
-    doc.text("TOTAL", 148, finalY + 38);
-    doc.text(`${total.toFixed(2)} S/`, 170, finalY + 38);
-
-    // Guardar PDF
-    doc.save(`Orden-Venta-${ordenDetalle.docNum}.pdf`);
-  };
-
-   const handleVerEntrega = async () => {
-    console.log(entregaDetalle);
-    if (!entregaDetalle) return;
+  if (!orderId) return;
+  setLoadingOrden(true);
   try {
-    // Obtener los detalles de la entrega
-    
-    if (!entregaDetalle) {
-      console.error("No se encontraron datos de la entrega");
-      return;
-    }
-
-    const doc = new jsPDF();
-
-    // Configuración inicial
-    doc.setFont("helvetica", "normal");
-
-    // === ENCABEZADO ===
-    doc.setLineWidth(0.5);
-    for (let i = 0; i < 15; i++) {
-      doc.line(14 + (i * 2), 8, 14 + (i * 2), 12);
-    }
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(24);
-    doc.text("GUÍA DE REMISIÓN", 14, 25);
-
-    // === AGREGAR LOGO ===
-    try {
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
-        img.src = logoImage;
-      });
-
-      const imageDataURL = await getImageDataURL(img);
-      doc.addImage(imageDataURL, 'JPEG', 165, 5, 30, 30);
-    } catch (error) {
-      console.warn("No se pudo cargar el logo:", error);
-      doc.setLineWidth(1);
-      doc.circle(180, 20, 15);
-      doc.setFontSize(10);
-      doc.text("LOGO", 175, 22);
-    }
-
-    // === INFORMACIÓN BÁSICA ===
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.text("N° DE GUÍA:", 14, 45);
-    doc.text("FECHA:", 14, 52);
-    doc.text("CLIENTE:", 14, 59);
-    doc.text("DIRECCIÓN:", 14, 66);
-
-    doc.setFont("helvetica", "normal");
-    doc.text(String(entregaDetalle.docNum || ""), 40, 45);
-    doc.text(String(entregaDetalle.docDate?.slice(0, 10) || "-"), 40, 52);
-    doc.text(String(entregaDetalle.cardName || "-"), 40, 59);
-    doc.text(String(entregaDetalle.address || "-"), 40, 66);
-
-    // === INFORMACIÓN ADICIONAL ===
-    doc.setFont("helvetica", "bold");
-    doc.text("MONEDA:", 140, 45);
-    doc.text("TOTAL:", 140, 52);
-
-    doc.setFont("helvetica", "normal");
-    doc.text(String(entregaDetalle.currency || "-"), 180, 45);
-    doc.text(String(entregaDetalle.total || "-"), 180, 52);
-
-    // === TABLA DE PRODUCTOS ===
-    const tableData = entregaDetalle.lines.map((line, index) => [
-      String(index + 1),
-      String(line.itemCode || "-"),
-      String(line.description || "-"),
-      String(line.quantity || "1"),
-      String(parseFloat(line.unitPrice || 0).toFixed(2)),
-      String(parseFloat(line.lineTotal || 0).toFixed(2))
-    ]);
-
-    autoTable(doc, {
-      startY: 80,
-      head: [["#", "CÓDIGO", "DESCRIPCIÓN", "CANT.", "PRECIO", "TOTAL"]],
-      body: tableData,
-      styles: {
-        fontSize: 8,
-        cellPadding: 2
-      },
-      headStyles: {
-        fillColor: [255, 255, 255],
-        textColor: [0, 0, 0],
-        fontStyle: 'bold',
-        lineWidth: 0.3,
-        lineColor: [0, 0, 0]
-      },
-      columnStyles: {
-        0: { cellWidth: 10, halign: 'center' },
-        1: { cellWidth: 25 },
-        2: { cellWidth: 70 },
-        3: { cellWidth: 15, halign: 'right' },
-        4: { cellWidth: 20, halign: 'right' },
-        5: { cellWidth: 25, halign: 'right' }
-      },
-      margin: { left: 14 }
-    });
-
-    // Guardar PDF
-    doc.save(`Guia-Remision-${entregaDetalle.docNum}.pdf`);
+    const ordenDetalle = await getOrderByCode(orderId);
+    await generateOrderPDF(ordenDetalle);
   } catch (error) {
-    console.error("Error al generar PDF de entrega:", error);
+    console.error("Error al obtener orden:", error);
+  } finally {
+    setLoadingOrden(false);
   }
 };
 
-  const handleVerFactura = async () => {
-  if (!invoiceDetalle) return;
-
-  console.log("el invoic es : ",invoiceDetalle);
-
-  const url = `${import.meta.env.VITE_API_URL}/reportModule/pdf/${invoiceDetalle.numAtCard}`;
-
+const handleVerEntrega = async () => {
+  if (!entregaId) return;
+  setLoadingEntrega(true);
   try {
-    const response = await fetch(url);
-    const blob = await response.blob();
-    const blobUrl = window.URL.createObjectURL(blob);
+    const entregaDetalle = await getDeliveryNoteByCode(entregaId);
+    await generateDeliveryPDF(entregaDetalle);
+  } catch (error) {
+    console.error("Error al obtener entrega:", error);
+  } finally {
+    setLoadingEntrega(false);
+  }
+};
 
-    const link = document.createElement("a");
-    link.href = blobUrl;
-    link.download = `Factura_${invoiceDetalle.id}.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(blobUrl);
-  } catch (err) {
-    alert("No se pudo descargar el archivo.");
+const handleVerFactura = async () => {
+  if (!facturaId) return;
+  setLoadingFactura(true);
+  try {
+    const invoiceDetalle = await getInvoiceByCode(facturaId);
+    await downloadInvoicePDF(invoiceDetalle);
+  } catch (error) {
+    console.error("Error al obtener factura:", error);
+  } finally {
+    setLoadingFactura(false);
   }
 };
 
@@ -497,16 +208,17 @@ const TrackingPage = ({ orden }) => {
             <Text fontSize="sm" color={textMuted}>Monto:</Text>
             <Text fontSize="sm" fontWeight="medium">${orden.orden.montoUsd.toFixed(2)}</Text>
           </HStack>
-          <Button 
-            size="sm" 
-            colorScheme="green" 
-            variant="solid"
-            w="full"
-            onClick={handleVerOrden}
-            rightIcon={<Box w={3} h={3} borderRadius="full" bg="white" />}
-          >
-            Ver detalles
-          </Button>
+         <Button 
+          size="sm" 
+          colorScheme="green" 
+          variant="solid"
+          w="full"
+          onClick={handleVerOrden}
+          isLoading={loadingOrden}
+          isDisabled={!orderId || loadingOrden}
+        >
+          Ver detalles
+        </Button>
         </Box>
       </Box>
 
@@ -525,14 +237,14 @@ const TrackingPage = ({ orden }) => {
                   <Text fontSize="sm" color={textMuted}>Fecha:</Text>
                   <Text fontSize="sm" fontWeight="medium">{e.fecha}</Text>
                 </HStack>
-
-                <Button 
-                  size="sm" 
-                  colorScheme="green" 
+                <Button
+                  size="sm"
+                  colorScheme="green"
                   variant="solid"
                   w="full"
-                  onClick={() => handleVerEntrega(e)}
-                  rightIcon={<Box w={3} h={3} borderRadius="full" bg="white" />}
+                  onClick={handleVerEntrega}
+                  isLoading={loadingEntrega}
+                  isDisabled={!entregaId || loadingEntrega}
                 >
                   Ver detalles
                 </Button>
@@ -565,13 +277,14 @@ const TrackingPage = ({ orden }) => {
                   <Text fontSize="sm" color={textMuted}>Monto:</Text>
                   <Text fontSize="sm" fontWeight="medium">${f.montoUsd.toFixed(2)}</Text>
                 </HStack>
-                <Button 
-                  size="sm" 
-                  colorScheme="green" 
+               <Button
+                  size="sm"
+                  colorScheme="green"
                   variant="solid"
                   w="full"
-                  onClick={() => handleVerFactura(f)}
-                  rightIcon={<Box w={3} h={3} borderRadius="full" bg="white" />}
+                  onClick={handleVerFactura}
+                  isLoading={loadingFactura}
+                  isDisabled={!facturaId || loadingFactura}
                 >
                   Ver detalles
                 </Button>

@@ -4,7 +4,6 @@ import { useSupervisorQueries } from "../hooks/queries/supervisorQueries"
 export function QuoteDetail() {
     const { quoteId } = useParams()
     const { data, isLoading, error } = useSupervisorQueries(quoteId)
-    console.log(data)
     if (isLoading) return <div>Loading...</div>
     if (error) return <div>Error: {error.message}</div>
     return (

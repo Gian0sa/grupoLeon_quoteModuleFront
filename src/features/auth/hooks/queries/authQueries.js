@@ -6,7 +6,6 @@ export function useSellersData() {
     queryKey: ["sellersData"],
     queryFn: sellersData,
     onSuccess: (data) => {
-      console.log(data);
     },
     onError: (error) => {
       console.error("Error al obtener los datos de los vendedores:", error);

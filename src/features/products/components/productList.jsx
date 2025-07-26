@@ -7,8 +7,7 @@ export function ProductList({ products }) {
     const { isOpen, onOpen, onClose } = useDisclosure();
     const [selectedProduct, setSelectedProduct] = useState(null);
 
-    const handleView = (product) => {
-        console.log("product", product);    
+    const handleView = (product) => {  
         setSelectedProduct(product.id);
         onOpen();
     };
