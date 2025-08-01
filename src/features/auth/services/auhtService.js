@@ -3,6 +3,7 @@ import { adaptUsertoSession } from "../adapters/authAdapter";
 
 export const loginUser = async (credentials) => {
   const response = await axiosInstance.post("/authModule/login", adaptUsertoSession(credentials));
+  console.log(response)
   return response.data;
 };
 

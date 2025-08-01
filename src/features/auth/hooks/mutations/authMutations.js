@@ -8,7 +8,7 @@ export function useAuthMutations() {
   const navigate = useNavigate();
 
   const loginMutation = useMutation({
-  mutationFn: loginUser,
+    mutationFn: loginUser,
     onSuccess: (res) => {
       login({
         token: res.token,
@@ -20,9 +20,8 @@ export function useAuthMutations() {
         sapCookies: res.sapCookies,
       });
       navigate("/dashboard");
-    }
+    },
   });
-
 
   const registerMutation = useMutation({
     mutationFn: registerUser,

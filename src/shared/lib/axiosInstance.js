@@ -48,14 +48,23 @@ axiosInstance.interceptors.request.use(
   },
   (error) => Promise.reject(error)
 );
-
-
 axiosInstance.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+    const isAuthError = error.response?.status === 401;
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    let path = "";
+    try {
+      const url = new URL(originalRequest.url, axiosInstance.defaults.baseURL);
+      path = url.pathname;
+    } catch (e) {
+      console.warn("⚠️ No se pudo resolver la URL del request:", originalRequest.url);
+    }
+
+    const isLoginOrRegister = ["/authModule/login", "/authModule/register"].includes(path);
+
+    if (isAuthError && !originalRequest._retry && !isLoginOrRegister) {
       originalRequest._retry = true;
 
       if (isRefreshing) {

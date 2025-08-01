@@ -14,6 +14,7 @@ import { Requests } from "../features/dashboard/components/Requests.jsx";
 import { RequestQuotePage } from "../features/supervisor/pages/RequestQuotePage.jsx";
 import { ReportPage } from "../features/reports/pages/ReportPage.jsx";
 import { ConfigRulesPage } from "../features/reports/pages/ConfigPage.jsx";
+import { ReceivablePage } from "../features/receivable/pages/ReceivablePage.jsx";
 
 const AppRoutes = () => {
   return (
@@ -40,6 +41,7 @@ const AppRoutes = () => {
       <Route path="/detailRequests" element={<RequestQuotePage />} />
       <Route path="/reports" element={<ReportPage />} />
       <Route path="/configrules" element={<ConfigRulesPage />} />
+      <Route path="/receivable" element={<ReceivablePage />} />
     </Routes> 
   );
 };

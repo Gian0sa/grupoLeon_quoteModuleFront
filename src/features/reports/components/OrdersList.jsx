@@ -6,6 +6,7 @@ import {
   useColorModeValue,
   Button,
   Grid,
+  VStack,
 } from "@chakra-ui/react";
 import OrderStatusProgress from "./OrderStatusProgress";
 import { useHasAccess } from "../../../shared/utils/permissions";
@@ -71,23 +72,33 @@ export default function OrdersList({ detalle, onVerSeguimiento }) {
           </Box>
 
           {/* STATUS BAR */}
-          <Box ml={4}>
-            <OrderStatusProgress
-              estadoMeta={orden.estadoMeta}
-              estadoOrden={orden.estadoOrden}
-            />
-            <Button
-              size="xs"
-              mt={2}
-              colorScheme={
-               `${orden.estadoMeta.color}`
-              }
-              variant="outline"
-              borderRadius="full"
-            >
-              {estadoGeneral}
-            </Button>
-          </Box>
+        <Flex
+  direction="column"
+  align="center"
+  maxW="100px" 
+  w="100px"
+  minH="140px" // Altura mínima
+>
+  <OrderStatusProgress 
+    estadoMeta={orden.estadoMeta} 
+    estadoOrden={orden.estadoOrden} 
+  />
+  <Button
+    size="xs"
+    colorScheme={`${orden.estadoMeta.color}`}
+    variant="outline"
+    borderRadius="full"
+    whiteSpace="normal"
+    textAlign="center"
+    px={2}
+    w="100%"
+    mt="auto"
+    py={1}
+    height="auto"
+  >
+    {estadoGeneral}
+  </Button>
+</Flex>
         </Grid>
       </Box>
     );

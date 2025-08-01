@@ -1,9 +1,11 @@
 export function adaptUsertoSession(user) {
-    return {
-        email: user.email,
-        password: user.password,
-    }
+  return {
+    email: user.email,
+    password: user.password,
+    recaptchaToken: user.recaptchaToken,
+  };
 }
+
 
 export function adaptUsertoRegister(user) {
     return {

@@ -13,7 +13,10 @@ import {
     Link,
     Flex,
     Spacer,
+    useToast
   } from "@chakra-ui/react";
+
+  import ReCAPTCHA from "react-google-recaptcha";   
   import { useForm } from "react-hook-form";
   import { useAuthMutations } from "../hooks/mutations/authMutations";
   import styles from "./Login.module.css";  
@@ -22,6 +25,7 @@ import {
   import { useAuthStore } from "../stores/useAuthStore";
   import { useEffect } from "react";
   import logoGuruverso from '../../../assets/icons/logo-guruverso-g.png';
+  import { useRef , useState } from "react";
 
   
   export function Login() {
@@ -30,6 +34,13 @@ import {
       register,
       formState: { errors },
     } = useForm();
+
+    const toast = useToast();
+    const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
+
+    const recaptchaRef = useRef(null);
+    const [captchaError, setCaptchaError] = useState(false);
+
   
     const navigate = useNavigate();
     const token = useAuthStore((state)=>state.token)
@@ -52,7 +63,25 @@ import {
     const boxBg = useColorModeValue("white", "gray.800");
   
     const onSubmit = (data) => {
-      login.mutate(data);
+    const token = recaptchaRef.current?.getValue();
+
+    if (!token) {
+        setCaptchaError(true);
+        return;
+    }
+      login.mutate({ ...data, recaptchaToken: token },  {
+        onError: (error) => {
+            const message = error?.response?.data?.message || "Error al iniciar sesión";
+            toast({
+            title: "Inicio de sesión fallido",
+            description: message,
+            status: "error",
+            duration: 5000,
+            isClosable: true,
+            position: "top",
+            });
+        }
+        });
     };
   
     return (
@@ -154,6 +183,18 @@ import {
               ¿Olvidaste tu contraseña?
             </Link>
           </Flex>
+
+          <ReCAPTCHA
+            ref={recaptchaRef}
+            sitekey={siteKey}
+            onChange={() => setCaptchaError(false)}
+            />
+            {captchaError && (
+            <Box color="red.500" fontSize="sm">
+                Por favor, verifica que no eres un robot.
+            </Box>
+            )}
+
 
           {/* Botón */}
           <Button

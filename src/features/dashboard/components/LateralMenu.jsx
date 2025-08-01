@@ -28,7 +28,8 @@ import {
   MdPerson,
   MdHelp,
   MdSupport,
-  MdExitToApp
+  MdExitToApp,
+  MdBubbleChart
 } from 'react-icons/md';
 
 import { useDisclosure } from '@chakra-ui/react';
@@ -54,7 +55,8 @@ export function LateralMenu() {
     { label: 'Historial de cotizaciones', icon: MdHistory, path: '/history' },
     { label: 'Nuevo usuario', icon: MdPersonAdd, path: '/register' },
     { label: 'Gestión de solicitudes', icon: MdAssignment, path: '/requests' },
-    { label: 'Seguimiento de Pedidos', icon: MdBarChart, path: '/reports' }
+    { label: 'Seguimiento de Pedidos', icon: MdBarChart, path: '/reports' },
+    { label: 'Cuentas por Cobrar', icon: MdBubbleChart, path: '/receivable' }
   ];
 
   const accountOptions = [
