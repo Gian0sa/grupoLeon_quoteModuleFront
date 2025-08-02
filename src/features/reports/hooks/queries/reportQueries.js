@@ -6,6 +6,7 @@ import {
   getOrderByCode,
   getInvoiceByCode,
   getPdfByCode,
+  getAccountsReceivable
 } from "../../services/reportService";
 
 export const useGetSalespersonReports = (
@@ -68,5 +69,13 @@ export const useGetPdfByCode = (code, enabled = true) => {
     queryKey: ["pdfByCode", code],
     queryFn: () => getPdfByCode(code),
     enabled: Boolean(code) && Boolean(enabled),
+  });
+};
+
+export const useGetAccountsReceivable = (params, enabled = true) => {
+  return useQuery({
+    queryKey: ["accountsReceivable", params],
+    queryFn: () => getAccountsReceivable(params),
+    enabled: Boolean(params?.vendedor) && Boolean(enabled),
   });
 };

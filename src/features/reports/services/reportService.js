@@ -69,3 +69,18 @@ export const getPdfByCode = async (code) => {
         return null;
     }
 }
+
+export const getAccountsReceivable = async ({ vendedor, cliente }) => {
+  try {
+    let url = `/accountsReceivable?vendedor=${vendedor}`;
+    if (cliente) {
+      url += `&cliente=${cliente}`;
+    }
+
+    const response = await axiosInstance.get(url);
+    return response.data;
+  } catch (error) {
+    console.error("Error al obtener cuentas por cobrar:", error);
+    return null;
+  }
+};
