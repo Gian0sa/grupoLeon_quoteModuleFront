@@ -7,13 +7,11 @@ import {
   Text,
   Button,
   Icon,
-  Badge,
   Box,
   Tooltip,
-  CircularProgress,
-  CircularProgressLabel
 } from "@chakra-ui/react";
-import { FiEye, FiFileText, FiAlertTriangle, FiMapPin, FiUser } from "react-icons/fi";
+import { FiEye, FiFileText, FiAlertTriangle, FiMapPin } from "react-icons/fi";
+import { generateReceivablePDF } from "../utils/receivablePDF";
 
 export function DebtCard({ debt, onViewInvoices, onViewDetails }) {
   const formatCurrency = (amount, currency = 'PEN') => {
@@ -28,7 +26,7 @@ export function DebtCard({ debt, onViewInvoices, onViewDetails }) {
   const getStatusColor = (estado) => {
     switch (estado) {
       case 'vencido': return 'red';
-      case 'parcialmente_vencido': return 'yellow';
+      case 'parcialmente_vencido': return 'blue';
       case 'al_dia': return 'green';
       default: return 'gray';
     }
@@ -43,17 +41,9 @@ export function DebtCard({ debt, onViewInvoices, onViewDetails }) {
     }
   };
 
-  // Calcular porcentaje de documentos vencidos
   const porcentajeVencido = debt.totalDocumentos > 0 
     ? Math.round((debt.documentosVencidos / debt.totalDocumentos) * 100)
     : 0;
-
-  // Determinar el color del progreso basado en el porcentaje
-  const getProgressColor = () => {
-    if (porcentajeVencido === 0) return 'green';
-    if (porcentajeVencido <= 30) return 'yellow';
-    return 'red';
-  };
 
   const statusColor = getStatusColor(debt.estado);
 
@@ -70,98 +60,115 @@ export function DebtCard({ debt, onViewInvoices, onViewDetails }) {
       transition="all 0.2s"
       mb={4}
     >
-      <CardBody p={4}>
-        <Flex justify="space-between" align="flex-start">
+      <CardBody p={6}>
+        <Flex justify="space-between" align="flex-start" direction="column" spacing={4}>
+          
+          {/* Encabezado con nombre de la empresa */}
+          <Box mb={4}>
+            <Text 
+              fontSize="xl" 
+              fontWeight="bold" 
+              color={`${statusColor}.500`}
+              mb={2}
+            >
+              {debt.nombre}
+            </Text>
+          </Box>
 
-          <VStack align="flex-start" spacing={3} flex="1">
-
-            <HStack spacing={2}>
-                <Icon as={FiMapPin} color="gray.500" size="14px" />
-                <Text fontSize="sm" color={statusColor} fontWeight="semibold" noOfLines={2}>
-                  {debt.nombre}
-                </Text>
-              </HStack>
+          {/* Información básica */}
+          <VStack align="flex-start" spacing={2} w="100%">
             
-
-            <VStack align="flex-start" spacing={1}>
-              <HStack spacing={2}>
-                <Text colorScheme="green" fontSize="xs" fontWeight="bold">
-                    RUC/DNI: {debt.ruc}
+            <HStack spacing={4} w="100%">
+              <Text fontSize="md" color="gray.600" fontWeight="medium">
+                RUC / DNI: 
+                <Text as="span" color="gray.800" ml={2}>
+                  {debt.ruc}
                 </Text>
-                </HStack>
-
-              <HStack spacing={2}>
-                <Text fontSize="xs" color="gray.500">
-                  Vendedor: {debt.vendedor}
-                </Text>
-              </HStack>
-            </VStack>
-              {debt.documentosVencidos > 0 && (
-                <Text color="red.500">
-                  <Icon as={FiAlertTriangle} mr={1} />
-                  {debt.documentosVencidos} documentos vencidos
-                </Text>
-                )}
-
-            {/* Fecha o información adicional */}
-            <HStack spacing={2}>
-              
-              <Text fontSize="xs" color="gray.500">
-                Monto Pendiente: {formatCurrency(debt.saldoPrincipal, debt.monedaPrincipal)}
               </Text>
             </HStack>
 
-            {/* Saldos vencidos si existen */}
-            {(debt.saldoVencidoPEN > 0 || debt.saldoVencidoUSD > 0) && (
-              <Box>
-                <Text fontSize="xs" color="red.600" fontWeight="medium">
-                  Vencido: 
-                  {debt.saldoVencidoPEN > 0 && ` ${formatCurrency(debt.saldoVencidoPEN, 'PEN')}`}
-                  {debt.saldoVencidoUSD > 0 && ` ${formatCurrency(debt.saldoVencidoUSD, 'USD')}`}
+            <HStack spacing={4} w="100%">
+              <Text fontSize="md" color="gray.600" fontWeight="medium">
+                Vendedor: 
+                <Text as="span" color="gray.800" ml={2}>
+                  {debt.vendedor}
                 </Text>
-              </Box>
+              </Text>
+            </HStack>
+
+          <Flex alignItems="flex-end">
+          <Flex flexDirection="column">   
+            <HStack spacing={4} w="100%">
+              <Text fontSize="sm" color="gray.600" fontWeight="medium">
+                Documentos: 
+                <Text as="span" color="gray.800" ml={2}>
+                  {debt.totalDocumentos}
+                </Text>
+              </Text>
+            </HStack>
+
+            <HStack spacing={4} w="100%">
+              <Text fontSize="sm" color="gray.600" fontWeight="medium">
+                Monto pendiente: 
+                <Text as="span" color="gray.800" fontWeight="bold" ml={2}>
+                  {formatCurrency(debt.saldoPrincipal, debt.monedaPrincipal)}
+                </Text>
+              </Text>
+            </HStack>
+            </Flex>
+              <Button
+                size="md"
+                variant="outline"
+                colorScheme="gray"
+                borderRadius="full"
+                fontSize="sm"
+                px={6}
+                onClick={() => onViewInvoices?.(debt)}
+              >
+                Ver facturas
+              </Button>
+            </Flex>
+
+            <Box w="100%" h="1px" bg="gray.500" my={4} />
+
+            <Flex>
+
+            {debt.documentosVencidos > 0 && (
+              <VStack align="flex-start" spacing={2} w="100%">
+                <Text 
+                  fontSize="sm" 
+                  fontWeight="bold" 
+                  color={`${statusColor}.500`}
+                >
+                  {debt.documentosVencidos.toString().padStart(2, '0')} documentos vencidos
+                </Text>
+                
+                <Text fontSize="sm" color="gray.600" fontWeight="medium">
+                  Monto vencido: 
+                  <Text as="span" color={`${statusColor}.600`} fontWeight="bold" ml={2}>
+                    {debt.saldoVencidoPEN > 0 && formatCurrency(debt.saldoVencidoPEN, 'PEN')}
+                    {debt.saldoVencidoUSD > 0 && formatCurrency(debt.saldoVencidoUSD, 'USD')}
+                  </Text>
+                </Text>
+              </VStack>
             )}
 
+             
+           <Button
+            size="md"
+            colorScheme={statusColor}
+            borderRadius="full"
+            fontSize="sm"
+            px={6}
+            onClick={() => generateReceivablePDF(debt)}
+          >
+            Ver detalles
+          </Button>
+            </Flex>
+
           </VStack>
-
-          {/* Sección derecha - Progreso y acciones */}
-          <VStack spacing={3} align="center" minW="120px">
-
-            <Tooltip label="Ver detalles">
-              <Button
-                size="xs"
-                border="none"
-                fontSize="2xs"
-                px={4}
-                onClick={() => onViewDetails?.(debt)}
-              >
-                Visualizar facturas 
-              </Button>
-            </Tooltip>
-            
-
-            {/* Botón de acción principal */}
-            <Tooltip label="Ver detalles">
-              <Button
-                size="sm"
-                colorScheme={statusColor}
-                borderRadius="full"
-                fontSize="xs"
-                px={4}
-                onClick={() => onViewDetails?.(debt)}
-              >
-                Ver detalles
-              </Button>
-            </Tooltip>
-
-            {/* Información de documentos */}
-            <VStack spacing={0} fontSize="xs" color="gray.500">
-              <Text>
-                <Icon as={FiFileText} mr={1} />
-                {debt.totalDocumentos} docs
-              </Text>
-            </VStack>
-          </VStack>
+           
+          
         </Flex>
       </CardBody>
     </Card>

@@ -72,10 +72,12 @@ const TrackingPage = ({ orden }) => {
   };
 
   const handleVerFactura = async () => {
+    console.log(facturaId);
     if (!facturaId) return;
     setLoadingFactura(true);
     try {
       const invoiceDetalle = await getInvoiceByCode(facturaId);
+      console.log(invoiceDetalle);
       await downloadInvoicePDF(invoiceDetalle);
     } catch (error) {
       console.error("Error al obtener factura:", error);
