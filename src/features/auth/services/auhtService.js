@@ -3,7 +3,6 @@ import { adaptUsertoSession } from "../adapters/authAdapter";
 
 export const loginUser = async (credentials) => {
   const response = await axiosInstance.post("/authModule/login", adaptUsertoSession(credentials));
-  console.log(response)
   return response.data;
 };
 
@@ -26,3 +25,19 @@ export const sellersData = async () => {
   const response = await axiosInstance.get("/authModule/sellers");
   return response.data;
 };
+
+export const services = async () => {
+  const response = await axiosInstance.get("/authModule/services");
+  return response.data;
+};
+
+export const profileUser = async () => {
+  const response = await axiosInstance.get("/authModule/profile");
+  console.log("Profile data:", response.data);
+  return response.data;
+};
+
+export const updatePasswordProfile = async (passwordData) => {
+  const response = await axiosInstance.put("/authModule/profile", passwordData);
+  return response.data;
+}

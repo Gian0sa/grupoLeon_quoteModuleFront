@@ -128,7 +128,7 @@ export const generateDeliveryPDF = async (entregaDetalle) => {
   doc.setLineWidth(0.5);
   for (let i = 0; i < 15; i++) doc.line(14 + (i * 2), 8, 14 + (i * 2), 12);
 
-  doc.setFont("helvetica", "bold").setFontSize(24).text("GUÍA DE REMISIÓN", 14, 25);
+  doc.setFont("helvetica", "bold").setFontSize(24).text("GUÍA DE SALIDA", 14, 25);
   await addLogo(doc);
 
   doc.setFont("helvetica", "bold").setFontSize(10);
@@ -182,22 +182,87 @@ export const generateDeliveryPDF = async (entregaDetalle) => {
     margin: { left: 14 },
   });
 
-  doc.save(`Guia-Remision-${entregaDetalle.docNum}.pdf`);
+  doc.save(`Guia-Salida-${entregaDetalle.docNum}.pdf`);
 };
 
 export const downloadInvoicePDF = async (invoiceDetalle) => {
-  if (!invoiceDetalle?.numAtCard) return;
+  if (!invoiceDetalle?.numAtCard) {
+    console.error("❌ No se recibió numAtCard en invoiceDetalle");
+    return;
+  }
 
   const url = `${import.meta.env.VITE_API_URL}/reportModule/pdf/${invoiceDetalle.numAtCard}`;
-
+  
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${localStorage.getItem("token")}`, 
+        "Accept": "application/pdf",
+      },
+    });
+
+    //DESCOMENTAR EN PRODUCCIÓN
+    // const response = await fetch(url, {
+    //   method: "GET",
+    //   headers: {
+    //     "Accept": "application/pdf",
+    //   },
+    //   credentials: "include", // 👈 Importante: envía cookies
+    // });
+
+    if (!response.ok) {
+      const text = await response.text(); 
+      throw new Error(`Error ${response.status}: ${text}`);
+    }
+
     const blob = await response.blob();
     const blobUrl = window.URL.createObjectURL(blob);
 
     const link = document.createElement("a");
     link.href = blobUrl;
-    link.download = `Factura_${invoiceDetalle.id}.pdf`;
+    link.download = `Factura_${invoiceDetalle.numAtCard}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(blobUrl);
+
+  } catch (err) {
+    console.error("❌ No se pudo descargar el archivo:", err);
+    alert(`No se pudo descargar el archivo: ${err.message}`);
+  }
+};
+
+export const downloadInvoicePDFdirectly = async (referenceCode) => {
+
+  console.log("Descargando PDF directo para referencia:", referenceCode);
+
+  const url = `${import.meta.env.VITE_API_URL}/reportModule/pdf/${referenceCode}`;
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${localStorage.getItem("token")}`, 
+        "Accept": "application/pdf",
+      },
+    });
+
+    //DESCOMENTAR EN PRODUCCIÓN
+    // const response = await fetch(url, {
+    //   method: "GET",
+    //   headers: {
+    //     "Accept": "application/pdf",
+    //   },
+    //   credentials: "include", // 👈 Importante: envía cookies
+    // });
+
+    const blob = await response.blob();
+    const blobUrl = window.URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = `Factura_${referenceCode}.pdf`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

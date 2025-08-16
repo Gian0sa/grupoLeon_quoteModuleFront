@@ -7,6 +7,7 @@ import {
   VStack,
   HStack,
   Circle,
+  Stack
 } from "@chakra-ui/react";
 
 export default function FiltersWithSummary({
@@ -95,7 +96,7 @@ export default function FiltersWithSummary({
                   py={2}
                   bg="gray.100"
                   color={isActive ? "green.600" : "gray.700"}
-                  border="2px solid"
+                  border="3px solid"
                   borderColor={isActive ? "green.500" : "gray.200"}
                   borderRadius="full"
                   _hover={{
@@ -151,54 +152,62 @@ export default function FiltersWithSummary({
           >
             FECHAS
           </Text>
-          <HStack spacing={4} mb={4}>
-            <Box flex={1}>
-              <Text fontSize="sm" mb={2} color="gray.600">
-                Desde
-              </Text>
-              <Input
-                type="date"
-                size="lg"
-                value={startDate || ""}
-                onChange={(e) => handleDateChange("start", e.target.value)}
-                bg="white"
-                border="2px solid"
-                borderColor="gray.200"
-                borderRadius="full"
-                _focus={{
-                  borderColor: "green.500",
-                  boxShadow: "0 0 0 1px green.500",
-                }}
-                _hover={{
-                  borderColor: "gray.300",
-                }}
-                h="50px"
-              />
-            </Box>
-            <Box flex={1}>
-              <Text fontSize="sm" mb={2} color="gray.600">
-                Hasta
-              </Text>
-              <Input
-                type="date"
-                size="lg"
-                value={endDate || ""}
-                onChange={(e) => handleDateChange("end", e.target.value)}
-                bg="white"
-                border="2px solid"
-                borderColor="gray.200"
-                borderRadius="full"
-                _focus={{
-                  borderColor: "green.500",
-                  boxShadow: "0 0 0 1px green.500",
-                }}
-                _hover={{
-                  borderColor: "gray.300",
-                }}
-                h="50px"
-              />
-            </Box>
-          </HStack>
+          <Stack
+              direction={{ base: "column", md: "row" }} // columna en mobile, fila en pantallas medianas o más
+              spacing={4}
+              mb={4}
+            >
+              <Box flex={1}>
+                <Text fontSize="sm" mb={2} color="gray.600">
+                  Desde
+                </Text>
+                <Input
+                  type="date"
+                  size="lg"
+                  value={startDate || ""}
+                  max={new Date().toISOString().split("T")[0]} 
+                  onChange={(e) => handleDateChange("start", e.target.value)}
+                  bg="white"
+                  border="2px solid"
+                  borderColor="gray.200"
+                  borderRadius="full"
+                  _focus={{
+                    borderColor: "green.500",
+                    boxShadow: "0 0 0 1px green.500",
+                  }}
+                  _hover={{
+                    borderColor: "gray.300",
+                  }}
+                  h="50px"
+                />
+              </Box>
+
+              <Box flex={1}>
+                <Text fontSize="sm" mb={2} color="gray.600">
+                  Hasta
+                </Text>
+                <Input
+                  type="date"
+                  size="lg"
+                  value={endDate || ""}
+                  max={new Date().toISOString().split("T")[0]}
+                  onChange={(e) => handleDateChange("end", e.target.value)}
+                  bg="white"
+                  border="2px solid"
+                  borderColor="gray.200"
+                  borderRadius="full"
+                  _focus={{
+                    borderColor: "green.500",
+                    boxShadow: "0 0 0 1px green.500",
+                  }}
+                  _hover={{
+                    borderColor: "gray.300",
+                  }}
+                  h="50px"
+                />
+              </Box>
+            </Stack>
+
 
           {/* BOTONES */}
           <VStack spacing={3}>

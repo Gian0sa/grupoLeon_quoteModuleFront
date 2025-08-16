@@ -80,6 +80,7 @@ import {
             isClosable: true,
             position: "top",
             });
+            recaptchaRef.current?.reset();
         }
         });
     };

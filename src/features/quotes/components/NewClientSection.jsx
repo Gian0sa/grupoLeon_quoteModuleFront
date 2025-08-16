@@ -8,7 +8,6 @@ export function NewClientSection({
   client
 }) {
   if (!client) return <Text>Cargando cliente...</Text>;
-  console.log(client);
 
   const clientAdapted = adaptBusinessPartner(client);
 

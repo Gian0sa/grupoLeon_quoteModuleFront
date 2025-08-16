@@ -38,6 +38,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../auth/stores/useAuthStore';
 import avatarImg from "../../../assets/icons/avatar.jpg";
 import styles from "./LateralMenu.module.css";
+import { useHasAccess } from '../../../shared/utils/permissions';
 
 export function LateralMenu() {
   const { isOpen, onOpen, onClose } = useDisclosure();
@@ -45,28 +46,38 @@ export function LateralMenu() {
   const navigate = useNavigate();
   const { token, logout, role, username } = useAuthStore();
 
+  const hasAccess = useHasAccess();
+  const hasAdminAccess = hasAccess("PUT:/profile/admin/:userId");
+
   const handleLogout = () => {
     logout();
     navigate('/');
   };
 
   const applicationOptions = [
-    { label: 'Generar cotización', icon: MdRequestQuote, path: '/client' },
-    { label: 'Historial de cotizaciones', icon: MdHistory, path: '/history' },
-    { label: 'Nuevo usuario', icon: MdPersonAdd, path: '/register' },
-    { label: 'Gestión de solicitudes', icon: MdAssignment, path: '/requests' },
-    { label: 'Seguimiento de Pedidos', icon: MdBarChart, path: '/reports' },
-    { label: 'Cuentas por Cobrar', icon: MdBubbleChart, path: '/receivable' }
+    { label: 'Generar cotización', icon: MdRequestQuote, path: '#', access: 'POST:/quotations' },
+    { label: 'Historial de cotizaciones', icon: MdHistory, path: '#', access: 'GET:/quotations' },
+    { label: 'Nuevo usuario', icon: MdPersonAdd, path: '/register', access: 'POST:/users' },
+    { label: 'Gestión de solicitudes', icon: MdAssignment, path: '#', access: 'GET:/requests' },
+    { label: 'Seguimiento de Pedidos', icon: MdBarChart, path: '/reports', access: 'GET:/reports' },
+    { label: 'Cuentas por Cobrar', icon: MdBubbleChart, path: '/receivable', access: 'GET:/receivable' }
   ];
 
   const accountOptions = [
     { label: 'Actualizar perfil', icon: MdPerson, path: '/profile' },
-    { label: 'Preguntas frecuentes', icon: MdHelp, path: '/faq' },
-    { label: 'Asistencia técnica', icon: MdSupport, path: '/support' }
+    { label: 'Preguntas frecuentes', icon: MdHelp, path: '#' },
+    { label: 'Asistencia técnica', icon: MdSupport, path: '#' }
   ];
 
-  const renderMenuOptions = (options) =>
-    options.map(({ label, icon, path }, index) => (
+   const adminOptions = [
+    { label: 'Actualizar usuario', icon: MdPerson, path: '/profileAdmin', access: 'PUT:/profile/admin/:userId'  },
+    { label: 'Actualizar servicios', icon: MdHelp, path: '#' , access: 'PUT:/services/:id'  },
+  ];
+
+const renderMenuOptions = (options) =>
+  options
+    .filter(({ access }) => !access || hasAccess(access)) 
+    .map(({ label, icon, path }, index) => (
       <React.Fragment key={index}>
         <Button
           variant="ghost"
@@ -185,6 +196,22 @@ export function LateralMenu() {
                 </VStack>
               </Box>
             </VStack>
+            {hasAdminAccess && (
+              <Box pt={2}>
+                <Text
+                  fontSize="xs"
+                  fontWeight="bold"
+                  color="green.600"
+                  mb={1}
+                  letterSpacing="wider"
+                  pl="15px"
+                >
+                  ADMIN
+                </Text>
+                <VStack spacing={2} align="stretch">
+                  {renderMenuOptions(adminOptions)}
+                </VStack>
+              </Box>)}
           </DrawerBody>
 
           {/* Footer */}

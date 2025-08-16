@@ -132,7 +132,23 @@ export function DebtCard({ debt, onViewInvoices, onViewDetails }) {
             <Box w="100%" h="1px" bg="gray.500" my={4} />
 
             <Flex>
-
+          {debt.documentosVencidos == 0 && (
+                <VStack align="flex-start" spacing={2} w="100%">
+                  <Text 
+                  fontSize="sm" 
+                  fontWeight="bold" 
+                  color={`${statusColor}.500`}
+                >
+                  0 documentos vencidos
+                </Text>
+                
+                <Text fontSize="sm" color="gray.600" fontWeight="medium">
+                  Monto vencido: 
+                  <Text as="span" color={`${statusColor}.600`} fontWeight="bold" ml={2}>
+                    0
+                  </Text>
+                </Text>
+                  </VStack>)}
             {debt.documentosVencidos > 0 && (
               <VStack align="flex-start" spacing={2} w="100%">
                 <Text 

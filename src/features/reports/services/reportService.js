@@ -62,7 +62,6 @@ export const getInvoiceByCode = async (code) => {
 
 export const getPdfByCode = async (code) => {
     try {
-      console.log("manda al service")
         const response = await axiosInstance.get(`/reportModule/pdf/${code}`);
         return response.data;
     } catch (error) {

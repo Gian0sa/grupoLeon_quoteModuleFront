@@ -15,8 +15,8 @@ import {
   Button,
 } from "@chakra-ui/react";
 import { useState } from "react";
-import { getInvoiceByCode } from "../../../features/reports/services/reportService"; 
-import { downloadInvoicePDF } from "../../../features/reports/utils/pdfGenerators";   // 🔹 ajusta el path a tu proyecto
+import { getPdfByCode } from "../../../features/reports/services/reportService"; 
+import { downloadInvoicePDFdirectly } from "../../../features/reports/utils/pdfGenerators"; 
 
 export default function InvoicesModal({ isOpen, onClose, documentos }) {
   const [loadingRef, setLoadingRef] = useState(null); 
@@ -26,12 +26,9 @@ export default function InvoicesModal({ isOpen, onClose, documentos }) {
 
     setLoadingRef(referenceCode);
     try {
-        console.log("dio click  para descagar");
-      const invoiceDetalle = await getInvoiceByCode(referenceCode);
-      if (!invoiceDetalle) {
-        throw new Error("No se pudo obtener el detalle de la factura");
-      }
-      await downloadInvoicePDF(invoiceDetalle);
+      console.log(referenceCode);
+      
+      await downloadInvoicePDFdirectly(referenceCode);
     } catch (error) {
       console.error("Error al descargar el PDF de la referencia:", error);
       alert("No se pudo descargar el archivo.");

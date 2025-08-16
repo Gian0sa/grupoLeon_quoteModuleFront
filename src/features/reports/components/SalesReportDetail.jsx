@@ -72,7 +72,6 @@ const TrackingPage = ({ orden }) => {
   };
 
   const handleVerFactura = async () => {
-    console.log(facturaId);
     if (!facturaId) return;
     setLoadingFactura(true);
     try {

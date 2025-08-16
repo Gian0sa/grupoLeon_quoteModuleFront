@@ -5,7 +5,6 @@ export function ProductSearch({ setValue }) {
     e.preventDefault();
     const value = e.target.search.value;
     setValue(value);
-    console.log("value:", value);
   };
 
   return (

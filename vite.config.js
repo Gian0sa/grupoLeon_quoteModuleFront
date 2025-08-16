@@ -14,6 +14,6 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
-    allowedHosts: ['brazilian-replication-assume-denied.trycloudflare.com']
+    allowedHosts: ['baghdad-texts-freeze-rat.trycloudflare.com']
   }
 })

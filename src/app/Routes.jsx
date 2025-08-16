@@ -15,6 +15,8 @@ import { RequestQuotePage } from "../features/supervisor/pages/RequestQuotePage.
 import { ReportPage } from "../features/reports/pages/ReportPage.jsx";
 import { ConfigRulesPage } from "../features/reports/pages/ConfigPage.jsx";
 import { ReceivablePage } from "../features/receivable/pages/ReceivablePage.jsx";
+import { Profile } from "../features/auth/pages/Profile.jsx";
+import { ProfileAdmin } from "../features/admin/pages/profileAdmin.jsx";
 
 const AppRoutes = () => {
   return (
@@ -42,6 +44,10 @@ const AppRoutes = () => {
       <Route path="/reports" element={<ReportPage />} />
       <Route path="/configrules" element={<ConfigRulesPage />} />
       <Route path="/receivable" element={<ReceivablePage />} />
+      <Route path="/profile" element={<Profile />} />
+      <Route path="/profileAdmin" element={<ProfileAdmin />} />
+      {/* Supervisor Routes */}
+
     </Routes> 
   );
 };

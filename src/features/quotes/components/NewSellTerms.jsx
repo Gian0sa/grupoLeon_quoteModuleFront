@@ -67,9 +67,6 @@ import {
       }
     };
   
-    
-  
-    console.log("el tipo de pago seleccionado es : ",selectedPaymentType);
   
     const handleUploadPaymentImage = async (file) => {
       try {

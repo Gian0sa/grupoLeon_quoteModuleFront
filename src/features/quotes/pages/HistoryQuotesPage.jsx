@@ -48,11 +48,6 @@ export function HistoryQuotesPage() {
     setOpNum,
 
   } = useQuoteStore();
-  console.log("products : ",products);
-
-  
-  console.log("el selected type en la vista padre es : ",selectedPaymentType);
-
   
     const [tempImage, setTempImage] = useState(null);
 

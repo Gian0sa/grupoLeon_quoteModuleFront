@@ -28,7 +28,6 @@ export function useClientService(quoteId) {
   const { data, isLoading, error } = useGetQuoteById(quoteId);
   const cardcode = data?.clientDocument;
 
-  console.log("la data que trae al reucperar el histiroiaol es : ",data)
 
   const { dataTransports, isLoadingTransports } = useGetTransports();
   const { dataDeliveryForms, isLoadingDeliveryForms } = useGetDeliveryForms();
