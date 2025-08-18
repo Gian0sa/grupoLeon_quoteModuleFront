@@ -18,6 +18,8 @@ export default function OrdersList({ detalle, onVerSeguimiento }) {
     const color = orden.estadoMeta?.color || "gray.300";
     const estadoGeneral = orden.estadoMeta?.status || "Desconocido";
 
+    console.log("Orden:", orden);
+
     // Función para obtener el ícono según el color
     const getIconPath = (baseName) => {
       const isRed =
