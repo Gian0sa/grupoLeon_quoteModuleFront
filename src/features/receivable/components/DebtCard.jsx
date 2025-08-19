@@ -161,10 +161,18 @@ export function DebtCard({ debt, onViewInvoices, onViewDetails }) {
                 
                 <Text fontSize="sm" color="gray.600" fontWeight="medium">
                   Monto vencido: 
-                  <Text as="span" color={`${statusColor}.600`} fontWeight="bold" ml={2}>
-                    {debt.saldoVencidoPEN > 0 && formatCurrency(debt.saldoVencidoPEN, 'PEN')}
-                    {debt.saldoVencidoUSD > 0 && formatCurrency(debt.saldoVencidoUSD, 'USD')}
-                  </Text>
+                  <VStack align="flex-start" spacing={1} ml={2}>
+                    {debt.saldoVencidoPEN > 0 && (
+                      <Text as="span" color={`${statusColor}.600`} fontWeight="bold">
+                        {formatCurrency(debt.saldoVencidoPEN, 'PEN')}
+                      </Text>
+                    )}
+                    {debt.saldoVencidoUSD > 0 && (
+                      <Text as="span" color={`${statusColor}.600`} fontWeight="bold">
+                        {formatCurrency(debt.saldoVencidoUSD, 'USD')}
+                      </Text>
+                    )}
+                  </VStack>
                 </Text>
               </VStack>
             )}
@@ -176,7 +184,7 @@ export function DebtCard({ debt, onViewInvoices, onViewDetails }) {
             borderRadius="full"
             fontSize="sm"
             px={6}
-            onClick={() => generateReceivablePDF(debt)}
+            onClick={() => {console.log(debt) , generateReceivablePDF(debt)}}
           >
             Ver detalles
           </Button>
