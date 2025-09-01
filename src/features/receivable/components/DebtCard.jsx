@@ -14,6 +14,9 @@ import { FiEye, FiFileText, FiAlertTriangle, FiMapPin } from "react-icons/fi";
 import { generateReceivablePDF } from "../utils/receivablePDF";
 
 export function DebtCard({ debt, onViewInvoices, onViewDetails }) {
+
+  console.log("Renderizando DebtCard con datos:", debt);
+  
   const formatCurrency = (amount, currency = 'PEN') => {
     if (amount == null || amount === 0) return currency === 'USD' ? '$0.00' : 'S/0.00';
     const symbol = currency === 'USD' ? '$' : 'S/';

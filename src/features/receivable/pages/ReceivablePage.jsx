@@ -90,7 +90,7 @@ export function ReceivablePage() {
   };
 
   const vendedorNombre = isSellerProfile
-    ? username // si es vendedor, usar su nombre directamente
+    ? username 
     : selectedSeller?.label?.split(".")[1]?.trim() || "";
 
   const { data, isLoading, error } = useGetAccountsReceivable({

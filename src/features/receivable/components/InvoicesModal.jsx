@@ -19,6 +19,9 @@ import { getPdfByCode } from "../../../features/reports/services/reportService";
 import { downloadInvoicePDFdirectly } from "../../../features/reports/utils/pdfGenerators"; 
 
 export default function InvoicesModal({ isOpen, onClose, documentos }) {
+
+  console.log("Documentos recibidos en InvoicesModal:", documentos);
+  
   const [loadingRef, setLoadingRef] = useState(null); 
 
   const handleDownloadReference = async (referenceCode) => {
