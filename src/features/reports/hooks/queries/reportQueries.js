@@ -6,7 +6,9 @@ import {
   getOrderByCode,
   getInvoiceByCode,
   getPdfByCode,
-  getAccountsReceivable
+  getAccountsReceivable,
+  getcompareOrderAndDelivery,
+  getOrdersReports
 } from "../../services/reportService";
 
 export const useGetSalespersonReports = (
@@ -77,5 +79,35 @@ export const useGetAccountsReceivable = (params, enabled = true) => {
     queryKey: ["accountsReceivable", params],
     queryFn: () => getAccountsReceivable(params),
     enabled: Boolean(params?.vendedor) && Boolean(enabled),
+  });
+};
+
+export const useGetCompareOrderAndDeliveryNote = (orderCode, deliveryNoteCode, enabled = true) => {
+  return useQuery({
+    queryKey: ["compareOrderAndDeliveryNote", orderCode, deliveryNoteCode],
+    queryFn: () => getcompareOrderAndDelivery(orderCode, deliveryNoteCode),
+    enabled: Boolean(orderCode) && Boolean(enabled),
+  });
+}
+
+export const useGetOrdersReports = ({
+  salesPersonCode,
+  page = 0,
+  pageSize = 10,
+  startDate = null,
+  endDate = null,
+  enabled = true
+}) => {
+  return useQuery({
+    queryKey: [
+      "ordersReports",
+      salesPersonCode,
+      page,
+      pageSize,
+      startDate,
+      endDate
+    ],
+    queryFn: () =>
+      getOrdersReports({ salesPersonCode, page, pageSize, startDate, endDate })
   });
 };

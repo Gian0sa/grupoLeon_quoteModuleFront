@@ -84,3 +84,41 @@ export const getAccountsReceivable = async ({ vendedor, cliente }) => {
     return null;
   }
 };
+
+export const getcompareOrderAndDelivery = async (orderCode, deliveryCode) => {
+  try {
+    const response = await axiosInstance.get(`/reportModule/compareOrderDelivery/${orderCode}/${deliveryCode}`);
+    console.log("Respuesta de la comparación:", response.data);
+    return response.data;
+  } catch (error) {
+    console.error("Error al comparar orden y entrega:", error);
+    return null;
+  }
+}
+
+export const getOrdersReports = async ({
+  salesPersonCode,
+  page = 0,
+  pageSize = 10,
+  startDate = null,
+  endDate = null
+}) => {
+  try {
+    const response = await axiosInstance.get(
+      `/reportModule/ordersReports/${salesPersonCode}`, // 👈 en el path
+      {
+        params: {
+          pagina: page,        // 👈 usa "pagina" en lugar de "page"
+          pageSize,            // si el backend no usa esto, lo puedes quitar
+          startDate,
+          endDate
+        }
+      }
+    );
+    return response.data;
+  } catch (error) {
+    console.error("Error al obtener órdenes:", error);
+    return null;
+  }
+};
+

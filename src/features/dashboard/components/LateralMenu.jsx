@@ -44,7 +44,7 @@ export function LateralMenu() {
   const { isOpen, onOpen, onClose } = useDisclosure();
   const btnRef = useRef();
   const navigate = useNavigate();
-  const { token, logout, role, username } = useAuthStore();
+  const { logout, username, isAuthenticated } = useAuthStore();
 
   const hasAccess = useHasAccess();
   const hasAdminAccess = hasAccess("PUT:/profile/admin/:userId");
@@ -216,7 +216,7 @@ const renderMenuOptions = (options) =>
 
           {/* Footer */}
           <DrawerFooter p={6}>
-            {token && (
+            {isAuthenticated && (
               <Button
                 onClick={handleLogout}
                 leftIcon={<Icon as={MdExitToApp} />}

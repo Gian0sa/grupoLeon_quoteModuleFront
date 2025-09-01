@@ -10,7 +10,7 @@ import {
 } from "@chakra-ui/react";
 
 export default function FiltersWithSummary({
-  statuses, // Ahora es un array de objetos: [{label, value, color, progress}, ...]
+  statuses,
   activeStatuses,
   setStatuses,
   setStartDate,

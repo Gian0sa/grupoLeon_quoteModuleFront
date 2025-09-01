@@ -11,6 +11,7 @@ import {
 import TrackingPage from "./SalesReportDetail";
 
 export default function ModalSeguimiento({ isOpen, onClose, orden }) {
+  console.log("Orden en ModalSeguimiento:", orden);
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="6xl">
       <ModalOverlay />

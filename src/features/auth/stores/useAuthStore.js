@@ -17,28 +17,22 @@ const getSafeJsonValue = (key) => {
 export const useAuthStore = create((set) => ({
   userId: getSafeValue('userId'),
   username: getSafeValue('username'),
-  token: getSafeValue('token'),
-  refreshToken: getSafeValue('refreshToken'),       // nuevo
   salesEmployeeCode: getSafeValue('salesEmployeeCode'),
-  endpoints: getSafeJsonValue('endpoints'),
-  sapCookies: getSafeJsonValue('sapCookies'),       // nuevo
-  isAuthenticated: !!getSafeValue('token'),
+  endpoints: getSafeJsonValue('endpoints') || [],
+  isAuthenticated: !!getSafeValue('userId'),
 
-  login: ({ token, refreshToken, userId, username, salesEmployeeCode, endpoints, sapCookies }) => {
+  login: ({ userId, username, salesEmployeeCode, endpoints }) => {
     const safeValues = {
-      token: token || null,
-      refreshToken: refreshToken || null,
       userId: userId?.toString() || null,
       username: username || null,
       salesEmployeeCode: salesEmployeeCode || null,
       endpoints: endpoints || [],
-      sapCookies: sapCookies || [],
     };
 
-    // Guardar en localStorage
+    // Guardar en localStorage solo lo público
     Object.entries(safeValues).forEach(([key, value]) => {
       if (value !== null && value !== undefined) {
-        if (key === "endpoints" || key === "sapCookies") {
+        if (key === "endpoints") {
           localStorage.setItem(key, JSON.stringify(value));
         } else {
           localStorage.setItem(key, value);
@@ -48,43 +42,23 @@ export const useAuthStore = create((set) => ({
       }
     });
 
-    // Actualizar estado
     set({
-      token: safeValues.token,
-      refreshToken: safeValues.refreshToken,
-      userId: safeValues.userId,
-      username: safeValues.username,
-      salesEmployeeCode: safeValues.salesEmployeeCode,
-      endpoints: safeValues.endpoints,
-      sapCookies: safeValues.sapCookies,
-      isAuthenticated: !!safeValues.token,
+      ...safeValues,
+      isAuthenticated: true,
     });
   },
 
   logout: () => {
-    ['token', 'refreshToken', 'userId', 'username', 'salesEmployeeCode', 'endpoints', 'sapCookies'].forEach((key) =>
+    ['userId', 'username', 'salesEmployeeCode', 'endpoints'].forEach((key) =>
       localStorage.removeItem(key)
     );
 
     set({
-      token: null,
-      refreshToken: null,
       userId: null,
       username: null,
       salesEmployeeCode: null,
-      endpoints: null,
-      sapCookies: null,
+      endpoints: [],
       isAuthenticated: false,
     });
-  },
-
-  setToken: (token) => {
-    const safeToken = token || null;
-    if (safeToken) {
-      localStorage.setItem('token', safeToken);
-    } else {
-      localStorage.removeItem('token');
-    }
-    set({ token: safeToken, isAuthenticated: !!safeToken });
   },
 }));

@@ -27,6 +27,7 @@ import { BackButton } from "../../../components/BackButton";
 import ActiveFilters from "./ActiveFilters";
 import { useRules } from "../hooks/queries/configQueries";
 import { useHasAccess } from "../../../shared/utils/permissions";
+import { useGetOrdersReports } from "../hooks/queries/reportQueries";
 
 import styles from "./SalesReport.module.css";
 
@@ -49,21 +50,24 @@ const [tempEndDate, setTempEndDate] = useState(null);
   const [pagina, setPagina] = useState(1);
   const porPagina = 10;
   const [ordenSeleccionada, setOrdenSeleccionada] = useState(null);
+
   const [startDate, setStartDate] = useState(null);
   const [endDate, setEndDate] = useState(null);
 
   const [selectedSeller, setSelectedSeller] = useState(null);
-  const dynamicSalespersonId = selectedSeller?.value ?? salespersonId ?? "";
+  const dynamicSalespersonId = selectedSeller?.value ?? salespersonId ?? null;
 
-  const { data, isLoading, error } = useGetSalespersonReports(
-    dynamicSalespersonId,
-    pagina,
-    porPagina,
-    estadoOrdenFiltro,
+
+
+  const { data: reportData, isLoading: reportLoading, error: reportError } =
+  useGetOrdersReports({
+    salesPersonCode: dynamicSalespersonId,
+    page: pagina-1,
+    pageSize: porPagina,
     startDate,
     endDate
-  );
-
+  });
+  const totalPaginas = reportData?.hasMore ? pagina + 1 : pagina;
   const {
     isOpen: isDrawerOpen,
     onOpen: openDrawer,
@@ -76,12 +80,33 @@ const [tempEndDate, setTempEndDate] = useState(null);
     onClose: closeModal,
   } = useDisclosure();
 
-  const abrirModal = (orden) => {
-    setOrdenSeleccionada(orden);
-    openModal();
+ const abrirModal = (ordenRaw) => {
+  const ordenFormateada = {
+    orden: {
+      id: ordenRaw.DocEntry,
+      numero: ordenRaw.DocNum,
+      fechaCreacion: new Date(ordenRaw.DocDate).toLocaleDateString(),
+      montoUsd: ordenRaw.TotalUsd || ordenRaw.FacturaInfo?.montoUsd || 0,
+    },
+    cliente: {
+      nombre: ordenRaw.CardName,
+      codigo: ordenRaw.CardCode,
+    },
+    entrega: ordenRaw.EntregaInfo
+      ? [ordenRaw.EntregaInfo] // usar lo que manda el backend
+      : (ordenRaw.Deliveries || []).map(d => ({ id: d, fecha: "Pendiente" })),
+    factura: ordenRaw.FacturaInfo
+      ? [ordenRaw.FacturaInfo]
+      : (ordenRaw.Invoices || []).map(f => ({ id: f, fecha: "Pendiente", montoUsd: 0 })),
+    productos: ordenRaw.RawDocs || [],
   };
 
-  if (isLoading) {
+  setOrdenSeleccionada(ordenFormateada);
+  openModal();
+};
+
+
+  if (reportLoading) {
     return (
       <Box px={6} pt={4}>
         <Skeleton height="90px" width="100%" mb={4} />
@@ -93,9 +118,7 @@ const [tempEndDate, setTempEndDate] = useState(null);
     );
   }
 
-  if (error || !data) return <Text color="red.500">Error cargando datos.</Text>;
-
-  const { resumen, paginacion, detalle } = data;
+  if (reportError) return <Text color="red.500">Error cargando datos.</Text>;
 
   const FilterIcon = () => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -197,7 +220,6 @@ const [tempEndDate, setTempEndDate] = useState(null);
                 setEndDate={setTempEndDate}
                 startDate={tempStartDate}
                 endDate={tempEndDate}
-                summary={resumen}
                 onFilterApplied={() => {
                   setEstadoOrdenFiltro(tempEstadoOrdenFiltro);
                   setStartDate(tempStartDate);
@@ -211,15 +233,15 @@ const [tempEndDate, setTempEndDate] = useState(null);
           </DrawerContent>
         </Drawer>
 
-        <OrdenesLista detalle={detalle} onVerSeguimiento={abrirModal} />
+        <OrdenesLista detalle={reportData.data} onVerSeguimiento={abrirModal} />
       </Box>
 
       <Paginacion
-        totalPaginas={paginacion.totalPaginas}
         paginaActual={pagina}
+        hasMore={reportData?.hasMore}
         setPagina={setPagina}
       />
-
+     
       <ModalSeguimiento
         isOpen={isModalOpen}
         onClose={closeModal}

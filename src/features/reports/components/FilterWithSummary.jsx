@@ -11,7 +11,7 @@ import {
 } from "@chakra-ui/react";
 
 export default function FiltersWithSummary({
-  statuses, // Ahora es un array de objetos: [{label, value, color, progress}, ...]
+  statuses,
   activeStatuses,
   setStatuses,
   setStartDate,
@@ -20,8 +20,10 @@ export default function FiltersWithSummary({
   endDate,
   summary,
   onFilterApplied,
-}) {
-  
+}) {  
+
+  console.log(statuses);
+
   const handleStatusChange = (statusValue) => {
     const newActiveStatuses = activeStatuses.includes(statusValue)
       ? activeStatuses.filter((s) => s !== statusValue)
@@ -78,9 +80,6 @@ export default function FiltersWithSummary({
             {statuses.slice().reverse().map((statusObj) => {
               const statusValue = statusObj.value;
               const statusLabel = statusObj.label;
-              const count = summary?.porEstado?.[statusValue] || 0;
-              
-              if (count === 0) return null;
 
               const isActive = activeStatuses.includes(statusValue);
               const dynamicColor = getStatusColor(statusValue);
@@ -122,19 +121,6 @@ export default function FiltersWithSummary({
                       {statusLabel}
                     </Text>
                   </HStack>
-                  <Box
-                    bg={dynamicColor}
-                    color="white"
-                    px={3}
-                    py={1}
-                    borderRadius="full"
-                    fontSize="sm"
-                    fontWeight="bold"
-                    minW="50px"
-                    textAlign="center"
-                  >
-                    {count}
-                  </Box>
                 </Button>
               );
             })}
@@ -153,7 +139,7 @@ export default function FiltersWithSummary({
             FECHAS
           </Text>
           <Stack
-              direction={{ base: "column", md: "row" }} // columna en mobile, fila en pantallas medianas o más
+              direction={{ base: "column", md: "row" }} 
               spacing={4}
               mb={4}
             >
