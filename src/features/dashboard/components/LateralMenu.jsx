@@ -36,7 +36,6 @@ import { useDisclosure } from '@chakra-ui/react';
 import { useNavigate } from 'react-router-dom';
 
 import { useAuthStore } from '../../auth/stores/useAuthStore';
-import avatarImg from "../../../assets/icons/avatar.jpg";
 import styles from "./LateralMenu.module.css";
 import { useHasAccess } from '../../../shared/utils/permissions';
 
@@ -136,8 +135,8 @@ const renderMenuOptions = (options) =>
               borderRadius={20}
             >
               <HStack spacing={4}>
-                <Image
-                  src={avatarImg}
+                <Image 
+                  src="/assets/icons/avatar.jpg" 
                   boxSize="60px"
                   borderRadius="full"
                   objectFit="cover"

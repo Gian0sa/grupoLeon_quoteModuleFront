@@ -27,25 +27,25 @@
 }
 
 .ImageLogin {
-  background-image: url('src/assets/frame-2-bg.png');
-  background-size: cover;       
-  background-position: center;  
-  height: 100%;
-  border-radius: 0px 0px 70px 0px;
+    background-image: url('/assets/frame-2-bg.png');
+    background-size: cover;       
+    background-position: center;  
+    height: 100%;
+    border-radius: 0px 0px 70px 0px;
 }
 
 .ImageLogin::after {
-  content: "";
-  position: absolute;
-  top: 20px;
-  right: 20px;
-  width: 100px;
-  height: 40px;
-  background-image: url('src/assets/icons/logo-autopartes-w.png');
-  background-size: contain;
-  background-repeat: no-repeat;
-  background-position: center;
-  z-index: 1;
+    content: "";
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    width: 100px;
+    height: 40px;
+    background-image: url('/assets/icons/logo-autopartes-w.png');
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    z-index: 1;
 }
 
 .PoweredBy{

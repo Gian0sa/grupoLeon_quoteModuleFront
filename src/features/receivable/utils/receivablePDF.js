@@ -1,6 +1,5 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import logoImage from "../../../assets/LogoAutopartes.jpg";
 
 const getImageDataURL = (img, quality = 0.8) =>
   new Promise((resolve, reject) => {
@@ -25,7 +24,7 @@ const addLogo = async (doc, { x = 165, y = 5, width = 30, height = 30, quality =
       const timeout = setTimeout(() => reject(new Error("Timeout al cargar el logo")), 5000);
       img.onload = () => { clearTimeout(timeout); resolve(); };
       img.onerror = (error) => { clearTimeout(timeout); reject(error); };
-      img.src = logoImage;
+      img.src = "/assets/LogoAutopartes.jpg";
     });
 
     const imageDataURL = await getImageDataURL(img, quality);

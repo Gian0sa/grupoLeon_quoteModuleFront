@@ -24,7 +24,6 @@ import {
   import { useNavigate } from "react-router-dom";
   import { useAuthStore } from "../stores/useAuthStore";
   import { useEffect } from "react";
-  import logoGuruverso from '../../../assets/icons/logo-guruverso-g.png';
   import { useRef , useState } from "react";
 
   
@@ -213,7 +212,7 @@ import {
           <Box flex="1" w="full">
             <div className={styles.PoweredBy}>
               Desarrollado por:&nbsp;
-              <img src={logoGuruverso} alt="Logo Guruverso" className={styles.LogoImg} />
+              <img src={"/assets/icons/logo-guruverso-g.png"} alt="Logo Guruverso" className={styles.LogoImg} />
             </div>
           </Box>
       </Box>

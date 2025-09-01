@@ -1,7 +1,6 @@
 // src/utils/pdfGenerators.js
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import logoImage from "../../../assets/LogoAutopartes.jpg";
 
 // Convierte imagen a base64
 export const getImageDataURL = (img) => {
@@ -27,7 +26,7 @@ const addLogo = async (doc) => {
     await new Promise((resolve, reject) => {
       img.onload = resolve;
       img.onerror = reject;
-      img.src = logoImage;
+      img.src = "/assets/LogoAutopartes.jpg";
     });
     const imageDataURL = await getImageDataURL(img);
     doc.addImage(imageDataURL, 'JPEG', 165, 5, 30, 30);
