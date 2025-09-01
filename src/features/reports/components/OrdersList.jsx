@@ -21,9 +21,7 @@ export default function OrdersList({ detalle = [], onVerSeguimiento }) {
     return <Text>No hay órdenes para mostrar</Text>;
   }
 
-  const getIconPath = (baseName) => {
-    return `/src/assets/icons/${baseName}`;
-  };
+ const getIconPath = (baseName) => `/assets/icons/${baseName}`;
 
   return detalle.map((orden, idx) => {
     // Datos base que vienen del backend
