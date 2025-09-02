@@ -54,7 +54,7 @@ export default function FiltersWithSummary({
   return (
     <Box bg="gray.50" p={6} borderRadius="lg">
       <VStack spacing={6} align="stretch">
-        {/* ESTADOS */}
+        {/* ESTADOS 
         <Box>
           <Text
             fontSize="sm"
@@ -125,7 +125,7 @@ export default function FiltersWithSummary({
               );
             })}
           </Flex>
-        </Box>
+        </Box> */}
 
         {/* FECHAS */}
         <Box>
