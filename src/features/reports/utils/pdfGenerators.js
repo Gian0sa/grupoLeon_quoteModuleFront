@@ -233,19 +233,10 @@ export const downloadInvoicePDFdirectly = async (referenceCode) => {
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        "Authorization": `Bearer ${localStorage.getItem("token")}`, 
         "Accept": "application/pdf",
       },
+      credentials: "include",
     });
-
-    //DESCOMENTAR EN PRODUCCIÓN
-    // const response = await fetch(url, {
-    //   method: "GET",
-    //   headers: {
-    //     "Accept": "application/pdf",
-    //   },
-    //   credentials: "include", // 👈 Importante: envía cookies
-    // });
 
     const blob = await response.blob();
     const blobUrl = window.URL.createObjectURL(blob);
