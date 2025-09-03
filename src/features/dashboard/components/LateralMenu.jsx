@@ -38,19 +38,20 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../auth/stores/useAuthStore';
 import styles from "./LateralMenu.module.css";
 import { useHasAccess } from '../../../shared/utils/permissions';
+import { useAuthMutations } from '../../auth/hooks/mutations/authMutations';
 
 export function LateralMenu() {
   const { isOpen, onOpen, onClose } = useDisclosure();
   const btnRef = useRef();
   const navigate = useNavigate();
-  const { logout, username, isAuthenticated } = useAuthStore();
+  const { username, isAuthenticated } = useAuthStore();
+   const { logout } = useAuthMutations();
 
   const hasAccess = useHasAccess();
   const hasAdminAccess = hasAccess("PUT:/profile/admin/:userId");
 
   const handleLogout = () => {
-    logout();
-    navigate('/');
+    logout.mutate();
   };
 
   const applicationOptions = [

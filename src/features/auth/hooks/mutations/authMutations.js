@@ -31,7 +31,7 @@ export function useAuthMutations() {
     mutationFn: logoutUser,
     onSuccess: () => {
       logout();
-      navigate("/login");
+      navigate("/");
     }
   });
 
