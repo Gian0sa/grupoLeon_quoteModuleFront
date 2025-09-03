@@ -21,34 +21,116 @@ import { ProfileAdmin } from "../features/admin/pages/profileAdmin.jsx";
 const AppRoutes = () => {
   return (
     <Routes>
-
+      {/* Público */}
       <Route path="/" element={<Login />} />
-
-      {/* <Route path="/register" element={
-        <PrivateRoute>
-          <RoleRoute roles={["ADMIN"]}>
-            <Register />
-          </RoleRoute>
-        </PrivateRoute>
-      } /> */}
-
       <Route path="/register" element={<Register />} />
-      <Route path="/client" element={<ClientPage />} />
-      <Route path="/dashboard" element={<DashboardPage />} />
-      <Route path="/newquotes" element={<NewQuotesPage />} />
-      <Route path="/historyquotes" element={< HistoryQuotesPage/>}/>
-      <Route path="/products" element={<ProductosPage />} />
-      <Route path="/history" element={<History />} />
-      <Route path="/requests" element={ <Requests />} />
-      <Route path="/detailRequests" element={<RequestQuotePage />} />
-      <Route path="/reports" element={<ReportPage />} />
-      <Route path="/configrules" element={<ConfigRulesPage />} />
-      <Route path="/receivable" element={<ReceivablePage />} />
-      <Route path="/profile" element={<Profile />} />
-      <Route path="/profileAdmin" element={<ProfileAdmin />} />
-      {/* Supervisor Routes */}
 
-    </Routes> 
+      {/* Privados */}
+      <Route
+        path="/client"
+        element={
+          <PrivateRoute>
+            <ClientPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/dashboard"
+        element={
+          <PrivateRoute>
+            <DashboardPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/newquotes"
+        element={
+          <PrivateRoute>
+            <NewQuotesPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/historyquotes"
+        element={
+          <PrivateRoute>
+            <HistoryQuotesPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/products"
+        element={
+          <PrivateRoute>
+            <ProductosPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/history"
+        element={
+          <PrivateRoute>
+            <History />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/requests"
+        element={
+          <PrivateRoute>
+            <Requests />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/detailRequests"
+        element={
+          <PrivateRoute>
+            <RequestQuotePage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/reports"
+        element={
+          <PrivateRoute>
+            <ReportPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/configrules"
+        element={
+          <PrivateRoute>
+            <ConfigRulesPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/receivable"
+        element={
+          <PrivateRoute>
+            <ReceivablePage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/profile"
+        element={
+          <PrivateRoute>
+            <Profile />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/profileAdmin"
+        element={
+          <PrivateRoute>
+            <ProfileAdmin />
+          </PrivateRoute>
+        }
+      />
+    </Routes>
   );
 };
 
