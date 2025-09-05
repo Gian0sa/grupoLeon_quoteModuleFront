@@ -10,13 +10,11 @@ export default function ActiveFilters({
 }) {
   const activeTags = [];
 
-  if (estadoOrdenFiltro && estadoOrdenFiltro.length > 0) {
-    estadoOrdenFiltro.forEach((estado) => {
-      activeTags.push({
-        label: estado,
-        onClear: () => clearSingleEstado(estado),
-        style: getEstadoStyle(estado),
-      });
+  if (estadoOrdenFiltro) {
+    activeTags.push({
+      label: estadoOrdenFiltro,
+      onClear: () => clearSingleEstado(),
+      style: getEstadoStyle(estadoOrdenFiltro),
     });
   }
 

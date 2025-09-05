@@ -29,7 +29,6 @@ import {
 } from "../utils/pdfGenerators";
 
 const TrackingPage = ({ orden }) => {
-  console.log("La orden recibida es: ", orden);
   const productos = orden.productos || [];
   const entregas = orden.entrega || [];
   const facturas = orden.factura || [];
@@ -116,7 +115,6 @@ const TrackingPage = ({ orden }) => {
     setLoadingFactura(true);
     try {
       const invoiceDetalle = await getInvoiceByCode(facturaId);
-      console.log("el invoide detalle es :  ",invoiceDetalle);
       await downloadInvoicePDF(invoiceDetalle);
     } catch (error) {
       console.error("Error al obtener factura:", error);

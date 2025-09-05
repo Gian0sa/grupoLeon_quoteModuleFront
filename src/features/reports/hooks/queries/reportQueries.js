@@ -1,46 +1,15 @@
 // hooks/useReportQueries.js
 import { useQuery } from "@tanstack/react-query";
 import {
-  getReportsBySalesperson,
   getDeliveryNoteByCode,
   getOrderByCode,
   getInvoiceByCode,
   getPdfByCode,
   getAccountsReceivable,
   getcompareOrderAndDelivery,
-  getOrdersReports
+  getOrderswithStatusReports,
+  getInvoiceDeliveryNoteperOrder
 } from "../../services/reportService";
-
-export const useGetSalespersonReports = (
-  id,
-  pagina = 1,
-  porPagina = 10,
-  estadoOrdenFiltro = [],
-  startDate = null,
-  endDate = null
-) => {
-  return useQuery({
-    queryKey: [
-      "salespersonReports",
-      id,
-      pagina,
-      porPagina,
-      estadoOrdenFiltro?.join(","),
-      startDate,
-      endDate,
-    ],
-    queryFn: () =>
-      getReportsBySalesperson(
-        id,
-        pagina,
-        porPagina,
-        estadoOrdenFiltro,
-        startDate,
-        endDate
-      ),
-    keepPreviousData: true,
-  });
-};
 
 export const useGetOrderByCode = (code, enabled = true) => {
   return useQuery({
@@ -90,24 +59,29 @@ export const useGetCompareOrderAndDeliveryNote = (orderCode, deliveryNoteCode, e
   });
 }
 
-export const useGetOrdersReports = ({
+export const useGetOrderswithStatusReports = ({
   salesPersonCode,
+  estadopedido = '',
   page = 0,
-  pageSize = 10,
-  startDate = null,
-  endDate = null,
-  enabled = true
+  pageSize = 5,
 }) => {
   return useQuery({
     queryKey: [
-      "ordersReports",
+      "orderswithStatusReports",
       salesPersonCode,
+      estadopedido,
       page,
       pageSize,
-      startDate,
-      endDate
     ],
     queryFn: () =>
-      getOrdersReports({ salesPersonCode, page, pageSize, startDate, endDate })
+      getOrderswithStatusReports({ salesPersonCode, estadopedido, page, pageSize })
+  });
+};
+
+export const useGetInvoiceDeliveryNoteperOrder = ({ docEntry }) => {
+  return useQuery({
+    queryKey: ["invoiceDeliveryNoteperOrder", docEntry],
+    queryFn: () => getInvoiceDeliveryNoteperOrder({ docEntry }),
+    enabled: !!docEntry,
   });
 };

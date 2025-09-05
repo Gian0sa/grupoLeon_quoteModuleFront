@@ -225,8 +225,6 @@ export const downloadInvoicePDF = async (invoiceDetalle) => {
 
 export const downloadInvoicePDFdirectly = async (referenceCode) => {
 
-  console.log("Descargando PDF directo para referencia:", referenceCode);
-
   const url = `${import.meta.env.VITE_API_URL}/reportModule/pdf/${referenceCode}`;
 
   try {

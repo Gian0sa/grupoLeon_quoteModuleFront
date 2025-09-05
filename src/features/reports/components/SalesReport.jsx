@@ -16,7 +16,6 @@ import {
 } from "@chakra-ui/react";
 import { useDisclosure } from "@chakra-ui/react";
 
-import { useGetSalespersonReports } from "../hooks/queries/reportQueries";
 import FiltersWithSummary from "./FilterWithSummary";
 import OrdenesLista from "./OrdersList";
 import Paginacion from "./Pagination";
@@ -27,7 +26,7 @@ import { BackButton } from "../../../components/BackButton";
 import ActiveFilters from "./ActiveFilters";
 import { useRules } from "../hooks/queries/configQueries";
 import { useHasAccess } from "../../../shared/utils/permissions";
-import { useGetOrdersReports } from "../hooks/queries/reportQueries";
+import { useGetOrderswithStatusReports } from "../hooks/queries/reportQueries";
 
 import styles from "./SalesReport.module.css";
 
@@ -39,16 +38,15 @@ export default function SalespersonReports({ salespersonId }) {
   const hasAccess = useHasAccess();
   const { data: reglas = [], isLoading: reglasLoading } = useRules();
 
-
-  const [estadoOrdenFiltro, setEstadoOrdenFiltro] = useState([]);
-  const [tempEstadoOrdenFiltro, setTempEstadoOrdenFiltro] = useState([]);
+const [estadoOrdenFiltro, setEstadoOrdenFiltro] = useState('');
+const [tempEstadoOrdenFiltro, setTempEstadoOrdenFiltro] = useState('');
 
 const [tempStartDate, setTempStartDate] = useState(null);
 const [tempEndDate, setTempEndDate] = useState(null);
 
 
   const [pagina, setPagina] = useState(1);
-  const porPagina = 10;
+  const porPagina = 5;
   const [ordenSeleccionada, setOrdenSeleccionada] = useState(null);
 
   const [startDate, setStartDate] = useState(null);
@@ -60,13 +58,13 @@ const [tempEndDate, setTempEndDate] = useState(null);
 
 
   const { data: reportData, isLoading: reportLoading, error: reportError } =
-  useGetOrdersReports({
-    salesPersonCode: dynamicSalespersonId,
-    page: pagina-1,
+  useGetOrderswithStatusReports({
+    salesPersonCode: dynamicSalespersonId || 0,
+    estadopedido: estadoOrdenFiltro || '',
+    page: pagina - 1,
     pageSize: porPagina,
-    startDate,
-    endDate
   });
+
   const totalPaginas = reportData?.hasMore ? pagina + 1 : pagina;
   const {
     isOpen: isDrawerOpen,
@@ -91,14 +89,7 @@ const [tempEndDate, setTempEndDate] = useState(null);
     cliente: {
       nombre: ordenRaw.CardName,
       codigo: ordenRaw.CardCode,
-    },
-    entrega: ordenRaw.EntregaInfo
-      ? [ordenRaw.EntregaInfo] // usar lo que manda el backend
-      : (ordenRaw.Deliveries || []).map(d => ({ id: d, fecha: "Pendiente" })),
-    factura: ordenRaw.FacturaInfo
-      ? [ordenRaw.FacturaInfo]
-      : (ordenRaw.Invoices || []).map(f => ({ id: f, fecha: "Pendiente", montoUsd: 0 })),
-    productos: ordenRaw.RawDocs || [],
+    }
   };
 
   setOrdenSeleccionada(ordenFormateada);
@@ -126,7 +117,7 @@ const [tempEndDate, setTempEndDate] = useState(null);
     </svg>
   );
 
-  return (
+  return ( 
     <Box maxW="1000px" fontFamily="'InterVariable', sans-serif" pb="180px">
       <Box size="lg" mb={6} fontWeight="bold" className={styles.heading}>
         <div className={styles.topHeader}>
@@ -155,9 +146,9 @@ const [tempEndDate, setTempEndDate] = useState(null);
           estadoOrdenFiltro={estadoOrdenFiltro}
           startDate={startDate}
           endDate={endDate}
-          clearSingleEstado={(estado) => {
-            setEstadoOrdenFiltro((prev) => prev.filter((e) => e !== estado));
-            setTempEstadoOrdenFiltro((prev) => prev.filter((e) => e !== estado)); // sincronizar
+          clearSingleEstado={() => {
+            setEstadoOrdenFiltro('');
+            setTempEstadoOrdenFiltro('');
           }}
           clearDateRange={() => {
             setStartDate(null);
@@ -166,12 +157,12 @@ const [tempEndDate, setTempEndDate] = useState(null);
             setTempEndDate(null); // sincronizar
           }}
           clearAll={() => {
-            setEstadoOrdenFiltro([]);
+            setEstadoOrdenFiltro('');
             setStartDate(null);
             setEndDate(null);
-            setTempEstadoOrdenFiltro([]); // sincronizar
+            setTempEstadoOrdenFiltro('');
             setTempStartDate(null);
-            setTempEndDate(null);         // sincronizar
+            setTempEndDate(null);
           }}
         />
 
@@ -208,14 +199,14 @@ const [tempEndDate, setTempEndDate] = useState(null);
             </DrawerHeader>
             <DrawerBody p={4}>
              <FiltersWithSummary
-               statuses={reglas.map((regla) => ({
+                statuses={reglas.map((regla) => ({
                   label: regla.name,
                   value: regla.name,
                   color: regla.color,
                   progress: regla.progress,
                 }))}
-                activeStatuses={tempEstadoOrdenFiltro}
-                setStatuses={setTempEstadoOrdenFiltro}
+                activeStatus={tempEstadoOrdenFiltro}   // 👈 singular
+                setStatus={setTempEstadoOrdenFiltro}   // 👈 singular
                 setStartDate={setTempStartDate}
                 setEndDate={setTempEndDate}
                 startDate={tempStartDate}

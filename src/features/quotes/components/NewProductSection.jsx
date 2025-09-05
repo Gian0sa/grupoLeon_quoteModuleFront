@@ -30,7 +30,6 @@ import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 
 export function NewProductSection({ products }) {
-  console.log(products)
   const removeProduct = useQuoteStore((state) => state.removeProduct);
   const updateProduct = useQuoteStore((state) => state.updateProduct);
   const { isOpen, onOpen, onClose } = useDisclosure();

@@ -49,10 +49,7 @@ axiosInstance.interceptors.response.use(
 
       isRefreshing = true;
       try {
-        console.log("🔄 Refreshing JWT (and SAP in backend)...");
         await axiosInstance.post("/authModule/refresh-token", {}, { withCredentials: true });
-
-        console.log("✅ JWT (and SAP) refreshed");
         failedQueue.forEach((p) => p.resolve(true));
         failedQueue = [];
         return axiosInstance(originalRequest);

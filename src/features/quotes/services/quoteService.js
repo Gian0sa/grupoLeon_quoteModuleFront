@@ -23,7 +23,6 @@ export const createQuote = async (quote) => {
 }
 
 export const updateQuote = async (quote) => {
-    console.log(quote);
     const response = await axiosInstance.put(`/quoteModule/quotes/${quote.id}`, quote)
     return response.data
 }

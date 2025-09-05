@@ -12,8 +12,8 @@ import {
 
 export default function FiltersWithSummary({
   statuses,
-  activeStatuses,
-  setStatuses,
+  activeStatus,
+  setStatus,
   setStartDate,
   setEndDate,
   startDate,
@@ -22,13 +22,12 @@ export default function FiltersWithSummary({
   onFilterApplied,
 }) {  
 
-  console.log(statuses);
-
   const handleStatusChange = (statusValue) => {
-    const newActiveStatuses = activeStatuses.includes(statusValue)
-      ? activeStatuses.filter((s) => s !== statusValue)
-      : [...activeStatuses, statusValue];
-    setStatuses(newActiveStatuses);
+    if (activeStatus === statusValue) {
+      setStatus('');
+    } else {
+      setStatus(statusValue);
+    }
   };
 
   const handleDateChange = (type, value) => {
@@ -37,10 +36,11 @@ export default function FiltersWithSummary({
   };
 
   const handleClearFilters = () => {
-    setStatuses([]);
-    setStartDate("");
-    setEndDate("");
+    setStatus('');
+    setStartDate('');
+    setEndDate('');
   };
+
 
   const getStatusColor = (statusValue) => {
     const statusObj = statuses.find(s => s.value === statusValue);
@@ -54,7 +54,7 @@ export default function FiltersWithSummary({
   return (
     <Box bg="gray.50" p={6} borderRadius="lg">
       <VStack spacing={6} align="stretch">
-        {/* ESTADOS 
+        {/* ESTADOS */}
         <Box>
           <Text
             fontSize="sm"
@@ -81,7 +81,7 @@ export default function FiltersWithSummary({
               const statusValue = statusObj.value;
               const statusLabel = statusObj.label;
 
-              const isActive = activeStatuses.includes(statusValue);
+              const isActive = activeStatus === statusValue;
               const dynamicColor = getStatusColor(statusValue);
 
               return (
@@ -125,7 +125,7 @@ export default function FiltersWithSummary({
               );
             })}
           </Flex>
-        </Box> */}
+        </Box> 
 
         {/* FECHAS */}
         <Box>

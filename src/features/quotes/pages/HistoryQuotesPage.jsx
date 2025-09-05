@@ -114,7 +114,6 @@ export function HistoryQuotesPage() {
       })),
     };
 
-    console.log("el payload de creacion es : ",payload);
   
     updateQuoteMutation.mutate(payload);
   };

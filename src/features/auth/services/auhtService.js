@@ -33,7 +33,6 @@ export const services = async () => {
 
 export const profileUser = async () => {
   const response = await axiosInstance.get("/authModule/profile");
-  console.log("Profile data:", response.data);
   return response.data;
 };
 

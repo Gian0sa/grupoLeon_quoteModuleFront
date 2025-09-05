@@ -13,7 +13,6 @@ import {
 import { useHasAccess } from "../../../shared/utils/permissions";
 
 export default function OrdersList({ detalle = [], onVerSeguimiento }) {
-  console.log("OrdersList - detalle prop:", detalle);
   const bgCard = useColorModeValue("white", "gray.800");
   const hasAccess = useHasAccess();
 
@@ -31,7 +30,7 @@ export default function OrdersList({ detalle = [], onVerSeguimiento }) {
     });
     const hora = orden.DocTime;
     const cliente = orden.CardName;
-    const vendedor = orden.SalesPerson?.SalesEmployeeName ?? "Sin vendedor";
+    const vendedor = orden.NameVendedor ?? "Sin vendedor";
 
     // Información del estado desde StatusInfo
     const statusInfo = orden.StatusInfo || {
@@ -45,6 +44,14 @@ export default function OrdersList({ detalle = [], onVerSeguimiento }) {
     const estadoGeneral = statusInfo.name;
     const progress = statusInfo.progress;
     const iconName = statusInfo.icon;
+
+    const getStatusIcon = (baseName, estado) => {
+      if (estado.toLowerCase().includes("cancel")) {
+        return `${baseName}-red.png`;
+      }
+      return `${baseName}.png`;
+    };
+
 
     return (
       <Box
@@ -63,9 +70,9 @@ export default function OrdersList({ detalle = [], onVerSeguimiento }) {
         <Grid templateColumns="1fr auto" gap={6} alignItems="center">
           {/* CONTENIDO PRINCIPAL */}
           <Box>
-            {/* Nro de orden */}
+           {/* Nro de orden */}
             <Flex align="center" gap={2} mb={2}>
-              <Image src={getIconPath("etiqueta.png")} boxSize="16px" />
+              <Image src={getIconPath(getStatusIcon("etiqueta", estadoGeneral))} boxSize="16px" />
               <Text fontSize="md" fontWeight="bold" color={color}>
                 #{numeroOrden}
               </Text>
@@ -73,18 +80,17 @@ export default function OrdersList({ detalle = [], onVerSeguimiento }) {
 
             {/* Cliente */}
             <Flex align="center" gap={2} mb={2}>
-              <Image src={getIconPath("ubicacion.png")} boxSize="16px" />
+              <Image src={getIconPath(getStatusIcon("ubicacion", estadoGeneral))} boxSize="16px" />
               <Text fontSize="xs">{cliente}</Text>
             </Flex>
 
             {/* Fecha */}
             <Flex align="center" gap={2} mb={4}>
-              <Image src={getIconPath("reloj.png")} boxSize="16px" />
+              <Image src={getIconPath(getStatusIcon("reloj", estadoGeneral))} boxSize="16px" />
               <Text fontSize="xs">
                 {fecha} - {hora}
               </Text>
             </Flex>
-
             {/* Asesor */}
             {hasAccess("GET:/sellers") && (
               <Flex align="center" gap={3} mb={2}>

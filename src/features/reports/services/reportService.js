@@ -1,35 +1,5 @@
 import { axiosInstance } from "../../../shared/lib/axiosInstance";
 
-export const getReportsBySalesperson = async (
-  id,
-  pagina = 1,
-  porPagina = 10,
-  estadoOrdenFiltro = [],
-  startDate = null,
-  endDate = null
-) => {
-  try {
-    const params = {
-      pagina,
-      porPagina,
-      ...(estadoOrdenFiltro.length > 0
-        ? { estadoOrdenFiltro: estadoOrdenFiltro.join(",") }
-        : {}),
-      ...(startDate ? { startDate } : {}),
-      ...(endDate ? { endDate } : {}),
-    };
-
-    const response = await axiosInstance.get(`/reportModule/reports/${id}`, {
-      params,
-    });
-
-    return response.data;
-  } catch (error) {
-    console.error("Error al obtener los reportes:", error);
-    return null;
-  }
-};
-
 export const getOrderByCode = async (code) => {
     try {
         const response = await axiosInstance.get(`/reportModule/order/${code}`);
@@ -88,7 +58,6 @@ export const getAccountsReceivable = async ({ vendedor, cliente }) => {
 export const getcompareOrderAndDelivery = async (orderCode, deliveryCode) => {
   try {
     const response = await axiosInstance.get(`/reportModule/compareOrderDelivery/${orderCode}/${deliveryCode}`);
-    console.log("Respuesta de la comparación:", response.data);
     return response.data;
   } catch (error) {
     console.error("Error al comparar orden y entrega:", error);
@@ -96,29 +65,44 @@ export const getcompareOrderAndDelivery = async (orderCode, deliveryCode) => {
   }
 }
 
-export const getOrdersReports = async ({
+export const getOrderswithStatusReports = async ({
   salesPersonCode,
+  estadopedido = '',
   page = 0,
-  pageSize = 10,
-  startDate = null,
-  endDate = null
+  pageSize = 5,
 }) => {
   try {
+
+    const estado = estadopedido ? `'${estadopedido}'` : "''";
+
     const response = await axiosInstance.get(
-      `/reportModule/ordersReports/${salesPersonCode}`, // 👈 en el path
+      `/reportModule/orderswithStatus/${salesPersonCode}/${estado}`,
       {
         params: {
-          pagina: page,        // 👈 usa "pagina" en lugar de "page"
-          pageSize,            // si el backend no usa esto, lo puedes quitar
-          startDate,
-          endDate
+          pagina: page,
+          pageSize,
         }
       }
     );
     return response.data;
   } catch (error) {
-    console.error("Error al obtener órdenes:", error);
+    console.error("Error al obtener Orders with Status:", error);
     return null;
   }
 };
+
+export const getInvoiceDeliveryNoteperOrder = async ({ docEntry }) => {
+  try {
+
+    const response = await axiosInstance.get(
+      `/reportModule/invoiceDeliveryNoteperOrder/${docEntry}`
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error("❌ Error al obtener invoice/delivery note por orden:", error);
+    return null;
+  }
+};
+
 

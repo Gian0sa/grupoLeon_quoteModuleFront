@@ -208,7 +208,6 @@ export function ProfileAdmin() {
   const { updateProfileAdmin } = useAuthAdminMutations();
   const toast = useToast();
 
-  console.log("Usuarios obtenidos:", users);
 
   const boxBg = useColorModeValue("white", "gray.800");
   const pageBg = useColorModeValue("gray.50", "gray.900");
@@ -343,8 +342,6 @@ export function ProfileAdmin() {
       return;
     }
     setErrors({});
-
-    console.log("Datos del formulario antes de enviar:", formData);
     
     updateProfileAdmin.mutate(formData);
   };
