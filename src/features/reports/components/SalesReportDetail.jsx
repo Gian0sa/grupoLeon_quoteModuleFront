@@ -28,10 +28,7 @@ import {
   downloadInvoicePDF
 } from "../utils/pdfGenerators";
 
-const TrackingPage = ({ orden }) => {
-  const productos = orden.productos || [];
-  const entregas = orden.entrega || [];
-  const facturas = orden.factura || [];
+const TrackingPage = ({ orden, data }) => {
 
   const [loadingOrden, setLoadingOrden] = useState(false);
   const [loadingEntrega, setLoadingEntrega] = useState(false);
@@ -44,45 +41,47 @@ const TrackingPage = ({ orden }) => {
   const borderColor = useColorModeValue("gray.200", "gray.600");
   const isMobile = useBreakpointValue({ base: true, md: false }); 
 
-  const orderId = orden?.orden?.id;
-  const entregaId = orden?.entrega?.[0]?.id;
-  const facturaId = orden?.factura?.[0]?.id;
+  // Mapear datos de la orden (del prop orden)
+  const ordenData = {
+    id: orden?.DocEntry,
+    numero: orden?.DocNum,
+    fechaCreacion: orden?.DocDate 
+  ? new Date(orden.DocDate + "T00:00:00").toLocaleDateString("es-ES") 
+  : '',
+    montoUsd: orden?.DocTotalUSD || orden?.DocTotalUSD || 0
+  };
 
-  const { data, isLoading, error } = useGetCompareOrderAndDeliveryNote(
+  const clienteData = {
+    nombre: orden?.CardName || '',
+    codigo: orden?.CardCode || ''
+  };
+
+  // Mapear datos de seguimiento (del prop data)
+  const seguimientoData = data?.[0] || {};
+  
+  const entregas = seguimientoData.DELIVERY_DATE ? [{
+    id: seguimientoData.DELIVERY_ENTRY,
+    fecha: new Date(seguimientoData.DELIVERY_DATE).toLocaleDateString('es-ES')
+  }] : [];
+
+  const facturas = seguimientoData.INVOICE_DATE ? [{
+    id: seguimientoData.INVOICE_ENTRY,
+    fecha: new Date(seguimientoData.INVOICE_DATE).toLocaleDateString('es-ES'),
+    montoUsd: seguimientoData.MONTO_INVOICE || 0
+  }] : [];
+
+  // IDs para los servicios
+  const orderId = ordenData.id;
+  const entregaId = entregas[0]?.id;
+  const facturaId = facturas[0]?.id;
+
+  const { data: comparisonData, isLoading, error } = useGetCompareOrderAndDeliveryNote(
     orderId, 
     entregaId, 
     {
       enabled: Boolean(orderId)
     }
   );
-
-  const mapOrderData = (backendData) => {
-  return {
-    orden: {
-      id: backendData.DocEntry,
-      numero: backendData.DocNum,
-      fechaCreacion: new Date(backendData.DocDate).toLocaleDateString('es-ES'),
-      montoUsd: backendData.RawDocs?.[0]?.MONTO_INVOICE || 0
-    },
-    cliente: {
-      nombre: backendData.CardName,
-      codigo: backendData.CardCode
-    },
-    entrega: backendData.Deliveries?.length > 0 ? [{
-      id: backendData.Deliveries[0],
-      fecha: backendData.RawDocs?.[0]?.DELIVERY_DATE 
-        ? new Date(backendData.RawDocs[0].DELIVERY_DATE).toLocaleDateString('es-ES')
-        : 'Pendiente'
-    }] : [],
-    factura: backendData.Invoices?.length > 0 ? [{
-      id: backendData.Invoices[0],
-      fecha: backendData.RawDocs?.[0]?.INVOICE_DATE 
-        ? new Date(backendData.RawDocs[0].INVOICE_DATE).toLocaleDateString('es-ES')
-        : 'Pendiente',
-      montoUsd: backendData.RawDocs?.[0]?.MONTO_INVOICE || 0
-    }] : []
-  };
-};
 
   const handleVerOrden = async () => {
     if (!orderId) return;
@@ -123,8 +122,8 @@ const TrackingPage = ({ orden }) => {
     }
   };
 
-  // 5. CÁLCULO DE PRODUCTOS - DESPUÉS DE TODOS LOS HOOKS
-  const productosComparados = (data || []).map(item => ({
+  // Mapear productos comparados
+  const productosComparados = (comparisonData || []).map(item => ({
     codigo: item.ItemCode,
     descripcion: item.Description,
     cantidadOrdenada: item.RequestedQty,
@@ -174,18 +173,18 @@ const TrackingPage = ({ orden }) => {
               <HStack spacing={3} mb={6}>
                 <VStack align="start" spacing={0}>
                   <Text fontWeight="bold" fontSize="lg" color="green.600">
-                    Pedido #{orden.orden.numero}
+                    Pedido #{ordenData.numero}
                   </Text>
                   <HStack>
                     <Text justifyContent="start" alignItems="start">Cliente:</Text>
                     <Text fontSize="sm" fontWeight="bold" color={textMuted}>
-                      {orden.cliente.nombre} ({orden.cliente.codigo})
+                      {clienteData.nombre} ({clienteData.codigo})
                     </Text>
                   </HStack>
                   <HStack>
                     <Text fontSize="sm" color={textMuted}>Fecha:</Text>
                     <Text fontSize="sm" color={textMuted}>
-                      {orden.orden.fechaCreacion}
+                      {ordenData.fechaCreacion}
                     </Text>
                   </HStack>
                 </VStack>
@@ -249,7 +248,7 @@ const TrackingPage = ({ orden }) => {
               <Box bg="white" p={3} borderRadius="md">
                 <HStack justify="space-between" mb={3}>
                   <Text fontSize="sm" color={textMuted}>Monto:</Text>
-                  <Text fontSize="sm" fontWeight="medium">${orden.orden.montoUsd.toFixed(2)}</Text>
+                  <Text fontSize="sm" fontWeight="medium">${ordenData.montoUsd.toFixed(2)}</Text>
                 </HStack>
                 <Button 
                   size="sm" 
@@ -285,7 +284,7 @@ const TrackingPage = ({ orden }) => {
             <Box
               w="2px"
               flex={1}
-              bg="green.500"
+              bg={facturas.length > 0 ? "green.500" : "gray.400"}
               minH="80px"
             />
           </Flex>
@@ -294,7 +293,7 @@ const TrackingPage = ({ orden }) => {
           <Box flex={1}>
             <Box bg={bgSection} p={4} borderRadius="md">
               <Text fontWeight="bold" fontSize="md" mb={3} color="green.600">
-                Entrega
+                Picking
               </Text>
               <Box bg="white" p={3} borderRadius="md">
                 {entregas.length > 0 ? (
@@ -338,7 +337,7 @@ const TrackingPage = ({ orden }) => {
               bg={facturas.length > 0 ? "green.500" : "gray.400"}
               color="white"
             >
-              <Check size={16} />
+              {facturas.length > 0 ? <Check size={16} /> : <Circle size="8px" bg="white" />}
             </Circle>
           </Flex>
 

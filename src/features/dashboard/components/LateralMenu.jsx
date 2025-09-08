@@ -57,7 +57,7 @@ export function LateralMenu() {
   const applicationOptions = [
     { label: 'Generar cotización', icon: MdRequestQuote, path: '#', access: 'POST:/quotations' },
     { label: 'Historial de cotizaciones', icon: MdHistory, path: '#', access: 'GET:/quotations' },
-    { label: 'Nuevo usuario', icon: MdPersonAdd, path: '/register', access: 'POST:/users' },
+    { label: 'Nuevo usuario', icon: MdPersonAdd, path: '/register', access: 'POST:/register' },
     { label: 'Gestión de solicitudes', icon: MdAssignment, path: '#', access: 'GET:/requests' },
     { label: 'Seguimiento de Pedidos', icon: MdBarChart, path: '/reports', access: 'GET:/reports' },
     { label: 'Cuentas por Cobrar', icon: MdBubbleChart, path: '/receivable', access: 'GET:/receivable' }

@@ -24,11 +24,8 @@ import {
   HStack
 } from "@chakra-ui/react";
 import { useForm } from "react-hook-form";
-import { MainLayout } from "../../../components/layouts/MainLayout";
-import { adaptUsertoRegister } from "../adapters/authAdapter";
 import { useAuthMutations } from "../hooks/mutations/authMutations";
 import { useSellersData } from "../hooks/queries/authQueries";
-import Select from "react-select";
 import { useEffect, useState, useMemo } from "react";
 import { ViewIcon, ViewOffIcon } from "@chakra-ui/icons";
 import { BackButton } from "../../../components/BackButton";
@@ -36,11 +33,9 @@ import SellerSelect from "../../../components/SellerSelect";
 import { useNavigate } from "react-router-dom";
 import { useGetServices } from "../hooks/queries/authQueries";
 
-// Sistema Híbrido: Manual + Automático (Recomendado)
 function groupServicesByCategory(services) {
   if (!services || services.length === 0) return {};
 
-  // Categorías manuales prioritarias
   const manualCategories = {
     'ventas': {
       name: 'Ventas',
@@ -88,7 +83,6 @@ function groupServicesByCategory(services) {
 
   const dynamicCategories = {};
   
-  // Función para generar nombres legibles automáticamente
   const getCategoryDisplayName = (basePath) => {
     const displayNames = {
       'inventory': 'Inventario',
@@ -118,7 +112,6 @@ function groupServicesByCategory(services) {
            basePath.charAt(0).toUpperCase() + basePath.slice(1).replace(/[-_]/g, ' ');
   };
 
-  // Función para asignar iconos automáticamente
   const getCategoryIcon = (basePath) => {
     const icons = {
       'inventory': '📦',
@@ -147,7 +140,6 @@ function groupServicesByCategory(services) {
     return icons[normalized] || '📁';
   };
 
-  // Función para asignar colores automáticamente
   const getCategoryColor = (basePath) => {
     const colors = ['blue', 'green', 'purple', 'orange', 'yellow', 'teal', 'pink', 'cyan', 'red', 'gray'];
     let hash = 0;
@@ -163,7 +155,6 @@ function groupServicesByCategory(services) {
     
     let assigned = false;
     
-    // Primero intentar asignar a categorías manuales
     for (const [categoryKey, category] of Object.entries(manualCategories)) {
       if (category.keywords.some(keyword => basePath.toLowerCase().includes(keyword.toLowerCase()))) {
         category.services.push(service);
@@ -172,7 +163,6 @@ function groupServicesByCategory(services) {
       }
     }
     
-    // Si no se asignó manualmente, crear categoría dinámica
     if (!assigned) {
       const categoryKey = basePath.toLowerCase();
       
@@ -189,17 +179,14 @@ function groupServicesByCategory(services) {
     }
   });
 
-  // Combinar categorías manuales (con servicios) y dinámicas
   const result = {};
   
-  // Agregar categorías manuales que tienen servicios
   Object.entries(manualCategories).forEach(([key, category]) => {
     if (category.services.length > 0) {
       result[key] = category;
     }
   });
-  
-  // Agregar categorías dinámicas
+
   Object.entries(dynamicCategories).forEach(([key, category]) => {
     result[key] = category;
   });
@@ -235,8 +222,6 @@ export function Register() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-
-  // Agrupar servicios usando useMemo para optimizar rendimiento
   const groupedServices = useMemo(() => {
     return groupServicesByCategory(services);
   }, [services]);
@@ -259,31 +244,9 @@ export function Register() {
       permittedServices: data.permittedServices,
     };
 
-    registerMutation.mutate(user, {
-      onSuccess: () => {
-        navigate("/dashboard");
-      },
-      onError: (error) => {
-        const message = error?.response?.data?.message || "Error al registrar";
-
-        if (message.includes("email")) {
-          setError("email", {
-            type: "manual",
-            message: "Este correo ya está registrado",
-          });
-        } else if (message.includes("username")) {
-          setError("name", {
-            type: "manual",
-            message: "Este nombre ya está en uso",
-          });
-        } else {
-          alert(message);
-        }
-      },
-    });
+    registerMutation.mutate(user);
   };
 
-  // Función para manejar selección de servicios
   const handleServiceChange = (serviceId, checked) => {
     const currentServices = permittedServices;
     const updatedServices = checked
@@ -293,30 +256,25 @@ export function Register() {
     setValue("permittedServices", updatedServices);
   };
 
-  // Función para seleccionar/deseleccionar todos los servicios de una categoría
   const handleCategoryChange = (categoryServices, checked) => {
     const serviceIds = categoryServices.map(service => service.id);
     const currentServices = permittedServices;
     
     let updatedServices;
     if (checked) {
-      // Agregar todos los servicios de la categoría
       updatedServices = [...new Set([...currentServices, ...serviceIds])];
     } else {
-      // Remover todos los servicios de la categoría
       updatedServices = currentServices.filter(id => !serviceIds.includes(id));
     }
     
     setValue("permittedServices", updatedServices);
   };
 
-  // Verificar si todos los servicios de una categoría están seleccionados
   const isCategoryFullySelected = (categoryServices) => {
     const serviceIds = categoryServices.map(service => service.id);
     return serviceIds.every(id => permittedServices.includes(id));
   };
 
-  // Verificar si algunos servicios de una categoría están seleccionados
   const isCategoryPartiallySelected = (categoryServices) => {
     const serviceIds = categoryServices.map(service => service.id);
     return serviceIds.some(id => permittedServices.includes(id)) && !isCategoryFullySelected(categoryServices);
@@ -331,7 +289,6 @@ export function Register() {
 
   return (
     <Box minHeight="100vh">
-      {/* Encabezado */}
       <Flex
         bg="green.800"
         color="white"
@@ -489,7 +446,6 @@ export function Register() {
                       </AccordionButton>
                       <AccordionPanel pb={4}>
                         <VStack align="stretch" spacing={2}>
-                          {/* Checkbox para seleccionar toda la categoría */}
                           <Checkbox
                             isChecked={isCategoryFullySelected(category.services)}
                             isIndeterminate={isCategoryPartiallySelected(category.services)}
@@ -500,7 +456,6 @@ export function Register() {
                             Seleccionar todos en {category.name}
                           </Checkbox>
                           
-                          {/* Lista de servicios individuales */}
                           <SimpleGrid columns={1} spacing={2} pl={6}>
                             {category.services.map((srv) => (
                               <Checkbox

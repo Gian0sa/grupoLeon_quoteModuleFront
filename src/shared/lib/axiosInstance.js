@@ -33,7 +33,6 @@ axiosInstance.interceptors.response.use(
 
     const isAuthRoute = [
       "/authModule/login",
-      "/authModule/register",
       "/authModule/refresh-token",
     ].includes(path);
 

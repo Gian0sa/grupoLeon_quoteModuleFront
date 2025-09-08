@@ -38,12 +38,11 @@ export default function SalespersonReports({ salespersonId }) {
   const hasAccess = useHasAccess();
   const { data: reglas = [], isLoading: reglasLoading } = useRules();
 
-const [estadoOrdenFiltro, setEstadoOrdenFiltro] = useState('');
-const [tempEstadoOrdenFiltro, setTempEstadoOrdenFiltro] = useState('');
+  const [estadoOrdenFiltro, setEstadoOrdenFiltro] = useState('');
+  const [tempEstadoOrdenFiltro, setTempEstadoOrdenFiltro] = useState('');
 
-const [tempStartDate, setTempStartDate] = useState(null);
-const [tempEndDate, setTempEndDate] = useState(null);
-
+  const [tempStartDate, setTempStartDate] = useState(null);
+  const [tempEndDate, setTempEndDate] = useState(null);
 
   const [pagina, setPagina] = useState(1);
   const porPagina = 5;
@@ -54,8 +53,6 @@ const [tempEndDate, setTempEndDate] = useState(null);
 
   const [selectedSeller, setSelectedSeller] = useState(null);
   const dynamicSalespersonId = selectedSeller?.value ?? salespersonId ?? null;
-
-
 
   const { data: reportData, isLoading: reportLoading, error: reportError } =
   useGetOrderswithStatusReports({
@@ -78,24 +75,10 @@ const [tempEndDate, setTempEndDate] = useState(null);
     onClose: closeModal,
   } = useDisclosure();
 
- const abrirModal = (ordenRaw) => {
-  const ordenFormateada = {
-    orden: {
-      id: ordenRaw.DocEntry,
-      numero: ordenRaw.DocNum,
-      fechaCreacion: new Date(ordenRaw.DocDate).toLocaleDateString(),
-      montoUsd: ordenRaw.TotalUsd || ordenRaw.FacturaInfo?.montoUsd || 0,
-    },
-    cliente: {
-      nombre: ordenRaw.CardName,
-      codigo: ordenRaw.CardCode,
-    }
+  const abrirModal = (ordenRaw) => {
+    setOrdenSeleccionada(ordenRaw);
+    openModal();
   };
-
-  setOrdenSeleccionada(ordenFormateada);
-  openModal();
-};
-
 
   if (reportLoading) {
     return (
@@ -154,7 +137,7 @@ const [tempEndDate, setTempEndDate] = useState(null);
             setStartDate(null);
             setEndDate(null);
             setTempStartDate(null);
-            setTempEndDate(null); // sincronizar
+            setTempEndDate(null);
           }}
           clearAll={() => {
             setEstadoOrdenFiltro('');
@@ -165,7 +148,6 @@ const [tempEndDate, setTempEndDate] = useState(null);
             setTempEndDate(null);
           }}
         />
-
 
         <Flex justify="space-between" align="center" py={2}>
           <Text fontWeight="bold">Todas las órdenes</Text>
@@ -205,8 +187,8 @@ const [tempEndDate, setTempEndDate] = useState(null);
                   color: regla.color,
                   progress: regla.progress,
                 }))}
-                activeStatus={tempEstadoOrdenFiltro}   // 👈 singular
-                setStatus={setTempEstadoOrdenFiltro}   // 👈 singular
+                activeStatus={tempEstadoOrdenFiltro}
+                setStatus={setTempEstadoOrdenFiltro}
                 setStartDate={setTempStartDate}
                 setEndDate={setTempEndDate}
                 startDate={tempStartDate}

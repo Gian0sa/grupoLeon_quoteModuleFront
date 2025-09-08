@@ -31,6 +31,17 @@ export default function OrdersList({ detalle = [], onVerSeguimiento }) {
     const hora = orden.DocTime;
     const cliente = orden.CardName;
     const vendedor = orden.NameVendedor ?? "Sin vendedor";
+    const DocTotal = orden.DocTotal ?? 0;
+    const DocTotalUSD = orden.DocTotalUSD ?? 0;
+
+    const formatHora = (docTime) => {
+      if (!docTime) return "";
+      const str = docTime.toString().padStart(4, "0"); 
+      const horas = str.substring(0, 2);
+      const minutos = str.substring(2, 4);
+      return `${horas}:${minutos}`;
+    };
+
 
     // Información del estado desde StatusInfo
     const statusInfo = orden.StatusInfo || {
@@ -71,7 +82,7 @@ export default function OrdersList({ detalle = [], onVerSeguimiento }) {
           {/* CONTENIDO PRINCIPAL */}
           <Box>
            {/* Nro de orden */}
-            <Flex align="center" gap={2} mb={2}>
+            <Flex align="center" gap={2} mb={1}>
               <Image src={getIconPath(getStatusIcon("etiqueta", estadoGeneral))} boxSize="16px" />
               <Text fontSize="md" fontWeight="bold" color={color}>
                 #{numeroOrden}
@@ -79,23 +90,23 @@ export default function OrdersList({ detalle = [], onVerSeguimiento }) {
             </Flex>
 
             {/* Cliente */}
-            <Flex align="center" gap={2} mb={2}>
+            <Flex align="center" gap={2} mb={1}>
               <Image src={getIconPath(getStatusIcon("ubicacion", estadoGeneral))} boxSize="16px" />
-              <Text fontSize="xs">{cliente}</Text>
+              <Text fontSize="sm">{cliente}</Text>
             </Flex>
 
             {/* Fecha */}
-            <Flex align="center" gap={2} mb={4}>
+            <Flex align="center" gap={2} mb={2}>
               <Image src={getIconPath(getStatusIcon("reloj", estadoGeneral))} boxSize="16px" />
-              <Text fontSize="xs">
-                {fecha} - {hora}
+              <Text fontSize="sm">
+                {fecha} - {formatHora(hora)}
               </Text>
             </Flex>
             {/* Asesor */}
             {hasAccess("GET:/sellers") && (
-              <Flex align="center" gap={3} mb={2}>
+              <Flex align="center" gap={3} mb={1}>
                 <Box>
-                  <Text fontSize="xs" fontWeight="bold">
+                  <Text fontSize="sm" fontWeight="bold">
                     {vendedor}
                   </Text>
                   <Text fontSize="2xs" color={color}>
@@ -122,7 +133,7 @@ export default function OrdersList({ detalle = [], onVerSeguimiento }) {
               size="60px"
               thickness="6px"
             >
-              <CircularProgressLabel fontSize="xs" fontWeight="bold">
+              <CircularProgressLabel fontSize="sm" fontWeight="bold">
                 {progress}%
               </CircularProgressLabel>
             </CircularProgress>

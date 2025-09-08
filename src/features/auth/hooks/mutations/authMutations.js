@@ -25,6 +25,50 @@ export function useAuthMutations() {
 
   const registerMutation = useMutation({
     mutationFn: registerUser,
+    onSuccess: () => {
+      toast({
+        title: "Registro exitoso",
+        description: "El usuario se registró correctamente.",
+        status: "success",
+        duration: 5000,
+        isClosable: true,
+        position: "top",
+      });
+      navigate("/dashboard");
+    },
+    onError: (error) => {
+      const message = error?.response?.data?.message || "Error al registrar";
+
+      // aquí puedes inspeccionar el mensaje y lanzar errores específicos
+      if (message.includes("email")) {
+        toast({
+          title: "Correo en uso",
+          description: "Este correo ya está registrado.",
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+          position: "top",
+        });
+      } else if (message.includes("username")) {
+        toast({
+          title: "Nombre en uso",
+          description: "Este nombre ya está registrado.",
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+          position: "top",
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: message,
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+          position: "top",
+        });
+      }
+    },
   });
 
   const logoutMutation = useMutation({
