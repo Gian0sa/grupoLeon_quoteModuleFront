@@ -43,12 +43,12 @@ export default function SellerSelectReport({
             control: (base) => ({
               ...base,
               backgroundColor: "#f0f4f8",
-              fontSize: "12px",
+              fontSize: "13px", // antes 12px
               borderColor: "#cbd5e0",
-              minHeight: "32px",
-              height: "32px",
+              minHeight: "34px", // un poquito más alto
+              height: "34px",
               boxShadow: "none",
-              borderRadius: "20px",
+              borderRadius: "14px", // menos redondeado para que no parezca pill tan grande
               "&:hover": {
                 borderColor: "#a0aec0",
               },
@@ -56,23 +56,23 @@ export default function SellerSelectReport({
             valueContainer: (base) => ({
               ...base,
               padding: "0 8px",
-              fontSize: "12px",
+              fontSize: "13px",
             }),
             input: (base) => ({
               ...base,
               margin: "0px",
               paddingTop: "0px",
               paddingBottom: "0px",
-              fontSize: "12px",
+              fontSize: "13px",
             }),
             placeholder: (base) => ({
               ...base,
-              fontSize: "12px",
+              fontSize: "13px",
               color: "#718096",
             }),
             singleValue: (base) => ({
               ...base,
-              fontSize: "12px",
+              fontSize: "13px",
               color: "#2d3748",
             }),
             indicatorSeparator: () => ({
@@ -85,7 +85,7 @@ export default function SellerSelectReport({
             menu: (base) => ({
               ...base,
               backgroundColor: "#ffffff",
-              fontSize: "12px",
+              fontSize: "13px",
               zIndex: 9999,
             }),
             option: (base, { isFocused, isSelected }) => ({
@@ -96,7 +96,7 @@ export default function SellerSelectReport({
                 ? "#e2e8f0"
                 : "#ffffff",
               color: isSelected ? "#ffffff" : "#2d3748",
-              fontSize: "12px",
+              fontSize: "13px",
               padding: "8px 12px",
               "&:active": {
                 backgroundColor: "#4299e1",

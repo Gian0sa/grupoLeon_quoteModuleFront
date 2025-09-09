@@ -1,6 +1,5 @@
 import {
   FormControl,
-  FormLabel,
   Skeleton,
   FormErrorMessage,
 } from "@chakra-ui/react";
@@ -32,7 +31,7 @@ export default function SellerSelectReceivable({
     <FormControl isInvalid={!!error}>
       {isLoading ? (
         <Skeleton
-          height="32px"
+          height="36px"
           borderRadius="20px"
           startColor="#e2e8f0"
           endColor="#cbd5e0"
@@ -43,10 +42,10 @@ export default function SellerSelectReceivable({
             control: (base) => ({
               ...base,
               backgroundColor: "#f0f4f8",
-              fontSize: "12px",
+              fontSize: "13px",
               borderColor: "#cbd5e0",
-              minHeight: "32px",
-              height: "32px",
+              minHeight: "36px",
+              height: "36px",
               boxShadow: "none",
               borderRadius: "20px",
               "&:hover": {
@@ -55,24 +54,24 @@ export default function SellerSelectReceivable({
             }),
             valueContainer: (base) => ({
               ...base,
-              padding: "0 8px",
-              fontSize: "12px",
+              padding: "0 10px",
+              fontSize: "14px",
             }),
             input: (base) => ({
               ...base,
               margin: "0px",
               paddingTop: "0px",
               paddingBottom: "0px",
-              fontSize: "12px",
+              fontSize: "14px",
             }),
             placeholder: (base) => ({
               ...base,
-              fontSize: "12px",
+              fontSize: "13px",
               color: "#718096",
             }),
             singleValue: (base) => ({
               ...base,
-              fontSize: "12px",
+              fontSize: "13px",
               color: "#2d3748",
             }),
             indicatorSeparator: () => ({
@@ -80,12 +79,12 @@ export default function SellerSelectReceivable({
             }),
             dropdownIndicator: (base) => ({
               ...base,
-              padding: "4px",
+              padding: "6px",
             }),
             menu: (base) => ({
               ...base,
               backgroundColor: "#ffffff",
-              fontSize: "12px",
+              fontSize: "14px",
               zIndex: 9999,
             }),
             option: (base, { isFocused, isSelected }) => ({
@@ -96,7 +95,7 @@ export default function SellerSelectReceivable({
                 ? "#e2e8f0"
                 : "#ffffff",
               color: isSelected ? "#ffffff" : "#2d3748",
-              fontSize: "12px",
+              fontSize: "13px",
               padding: "8px 12px",
               "&:active": {
                 backgroundColor: "#4299e1",

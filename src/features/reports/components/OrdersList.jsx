@@ -6,7 +6,6 @@ import {
   useColorModeValue,
   Button,
   Grid,
-  Progress,
   CircularProgress,
   CircularProgressLabel,
 } from "@chakra-ui/react";
@@ -20,35 +19,30 @@ export default function OrdersList({ detalle = [], onVerSeguimiento }) {
     return <Text>No hay órdenes para mostrar</Text>;
   }
 
- const getIconPath = (baseName) => `/assets/icons/${baseName}`;
+  const getIconPath = (baseName) => `/assets/icons/${baseName}`;
 
   return detalle.map((orden, idx) => {
-    // Datos base que vienen del backend
     const numeroOrden = orden.DocNum;
     const fecha = new Date(orden.DocDate).toLocaleDateString("es-PE", {
-      timeZone: "UTC"
+      timeZone: "UTC",
     });
     const hora = orden.DocTime;
     const cliente = orden.CardName;
     const vendedor = orden.NameVendedor ?? "Sin vendedor";
-    const DocTotal = orden.DocTotal ?? 0;
-    const DocTotalUSD = orden.DocTotalUSD ?? 0;
 
     const formatHora = (docTime) => {
       if (!docTime) return "";
-      const str = docTime.toString().padStart(4, "0"); 
+      const str = docTime.toString().padStart(4, "0");
       const horas = str.substring(0, 2);
       const minutos = str.substring(2, 4);
       return `${horas}:${minutos}`;
     };
 
-
-    // Información del estado desde StatusInfo
     const statusInfo = orden.StatusInfo || {
       name: "Estado desconocido",
       color: "gray.400",
       progress: 0,
-      icon: "order.png"
+      icon: "order.png",
     };
 
     const color = statusInfo.color;
@@ -62,7 +56,6 @@ export default function OrdersList({ detalle = [], onVerSeguimiento }) {
       }
       return `${baseName}.png`;
     };
-
 
     return (
       <Box
@@ -81,35 +74,45 @@ export default function OrdersList({ detalle = [], onVerSeguimiento }) {
         <Grid templateColumns="1fr auto" gap={6} alignItems="center">
           {/* CONTENIDO PRINCIPAL */}
           <Box>
-           {/* Nro de orden */}
+            {/* Nro de orden */}
             <Flex align="center" gap={2} mb={1}>
-              <Image src={getIconPath(getStatusIcon("etiqueta", estadoGeneral))} boxSize="16px" />
-              <Text fontSize="md" fontWeight="bold" color={color}>
+              <Image
+                src={getIconPath(getStatusIcon("etiqueta", estadoGeneral))}
+                boxSize="16px"
+              />
+              <Text fontSize="15px" fontWeight="bold" color={color}>
                 #{numeroOrden}
               </Text>
             </Flex>
 
             {/* Cliente */}
             <Flex align="center" gap={2} mb={1}>
-              <Image src={getIconPath(getStatusIcon("ubicacion", estadoGeneral))} boxSize="16px" />
-              <Text fontSize="sm">{cliente}</Text>
+              <Image
+                src={getIconPath(getStatusIcon("ubicacion", estadoGeneral))}
+                boxSize="16px"
+              />
+              <Text fontSize="14px">{cliente}</Text>
             </Flex>
 
             {/* Fecha */}
             <Flex align="center" gap={2} mb={2}>
-              <Image src={getIconPath(getStatusIcon("reloj", estadoGeneral))} boxSize="16px" />
-              <Text fontSize="sm">
+              <Image
+                src={getIconPath(getStatusIcon("reloj", estadoGeneral))}
+                boxSize="16px"
+              />
+              <Text fontSize="14px">
                 {fecha} - {formatHora(hora)}
               </Text>
             </Flex>
+
             {/* Asesor */}
             {hasAccess("GET:/sellers") && (
               <Flex align="center" gap={3} mb={1}>
                 <Box>
-                  <Text fontSize="sm" fontWeight="bold">
+                  <Text fontSize="14px" fontWeight="bold">
                     {vendedor}
                   </Text>
-                  <Text fontSize="2xs" color={color}>
+                  <Text fontSize="13px" color={color}>
                     Asesor de ventas
                   </Text>
                 </Box>
@@ -133,22 +136,22 @@ export default function OrdersList({ detalle = [], onVerSeguimiento }) {
               size="60px"
               thickness="6px"
             >
-              <CircularProgressLabel fontSize="sm" fontWeight="bold">
+              <CircularProgressLabel fontSize="13px" fontWeight="bold">
                 {progress}%
               </CircularProgressLabel>
             </CircularProgress>
 
             {/* Icono del estado */}
-            <Image 
-              src={getIconPath(iconName)} 
-              boxSize="24px" 
+            <Image
+              src={getIconPath(iconName)}
+              boxSize="24px"
               alt={estadoGeneral}
             />
 
             {/* Botón con estado */}
             <Button
               size="xs"
-              colorScheme={color.split('.')[0]} // extrae 'green' de 'green.400'
+              colorScheme={color.split(".")[0]}
               variant="outline"
               borderRadius="full"
               whiteSpace="normal"
@@ -157,7 +160,7 @@ export default function OrdersList({ detalle = [], onVerSeguimiento }) {
               w="100%"
               py={1}
               height="auto"
-              fontSize="2xs"
+              fontSize="11px"
             >
               {estadoGeneral}
             </Button>
