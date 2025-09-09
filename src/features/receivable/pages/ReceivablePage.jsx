@@ -12,6 +12,7 @@ import { useAuthStore } from "../../auth/stores/useAuthStore";
 export function ReceivablePage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [cliente, setCliente] = useState("");
+  const [clientecode, setClientecode] = useState(""); 
   const [searchValue, setSearchValue] = useState("");
   const [selectedSeller, setSelectedSeller] = useState(null);
   const [selectedInvoices, setSelectedInvoices] = useState([]);
@@ -24,31 +25,39 @@ export function ReceivablePage() {
 
   // Si es vendedor, setear automáticamente su vendedor
   useEffect(() => {
-    if (isSellerProfile) {
-      setSelectedSeller({
-        value: sellerCode,
-        label: `${sellerCode}. ${username}`,
-      });
-    }
-  }, [isSellerProfile, sellerCode, username]);
+      if (isSellerProfile) {
+        setSelectedSeller({
+          value: sellerCode,
+          label: `${sellerCode}. ${username}`,
+        });
+      }
+    }, [isSellerProfile, sellerCode, username]);
 
-  // Referencias para debounce
-  const debounceTimer = useRef(null);
-  const lastSearchValue = useRef("");
+    // Referencias para debounce
+    const debounceTimer = useRef(null);
+    const lastSearchValue = useRef("");
 
-  useEffect(() => {
+    useEffect(() => {
     if (searchValue && searchValue !== lastSearchValue.current && searchValue.length > 2) {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
       debounceTimer.current = setTimeout(() => {
-        setCliente(searchValue.trim());
+        const trimmedValue = searchValue.trim();
+        if (/^\d+$/.test(trimmedValue)) {
+          setClientecode(`CL${trimmedValue}`);
+          setCliente("");
+        } else {
+          setCliente(trimmedValue);
+          setClientecode("");
+        }
         setCurrentPage(1);
         lastSearchValue.current = searchValue;
       }, 800);
     }
-    if (!searchValue && cliente) {
+    if (!searchValue && (cliente || clientecode)) {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
       debounceTimer.current = setTimeout(() => {
         setCliente("");
+        setClientecode("");
         setCurrentPage(1);
         lastSearchValue.current = "";
       }, 500);
@@ -56,20 +65,26 @@ export function ReceivablePage() {
     return () => {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
     };
-  }, [searchValue, cliente]);
+  }, [searchValue, cliente, clientecode]);
 
   const handlePageChange = (page) => setCurrentPage(page);
   const handleJumpBack = () => setCurrentPage((prev) => Math.max(prev - 10, 1));
   const handleJumpForward = (pagination) =>
     setCurrentPage((prev) => Math.min(prev + 10, pagination?.totalPaginas || 1));
 
-  const handleClientSearch = (value) => {
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    const trimmedValue = value.trim();
-    setCliente(trimmedValue);
-    setCurrentPage(1);
-    lastSearchValue.current = trimmedValue;
-  };
+   const handleClientSearch = (value) => {
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+      const trimmedValue = value.trim();
+      if (/^\d+$/.test(trimmedValue)) {
+        setClientecode(`CL${trimmedValue}`); // ✅ ahora con CL
+        setCliente("");
+      } else {
+        setCliente(trimmedValue);
+        setClientecode("");
+      }
+      setCurrentPage(1);
+      lastSearchValue.current = trimmedValue;
+    };
 
   const handleSearchInputChange = (value) => setSearchValue(value);
 
@@ -78,6 +93,7 @@ export function ReceivablePage() {
     if (selectedSeller?.value !== seller?.value) {
       setSelectedSeller(seller);
       setCliente("");
+      setClientecode("");
       setSearchValue("");
       setCurrentPage(1);
       lastSearchValue.current = "";
@@ -96,6 +112,7 @@ export function ReceivablePage() {
     const { data, isLoading, error } = useGetAccountsReceivable({
       vendedor: vendedorNombre,
       cliente: cliente.toUpperCase(),
+      clientecode,
       page: currentPage > 0 ? currentPage - 1 : 0,
     });
 
