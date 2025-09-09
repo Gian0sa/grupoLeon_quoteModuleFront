@@ -13,7 +13,7 @@ export function DebtList({ debts, onViewInvoices, onViewDetails }) {
   }
 
   return (
-    <VStack spacing={4} align="stretch">
+    <VStack spacing={1} align="stretch">
       {debts.map((debt, index) => {
         // Calcular información adicional
         const totalDocuments = debt.estadisticas?.totalDocumentos || 0;

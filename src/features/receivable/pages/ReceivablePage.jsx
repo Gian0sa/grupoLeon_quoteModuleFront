@@ -10,7 +10,7 @@ import InvoicesModal from "../components/InvoicesModal";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 
 export function ReceivablePage() {
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(0);
   const [cliente, setCliente] = useState("");
   const [searchValue, setSearchValue] = useState("");
   const [selectedSeller, setSelectedSeller] = useState(null);
@@ -93,11 +93,11 @@ export function ReceivablePage() {
     ? username 
     : selectedSeller?.label?.split(".")[1]?.trim() || "";
 
-  const { data, isLoading, error } = useGetAccountsReceivable({
-    vendedor: vendedorNombre,
-    cliente,
-    page: currentPage,
-  });
+    const { data, isLoading, error } = useGetAccountsReceivable({
+      vendedor: vendedorNombre,
+      cliente: cliente.toUpperCase(),
+      page: currentPage > 0 ? currentPage - 1 : 0,
+    });
 
   const summary = data?.summary || {};
   const clients = data?.clientes || [];
