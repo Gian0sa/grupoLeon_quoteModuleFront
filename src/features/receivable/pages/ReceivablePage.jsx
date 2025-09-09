@@ -10,7 +10,7 @@ import InvoicesModal from "../components/InvoicesModal";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 
 export function ReceivablePage() {
-  const [currentPage, setCurrentPage] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
   const [cliente, setCliente] = useState("");
   const [searchValue, setSearchValue] = useState("");
   const [selectedSeller, setSelectedSeller] = useState(null);
