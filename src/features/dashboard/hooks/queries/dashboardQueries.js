@@ -3,7 +3,8 @@ import {
   getTopProducts, 
   getPromotions, 
   getHistory, 
-  getQuotesSellers 
+  getQuotesSellers,
+  getQuotesSellersAdmin
 } from "../../services/dashboardService";
 import { 
   adaptTopProducts, 
@@ -49,6 +50,14 @@ export const useQuotesSellers = ({ slpCode, month }) => {
   return useQuery({
     queryKey: ['quotesSellers', slpCode, month],
     queryFn: () => getQuotesSellers({ slpCode, month }),
+    enabled: slpCode != null && month != null,
+  });
+};
+
+export const useQuotesSellersAdmin = ({ slpCode, month }) => {
+  return useQuery({
+    queryKey: ["quotesSellersAdmin", slpCode, month,],      
+    queryFn: () => getQuotesSellersAdmin ({ slpCode, month }),
     enabled: slpCode != null && month != null,
   });
 };

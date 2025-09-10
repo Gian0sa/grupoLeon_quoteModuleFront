@@ -23,19 +23,47 @@ import { es } from "date-fns/locale";
 import { SalesSummary } from "../components/SalesSummary";
 import { SalesStats } from "../components/SalesStats";
 import { useQuotesSellers } from "../hooks/queries/dashboardQueries";
+import { useQuotesSellersAdmin } from "../hooks/queries/dashboardQueries";
 
 export function DashboardPage() { 
   const { salesEmployeeCode, username } = useAuthStore(); 
-  const safeSalespersonId = salesEmployeeCode ?? 7; 
+  
+  // Determinar si es vendedor o admin
+  const isVendedor = salesEmployeeCode && salesEmployeeCode > 0;
+  const isAdmin = !salesEmployeeCode || salesEmployeeCode === 0;
+  
+  // Para vendedor usa su código, para admin usa 0
+  const querySlpCode = isVendedor ? salesEmployeeCode : 0;
 
   const defaultMonth = format(subMonths(new Date(), 0), "MM"); 
 
-  const { data, isLoading, error } = useQuotesSellers({
-    slpCode: safeSalespersonId,
+  // Query para vendedor (solo cuando es vendedor)
+  const { data: vendedorData, isLoading: vendedorLoading, error: vendedorError } = useQuotesSellers({
+    slpCode: querySlpCode,
     month: defaultMonth
+  }, {
+    enabled: isVendedor // Solo ejecuta si es vendedor
   });
 
-  const resumenData = data ? data[0] : null;
+  // Query para admin (solo cuando es admin)
+  const { data: adminData, isLoading: adminLoading, error: adminError } = useQuotesSellersAdmin({
+    slpCode: querySlpCode,
+    month: defaultMonth
+  }, {
+    enabled: isAdmin // Solo ejecuta si es admin
+  });
+
+  // Determinar qué data usar y estados de loading/error
+  const isLoading = isVendedor ? vendedorLoading : adminLoading;
+  const error = isVendedor ? vendedorError : adminError;
+  
+  // Obtener los datos correctos según el tipo de usuario
+  const resumenData = isVendedor ? vendedorData?.[0] ?? null : adminData ??  null;
+
+  console.log("Tipo de usuario:", isVendedor ? "Vendedor" : "Admin");
+  console.log("Sales Employee Code:", salesEmployeeCode);
+  console.log("Query SLP Code:", querySlpCode);
+  console.log("Resumen Data:", resumenData);
 
   const { colorMode, toggleColorMode } = useColorMode();
 
@@ -57,6 +85,10 @@ export function DashboardPage() {
                 </Text>
                 <Text fontSize="sm" opacity={0.9}>
                   {today.charAt(0).toUpperCase() + today.slice(1)}
+                </Text>
+                {/* Indicador de tipo de usuario para debug */}
+                <Text fontSize="xs" opacity={0.7}>
+                  {isVendedor ? `Vendedor (${salesEmployeeCode})` : "Admin"}
                 </Text>
               </VStack>
             </Box>
@@ -116,7 +148,7 @@ export function DashboardPage() {
         </Box>
 
         {/* Cards resumen */}
-        <Grid templateColumns="repeat(2, 1fr)" gap={1} p={2} className={styles.cards}>
+        <Grid templateColumns="repeat(2, 1fr)" gap={1} p={1} pt={8} className={styles.cards}>
           <GridItem>
             <Box
               bg={cardBg}
@@ -128,14 +160,16 @@ export function DashboardPage() {
               justifyContent="center"
               alignItems="center"
               color={textColor}
-              p={3}
+              p={2}
             >
-              {isLoading && <Spinner color="teal.400" />}
-              {error && <Text color="red.400">Error al cargar</Text>}
-              {!isLoading && !error && resumenData && (
-                <SalesSummary
-                  data={resumenData}
-                />
+              {isLoading ? (
+                <Spinner color="teal.400" />
+              ) : error ? (
+                <Text color="red.400">Error al cargar</Text>
+              ) : resumenData ? (
+                <SalesSummary data={resumenData} />
+              ) : (
+                <Text>No hay datos disponibles</Text>
               )}
             </Box>
           </GridItem>
@@ -150,14 +184,16 @@ export function DashboardPage() {
               justifyContent="center"
               alignItems="center"
               color={textColor}
-              p={3}
+              p={2}
             >
-              {isLoading && <Spinner color="teal.400" />}
-              {error && <Text color="red.400">Error al cargar</Text>}
-              {!isLoading && !error && resumenData && (
-                <SalesStats
-                  data={resumenData}
-                />
+              {isLoading ? (
+                <Spinner color="teal.400" />
+              ) : error ? (
+                <Text color="red.400">Error al cargar</Text>
+              ) : resumenData ? (
+                <SalesStats data={resumenData} />
+              ) : (
+                <Text>No hay datos disponibles</Text>
               )}
             </Box>
           </GridItem>

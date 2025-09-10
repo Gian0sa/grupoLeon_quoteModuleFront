@@ -25,7 +25,7 @@ export function SalesSummary({ data }) {
   return (
     <Box
       bg={cardBg}
-      p={1}
+      p="2px"
       w="full"
     >
       {/* Fondo decorativo */}

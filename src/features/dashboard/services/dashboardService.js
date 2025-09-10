@@ -19,7 +19,7 @@ export const getQuotesSellersAdmin = async ({ slpCode, month, page = 1, pageSize
   try {
     const skip = (page - 1) * pageSize;
 
-    const url = `/reportModule/quotesSellers/${slpCode}/${month}?skip=${skip}&pageSize=${pageSize}`;
+    const url = `/reportModule/AdminQuotesSellers/${slpCode}/${month}`;
 
     const response = await axiosInstance.get(url);
     return response.data;
