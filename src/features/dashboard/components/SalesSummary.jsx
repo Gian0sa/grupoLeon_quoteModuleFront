@@ -26,10 +26,6 @@ export function SalesSummary({ data }) {
     <Box
       bg={cardBg}
       p={1}
-      borderRadius="2xl"
-      shadow="xl"
-      position="relative"
-      overflow="hidden"
       w="full"
     >
       {/* Fondo decorativo */}
