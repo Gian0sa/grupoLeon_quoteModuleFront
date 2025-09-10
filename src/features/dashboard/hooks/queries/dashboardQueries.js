@@ -1,31 +1,54 @@
 import { useQuery } from "@tanstack/react-query";
-import { getTopProducts, getPromotions, getHistory } from "../../services/dashboardService";
-import { adaptTopProducts, adaptPromotions, adaptHistory, adaptDraftQuotes } from "../../adapters/dashboardAdapter";
+import { 
+  getTopProducts, 
+  getPromotions, 
+  getHistory, 
+  getQuotesSellers 
+} from "../../services/dashboardService";
+import { 
+  adaptTopProducts, 
+  adaptPromotions, 
+  adaptHistory
+} from "../../adapters/dashboardAdapter";
 
-export function useDashboardQueries(){
-    const { data: topProducts, isLoading: topProductsLoading, error: topProductsError } = useQuery({
-        queryKey: ['topProducts'],
-        queryFn: () => getTopProducts(),
-    });
-    const { data: promotions, isLoading: promotionsLoading, error: promotionsError } = useQuery({
-        queryKey: ['promotions'],
-        queryFn: () => getPromotions(),
-    });
-    const { data: history, isLoading: historyLoading, error: historyError } = useQuery({
-        queryKey: ['history'],
-        queryFn: () => getHistory(),
-    });
-
-    return {
-        topProducts: adaptTopProducts(topProducts),
-        promotions: adaptPromotions(promotions),
-        history: adaptHistory(history),
-        topProductsLoading,
-        promotionsLoading,
-        historyLoading,
-        topProductsError,
-        promotionsError,
-        historyError,
-    };
+// ✅ Hook para Top Products
+export const useTopProducts = () => {
+  return useQuery({
+    queryKey: ['topProducts'],
+    queryFn: async () => {
+      const data = await getTopProducts();
+      return adaptTopProducts(data);
+    },
+  });
 };
 
+// ✅ Hook para Promotions
+export const usePromotions = () => {
+  return useQuery({
+    queryKey: ['promotions'],
+    queryFn: async () => {
+      const data = await getPromotions();
+      return adaptPromotions(data);
+    },
+  });
+};
+
+// ✅ Hook para History
+export const useHistory = () => {
+  return useQuery({
+    queryKey: ['history'],
+    queryFn: async () => {
+      const data = await getHistory();
+      return adaptHistory(data);
+    },
+  });
+};
+
+// ✅ Hook para Quotes by Seller
+export const useQuotesSellers = ({ slpCode, month }) => {
+  return useQuery({
+    queryKey: ['quotesSellers', slpCode, month],
+    queryFn: () => getQuotesSellers({ slpCode, month }),
+    enabled: slpCode != null && month != null,
+  });
+};

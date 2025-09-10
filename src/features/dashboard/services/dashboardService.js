@@ -15,4 +15,26 @@ export const getHistory = async () => {
     return response.data;
 };
 
+export const getQuotesSellersAdmin = async ({ slpCode, month, page = 1, pageSize = 20 }) => {
+  try {
+    const skip = (page - 1) * pageSize;
 
+    const url = `/reportModule/quotesSellers/${slpCode}/${month}?skip=${skip}&pageSize=${pageSize}`;
+
+    const response = await axiosInstance.get(url);
+    return response.data;
+  } catch (error) {
+    console.error("Error al obtener cuotas del vendedor:", error);
+    return null;
+  }
+};
+
+export const getQuotesSellers = async ({ slpCode, month }) => {
+    try {
+        const response = await axiosInstance.get(`/reportModule/quotesSellers/${slpCode}/${month}`);
+        return response.data;
+    } catch (error) {
+        console.error("Error al obtener cuotas del vendedor:", error);
+        return null;
+    }       
+};
