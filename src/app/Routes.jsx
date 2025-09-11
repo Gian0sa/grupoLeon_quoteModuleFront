@@ -17,6 +17,7 @@ import { ConfigRulesPage } from "../features/reports/pages/ConfigPage.jsx";
 import { ReceivablePage } from "../features/receivable/pages/ReceivablePage.jsx";
 import { Profile } from "../features/auth/pages/Profile.jsx";
 import { ProfileAdmin } from "../features/admin/pages/profileAdmin.jsx";
+import { NotificationPage } from "../features/dashboard/pages/NotificationPage.jsx";
 
 const AppRoutes = () => {
   return (
@@ -127,6 +128,14 @@ const AppRoutes = () => {
         element={
           <PrivateRoute>
             <ProfileAdmin />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/notification"
+        element={
+          <PrivateRoute>
+              <NotificationPage />
           </PrivateRoute>
         }
       />

@@ -88,36 +88,4 @@ export const useNotificationById = (id) => {
   });
 };
 
-// ✅ Crear notificación
-export const useCreateNotification = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: createNotification,
-    onSuccess: () => {
-      queryClient.invalidateQueries(["notifications"]); // refrescar lista
-    },
-  });
-};
 
-// ✅ Actualizar notificación
-export const useUpdateNotification = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, data }) => updateNotification(id, data),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries(["notifications"]);
-      queryClient.invalidateQueries(["notification", variables.id]); // refrescar detalle
-    },
-  });
-};
-
-// ✅ Eliminar notificación
-export const useDeleteNotification = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: deleteNotification,
-    onSuccess: () => {
-      queryClient.invalidateQueries(["notifications"]);
-    },
-  });
-};

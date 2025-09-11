@@ -72,6 +72,7 @@ export function LateralMenu() {
    const adminOptions = [
     { label: 'Actualizar usuario', icon: MdPerson, path: '/profileAdmin', access: 'PUT:/profile/admin/:userId'  },
     { label: 'Actualizar servicios', icon: MdHelp, path: '#' , access: 'PUT:/services/:id'  },
+    { label: 'Gestionar Notificaciones', icon: MdAssignment, path: '/notification', access: 'GET:/receivable'} //access: 'POST:/notification' 
   ];
 
 const renderMenuOptions = (options) =>

@@ -9,7 +9,7 @@ import {
   Circle,
   Flex,
 } from "@chakra-ui/react";
-import { FiTarget, FiTrendingUp } from "react-icons/fi";
+import { FiTrendingUp } from "react-icons/fi";
 
 export function SalesSummary({ data }) {
   const cardBg = useColorModeValue("white", "gray.800");
@@ -18,9 +18,16 @@ export function SalesSummary({ data }) {
 
   if (!data) return null;
 
+  // 👉 Formateador de moneda con 2 decimales
+  const formatCurrency = (value) =>
+    Number(value).toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
   const progressValue = data.CUMPLIMIENTO_PCT;
-  const pedidos = data.AVANCE_MES_USD.toLocaleString();
-  const cuota = data.CUOTA_MES_USD.toLocaleString();
+  const pedidos = formatCurrency(data.AVANCE_MES_USD);
+  const cuota = formatCurrency(data.CUOTA_MES_USD);
 
   return (
     <Box
