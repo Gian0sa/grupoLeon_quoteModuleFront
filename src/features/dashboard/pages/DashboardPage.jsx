@@ -154,7 +154,7 @@ export function DashboardPage() {
               bg={cardBg}
               border="1px solid"
               borderRadius="xl"
-              h="250px"
+              h="230px"
               display="flex"
               flexDirection="column"
               justifyContent="center"
@@ -178,7 +178,7 @@ export function DashboardPage() {
               bg={cardBg}
               border="1px solid"
               borderRadius="xl"
-              h="250px"
+              h="230px"
               display="flex"
               flexDirection="column"
               justifyContent="center"

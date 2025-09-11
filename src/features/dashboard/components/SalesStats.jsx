@@ -27,24 +27,13 @@ export function SalesStats({ data }) {
       bg={cardBg}
       p={1}
       w="full"
+      display="flex"
+      flexDirection="column"
+      justifyContent="space-evenly"
+      alignItems="center"
+      position="relative"
     >
-      {/* Fondo decorativo */}
-      <Box
-        position="absolute"
-        top="-20px"
-        right="-20px"
-        w="80px"
-        h="80px"
-        bg={accentColor}
-        opacity={0.1}
-        borderRadius="full"
-      />
-
-      {/* Valor principal */}
-      <VStack spacing={1} mb={6}>
-        <Text fontSize="3xl" fontWeight="900" color={accentColor} lineHeight="1">
-          {pctFactVsPed}%
-        </Text>
+        <VStack spacing={1} mb={6}>
         <HStack spacing={1} opacity={0.8}>
           <Icon as={FiFileText} boxSize={4} color={textColor} />
           <Text fontSize="sm" color={textColor} fontWeight="medium">
@@ -52,10 +41,16 @@ export function SalesStats({ data }) {
           </Text>
         </HStack>
       </VStack>
+      {/* Valor principal */}
+      <VStack spacing={1} mb={6}>
+        <Text fontSize="2xl" fontWeight="900" color={accentColor} lineHeight="1">
+          {pctFactVsPed}%
+        </Text>
+      </VStack>
 
       {/* Progreso visual */}
       <Box mb={4}>
-        <HStack justify="space-between" mb={2}>
+        <HStack flexDirection="column" justify="space-between" mb={2}>
           <Text fontSize="sm" color={textColor}>
             Pedidos: ${pedidosMes}
           </Text>

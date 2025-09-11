@@ -25,26 +25,17 @@ export function SalesSummary({ data }) {
   return (
     <Box
       bg={cardBg}
-      p="2px"
+      p={1}
       w="full"
+      display="flex"
+      h="220px"
+      flexDirection="column"
+      justifyContent="space-evenly"
+      alignItems="center"
+      position="relative"
     >
-      {/* Fondo decorativo */}
-      <Box
-        position="absolute"
-        top="-20px"
-        right="-20px"
-        w="80px"
-        h="80px"
-        bg={accentColor}
-        opacity={0.1}
-        borderRadius="full"
-      />
-
-      {/* Valor principal */}
+      {/* Header */}
       <VStack spacing={1} mb={6}>
-        <Text fontSize="3xl" fontWeight="900" color={accentColor} lineHeight="1">
-          ${pedidos}
-        </Text>
         <HStack spacing={1} opacity={0.8}>
           <Icon as={FiTrendingUp} boxSize={4} color={textColor} />
           <Text fontSize="sm" color={textColor} fontWeight="medium">
@@ -53,15 +44,19 @@ export function SalesSummary({ data }) {
         </HStack>
       </VStack>
 
+      {/* Valor principal */}
+      <VStack spacing={1} mb={6}>
+        <Text fontSize="2xl" fontWeight="900" color={accentColor} lineHeight="1">
+          ${pedidos}
+        </Text>
+      </VStack>
+
       {/* Progreso visual */}
       <Box mb={4}>
-        <HStack justify="space-between" mb={2}>
-          <HStack spacing={1}>
-            <Icon as={FiTarget} boxSize={4} color={textColor} />
-            <Text fontSize="sm" color={textColor}>
-              Meta: ${cuota}
-            </Text>
-          </HStack>
+        <HStack justify="space-between" flexDirection="column" mb={2}>
+          <Text fontSize="sm" color={textColor}>
+            Meta: ${cuota}
+          </Text>
           <Text fontSize="sm" fontWeight="bold" color={accentColor}>
             {progressValue}%
           </Text>
