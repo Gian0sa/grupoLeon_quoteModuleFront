@@ -12,6 +12,14 @@ import {
   adaptHistory
 } from "../../adapters/dashboardAdapter";
 
+import {
+  getNotifications,
+  getNotificationById,
+  createNotification,
+  updateNotification,
+  deleteNotification,
+} from "../../services/notificationService";
+
 // ✅ Hook para Top Products
 export const useTopProducts = () => {
   return useQuery({
@@ -59,5 +67,57 @@ export const useQuotesSellersAdmin = ({ slpCode, month }) => {
     queryKey: ["quotesSellersAdmin", slpCode, month,],      
     queryFn: () => getQuotesSellersAdmin ({ slpCode, month }),
     enabled: slpCode != null && month != null,
+  });
+};
+
+
+// ✅ Obtener todas las notificaciones
+export const useNotifications = () => {
+  return useQuery({
+    queryKey: ["notifications"],
+    queryFn: getNotifications,
+  });
+};
+
+// ✅ Obtener una notificación por ID
+export const useNotificationById = (id) => {
+  return useQuery({
+    queryKey: ["notification", id],
+    queryFn: () => getNotificationById(id),
+    enabled: !!id, // solo si hay id
+  });
+};
+
+// ✅ Crear notificación
+export const useCreateNotification = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: createNotification,
+    onSuccess: () => {
+      queryClient.invalidateQueries(["notifications"]); // refrescar lista
+    },
+  });
+};
+
+// ✅ Actualizar notificación
+export const useUpdateNotification = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }) => updateNotification(id, data),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries(["notifications"]);
+      queryClient.invalidateQueries(["notification", variables.id]); // refrescar detalle
+    },
+  });
+};
+
+// ✅ Eliminar notificación
+export const useDeleteNotification = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: deleteNotification,
+    onSuccess: () => {
+      queryClient.invalidateQueries(["notifications"]);
+    },
   });
 };

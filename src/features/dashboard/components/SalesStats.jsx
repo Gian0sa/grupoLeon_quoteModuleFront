@@ -19,7 +19,7 @@ export function SalesStats({ data }) {
   if (!data) return null;
 
   const pedidosMes = data.PEDIDOS_MES_USD.toLocaleString();
-  const diferencia = data.DIF_FACT_VS_PED_USD.toLocaleString();
+  const diferencia = Math.abs(data.DIF_FACT_VS_PED_USD); ;
   const pctFactVsPed = data.PCT_FACT_VS_PED;
 
   return (
@@ -37,14 +37,14 @@ export function SalesStats({ data }) {
         <HStack spacing={1} opacity={0.8}>
           <Icon as={FiFileText} boxSize={4} color={textColor} />
           <Text fontSize="sm" color={textColor} fontWeight="medium">
-            Facturado vs Pedidos
+            Total de Pedido
           </Text>
         </HStack>
       </VStack>
       {/* Valor principal */}
       <VStack spacing={1} mb={6}>
         <Text fontSize="2xl" fontWeight="900" color={accentColor} lineHeight="1">
-          {pctFactVsPed}%
+          ${pedidosMes}
         </Text>
       </VStack>
 
@@ -52,15 +52,15 @@ export function SalesStats({ data }) {
       <Box mb={4}>
         <HStack flexDirection="column" justify="space-between" mb={2}>
           <Text fontSize="sm" color={textColor}>
-            Pedidos: ${pedidosMes}
+            Pendiente:  $ {diferencia}
           </Text>
           <Text
             fontSize="sm"
             fontWeight="bold"
-            color={parseFloat(data.DIF_FACT_VS_PED_USD) >= 0 ? "green.400" : "red.400"}
+            color={parseFloat(data.DIF_FACT_VS_PED_USD) >= 0 ? "green.400" : "blue.500"}
           >
             {parseFloat(data.DIF_FACT_VS_PED_USD) >= 0 ? "+" : ""}
-            ${diferencia}
+            {pctFactVsPed} %
           </Text>
         </HStack>
 

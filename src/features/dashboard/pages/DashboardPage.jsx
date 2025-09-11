@@ -7,14 +7,12 @@ import {
   GridItem, 
   VStack, 
   HStack,
-  Icon,
-  useColorModeValue,
   IconButton,
+  useColorModeValue,
   useColorMode,
   Spinner
 } from "@chakra-ui/react"; 
-import { FiTag } from "react-icons/fi";
-import { MoonIcon, SunIcon ,BellIcon } from "@chakra-ui/icons";
+import { MoonIcon, SunIcon, BellIcon } from "@chakra-ui/icons";
 import { LateralMenu } from "../components/LateralMenu";
 import { useAuthStore } from "../../../features/auth/stores/useAuthStore";
 import styles from "./DashboardPage.module.css";  
@@ -24,6 +22,8 @@ import { SalesSummary } from "../components/SalesSummary";
 import { SalesStats } from "../components/SalesStats";
 import { useQuotesSellers } from "../hooks/queries/dashboardQueries";
 import { useQuotesSellersAdmin } from "../hooks/queries/dashboardQueries";
+import { Notifications } from "../components/Notifications";
+import { useNotifications } from "../hooks/queries/dashboardQueries";
 
 export function DashboardPage() { 
   const { salesEmployeeCode, username } = useAuthStore(); 
@@ -58,12 +58,16 @@ export function DashboardPage() {
   const error = isVendedor ? vendedorError : adminError;
   
   // Obtener los datos correctos según el tipo de usuario
-  const resumenData = isVendedor ? vendedorData?.[0] ?? null : adminData ??  null;
+  const resumenData = isVendedor ? vendedorData?.[0] ?? null : adminData ?? null;
+
+  // Hook de notificaciones
+  const { data: notifications, isLoading: loadingNotifications, error: errorNotifications } = useNotifications();
 
   console.log("Tipo de usuario:", isVendedor ? "Vendedor" : "Admin");
   console.log("Sales Employee Code:", salesEmployeeCode);
   console.log("Query SLP Code:", querySlpCode);
   console.log("Resumen Data:", resumenData);
+  console.log("Notifications:", notifications);
 
   const { colorMode, toggleColorMode } = useColorMode();
 
@@ -86,7 +90,6 @@ export function DashboardPage() {
                 <Text fontSize="sm" opacity={0.9}>
                   {today.charAt(0).toUpperCase() + today.slice(1)}
                 </Text>
-                {/* Indicador de tipo de usuario para debug */}
                 <Text fontSize="xs" opacity={0.7}>
                   {isVendedor ? `Vendedor (${salesEmployeeCode})` : "Admin"}
                 </Text>
@@ -106,7 +109,7 @@ export function DashboardPage() {
                 colorScheme="teal"
                 variant="ghost"
                 aria-label="Notificaciones"
-                onClick={() => console.log("Notificaciones")}
+                onClick={() => console.log("Notificaciones abiertas")}
               />
               <LateralMenu />
             </HStack>
@@ -200,68 +203,15 @@ export function DashboardPage() {
         </Grid>
       </Box>
 
-      {/* Otra sección */}
+      {/* Sección de notificaciones */}
       <Box p={6}>
-        <Text fontSize="xl" fontWeight="bold" mb={4} color={textColor}>
-          Insertar título para esta sección
-        </Text>
-
-        <VStack spacing={3} align="stretch">
-          <Box
-            bg={cardBg}
-            p={4}
-            borderRadius="lg"
-            borderLeft="4px solid"
-            borderLeftColor="green.500"
-            shadow="sm"
-          >
-            <HStack justify="space-between">
-              <HStack>
-                <Icon as={FiTag} color="green.500" />
-                <VStack align="start" spacing={0}>
-                  <Text fontWeight="semibold">
-                    Título para esta sección
-                  </Text>
-                  <Text fontSize="sm" color={textColor}>
-                    Subtítulo para esta sección
-                  </Text>
-                </VStack>
-              </HStack>
-              <VStack>
-                <Text fontSize="xs">▲</Text>
-                <Text fontSize="xs">▼</Text>
-              </VStack>
-            </HStack>
-          </Box>
-
-          <Box
-            bg={cardBg}
-            p={4}
-            borderRadius="lg"
-            borderLeft="4px solid"
-            borderLeftColor="purple.400"
-            shadow="sm"
-            h="60px"
-          />
-          <Box
-            bg={cardBg}
-            p={4}
-            borderRadius="lg"
-            borderLeft="4px solid"
-            borderLeftColor="green.400"
-            shadow="sm"
-            h="60px"
-          />
-          <Box
-            bg={cardBg}
-            p={4}
-            borderRadius="lg"
-            borderLeft="4px solid"
-            borderLeftColor="yellow.400"
-            shadow="sm"
-            h="60px"
-          />
-        </VStack>
+        {loadingNotifications ? (
+          <Spinner color="teal.400" />
+        ) : errorNotifications ? (
+          <Text color="red.400">Error al cargar notificaciones</Text>
+        ) : (
+          <Notifications data={notifications} />
+        )}
       </Box>
     </Box>
   ); 
