@@ -39,7 +39,7 @@ export function SalesSummary({ data }) {
         <HStack spacing={1} opacity={0.8}>
           <Icon as={FiTrendingUp} boxSize={4} color={textColor} />
           <Text fontSize="sm" color={textColor} fontWeight="medium">
-            Pedidos actuales
+            Total Facturado
           </Text>
         </HStack>
       </VStack>
