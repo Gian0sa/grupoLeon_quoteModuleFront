@@ -61,7 +61,11 @@ export function DashboardPage() {
       {/* Header */}
       <Box borderRadius="0 0 24px 24px" color="white" position="relative">
         <Box className={styles.headerMain}>
-          <DashboardHeader today={today} exchangeRate={exchangeRateData } />
+          <DashboardHeader 
+            today={today} 
+            exchangeRate={exchangeRateData} 
+            isLoadingExchangeRate={loadingExchangeRate} 
+          />
           <QuickActions />
         </Box>
 

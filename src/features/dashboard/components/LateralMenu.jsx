@@ -60,7 +60,8 @@ export function LateralMenu() {
     { label: 'Nuevo usuario', icon: MdPersonAdd, path: '/register', access: 'POST:/register' },
     { label: 'Gestión de solicitudes', icon: MdAssignment, path: '#', access: 'GET:/requests' },
     { label: 'Seguimiento de Pedidos', icon: MdBarChart, path: '/reports', access: 'GET:/reports' },
-    { label: 'Cuentas por Cobrar', icon: MdBubbleChart, path: '/receivable', access: 'GET:/receivable' }
+    { label: 'Cuentas por Cobrar', icon: MdBubbleChart, path: '/receivable', access: 'GET:/receivable' },
+    { label: 'Lista de Precios', icon: MdBubbleChart, path: '/productsPriceList', access: 'GET:/receivable' }
   ];
 
   const accountOptions = [

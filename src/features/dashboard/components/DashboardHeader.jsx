@@ -1,12 +1,21 @@
 // DashboardHeader.jsx
-import { Box, Flex, Text, VStack, HStack, IconButton, Badge } from "@chakra-ui/react";
+import { 
+  Box, 
+  Flex, 
+  Text, 
+  VStack, 
+  HStack, 
+  IconButton, 
+  Badge, 
+  Spinner 
+} from "@chakra-ui/react";
 import { MoonIcon, SunIcon, BellIcon } from "@chakra-ui/icons";
 import { LateralMenu } from "./LateralMenu";
 import { useAuthStore } from "../../../features/auth/stores/useAuthStore";
 import { useColorMode } from "@chakra-ui/react";
 
-export function DashboardHeader({ today , exchangeRate }) {
-    console.log("Exchange Rate in Header:", exchangeRate);
+export function DashboardHeader({ today, exchangeRate, isLoadingExchangeRate }) {
+  console.log("Exchange Rate in Header:", exchangeRate);
   const { username, salesEmployeeCode } = useAuthStore();
   const isVendedor = salesEmployeeCode && salesEmployeeCode > 0;
   const { colorMode, toggleColorMode } = useColorMode();
@@ -23,10 +32,18 @@ export function DashboardHeader({ today , exchangeRate }) {
         px={3}
         py={1}
         boxShadow="sm"
+        minW="80px"
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
       >
-        <Text color="black" fontSize="xs" fontWeight="semibold">
-        USD: {exchangeRate?.collectionRate ?? 'N/A'}
-        </Text>
+        {isLoadingExchangeRate ? (
+          <Spinner size="xs" color="teal.500" />
+        ) : (
+          <Text color="black" fontSize="xs" fontWeight="semibold">
+            USD: {exchangeRate?.collectionRate ?? 'N/A'}
+          </Text>
+        )}
       </Box>
 
       <Flex justify="space-between" align="center" p={4} boxShadow="sm" gap={4}>
