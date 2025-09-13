@@ -38,3 +38,15 @@ export const getQuotesSellers = async ({ slpCode, month }) => {
         return null;
     }       
 };
+
+export const getExchangeRate = async ({ currency, date }) => {
+    try {
+      console.log(`Obteniendo tipo de cambio para ${currency} en la fecha ${date}`);
+        const response = await axiosInstance.get(`/reportModule/exchangeRate/${currency}/${date}`);
+        console.log("Datos de tipo de cambio recibidos:", response.data);
+        return response.data;
+    } catch (error) { 
+        console.error("Error al obtener el tipo de cambio:", error);
+        return null;
+    }
+};

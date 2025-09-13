@@ -12,6 +12,7 @@ import {
 import { FiTrendingUp } from "react-icons/fi";
 
 export function SalesSummary({ data }) {
+  console.log("SalesSummary data:", data); // Debugging line
   const cardBg = useColorModeValue("white", "gray.800");
   const textColor = useColorModeValue("gray.600", "gray.300");
   const accentColor = useColorModeValue("teal.500", "teal.300");
@@ -28,6 +29,7 @@ export function SalesSummary({ data }) {
   const progressValue = data.CUMPLIMIENTO_PCT;
   const pedidos = formatCurrency(data.AVANCE_MES_USD);
   const cuota = formatCurrency(data.CUOTA_MES_USD);
+  const cantidadPedidos = data.CANT_PEDIDOS; 
 
   return (
     <Box
@@ -55,6 +57,9 @@ export function SalesSummary({ data }) {
       <VStack spacing={1} mb={6}>
         <Text fontSize="2xl" fontWeight="900" color={accentColor} lineHeight="1">
           ${pedidos}
+        </Text>
+        <Text fontSize="sm" color={textColor}>
+          Pedidos: {cantidadPedidos}
         </Text>
       </VStack>
 

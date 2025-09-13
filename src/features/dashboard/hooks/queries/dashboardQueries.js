@@ -4,7 +4,8 @@ import {
   getPromotions, 
   getHistory, 
   getQuotesSellers,
-  getQuotesSellersAdmin
+  getQuotesSellersAdmin,
+  getExchangeRate
 } from "../../services/dashboardService";
 import { 
   adaptTopProducts, 
@@ -88,4 +89,11 @@ export const useNotificationById = (id) => {
   });
 };
 
-
+// ✅ Obtener tipo de cambio
+export const useExchangeRate = ({ currency, date }) => {
+    return useQuery({
+        queryKey: ['exchangeRate', currency, date],
+        queryFn: () => getExchangeRate({ currency, date }),
+        enabled: !!currency && !!date,
+    });
+};

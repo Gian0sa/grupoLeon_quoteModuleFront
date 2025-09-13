@@ -5,12 +5,11 @@ import { LateralMenu } from "./LateralMenu";
 import { useAuthStore } from "../../../features/auth/stores/useAuthStore";
 import { useColorMode } from "@chakra-ui/react";
 
-export function DashboardHeader({ today }) {
+export function DashboardHeader({ today , exchangeRate }) {
+    console.log("Exchange Rate in Header:", exchangeRate);
   const { username, salesEmployeeCode } = useAuthStore();
   const isVendedor = salesEmployeeCode && salesEmployeeCode > 0;
   const { colorMode, toggleColorMode } = useColorMode();
-
-  const exchangeRate = { usd: 3.51 };
 
   return (
     <Box position="relative">
@@ -26,7 +25,7 @@ export function DashboardHeader({ today }) {
         boxShadow="sm"
       >
         <Text color="black" fontSize="xs" fontWeight="semibold">
-          USD: {exchangeRate.usd}
+        USD: {exchangeRate?.collectionRate ?? 'N/A'}
         </Text>
       </Box>
 

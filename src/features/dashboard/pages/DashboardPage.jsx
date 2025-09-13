@@ -14,7 +14,7 @@ import { Pagination } from "swiper/modules";
 
 import styles from "./DashboardPage.module.css";
 import { useAuthStore } from "../../../features/auth/stores/useAuthStore";
-import { useQuotesSellers, useQuotesSellersAdmin, useNotifications } from "../hooks/queries/dashboardQueries";
+import { useQuotesSellers, useQuotesSellersAdmin, useNotifications , useExchangeRate } from "../hooks/queries/dashboardQueries";
 
 import { DashboardHeader } from "../components/DashboardHeader";
 import { QuickActions } from "../components/QuickActions";
@@ -46,6 +46,9 @@ export function DashboardPage() {
 
   const { data: notifications, isLoading: loadingNotifications, error: errorNotifications } = useNotifications();
 
+  const { data: exchangeRateData , isLoading: loadingExchangeRate , error : errorExchangeRate } = useExchangeRate({ currency: 'USD', date: format(new Date(), 'yyyy-MM-dd') });
+
+
   // Estado según rol
   const isLoading = isVendedor ? vendedorLoading : adminLoading;
   const error = isVendedor ? vendedorError : adminError;
@@ -58,7 +61,7 @@ export function DashboardPage() {
       {/* Header */}
       <Box borderRadius="0 0 24px 24px" color="white" position="relative">
         <Box className={styles.headerMain}>
-          <DashboardHeader today={today} />
+          <DashboardHeader today={today} exchangeRate={exchangeRateData } />
           <QuickActions />
         </Box>
 
