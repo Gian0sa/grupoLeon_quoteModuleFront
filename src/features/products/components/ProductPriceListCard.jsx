@@ -178,7 +178,7 @@ export function ProductPriceListCard({ product }) {
             borderRadius="md"
             fontWeight="bold"
           >
-            {formatNumber(STOCK_DISPONIBLE)} unid.
+            {formatNumber(STOCK_DISPONIBLE)} und.
           </Badge>
         </HStack>
       </Box>

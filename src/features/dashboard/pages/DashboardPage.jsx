@@ -103,7 +103,7 @@ export function DashboardPage() {
                 border="2px"
                 borderColor="gray.400"
                 borderRadius="xl"
-                h="230px"
+                h="240px"
                 display="flex"
                 justifyContent="center"
                 alignItems="center"

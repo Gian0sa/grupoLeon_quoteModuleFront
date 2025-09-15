@@ -29,7 +29,7 @@ export function SalesSummary({ data }) {
   const progressValue = data.CUMPLIMIENTO_PCT;
   const pedidos = formatCurrency(data.AVANCE_MES_USD);
   const cuota = formatCurrency(data.CUOTA_MES_USD);
-  const cantidadPedidos = data.CANT_PEDIDOS; 
+  const cantidadPedidos = data.CANT_FACTURAS || "#"; 
 
   return (
     <Box
@@ -37,7 +37,7 @@ export function SalesSummary({ data }) {
       p={1}
       w="full"
       display="flex"
-      h="220px"
+      
       flexDirection="column"
       justifyContent="space-evenly"
       alignItems="center"
@@ -59,7 +59,7 @@ export function SalesSummary({ data }) {
           ${pedidos}
         </Text>
         <Text fontSize="sm" color={textColor}>
-          Pedidos: {cantidadPedidos}
+         Facturas: {cantidadPedidos}
         </Text>
       </VStack>
 

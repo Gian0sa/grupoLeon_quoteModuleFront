@@ -250,7 +250,7 @@ const TrackingPage = ({ orden, data }) => {
                   <Text fontSize="sm" color={textMuted}>Monto:</Text>
                   <Text fontSize="sm" fontWeight="medium">${ordenData.montoUsd.toFixed(2)}</Text>
                 </HStack>
-                <Button 
+                {/* <Button 
                   size="sm" 
                   colorScheme="green" 
                   variant="solid"
@@ -262,7 +262,7 @@ const TrackingPage = ({ orden, data }) => {
                   isDisabled={!orderId || loadingOrden}
                 >
                   Ver detalles
-                </Button>
+                </Button> */}
               </Box>
             </Box>
           </Box>
@@ -303,7 +303,7 @@ const TrackingPage = ({ orden, data }) => {
                         <Text fontSize="sm" color={textMuted}>Fecha:</Text>
                         <Text fontSize="sm" fontWeight="medium">{e.fecha}</Text>
                       </HStack>
-                      <Button
+                      {/* <Button
                         size="sm" 
                         colorScheme="green" 
                         variant="solid"
@@ -315,7 +315,7 @@ const TrackingPage = ({ orden, data }) => {
                         isDisabled={!entregaId || loadingEntrega}
                       >
                         Ver detalles
-                      </Button>
+                      </Button> */}
                     </Box>
                   ))
                 ) : (

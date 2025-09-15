@@ -28,6 +28,7 @@ export function SalesStats({ data }) {
   const pedidosMes = formatCurrency(data.PEDIDOS_MES_USD);
   const diferencia = formatCurrency(Math.abs(data.DIF_FACT_VS_PED_USD));
   const pctFactVsPed = data.PCT_FACT_VS_PED;
+  const cantidadPedidos = data.CANT_PEDIDOS;
 
   return (
     <Box
@@ -53,6 +54,9 @@ export function SalesStats({ data }) {
       <VStack spacing={1} mb={6}>
         <Text fontSize="2xl" fontWeight="900" color={accentColor} lineHeight="1">
           ${pedidosMes}
+        </Text>
+        <Text fontSize="sm" color={textColor}>
+          Pedidos: {cantidadPedidos}
         </Text>
       </VStack>
 

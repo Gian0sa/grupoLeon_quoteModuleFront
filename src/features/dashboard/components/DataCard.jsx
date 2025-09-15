@@ -10,7 +10,7 @@ export function DataCard({ isLoading, error, data, render }) {
       bg={cardBg}
       border="1px solid"
       borderRadius="xl"
-      h="230px"
+      h="240px"
       display="flex"
       flexDirection="column"
       justifyContent="center"
