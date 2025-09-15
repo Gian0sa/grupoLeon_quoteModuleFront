@@ -14,14 +14,25 @@ export function ProductPriceListCard({ product }) {
     ITEM_CODE,
     MARCA,
     SIGLA,
+    TIPO,
+    SUBTIPO,
     PRECIO_LISTA,
     DESCUENTO_PCT,
     PRECIO_DESCUENTO,
-    STOCK_DISPONIBLE
+    STOCK_DISPONIBLE,
+    CANTIDAD_ITEMS,
+    TOTAL_STOCK,
+    PRECIO_PROMEDIO
   } = product;
 
   const hasDiscount = DESCUENTO_PCT > 0;
   const finalPrice = hasDiscount ? PRECIO_DESCUENTO : PRECIO_LISTA;
+
+  const formatNumber = (num, decimals = 0) =>
+    num?.toLocaleString("es-PE", {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals
+    }) ?? "0";
 
   return (
     <Box
@@ -44,23 +55,25 @@ export function ProductPriceListCard({ product }) {
         fontWeight="bold" 
         fontSize="sm" 
         color="gray.800" 
-        mb={3}
+        mb={2}
         lineHeight="1.2"
       >
         {ITEM_NAME}
       </Text>
 
       {/* Información del producto en grid */}
-      <VStack spacing={2} align="stretch" mb={4}>
-        {/* Código */}
-        <HStack>
-          <Text fontSize="xs" color="green.600" fontWeight="medium" minW="80px">
-            Código:
-          </Text>
-          <Text fontSize="xs" color="gray.700" fontFamily="mono">
-            {ITEM_CODE}
-          </Text>
-        </HStack>
+      <VStack spacing={0} align="stretch" mb={2}>
+       {/* Sigla */}
+        {SIGLA && (
+          <HStack>
+            <Text fontSize="md" color="green.600" fontWeight="medium" minW="80px">
+              Sigla:
+            </Text>
+            <Text fontSize="md" color="gray.700" fontFamily="mono">
+              {SIGLA}
+            </Text>
+          </HStack>
+        )}
 
         {/* Marca */}
         <HStack>
@@ -72,21 +85,34 @@ export function ProductPriceListCard({ product }) {
           </Text>
         </HStack>
 
-        {/* Código Honda */}
-        {SIGLA && (
+        {/* Tipo */}
+        {TIPO && (
           <HStack>
             <Text fontSize="xs" color="green.600" fontWeight="medium" minW="80px">
-              Código Honda:
+              Tipo:
             </Text>
-            <Text fontSize="xs" color="gray.700" fontFamily="mono">
-              {SIGLA}
+            <Text fontSize="xs" color="gray.700">
+              {TIPO}
             </Text>
           </HStack>
         )}
+
+        {/* Subtipo */}
+        {SUBTIPO && (
+          <HStack>
+            <Text fontSize="xs" color="green.600" fontWeight="medium" minW="80px">
+              Subtipo:
+            </Text>
+            <Text fontSize="xs" color="gray.700">
+              {SUBTIPO}
+            </Text>
+          </HStack>
+        )}
+
       </VStack>
 
       {/* Precios */}
-      <VStack spacing={2} align="stretch" mb={4}>
+      <VStack spacing={1} align="stretch" mb={4}>
         {/* Precio Listado */}
         <Flex align="center" justify="space-between">
           <Button
@@ -98,7 +124,7 @@ export function ProductPriceListCard({ product }) {
             py={2}
             borderRadius="full"
           >
-            Precio Listado: S/. {PRECIO_LISTA?.toFixed(2) || "0.00"}
+            Precio Listado: $. {PRECIO_LISTA?.toFixed(2) || "0.00"}
           </Button>
           {hasDiscount && (
             <Button
@@ -122,19 +148,19 @@ export function ProductPriceListCard({ product }) {
           bg="green.700"
           color="white"
           variant="solid"
-          fontSize="sm"
+          fontSize="lg"
           fontWeight="bold"
           py={3}
           borderRadius="full"
         >
-          Precio Final: S/. {finalPrice?.toFixed(2) || "0.00"}
+          Precio Final: $. {finalPrice?.toFixed(2) || "0.00"}
         </Button>
       </VStack>
 
       {/* Stock */}
       <Box
         bg="gray.50"
-        p={2}
+        px={2}
         borderRadius="md"
         border="1px"
         borderColor="gray.200"
@@ -152,7 +178,7 @@ export function ProductPriceListCard({ product }) {
             borderRadius="md"
             fontWeight="bold"
           >
-            {STOCK_DISPONIBLE ?? 0} unid.
+            {formatNumber(STOCK_DISPONIBLE)} unid.
           </Badge>
         </HStack>
       </Box>

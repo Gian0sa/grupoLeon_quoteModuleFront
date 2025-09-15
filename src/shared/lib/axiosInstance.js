@@ -1,13 +1,23 @@
 import axios from "axios";
+import { logoutUser } from "../../features/auth/services/auhtService";
+import { useAuthStore } from "../../features/auth/stores/useAuthStore";
 
 let isRefreshing = false;
 let failedQueue = [];
 
 export const axiosInstance = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
-  withCredentials: true, 
+  withCredentials: true,
   headers: { "Content-Type": "application/json" },
 });
+
+const processQueue = (error, token = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) prom.reject(error);
+    else prom.resolve(token);
+  });
+  failedQueue = [];
+};
 
 // Interceptor de respuesta
 axiosInstance.interceptors.response.use(
@@ -17,18 +27,14 @@ axiosInstance.interceptors.response.use(
     const status = error.response?.status;
     const isJwtAuthError = status === 401;
 
-    // 🔹 Asegurar que originalRequest exista (a veces axios lanza errores de red sin config)
-    if (!originalRequest) {
-      return Promise.reject(error);
-    }
+    if (!originalRequest) return Promise.reject(error);
 
-    // 🔹 Determinar ruta
     let path = "";
     try {
       const url = new URL(originalRequest.url, axiosInstance.defaults.baseURL);
       path = url.pathname;
     } catch {
-      path = originalRequest.url; // fallback
+      path = originalRequest.url;
     }
 
     const isAuthRoute = [
@@ -36,7 +42,9 @@ axiosInstance.interceptors.response.use(
       "/authModule/refresh-token",
     ].includes(path);
 
-    // 🔹 Manejo único de JWT (SAP se refresca en backend)
+    const authStore = useAuthStore.getState();
+
+    // 🔹 Manejo de JWT expirada
     if (isJwtAuthError && !originalRequest._retry && !isAuthRoute) {
       originalRequest._retry = true;
 
@@ -49,13 +57,20 @@ axiosInstance.interceptors.response.use(
       isRefreshing = true;
       try {
         await axiosInstance.post("/authModule/refresh-token", {}, { withCredentials: true });
-        failedQueue.forEach((p) => p.resolve(true));
-        failedQueue = [];
+        processQueue(null);
         return axiosInstance(originalRequest);
       } catch (err) {
         console.error("❌ JWT refresh failed:", err);
-        failedQueue.forEach((p) => p.reject(err));
-        failedQueue = [];
+        processQueue(err);
+
+        // 🔹 Logout automático
+        try {
+          await logoutUser(); // llama backend para limpiar cookies
+        } catch (logoutErr) {
+          console.warn("Logout backend failed", logoutErr);
+        }
+        authStore.logout(); // limpia Zustand + localStorage
+        
         return Promise.reject(err);
       } finally {
         isRefreshing = false;
