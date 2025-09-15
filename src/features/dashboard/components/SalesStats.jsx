@@ -45,7 +45,7 @@ export function SalesStats({ data }) {
         <HStack spacing={1} opacity={0.8}>
           <Icon as={FiFileText} boxSize={4} color={textColor} />
           <Text fontSize="sm" color={textColor} fontWeight="medium">
-            Total de Pedido
+            Total Pedido
           </Text>
         </HStack>
       </VStack>
