@@ -56,9 +56,6 @@ export function DashboardHeader({ today, exchangeRate, isLoadingExchangeRate }) 
             <Text fontSize="sm" opacity={0.9}>
               {today}
             </Text>
-            <Text fontSize="xs" opacity={0.7}>
-              {isVendedor ? `Vendedor (${salesEmployeeCode})` : "Admin"}
-            </Text>
           </VStack>
         </Box>
 
