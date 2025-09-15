@@ -26,7 +26,7 @@ export function DebtCard({ debt, onViewInvoices }) {
       case "vencido":
         return "red";
       case "parcialmente_vencido":
-        return "blue";
+        return "red";
       case "al_dia":
         return "green";
       default:
