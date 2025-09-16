@@ -15,7 +15,8 @@ import {
     Spacer,
     useToast
   } from "@chakra-ui/react";
-
+  import { InputGroup, InputRightElement, IconButton } from "@chakra-ui/react";
+  import { ViewIcon, ViewOffIcon } from "@chakra-ui/icons";
   import ReCAPTCHA from "react-google-recaptcha";   
   import { useForm } from "react-hook-form";
   import { useAuthMutations } from "../hooks/mutations/authMutations";
@@ -33,6 +34,7 @@ import {
       register,
       formState: { errors },
     } = useForm();
+    const [showPassword, setShowPassword] = useState(false);
 
     const toast = useToast();
     const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
@@ -138,14 +140,25 @@ import {
 
           {/* Password */}
           <FormControl isInvalid={errors.password}>
-            <Input
-              type="password"
-              placeholder="Contraseña"
-              {...register("password", {
-                required: "La contraseña es obligatoria",
-                minLength: { value: 6, message: "Mínimo 6 caracteres" },
-              })}
-            />
+            <InputGroup>
+              <Input
+                type={showPassword ? "text" : "password"}
+                placeholder="Contraseña"
+                {...register("password", {
+                  required: "La contraseña es obligatoria",
+                  minLength: { value: 6, message: "Mínimo 6 caracteres" },
+                })}
+              />
+              <InputRightElement>
+                <IconButton
+                  aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                  icon={showPassword ? <ViewOffIcon /> : <ViewIcon />}
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setShowPassword(!showPassword)}
+                />
+              </InputRightElement>
+            </InputGroup>
             <FormErrorMessage>{errors.password?.message}</FormErrorMessage>
           </FormControl>
 
