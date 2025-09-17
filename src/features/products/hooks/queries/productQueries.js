@@ -23,6 +23,7 @@ export const useProductsPriceList = ({
   tipo = '', 
   subtipo = '', 
   stock = 'N', 
+  page = 1,      
   enabled 
 }) => {
   return useQuery({
@@ -33,7 +34,8 @@ export const useProductsPriceList = ({
       marca, 
       tipo, 
       subtipo, 
-      stock
+      stock,
+      page,
     ],
     queryFn: () => 
       getProductsPriceList({ 
@@ -42,8 +44,10 @@ export const useProductsPriceList = ({
         marca, 
         tipo, 
         subtipo, 
-        stock 
+        stock,
+        page,
       }),
-    enabled, 
+    enabled,
+    keepPreviousData: true,
   });
 };

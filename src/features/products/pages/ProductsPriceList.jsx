@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Box,
   Text,
@@ -6,6 +6,7 @@ import {
   VStack,
   Center,
   Icon,
+  Button,
 } from "@chakra-ui/react";
 import { FiPackage, FiAlertCircle } from "react-icons/fi";
 import { useProductsPriceList } from "../hooks/queries/productQueries";
@@ -24,14 +25,32 @@ export function ProductList() {
   // Estado de búsqueda confirmada
   const [searchParams, setSearchParams] = useState(null);
 
-  // Hook solo corre cuando hay searchParams
-  const { data, isLoading, error } = useProductsPriceList(
-    searchParams ?? { enabled: false }
+  // Estado de paginación
+  const [page, setPage] = useState(1);
+  const [allProducts, setAllProducts] = useState([]);
+
+  // Hook de React Query
+  const { data, isLoading, error, isFetching } = useProductsPriceList(
+    searchParams ? { ...searchParams, page } : { enabled: false }
   );
+
+  // Cada vez que cambian searchParams (nueva búsqueda), reseteamos productos acumulados y página
+  useEffect(() => {
+    if (searchParams) {
+      setAllProducts([]);
+      setPage(1);
+    }
+  }, [searchParams]);
+
+  // Acumular productos cuando llega data nueva
+  useEffect(() => {
+    if (data?.records) {
+      setAllProducts((prev) => [...prev, ...data.records]);
+    }
+  }, [data]);
 
   const handleSearch = () => {
     setSearchParams({
-      cardCode: "",
       itemName: cardName.trim(),
       marca,
       tipo,
@@ -39,8 +58,6 @@ export function ProductList() {
       stock: soloConStock,
     });
   };
-
-  const products = Array.isArray(data) ? data : data?.value || [];
 
   return (
     <Box bg="gray.50" minH="100vh">
@@ -74,7 +91,8 @@ export function ProductList() {
               </Text>
             </VStack>
           </Center>
-        ) : isLoading ? (
+        ) : isLoading && page === 1 ? (
+          // loading inicial
           <Center py={20}>
             <VStack spacing={4}>
               <Spinner size="xl" color="green.500" thickness="4px" />
@@ -97,7 +115,7 @@ export function ProductList() {
               </Text>
             </VStack>
           </Center>
-        ) : products.length === 0 ? (
+        ) : allProducts.length === 0 ? (
           <Center py={20}>
             <VStack spacing={4}>
               <Box bg="green.50" p={4} borderRadius="full" color="green.500">
@@ -113,12 +131,25 @@ export function ProductList() {
           </Center>
         ) : (
           <VStack spacing={3} align="stretch">
-            {products.map((product, idx) => (
+            {allProducts.map((product, idx) => (
               <ProductPriceListCard
                 key={product.ITEM_CODE || idx}
                 product={product}
               />
             ))}
+
+            {/* Botón de paginación */}
+            {data?.nextLink && (
+              <Center>
+                <Button
+                  mt={4}
+                  onClick={() => setPage((p) => p + 1)}
+                  isLoading={isFetching && page > 1}
+                >
+                  Cargar más
+                </Button>
+              </Center>
+            )}
           </VStack>
         )}
       </Box>

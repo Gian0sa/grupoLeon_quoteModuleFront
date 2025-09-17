@@ -11,7 +11,8 @@ export const getProductsPriceList = async ({
   marca = '', 
   tipo = '', 
   subtipo = '',  
-  stock = 'N' 
+  stock = 'N',
+  page = 1
 }) => {
   try {
     const params = new URLSearchParams();
@@ -22,6 +23,8 @@ export const getProductsPriceList = async ({
     if (tipo) params.append('tipo', tipo);
     if (subtipo) params.append('subtipo', subtipo);
     if (stock) params.append('stock', stock);
+
+    params.append('page', page);
 
     const url = `/reportModule/priceList?${params.toString()}`;
     console.log("Consultando:", url);

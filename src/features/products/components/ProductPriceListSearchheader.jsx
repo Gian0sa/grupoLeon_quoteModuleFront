@@ -11,7 +11,11 @@ import {
   HStack,
   Select,
   Collapse,
-  useDisclosure
+  useDisclosure,
+  FormControl,
+  FormLabel,
+  Switch,
+  Badge
 } from "@chakra-ui/react";
 import { FiSearch, FiPackage, FiFilter, FiChevronDown, FiChevronUp } from "react-icons/fi";
 import { BackButton } from "../../../components/BackButton";
@@ -195,19 +199,28 @@ export function ProductPriceListSearchheader({
                 </option>
               ))}
             </Select>
+            {/* Tercera fila - Switch stock y limpiar filtros */}
+            <HStack spacing={3} w="100%" align="center">
+              <FormControl display="flex" alignItems="center" flex="1" h="40px">
+                <FormLabel htmlFor="stock-switch" mb="0" fontSize="sm" display="flex" alignItems="center" gap={2}>
+                  Solo con Stock
 
-            {/* Tercera fila - Botón stock y limpiar filtros */}
-            <HStack spacing={3} w="100%">
-              <Button
-                colorScheme={soloConStock === "Y" ? "green" : "gray"}
-                onClick={() =>
-                  setSoloConStock((prev) => (prev === "Y" ? "N" : "Y"))
-                }
-                size="sm"
-                flex="1"
-              >
-                {soloConStock === "Y" ? "Solo con stock" : "Todos los productos"}
-              </Button>
+                </FormLabel>
+                <Switch
+                  id="stock-switch"
+                  colorScheme="green"
+                  size="md"
+                  isChecked={soloConStock === "Y"}
+                  onChange={(e) => setSoloConStock(e.target.checked ? "Y" : "N")}
+                />
+                <Badge
+                  ml={1}
+                  colorScheme={soloConStock === "Y" ? "green" : "gray"}
+                  variant="subtle"
+                >
+                  {soloConStock === "Y" ? "Si" : "No"}
+                </Badge>
+              </FormControl>
 
               {activeFiltersCount > 0 && (
                 <Button
@@ -225,6 +238,7 @@ export function ProductPriceListSearchheader({
                 </Button>
               )}
             </HStack>
+
           </VStack>
         </Collapse>
 
