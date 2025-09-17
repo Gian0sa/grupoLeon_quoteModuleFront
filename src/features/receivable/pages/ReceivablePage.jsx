@@ -1,6 +1,5 @@
-import { Box, Spinner, Center, Alert, AlertIcon } from "@chakra-ui/react";
+import { Box, Spinner, Center, Alert, AlertIcon, Button } from "@chakra-ui/react";
 import { SearchHeader } from "../components/SearchHeader";
-import { ListHeader } from "../components/ListHeader";
 import { DebtList } from "../components/DebtList";
 import SellerSelectReceivable from "../components/SellerSelectReceivable";
 import { useGetAccountsReceivable } from "../hooks/receivableQueries";
@@ -10,34 +9,34 @@ import InvoicesModal from "../components/InvoicesModal";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 
 export function ReceivablePage() {
-  const [currentPage, setCurrentPage] = useState(1);
   const [cliente, setCliente] = useState("");
-  const [clientecode, setClientecode] = useState(""); 
+  const [clientecode, setClientecode] = useState("");
   const [searchValue, setSearchValue] = useState("");
   const [selectedSeller, setSelectedSeller] = useState(null);
   const [selectedInvoices, setSelectedInvoices] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+  const [lastClient, setLastClient] = useState(null); 
+  const [allClients, setAllClients] = useState([]);  
+
   const username = useAuthStore((state) => state.username);
   const sellerCode = useAuthStore((state) => state.salesEmployeeCode);
-
   const isSellerProfile = !!sellerCode;
 
-  // Si es vendedor, setear automáticamente su vendedor
   useEffect(() => {
-      if (isSellerProfile) {
-        setSelectedSeller({
-          value: sellerCode,
-          label: `${sellerCode}. ${username}`,
-        });
-      }
-    }, [isSellerProfile, sellerCode, username]);
+    if (isSellerProfile) {
+      setSelectedSeller({
+        value: sellerCode,
+        label: `${sellerCode}. ${username}`,
+      });
+    }
+  }, [isSellerProfile, sellerCode, username]);
 
-    // Referencias para debounce
-    const debounceTimer = useRef(null);
-    const lastSearchValue = useRef("");
+  const debounceTimer = useRef(null);
+  const lastSearchValue = useRef("");
 
-    useEffect(() => {
+  // búsqueda de cliente
+  useEffect(() => {
     if (searchValue && searchValue !== lastSearchValue.current && searchValue.length > 2) {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
       debounceTimer.current = setTimeout(() => {
@@ -49,16 +48,19 @@ export function ReceivablePage() {
           setCliente(trimmedValue);
           setClientecode("");
         }
-        setCurrentPage(1);
+        setLastClient(null);  // reset cursor en nueva búsqueda
+        setAllClients([]);
         lastSearchValue.current = searchValue;
       }, 800);
     }
+
     if (!searchValue && (cliente || clientecode)) {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
       debounceTimer.current = setTimeout(() => {
         setCliente("");
         setClientecode("");
-        setCurrentPage(1);
+        setLastClient(null);
+        setAllClients([]);
         lastSearchValue.current = "";
       }, 500);
     }
@@ -67,24 +69,20 @@ export function ReceivablePage() {
     };
   }, [searchValue, cliente, clientecode]);
 
-  const handlePageChange = (page) => setCurrentPage(page);
-  const handleJumpBack = () => setCurrentPage((prev) => Math.max(prev - 10, 1));
-  const handleJumpForward = (pagination) =>
-    setCurrentPage((prev) => Math.min(prev + 10, pagination?.totalPaginas || 1));
-
-   const handleClientSearch = (value) => {
-      if (debounceTimer.current) clearTimeout(debounceTimer.current);
-      const trimmedValue = value.trim();
-      if (/^\d+$/.test(trimmedValue)) {
-        setClientecode(`CL${trimmedValue}`); // ✅ ahora con CL
-        setCliente("");
-      } else {
-        setCliente(trimmedValue);
-        setClientecode("");
-      }
-      setCurrentPage(1);
-      lastSearchValue.current = trimmedValue;
-    };
+  const handleClientSearch = (value) => {
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    const trimmedValue = value.trim();
+    if (/^\d+$/.test(trimmedValue)) {
+      setClientecode(`CL${trimmedValue}`);
+      setCliente("");
+    } else {
+      setCliente(trimmedValue);
+      setClientecode("");
+    }
+    setLastClient(null);
+    setAllClients([]);
+    lastSearchValue.current = trimmedValue;
+  };
 
   const handleSearchInputChange = (value) => setSearchValue(value);
 
@@ -95,7 +93,8 @@ export function ReceivablePage() {
       setCliente("");
       setClientecode("");
       setSearchValue("");
-      setCurrentPage(1);
+      setLastClient(null);
+      setAllClients([]);
       lastSearchValue.current = "";
     }
   };
@@ -106,26 +105,25 @@ export function ReceivablePage() {
   };
 
   const vendedorNombre = isSellerProfile
-    ? username 
+    ? username
     : selectedSeller?.label?.split(".")[1]?.trim() || "";
 
-    const { data, isLoading, error } = useGetAccountsReceivable({
-      vendedor: vendedorNombre,
-      cliente: cliente.toUpperCase(),
-      clientecode,
-      page: currentPage > 0 ? currentPage - 1 : 0,
-    });
+  const { data, isLoading, error } = useGetAccountsReceivable({
+    vendedor: vendedorNombre,
+    cliente: cliente.toUpperCase(),
+    clientecode,
+    lastClient,
+  });
 
-  const summary = data?.summary || {};
-  const clients = data?.clientes || [];
-  const pagination = data?.paginacion || {};
+  useEffect(() => {
+    if (data?.clients?.clients) {
+      setAllClients((prev) =>
+        lastClient ? [...prev, ...data.clients.clients] : data.clients.clients
+      );
+    }
+  }, [data]);
 
-  const adjustedPagination = {
-    ...pagination,
-    paginaActual: currentPage,
-  };
-
-  if (isLoading) {
+  if (isLoading && allClients.length === 0) {
     return (
       <Box bg="gray.50" minH="100vh">
         <SearchHeader
@@ -186,14 +184,19 @@ export function ReceivablePage() {
       </Box>
 
       <Box p={4}>
-        <DebtList debts={clients} onViewInvoices={handleViewInvoices} onViewDetails={() => {}} />
+        <DebtList debts={allClients} onViewInvoices={handleViewInvoices} onViewDetails={() => {}} />
 
-        <ListHeader
-          pagination={adjustedPagination}
-          onPageChange={handlePageChange}
-          onJumpBack={handleJumpBack}
-          onJumpForward={() => handleJumpForward(pagination)}
-        />
+        {data?.hasMore && (
+          <Center mt={4}>
+            <Button
+              colorScheme="green"
+              onClick={() => setLastClient(data.lastClient)}
+              isLoading={isLoading}
+            >
+              Cargar más
+            </Button>
+          </Center>
+        )}
       </Box>
 
       <InvoicesModal

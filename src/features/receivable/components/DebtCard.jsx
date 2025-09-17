@@ -3,7 +3,6 @@ import {
   CardBody,
   Flex,
   VStack,
-  HStack,
   Text,
   Button,
   Box,
@@ -12,8 +11,9 @@ import { generateReceivablePDF } from "../utils/receivablePDF";
 
 export function DebtCard({ debt, onViewInvoices }) {
   const formatCurrency = (amount, currency = "PEN") => {
-    if (amount == null || amount === 0)
+    if (amount == null) {
       return currency === "USD" ? "$0.00" : "S/0.00";
+    }
     const symbol = currency === "USD" ? "$" : "S/";
     return `${symbol}${Number(amount).toLocaleString("es-PE", {
       minimumFractionDigits: 2,
@@ -24,7 +24,6 @@ export function DebtCard({ debt, onViewInvoices }) {
   const getStatusColor = (estado) => {
     switch (estado) {
       case "vencido":
-        return "red";
       case "parcialmente_vencido":
         return "red";
       case "al_dia":
@@ -34,7 +33,16 @@ export function DebtCard({ debt, onViewInvoices }) {
     }
   };
 
-  const statusColor = getStatusColor(debt.estado);
+  const statusColor =
+    debt.tipoDocumento === "Nota de Crédito"
+      ? "blue"
+      : getStatusColor(debt.estado);
+
+  // 🔹 Si el monto es negativo o es Nota de Crédito → azul
+  const getAmountColor = (amount) => {
+    if (amount < 0 || debt.tipoDocumento === "Nota de Crédito") return "blue.600";
+    return `${statusColor}.600`;
+  };
 
   return (
     <Card
@@ -84,7 +92,7 @@ export function DebtCard({ debt, onViewInvoices }) {
                 Monto pendiente:
                 <Text
                   as="span"
-                  color="gray.800"
+                  color={getAmountColor(debt.saldoPrincipal)}
                   fontWeight="semibold"
                   ml={2}
                   fontSize="md"
@@ -135,21 +143,21 @@ export function DebtCard({ debt, onViewInvoices }) {
                   documentos vencidos
                 </Text>
                 <VStack align="flex-start" spacing={1}>
-                  {debt.saldoVencidoPEN > 0 && (
+                  {debt.saldoVencidoPEN !== 0 && (
                     <Text
                       as="span"
                       fontSize="sm"
-                      color={`${statusColor}.600`}
+                      color={getAmountColor(debt.saldoVencidoPEN)}
                       fontWeight="semibold"
                     >
                       {formatCurrency(debt.saldoVencidoPEN, "PEN")}
                     </Text>
                   )}
-                  {debt.saldoVencidoUSD > 0 && (
+                  {debt.saldoVencidoUSD !== 0 && (
                     <Text
                       as="span"
                       fontSize="sm"
-                      color={`${statusColor}.600`}
+                      color={getAmountColor(debt.saldoVencidoUSD)}
                       fontWeight="semibold"
                     >
                       {formatCurrency(debt.saldoVencidoUSD, "USD")}

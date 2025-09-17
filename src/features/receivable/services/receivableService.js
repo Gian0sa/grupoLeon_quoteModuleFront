@@ -1,11 +1,11 @@
 import { axiosInstance } from "../../../shared/lib/axiosInstance";
 
-// services/receivableService.js
-export const getAccountsReceivable = async ({ vendedor, cliente, clientecode, page = 1 }) => {
+export const getAccountsReceivable = async ({ vendedor, cliente, clientecode, lastClient = null }) => {
   try {
-    let url = `/reportModule/accountsReceivable?vendedor=${vendedor}&page=${page}`;
-    if (cliente) url += `&cliente=${cliente}`;
-    if (clientecode) url += `&clientecode=${clientecode}`;
+    let url = `/reportModule/accountsReceivable?vendedor=${encodeURIComponent(vendedor)}`;
+    if (cliente) url += `&cliente=${encodeURIComponent(cliente)}`;
+    if (clientecode) url += `&clientecode=${encodeURIComponent(clientecode)}`;
+    if (lastClient) url += `&lastClient=${encodeURIComponent(lastClient)}`;
 
     const response = await axiosInstance.get(url);
     return response.data;
