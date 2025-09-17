@@ -139,7 +139,7 @@ export function ProductList() {
               />
             ))}
 
-             <Flex justify="flex-end" mt={2} pr={1}>
+            <Flex justify="flex-end" mt={2} pr={1}>
               <Text fontSize="sm" color="gray.500">
                 {allProducts.length} productos
               </Text>
@@ -149,14 +149,31 @@ export function ProductList() {
             {data?.nextLink && (
               <Center>
                 <Button
-                  mt={4}
+                  mt={1}
+                  px={3}
+                  py={1}
+                  fontSize="md"
+                  fontWeight="bold"
+                  color="white"
+                  bgGradient="linear(to-r, green.400, green.600)"
+                  _hover={{
+                    bgGradient: "linear(to-r, green.500, green.700)",
+                    transform: "scale(1.05)",
+                  }}
+                  _active={{
+                    transform: "scale(0.98)",
+                  }}
+                  borderRadius="full"
+                  shadow="md"
                   onClick={() => setPage((p) => p + 1)}
                   isLoading={isFetching && page > 1}
+                  loadingText="Cargando..."
                 >
                   Cargar más
                 </Button>
               </Center>
             )}
+
           </VStack>
         )}
       </Box>

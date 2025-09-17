@@ -64,8 +64,6 @@ export function ProductPriceListCard({ product }) {
               colorScheme={
                 STOCK_DISPONIBLE === 0
                   ? "red"
-                  : STOCK_DISPONIBLE <= 5
-                  ? "yellow"
                   : "green"
               }
               variant="solid"
