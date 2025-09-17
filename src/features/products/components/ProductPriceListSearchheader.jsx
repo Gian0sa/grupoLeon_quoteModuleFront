@@ -157,22 +157,22 @@ export function ProductPriceListSearchheader({
                   </option>
                 ))}
               </Select>
-            {/* Tipo */}
-<Select
-  placeholder="Tipo"
-  value={tipo}
-  onChange={(e) => setTipo(e.target.value)}
-  bg="white"
-  color="black"
-  borderRadius="md"
-  size="sm"
->
-  {tipos.map((t) => (
-    <option key={t.codigo} value={t.codigo}>
-      {t.codigo} - {t.nombre}
-    </option>
-  ))}
-</Select>
+              {/* Tipo */}
+              <Select
+                placeholder="Tipo"
+                value={tipo}
+                onChange={(e) => setTipo(e.target.value)}
+                bg="white"
+                color="black"
+                borderRadius="md"
+                size="sm"
+              >
+                {tipos.map((t) => (
+                  <option key={t.codigo} value={t.codigo}>
+                    {t.nombre}
+                  </option>
+                ))}
+              </Select>
 
 
 
@@ -180,21 +180,21 @@ export function ProductPriceListSearchheader({
 
             {/* Segunda fila - Subtipo */}
             {/* Subtipo */}
-<Select
-  placeholder="Subtipo"
-  value={subtipo}
-  onChange={(e) => setSubtipo(e.target.value)}
-  bg="white"
-  color="black"
-  borderRadius="md"
-  size="sm"
->
-  {subtipos.map((st) => (
-    <option key={st.codigo} value={st.codigo}>
-      {st.codigo} - {st.nombre}
-    </option>
-  ))}
-</Select>
+            <Select
+              placeholder="Subtipo"
+              value={subtipo}
+              onChange={(e) => setSubtipo(e.target.value)}
+              bg="white"
+              color="black"
+              borderRadius="md"
+              size="sm"
+            >
+              {subtipos.map((st) => (
+                <option key={st.codigo} value={st.codigo}>
+                  {st.nombre}
+                </option>
+              ))}
+            </Select>
 
             {/* Tercera fila - Botón stock y limpiar filtros */}
             <HStack spacing={3} w="100%">
@@ -208,7 +208,7 @@ export function ProductPriceListSearchheader({
               >
                 {soloConStock === "Y" ? "Solo con stock" : "Todos los productos"}
               </Button>
-              
+
               {activeFiltersCount > 0 && (
                 <Button
                   variant="ghost"
