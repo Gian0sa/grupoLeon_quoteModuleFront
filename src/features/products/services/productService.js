@@ -5,13 +5,23 @@ export const getProductDetail = async (code) => {
     return response.data;
 };
 
-export const getProductsPriceList = async ({ itemCode = '', marca = '', tipo = '' , itemName = '' }) => {
+export const getProductsPriceList = async ({ 
+  itemName = '',
+  itemCode = '', 
+  marca = '', 
+  tipo = '', 
+  subtipo = '',  
+  stock = 'N' 
+}) => {
   try {
     const params = new URLSearchParams();
+
+    if (itemName) params.append('itemName', itemName);
     if (itemCode) params.append('itemCode', itemCode);
     if (marca) params.append('marca', marca);
     if (tipo) params.append('tipo', tipo);
-    if (itemName) params.append('itemName', itemName);
+    if (subtipo) params.append('subtipo', subtipo);
+    if (stock) params.append('stock', stock);
 
     const url = `/reportModule/priceList?${params.toString()}`;
     console.log("Consultando:", url);
@@ -23,4 +33,3 @@ export const getProductsPriceList = async ({ itemCode = '', marca = '', tipo = '
     return null;
   }
 };
-

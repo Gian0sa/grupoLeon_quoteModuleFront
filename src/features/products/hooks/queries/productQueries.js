@@ -16,10 +16,34 @@ export const useProductDetail = (code) => {
     };
 };
 
-export const useProductsPriceList = ({ cardCode, marca, tipo, itemName, enabled }) => {
+export const useProductsPriceList = ({ 
+  itemName = '', 
+  itemCode = '', 
+  marca = '', 
+  tipo = '', 
+  subtipo = '', 
+  stock = 'N', 
+  enabled 
+}) => {
   return useQuery({
-    queryKey: ["productsPriceList", cardCode, marca, tipo, itemName],
-    queryFn: () => getProductsPriceList({ cardCode, marca, tipo, itemName }),
+    queryKey: [
+      "productsPriceList", 
+      itemName, 
+      itemCode, 
+      marca, 
+      tipo, 
+      subtipo, 
+      stock
+    ],
+    queryFn: () => 
+      getProductsPriceList({ 
+        itemName, 
+        itemCode, 
+        marca, 
+        tipo, 
+        subtipo, 
+        stock 
+      }),
     enabled, 
   });
 };
