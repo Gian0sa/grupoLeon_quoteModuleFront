@@ -27,11 +27,11 @@ export function ProductPriceListCard({ product }) {
       <Box
         bg="white"
         borderRadius="md"
-        p={3}
+        p={2}
         shadow="sm"
         borderWidth="1px"
         borderColor="gray.400"
-        mb={2}
+        mb={0}
         cursor="pointer"
         _hover={{ shadow: "md", borderColor: "green.400" }}
         transition="all 0.2s"
@@ -49,7 +49,6 @@ export function ProductPriceListCard({ product }) {
             {SIGLA}
           </Text>
 
-          {/* Precio y Stock agrupados - Lado derecho */}
           <HStack spacing={2} align="center">
     
               <Text 

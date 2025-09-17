@@ -7,6 +7,7 @@ import {
   Center,
   Icon,
   Button,
+  Flex
 } from "@chakra-ui/react";
 import { FiPackage, FiAlertCircle } from "react-icons/fi";
 import { useProductsPriceList } from "../hooks/queries/productQueries";
@@ -137,6 +138,12 @@ export function ProductList() {
                 product={product}
               />
             ))}
+
+             <Flex justify="flex-end" mt={2} pr={1}>
+              <Text fontSize="sm" color="gray.500">
+                {allProducts.length} productos
+              </Text>
+            </Flex>
 
             {/* Botón de paginación */}
             {data?.nextLink && (
