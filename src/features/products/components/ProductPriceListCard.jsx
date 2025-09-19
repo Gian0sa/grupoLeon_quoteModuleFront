@@ -54,6 +54,7 @@ export function ProductPriceListCard({ product, tipoPrecio }) {
         borderRadius="md"
         shadow="sm"
         borderWidth="1px"
+        p={1}
         mb={0}
         cursor="pointer"
         _hover={{ shadow: "md", borderColor: "green.400" }}
