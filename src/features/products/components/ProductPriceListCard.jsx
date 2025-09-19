@@ -54,55 +54,53 @@ export function ProductPriceListCard({ product, tipoPrecio }) {
         borderRadius="md"
         shadow="sm"
         borderWidth="1px"
-        mb={3}
+        mb={0}
         cursor="pointer"
         _hover={{ shadow: "md", borderColor: "green.400" }}
         transition="all 0.2s"
         onClick={onOpen}
       >
         <HStack justify="space-between" align="center">
-          <Text fontWeight="bold" color="gray.800" fontSize="md" flex="1" noOfLines={1}>
+          <Text fontWeight="500" color="gray.800" fontSize="sm" flex="1" noOfLines={1}>
             {SIGLA}
           </Text>
 
-          <HStack spacing={2} align="center">
-            <Text fontSize="2xs" color="gray.500" fontWeight="bold">
-              {label}
-            </Text>
+          <HStack spacing={1} align="center">
            <Text
-            fontSize="2xs"
+            fontSize="sm"
             color={color}
             bg={bg}
             py={1}
             px={3}
             borderRadius="full"
-            width="75px"
+            width="90px"
             fontWeight="bold"
             display="flex"
             justifyContent="center"
           >
-            {`S/ ${formatNumber(selectedPrice)}`}
+            {`$ ${formatNumber(selectedPrice)}`}
           </Text>
 
 
             {/* Stock */}
-            <Badge
-              colorScheme={STOCK_DISPONIBLE === 0 ? "red" : "green"}
-              width="90px"
+           <Badge
+              bg={STOCK_DISPONIBLE === 0 ? "#ff4c4cfa" : "#157f3d"}
+              color="white"
+              width="100px"
               alignItems="center"
-              variant="solid"
-              fontSize="2xs"
+              fontSize="xs"
               px={1}
               py={1}
               borderRadius="full"
               fontWeight="bold"
               display="flex"
               justifyContent="center"
-              textTransform="none" 
+              textTransform="none"
             >
-              <Icon as={FiPackage} boxSize={4} color="white.500" mr={1}/>
+              <Icon as={FiPackage} boxSize={4} color="white" mr={1}/>
               {formatNumber(STOCK_DISPONIBLE, 0)} unid.
             </Badge>
+
           </HStack>
         </HStack>
       </Box>

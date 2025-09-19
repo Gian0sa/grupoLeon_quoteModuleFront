@@ -120,7 +120,7 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
                   fontWeight="medium"
                   color="gray.800"
                 >
-                  Precio Listado: S/ {PRECIO_LISTA?.toFixed(2) || "0.00"}
+                  Precio Listado: $ {PRECIO_LISTA?.toFixed(2) || "0.00"}
                 </Box>
                 {hasDiscount && (
                   <Box
@@ -148,7 +148,7 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
                 borderRadius="full"
                 textAlign="center"
               >
-                Precio Final: S/ {finalPrice?.toFixed(2) || "0.00"}
+                Precio Final: $ {finalPrice?.toFixed(2) || "0.00"}
               </Box>
             </VStack>
 

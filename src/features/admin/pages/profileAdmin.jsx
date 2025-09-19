@@ -30,6 +30,7 @@ import { useGetAllUsersAdmin } from "../hooks/queries/authAdminQueries";
 import { useAuthAdminMutations } from "../hooks/mutations/authAdminMutations";
 import { useGetServices } from "../../auth/hooks/queries/authQueries";
 import { BackButton } from "../../../components/BackButton";
+import Select from "react-select";
 
 // Función para agrupar servicios (copiada del componente Register)
 function groupServicesByCategory(services) {
@@ -400,17 +401,30 @@ export function ProfileAdmin() {
             {/* Selector de usuario */}
             <FormControl>
               <FormLabel fontWeight="semibold">Selecciona Usuario</FormLabel>
-              <Select
+                <Select
                 placeholder="Selecciona un usuario"
-                value={selectedUserId}
-                onChange={(e) => setSelectedUserId(e.target.value)}
-              >
-                {users?.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.username} ({u.email})
-                  </option>
-                ))}
-              </Select>
+                options={users?.map((u) => ({
+                  value: u.id,
+                  label: `${u.username} (${u.email})`,
+                }))}
+                value={
+                  users
+                    ?.map((u) => ({ value: u.id, label: `${u.username} (${u.email})` }))
+                    .find((option) => option.value === Number(selectedUserId)) || null
+                }
+                onChange={(option) => setSelectedUserId(option?.value || "")}
+                styles={{
+                  container: (base) => ({
+                    ...base,
+                    width: "100%", // full responsive
+                    maxWidth: "100%", 
+                  }),
+                  menu: (base) => ({
+                    ...base,
+                    zIndex: 9999, // evita que se esconda detrás de otros elementos
+                  }),
+                }}
+              />
             </FormControl>
 
             {selectedUserId && (
