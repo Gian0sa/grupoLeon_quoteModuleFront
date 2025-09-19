@@ -13,6 +13,7 @@ import { FiPackage, FiAlertCircle } from "react-icons/fi";
 import { useProductsPriceList } from "../hooks/queries/productQueries";
 import { ProductPriceListSearchheader } from "../components/ProductPriceListSearchheader";
 import { ProductPriceListCard } from "../components/ProductPriceListCard";
+import { useBrandTypeSubtype } from "../hooks/queries/productQueries";
 
 export function ProductList() {
   const [cardName, setCardName] = useState("");
@@ -21,7 +22,9 @@ export function ProductList() {
   const [marca, setMarca] = useState("");
   const [tipo, setTipo] = useState("");
   const [subtipo, setSubtipo] = useState("");
+  const [tipoPrecio , setTipoPrecio] = useState("final");
   const [soloConStock, setSoloConStock] = useState("N");
+  const [lastSearch, setLastSearch] = useState(null);
 
   // Estado de búsqueda confirmada
   const [searchParams, setSearchParams] = useState(null);
@@ -35,6 +38,8 @@ export function ProductList() {
     searchParams ? { ...searchParams, page } : { enabled: false }
   );
 
+  const { brandTypeSubtype , isLoadingBrandTypeSubtype , errorBrandTypeSubtype } = useBrandTypeSubtype();
+  
   // Cada vez que cambian searchParams (nueva búsqueda), reseteamos productos acumulados y página
   useEffect(() => {
     if (searchParams) {
@@ -51,18 +56,27 @@ export function ProductList() {
   }, [data]);
 
   const handleSearch = () => {
-    setSearchParams({
+    const newParams = {
       itemName: cardName.trim(),
       marca,
       tipo,
       subtipo,
       stock: soloConStock,
-    });
+    };
+
+    if (JSON.stringify(newParams) === JSON.stringify(lastSearch)) {
+      return; 
+    }
+
+    setLastSearch(newParams);
+    setSearchParams(newParams);
   };
+
 
   return (
     <Box bg="gray.50" minH="100vh">
       <ProductPriceListSearchheader
+        brandTypeSubtype = { brandTypeSubtype}
         cardName={cardName}
         onCardNameChange={setCardName}
         onSearch={handleSearch}
@@ -73,9 +87,20 @@ export function ProductList() {
         setTipo={setTipo}
         subtipo={subtipo}
         setSubtipo={setSubtipo}
+        tipoPrecio={tipoPrecio}
+        setTipoPrecio={setTipoPrecio}
         soloConStock={soloConStock}
         setSoloConStock={setSoloConStock}
+        isLoadingBrandTypeSubtype={isLoadingBrandTypeSubtype}
+        errorBrandTypeSubtype={errorBrandTypeSubtype}
       />
+        {allProducts.length > 0 && (
+          <Flex mt={3} pl={3}>
+            <Text fontSize="lg" color="black" fontWeight="600">
+              Resultados - {allProducts.length} resultados
+            </Text>
+          </Flex>
+        )}
 
       <Box p={4}>
         {!searchParams ? (
@@ -136,15 +161,11 @@ export function ProductList() {
               <ProductPriceListCard
                 key={product.ITEM_CODE || idx}
                 product={product}
+                tipoPrecio={tipoPrecio}
               />
             ))}
 
-            <Flex justify="flex-end" mt={2} pr={1}>
-              <Text fontSize="sm" color="gray.500">
-                {allProducts.length} productos
-              </Text>
-            </Flex>
-
+            
             {/* Botón de paginación */}
             {data?.nextLink && (
               <Center>

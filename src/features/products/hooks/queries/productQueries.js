@@ -1,6 +1,6 @@
 // hooks/queries/productQueries.js
 import { useQuery } from "@tanstack/react-query";
-import { getProductDetail , getProductsPriceList } from "../../services/productService";
+import { getProductDetail , getProductsPriceList , getBrandTypeSubtype } from "../../services/productService";
 import { ca } from "date-fns/locale";
 
 export const useProductDetail = (code) => {
@@ -50,4 +50,17 @@ export const useProductsPriceList = ({
     enabled,
     keepPreviousData: true,
   });
+};
+
+export const useBrandTypeSubtype = () => {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["brandTypeSubtype"],
+    queryFn: () => getBrandTypeSubtype(),
+  });
+
+  return {
+    brandTypeSubtype: data,
+    isLoadingBrandTypeSubtype: isLoading,
+    errorBrandTypeSubtype: error,
+  };
 };

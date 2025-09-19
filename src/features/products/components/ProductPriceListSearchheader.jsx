@@ -15,12 +15,16 @@ import {
   FormControl,
   FormLabel,
   Switch,
-  Badge
+  Badge,
+  Alert,
+  AlertIcon,
+  Spinner
 } from "@chakra-ui/react";
 import { FiSearch, FiPackage, FiFilter, FiChevronDown, FiChevronUp } from "react-icons/fi";
 import { BackButton } from "../../../components/BackButton";
 
 export function ProductPriceListSearchheader({
+  brandTypeSubtype,
   cardName,
   onCardNameChange,
   onSearch,
@@ -31,8 +35,12 @@ export function ProductPriceListSearchheader({
   setTipo,
   subtipo,
   setSubtipo,
+  tipoPrecio,
+  setTipoPrecio,
   soloConStock,
   setSoloConStock,
+  isLoadingBrandTypeSubtype,
+  errorBrandTypeSubtype
 }) {
   const { isOpen, onToggle } = useDisclosure();
 
@@ -43,53 +51,7 @@ export function ProductPriceListSearchheader({
     }
   };
 
-  const marcas = [
-    "DARUMA", "FILPOWER", "AC DELCO", "ALKOTA", "HONDA", "CHAMPION",
-    "DONALDSON", "FLEETGUARD", "FRESCO", "ITW", "LUBERFINER", "NANOSKIN",
-    "NORTON", "PRESTONE", "SLIME", "SURE FILTER", "TECFIL", "TOLDEX",
-    "VERSACHEM", "WAGNER", "WYNNS", "MALCO", "RAINX", "GUMOUT",
-    "BLACK MAGIC", "MOTORCRAFT", "PUROLATOR", "QMI", "SUNGREAT",
-    "POWERFILM", "PPI", "OTROS"
-  ];
-
-  const tipos = [
-    { codigo: "01", nombre: "ADITIVOS" },
-    { codigo: "02", nombre: "BATERIAS" },
-    { codigo: "03", nombre: "BUJIAS" },
-    { codigo: "04", nombre: "CUIDADO AUTOMOVIL" },
-    { codigo: "05", nombre: "CUIDADO NEUMATICOS" },
-    { codigo: "06", nombre: "FAROS" },
-    { codigo: "07", nombre: "FILTROS" },
-    { codigo: "08", nombre: "FLUIDOS" },
-    { codigo: "09", nombre: "LAMINA SEGURIDAD" },
-    { codigo: "10", nombre: "PEGAMENTO SILICONA" },
-    { codigo: "11", nombre: "SOBRE ASIENTOS" },
-    { codigo: "12", nombre: "TOLDOS" },
-    { codigo: "13", nombre: "LIQUIDO DE FRENOS" },
-    { codigo: "14", nombre: "PASTILLAS DE FRENOS" },
-  ];
-
-  const subtipos = [
-    { codigo: "0701", nombre: "BASE" },
-    { codigo: "0702", nombre: "FILTRO DE ACEITE" },
-    { codigo: "0703", nombre: "FILTRO DE ACEITE SET" },
-    { codigo: "0704", nombre: "FILTRO DE AGUA" },
-    { codigo: "0705", nombre: "FILTRO DE AIRE" },
-    { codigo: "0706", nombre: "FILTRO DE AIRE CABINA" },
-    { codigo: "0707", nombre: "FILTRO DE AIRE SET" },
-    { codigo: "0708", nombre: "FILTRO DE CABINA" },
-    { codigo: "0709", nombre: "FILTRO DE GAS" },
-    { codigo: "0710", nombre: "FILTRO DE GASOLINA" },
-    { codigo: "0711", nombre: "FILTRO DE PETROLEO" },
-    { codigo: "0712", nombre: "FILTRO HIDRAULICO" },
-    { codigo: "0713", nombre: "FILTRO PARA PETROLEO SEPARADOR" },
-    { codigo: "0714", nombre: "FILTRO SECADOR DE AIRE" },
-    { codigo: "0715", nombre: "RESTRICTOR PARA FILTRO DE AIRE" },
-    { codigo: "0716", nombre: "SECADOR DE AIRE" }
-  ];
-
-  // Contar filtros activos
-  const activeFiltersCount = [marca, tipo, subtipo].filter(Boolean).length + (soloConStock === "Y" ? 1 : 0);
+ const activeFiltersCount = [marca, tipo, subtipo].filter(Boolean).length + (soloConStock === "Y" ? 1 : 0);
 
   return (
     <Box
@@ -126,85 +88,151 @@ export function ProductPriceListSearchheader({
             disabled={isLoading}
           />
         </InputGroup>
-
+        <Box w="100%">
         {/* Botón para expandir filtros */}
         <Button
           variant="outline"
           colorScheme="whiteAlpha"
           onClick={onToggle}
-          leftIcon={<Icon as={FiFilter} />}
+          w="100%"
           rightIcon={<Icon as={isOpen ? FiChevronUp : FiChevronDown} />}
           size="sm"
-          borderColor="whiteAlpha.400"
+          borderColor="whiteAlpha.300"
           _hover={{ bg: "whiteAlpha.200" }}
+          color="white"
+          bg="green.600"
         >
-          Filtros {activeFiltersCount > 0 && `(${activeFiltersCount})`}
+          Filtrar por: 
         </Button>
+
+        {/* Error al cargar brandTypeSubtype */}
+        {errorBrandTypeSubtype && (
+          <Alert status="error" borderRadius="md">
+            <AlertIcon />
+            Error al cargar filtros: {errorBrandTypeSubtype.message || 'Error desconocido'}
+          </Alert>
+        )}
 
         {/* Filtros desplegables */}
         <Collapse in={isOpen} animateOpacity>
-          <VStack spacing={3} align="stretch" pt={2}>
+          <VStack spacing={2} align="stretch" p={2} bg="green.700" borderRadius="10px">
+            {/* Loading state para filtros */}
+            {isLoadingBrandTypeSubtype && (
+              <HStack justify="center" p={4}>
+                <Spinner size="sm" color="white" />
+                <Text fontSize="sm">Cargando filtros...</Text>
+              </HStack>
+            )}
+
             {/* Primera fila - Marca y Tipo */}
             <HStack spacing={3} w="100%">
               <Select
                 placeholder="Marca"
                 value={marca}
-                onChange={(e) => setMarca(e.target.value)}
+                onChange={(e) => {
+                  setMarca(e.target.value);
+                  setTipo("");     // resetear tipo
+                  setSubtipo("");  // resetear subtipo
+                }}
                 bg="white"
                 color="black"
                 borderRadius="md"
                 size="sm"
+                isDisabled={isLoadingBrandTypeSubtype || !brandTypeSubtype || brandTypeSubtype.length === 0}
               >
-                {marcas.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
+                {brandTypeSubtype?.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
                   </option>
                 ))}
               </Select>
-              {/* Tipo */}
+
               <Select
                 placeholder="Tipo"
                 value={tipo}
-                onChange={(e) => setTipo(e.target.value)}
+                onChange={(e) => {
+                  setTipo(e.target.value);
+                  setSubtipo(""); // resetear subtipo
+                }}
                 bg="white"
                 color="black"
                 borderRadius="md"
                 size="sm"
+                isDisabled={isLoadingBrandTypeSubtype}
               >
-                {tipos.map((t) => (
-                  <option key={t.codigo} value={t.codigo}>
-                    {t.nombre}
+                {(
+                  marca
+                    ? brandTypeSubtype?.find((m) => m.value === marca)?.tipos
+                    : Array.from(
+                        new Map(
+                          brandTypeSubtype
+                            ?.flatMap((m) => m.tipos)
+                            ?.map((t) => [t.value, t]) // usar value como clave
+                        ).values()
+                      ) // deduplicados
+                )?.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
+                ))}
+              </Select>
+            </HStack>
+
+            {/* Segunda fila - Subtipo y Tipo de precio */}
+            <HStack spacing={3} w="100%">
+              {/* Subtipo */}
+              <Select
+                placeholder="Subtipo"
+                value={subtipo}
+                onChange={(e) => setSubtipo(e.target.value)}
+                bg="white"
+                color="black"
+                borderRadius="md"
+                size="sm"
+                isDisabled={isLoadingBrandTypeSubtype}
+              >
+                {(
+                  tipo
+                    ? brandTypeSubtype
+                        ?.flatMap((m) => m.tipos)
+                        ?.find((t) => t.value === tipo)?.subtipos
+                    : Array.from(
+                        new Map(
+                          brandTypeSubtype
+                            ?.flatMap((m) => m.tipos.flatMap((t) => t.subtipos))
+                            ?.map((st) => [st.value, st]) // usar value como clave
+                        ).values()
+                      )
+                )?.map((st) => (
+                  <option key={st.value} value={st.value}>
+                    {st.label}
                   </option>
                 ))}
               </Select>
 
-
-
-            </HStack>
-
-            {/* Segunda fila - Subtipo */}
-            {/* Subtipo */}
-            <Select
-              placeholder="Subtipo"
-              value={subtipo}
-              onChange={(e) => setSubtipo(e.target.value)}
+              
+              {/* Tipo de precio */}
+             <Select
+              value={tipoPrecio}
+              onChange={(e) => setTipoPrecio(e.target.value)}
               bg="white"
               color="black"
               borderRadius="md"
               size="sm"
             >
-              {subtipos.map((st) => (
-                <option key={st.codigo} value={st.codigo}>
-                  {st.nombre}
-                </option>
-              ))}
+              <option value="FINAL">Precio Final</option>
+              <option value="CONTADO">Precio al contado</option>
+              <option value="CREDITO">Precio al crédito</option>
             </Select>
+
+
+            </HStack>
+
             {/* Tercera fila - Switch stock y limpiar filtros */}
-            <HStack spacing={3} w="100%" align="center">
+            <HStack w="100%" align="center">
               <FormControl display="flex" alignItems="center" flex="1" h="40px">
                 <FormLabel htmlFor="stock-switch" mb="0" fontSize="sm" display="flex" alignItems="center" gap={2}>
-                  Solo con Stock
-
+                  Mostrar disponibles
                 </FormLabel>
                 <Switch
                   id="stock-switch"
@@ -213,13 +241,6 @@ export function ProductPriceListSearchheader({
                   isChecked={soloConStock === "Y"}
                   onChange={(e) => setSoloConStock(e.target.checked ? "Y" : "N")}
                 />
-                <Badge
-                  ml={1}
-                  colorScheme={soloConStock === "Y" ? "green" : "gray"}
-                  variant="subtle"
-                >
-                  {soloConStock === "Y" ? "Si" : "No"}
-                </Badge>
               </FormControl>
 
               {activeFiltersCount > 0 && (
@@ -231,16 +252,17 @@ export function ProductPriceListSearchheader({
                     setMarca("");
                     setTipo("");
                     setSubtipo("");
+                    setTipoPrecio("");
                     setSoloConStock("N");
                   }}
                 >
-                  Limpiar
+                  Borrar todo
                 </Button>
               )}
             </HStack>
-
           </VStack>
         </Collapse>
+        </Box>
 
         {/* Botón de búsqueda */}
         <Button
@@ -251,13 +273,14 @@ export function ProductPriceListSearchheader({
           loadingText="Buscando..."
           leftIcon={<Icon as={FiSearch} />}
           borderRadius="full"
-          size="md"
-          bg="whiteAlpha.200"
+          h={8}
+          size="xs"
+          bg="whiteAlpha.500"
           _hover={{ bg: "whiteAlpha.300" }}
           _active={{ bg: "whiteAlpha.400" }}
           _disabled={{ opacity: 0.6 }}
         >
-          Buscar Productos
+          Buscar Producto/s
         </Button>
       </VStack>
     </Box>

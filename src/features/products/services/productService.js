@@ -36,3 +36,8 @@ export const getProductsPriceList = async ({
     return null;
   }
 };
+
+export const getBrandTypeSubtype = async () => {
+    const response = await axiosInstance.get(`/reportModule/brandTypeSubtype`);
+    return response.data;
+};
