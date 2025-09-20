@@ -74,7 +74,7 @@ export function ProductPriceListCard({ product, tipoPrecio }) {
             py={1}
             px={3}
             borderRadius="full"
-            width="90px"
+            width="100px"
             fontWeight="bold"
             display="flex"
             justifyContent="center"
