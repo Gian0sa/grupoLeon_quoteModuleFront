@@ -56,8 +56,10 @@ const TrackingPage = ({ orden, data }) => {
     codigo: orden?.CardCode || ''
   };
 
-  // Mapear datos de seguimiento (del prop data)
-  const seguimientoData = data?.[0] || {};
+  // Buscar el primer registro que tenga entrega o factura
+  const seguimientoData = data?.find(item => 
+    item.DELIVERY_DATE !== null || item.INVOICE_DATE !== null
+  ) || {};
   
   const entregas = seguimientoData.DELIVERY_DATE ? [{
     id: seguimientoData.DELIVERY_ENTRY,
