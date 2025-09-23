@@ -99,16 +99,16 @@ export function DashboardPage() {
             {/* Placeholder para futuras métricas */}
             <SwiperSlide>
               <Box
-                bg={useColorModeValue("brand.card.light", "brand.card.dark")}
+                bg="gray.100"
                 border="2px"
-                borderColor={useColorModeValue("gray.300", "gray.600")}
+                borderColor="gray.400"
                 borderRadius="xl"
                 h="240px"
                 display="flex"
                 justifyContent="center"
                 alignItems="center"
               >
-                <Text color={useColorModeValue("gray.600", "gray.400")} fontSize="sm">
+                <Text color="gray.500" fontSize="sm">
                   Próximamente más métricas
                 </Text>
               </Box>
