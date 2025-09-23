@@ -1,25 +1,24 @@
 // DataCard.jsx
-import { Box, Spinner, Text, useColorModeValue } from "@chakra-ui/react";
+import { Box, Spinner, Text } from "@chakra-ui/react";
 
 export function DataCard({ isLoading, error, data, render }) {
-  const cardBg = useColorModeValue("white", "gray.800");
-  const textColor = useColorModeValue("gray.600", "gray.300");
-
   return (
     <Box
-      bg={cardBg}
+      bg="card"
       border="1px solid"
+      borderColor="gray.200"
+      _dark={{ borderColor: "gray.700" }}
       borderRadius="xl"
       h="240px"
       display="flex"
       flexDirection="column"
       justifyContent="center"
       alignItems="center"
-      color={textColor}
+      color="text"
       p={2}
     >
       {isLoading ? (
-        <Spinner color="teal.400" />
+        <Spinner color="accent" />
       ) : error ? (
         <Text color="red.400">Error al cargar</Text>
       ) : data ? (

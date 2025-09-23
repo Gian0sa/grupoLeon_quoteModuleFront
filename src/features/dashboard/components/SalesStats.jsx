@@ -1,7 +1,7 @@
+// SalesStats.jsx
 import {
   Box,
   Text,
-  useColorModeValue,
   VStack,
   HStack,
   Icon,
@@ -12,10 +12,6 @@ import {
 import { FiFileText } from "react-icons/fi";
 
 export function SalesStats({ data }) {
-  const cardBg = useColorModeValue("white", "gray.800");
-  const textColor = useColorModeValue("gray.600", "gray.300");
-  const accentColor = useColorModeValue("purple.500", "purple.300");
-
   if (!data) return null;
 
   // 👉 Formateador de moneda con 2 decimales
@@ -32,7 +28,8 @@ export function SalesStats({ data }) {
 
   return (
     <Box
-      bg={cardBg}
+      bg="card"
+      borderRadius="xl"
       p={1}
       w="full"
       display="flex"
@@ -41,10 +38,11 @@ export function SalesStats({ data }) {
       alignItems="center"
       position="relative"
     >
+      {/* Header */}
       <VStack spacing={1} mb={6}>
-        <HStack spacing={1} opacity={0.8}>
-          <Icon as={FiFileText} boxSize={4} color={textColor} />
-          <Text fontSize="sm" color={textColor} fontWeight="medium">
+        <HStack spacing={1} opacity={0.9}>
+          <Icon as={FiFileText} boxSize={4} color="subtitle" />
+          <Text fontSize="sm" color="subtitle" fontWeight="medium">
             Total Pedido
           </Text>
         </HStack>
@@ -52,28 +50,24 @@ export function SalesStats({ data }) {
 
       {/* Valor principal */}
       <VStack spacing={1} mb={6}>
-        <Text fontSize="2xl" fontWeight="900" color={accentColor} lineHeight="1">
+        <Text fontSize="2xl" fontWeight="900" color="accentAlt" lineHeight="1">
           ${pedidosMes}
         </Text>
-        <Text fontSize="sm" color={textColor}>
+        <Text fontSize="sm" color="text">
           Pedidos: {cantidadPedidos}
         </Text>
       </VStack>
 
       {/* Progreso visual */}
-      <Box mb={4}>
+      <Box mb={4} w="full">
         <HStack flexDirection="column" justify="space-between" mb={2}>
-          <Text fontSize="sm" color={textColor}>
+          <Text fontSize="sm" color="text">
             Pendiente: $ {diferencia}
           </Text>
           <Text
             fontSize="sm"
             fontWeight="bold"
-            color={
-              parseFloat(data.DIF_FACT_VS_PED_USD) >= 0
-                ? "green.400"
-                : "blue.500"
-            }
+            color={parseFloat(data.DIF_FACT_VS_PED_USD) >= 0 ? "success" : "info"}
           >
             {parseFloat(data.DIF_FACT_VS_PED_USD) >= 0 ? "+" : ""}
             {pctFactVsPed} %
@@ -87,7 +81,7 @@ export function SalesStats({ data }) {
           }
           borderRadius="full"
           h="8px"
-          bg={useColorModeValue("gray.100", "gray.700")}
+          bg="progressBg"
         />
       </Box>
 
@@ -98,13 +92,13 @@ export function SalesStats({ data }) {
             size="8px"
             bg={
               pctFactVsPed >= 100
-                ? "green.400"
+                ? "success"
                 : pctFactVsPed >= 70
-                ? "yellow.400"
-                : "red.400"
+                ? "warning"
+                : "error"
             }
           />
-          <Text fontSize="xs" color={textColor} fontWeight="medium">
+          <Text fontSize="xs" color="subtitle" fontWeight="medium">
             {pctFactVsPed >= 100
               ? "Facturación completa"
               : pctFactVsPed >= 70

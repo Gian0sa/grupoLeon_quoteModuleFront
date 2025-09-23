@@ -1,3 +1,4 @@
+// Notifications.jsx
 import { Box, Text, VStack, HStack, Icon } from "@chakra-ui/react";
 import { FiInfo, FiAlertTriangle, FiBell } from "react-icons/fi";
 
@@ -16,9 +17,9 @@ export function Notifications({ data }) {
 
       {/* ✅ Sección con altura fija y scroll interno */}
       <Box
-        maxH="300px"      // Altura máxima definida
-        overflowY="auto"  // Scroll vertical solo en esta sección
-        pr={2}            // Padding derecho para que no se superponga con el scroll
+        maxH="300px"
+        overflowY="auto"
+        pr={2}
       >
         <VStack spacing={3} align="stretch">
           {data?.length > 0 ? (
@@ -33,16 +34,19 @@ export function Notifications({ data }) {
                   borderLeft="4px solid"
                   borderLeftColor={style.color}
                   shadow="sm"
+                  bg="card" 
                 >
                   <HStack justify="space-between" align="flex-start">
                     <HStack align="flex-start">
                       <Icon as={style.icon} color={style.color} boxSize={5} />
                       <VStack align="start" spacing={0}>
-                        <Text fontWeight="semibold">{notification.title}</Text>
-                        <Text fontSize="sm" color="gray.600">
+                        <Text fontWeight="semibold" color="text">
+                          {notification.title}
+                        </Text>
+                        <Text fontSize="sm" color="text">
                           {notification.message}
                         </Text>
-                        <Text fontSize="xs" color="gray.400">
+                        <Text fontSize="xs" color="gray.500">
                           {new Date(notification.createdAt).toLocaleString()}
                         </Text>
                       </VStack>
@@ -52,7 +56,7 @@ export function Notifications({ data }) {
               );
             })
           ) : (
-            <Text fontSize="sm" color="gray.500">
+            <Text fontSize="sm" color="text">
               No hay notificaciones disponibles
             </Text>
           )}

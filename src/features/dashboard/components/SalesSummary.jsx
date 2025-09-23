@@ -33,11 +33,11 @@ export function SalesSummary({ data }) {
 
   return (
     <Box
-      bg={cardBg}
+      bg="card"
+      borderRadius="xl"
       p={1}
       w="full"
       display="flex"
-      
       flexDirection="column"
       justifyContent="space-evenly"
       alignItems="center"
@@ -46,8 +46,8 @@ export function SalesSummary({ data }) {
       {/* Header */}
       <VStack spacing={1} mb={6}>
         <HStack spacing={1} opacity={0.8}>
-          <Icon as={FiTrendingUp} boxSize={4} color={textColor} />
-          <Text fontSize="sm" color={textColor} fontWeight="medium">
+          <Icon as={FiTrendingUp} boxSize={4} color="subtitle" />
+          <Text fontSize="sm" color="subtitle" fontWeight="medium">
             Total Facturado
           </Text>
         </HStack>
@@ -55,21 +55,21 @@ export function SalesSummary({ data }) {
 
       {/* Valor principal */}
       <VStack spacing={1} mb={6}>
-        <Text fontSize="2xl" fontWeight="900" color={accentColor} lineHeight="1">
+        <Text fontSize="2xl" fontWeight="900" color="accentTeal" lineHeight="1">
           ${pedidos}
         </Text>
-        <Text fontSize="sm" color={textColor}>
-         Facturas: {cantidadPedidos}
+        <Text fontSize="sm" color="text">
+          Facturas: {cantidadPedidos}
         </Text>
       </VStack>
 
       {/* Progreso visual */}
-      <Box mb={4}>
+      <Box mb={4} w="full">
         <HStack justify="space-between" flexDirection="column" mb={2}>
-          <Text fontSize="sm" color={textColor}>
+          <Text fontSize="sm" color="text">
             Meta: ${cuota}
           </Text>
-          <Text fontSize="sm" fontWeight="bold" color={accentColor}>
+          <Text fontSize="sm" fontWeight="bold" color="accentTeal">
             {progressValue}%
           </Text>
         </HStack>
@@ -81,7 +81,7 @@ export function SalesSummary({ data }) {
           }
           borderRadius="full"
           h="8px"
-          bg={useColorModeValue("gray.100", "gray.700")}
+          bg="progressBg"
         />
       </Box>
 
@@ -92,13 +92,13 @@ export function SalesSummary({ data }) {
             size="8px"
             bg={
               progressValue >= 100
-                ? "green.400"
+                ? "success"
                 : progressValue >= 70
-                ? "yellow.400"
-                : "red.400"
+                ? "warning"
+                : "error"
             }
           />
-          <Text fontSize="xs" color={textColor} fontWeight="medium">
+          <Text fontSize="xs" color="subtitle" fontWeight="medium">
             {progressValue >= 100
               ? "¡Meta alcanzada!"
               : progressValue >= 70

@@ -57,9 +57,9 @@ export function DashboardPage() {
   const today = format(new Date(), "EEEE, d 'de' MMMM 'del' yyyy", { locale: es });
 
   return (
-    <Box w="100vw" minH="100vh">
+    <Box w="100vw" minH="100vh" bg={useColorModeValue("brand.bg.light", "brand.bg.dark")}>
       {/* Header */}
-      <Box borderRadius="0 0 24px 24px" color="white" position="relative">
+      <Box borderRadius="0 0 24px 24px" color={useColorModeValue("brand.text.light", "brand.text.dark")} position="relative">
         <Box className={styles.headerMain}>
           <DashboardHeader 
             today={today} 
@@ -99,16 +99,16 @@ export function DashboardPage() {
             {/* Placeholder para futuras métricas */}
             <SwiperSlide>
               <Box
-                bg="gray.100"
+                bg={useColorModeValue("brand.card.light", "brand.card.dark")}
                 border="2px"
-                borderColor="gray.400"
+                borderColor={useColorModeValue("gray.300", "gray.600")}
                 borderRadius="xl"
                 h="240px"
                 display="flex"
                 justifyContent="center"
                 alignItems="center"
               >
-                <Text color="gray.500" fontSize="sm">
+                <Text color={useColorModeValue("gray.600", "gray.400")} fontSize="sm">
                   Próximamente más métricas
                 </Text>
               </Box>
