@@ -51,7 +51,7 @@ export function DashboardHeader({ today, exchangeRate, isLoadingExchangeRate }) 
         )}
       </Box>
 
-      <Flex justify="space-between" align="center" p={4} boxShadow="sm" gap={4}>
+      <Flex justify="space-between" align="center" p={4} py={5} boxShadow="sm" gap={4}>
         {/* Bloque del saludo */}
         <Box flex="1" minW="0">
           <VStack align="start" spacing={0}>
