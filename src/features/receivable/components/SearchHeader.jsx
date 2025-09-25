@@ -1,25 +1,28 @@
-import { 
-  Box, 
-  Text, 
-  Flex, 
-  Input, 
-  InputGroup, 
-  InputLeftElement, 
+import {
+  Box,
+  Text,
+  Flex,
+  Input,
+  InputGroup,
+  InputLeftElement,
   Icon,
   IconButton
 } from "@chakra-ui/react";
 import { FiSearch } from "react-icons/fi";
 import { BackButton } from "../../../components/BackButton";
 import styles from "./SearchHeader.module.css";
+import { RefreshButton } from "../../../components/RefreshButton";
 
-export function SearchHeader({ 
-  title, 
-  placeholder, 
-  searchValue, 
-  onSearch, 
-  onSearchInputChange 
+
+export function SearchHeader({
+  title,
+  placeholder,
+  searchValue,
+  onSearch,
+  onSearchInputChange,
+  refreshQueries
 }) {
-  
+
   // ✅ Función para manejar Enter o click en buscar
   const handleSearch = () => {
     const trimmedValue = searchValue?.trim() || '';
@@ -36,16 +39,25 @@ export function SearchHeader({
 
   return (
     <Box color="white" px={4}>
-      <Flex align="center" gap={4}>
+      <Flex justifyContent="space-around" align="center" gap={4}>
         <BackButton />
         <Text fontSize="xl" fontWeight="bold">
           {title}
         </Text>
+        <Box display="flex" justifyContent="flex-end" p={2}>
+          <RefreshButton
+            queries={refreshQueries}
+            showToast={true}
+            size="sm"
+            variant="ghost"
+            mode="invalidateAndRefetch"
+          />
+        </Box>
       </Flex>
 
       <InputGroup mt={4} size="md">
-        <InputLeftElement 
-          pointerEvents="auto" 
+        <InputLeftElement
+          pointerEvents="auto"
           cursor="pointer"
           onClick={handleSearch} // ✅ Permitir click en el ícono para buscar
         >

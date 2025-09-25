@@ -7,6 +7,8 @@ import { useState, useEffect, useRef } from "react";
 import styles from "./ReceivablePage.module.css";
 import InvoicesModal from "../components/InvoicesModal";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
+import { QUERY_KEYS } from "../../../shared/utils/queryKeys";
+
 
 export function ReceivablePage() {
   const [cliente, setCliente] = useState("");
@@ -122,6 +124,9 @@ export function ReceivablePage() {
       );
     }
   }, [data]);
+  const refreshQueries = [
+    [QUERY_KEYS.accountsReceivable, vendedorNombre, cliente.toUpperCase(), clientecode, lastClient]
+  ];
 
   if (isLoading && allClients.length === 0) {
     return (
@@ -169,6 +174,7 @@ export function ReceivablePage() {
           searchValue={searchValue}
           onSearch={handleClientSearch}
           onSearchInputChange={handleSearchInputChange}
+          refreshQueries={refreshQueries}
         />
 
         {!isSellerProfile && (

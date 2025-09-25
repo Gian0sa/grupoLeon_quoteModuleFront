@@ -27,6 +27,8 @@ import ActiveFilters from "./ActiveFilters";
 import { useRules } from "../hooks/queries/configQueries";
 import { useHasAccess } from "../../../shared/utils/permissions";
 import { useGetOrderswithStatusReports } from "../hooks/queries/reportQueries";
+import { RefreshButton } from "../../../components/RefreshButton";
+import { QUERY_KEYS } from "../../../shared/utils/queryKeys";
 
 import styles from "./SalesReport.module.css";
 
@@ -53,6 +55,17 @@ export default function SalespersonReports({ salespersonId }) {
 
   const [selectedSeller, setSelectedSeller] = useState(null);
   const dynamicSalespersonId = selectedSeller?.value ?? salespersonId ?? null;
+   const refreshQueries = [
+      [
+        QUERY_KEYS.orderswithStatusReports,
+        dynamicSalespersonId || 0,
+        estadoOrdenFiltro || '',
+        pagina - 1,
+        porPagina,
+      ],
+      [QUERY_KEYS.rules],
+    ];
+
 
   const { data: reportData, isLoading: reportLoading, error: reportError } =
   useGetOrderswithStatusReports({
@@ -104,12 +117,15 @@ export default function SalespersonReports({ salespersonId }) {
     <Box maxW="1000px" fontFamily="'InterVariable', sans-serif" pb="180px">
       <Box size="lg" mb={6} fontWeight="bold" className={styles.heading}>
         <div className={styles.topHeader}>
-          <div className={styles.reportTitle}>
-            <div>Reporte de Órdenes</div>
-            <div className={styles.backbtn}>
-              <BackButton />
-            </div>
+         <div className={styles.reportTitle}>
+          <div className={styles.backbtn}>
+            <BackButton />
           </div>
+          <div>Reporte de Órdenes</div>          
+          <div className={styles.refreshBtn}>   
+            <RefreshButton />
+          </div>
+        </div>
 
           {hasAccess("GET:/sellers") && (
             <div className={styles.salereport}>

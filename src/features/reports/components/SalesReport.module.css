@@ -18,16 +18,14 @@
 
 .reportTitle {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  position: relative; /* Para posicionar el botón de regreso */
+  justify-content: space-between;
+  width: 100%;
 }
 
-.backbtn {
-  position: absolute;
-  left: -60px; /* Ajustado para mejor posicionamiento */
-  top: 50%;
-  transform: translateY(-50%); /* Centrado verticalmente */
+.refreshBtn {
+  display: flex;
+  align-items: center;
 }
 
 .salereport {

@@ -8,13 +8,18 @@ import {
   IconButton, 
   Spinner, 
   useColorMode, 
-  useColorModeValue 
+  useColorModeValue, 
+  Tooltip
 } from "@chakra-ui/react";
-import { MoonIcon, SunIcon, BellIcon } from "@chakra-ui/icons";
+import { MoonIcon, SunIcon, BellIcon, RepeatIcon } from "@chakra-ui/icons";
 import { LateralMenu } from "./LateralMenu";
 import { useAuthStore } from "../../../features/auth/stores/useAuthStore";
+import { RefreshButton } from "../../../components/RefreshButton";
+import { QUERY_KEYS } from "../../../shared/utils/queryKeys";
+import { format } from "date-fns";
 
-export function DashboardHeader({ today, exchangeRate, isLoadingExchangeRate }) {
+
+export function DashboardHeader({ today, exchangeRate, isLoadingExchangeRate, onRefetchExchangeRate }) {
   const { username, salesEmployeeCode } = useAuthStore();
   const isVendedor = salesEmployeeCode && salesEmployeeCode > 0;
   const { colorMode, toggleColorMode } = useColorMode();
@@ -73,6 +78,15 @@ export function DashboardHeader({ today, exchangeRate, isLoadingExchangeRate }) 
             variant="ghost"
             color={accent}
           /> */}
+          <RefreshButton
+              queries={[
+                [QUERY_KEYS.quotesSellers, salesEmployeeCode ?? 0, format(new Date(), "MM")],
+                [QUERY_KEYS.quotesSellersAdmin, salesEmployeeCode ?? 0, format(new Date(), "MM")],
+                [QUERY_KEYS.notifications],
+                [QUERY_KEYS.exchangeRate, "USD", format(new Date(), "yyyy-MM-dd")]
+              ]}
+            />
+          {/* Botón de notificaciones */}
           <IconButton
             icon={<BellIcon />}
             variant="ghost"
