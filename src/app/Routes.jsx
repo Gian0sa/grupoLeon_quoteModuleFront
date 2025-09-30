@@ -19,6 +19,7 @@ import { Profile } from "../features/auth/pages/Profile.jsx";
 import { ProfileAdmin } from "../features/admin/pages/profileAdmin.jsx";
 import { NotificationPage } from "../features/dashboard/pages/NotificationPage.jsx";
 import { ProductList } from "../features/products/pages/ProductsPriceList.jsx";
+import { CatalogPage } from "../features/catalog/pages/CatalogPage.jsx";
 
 const AppRoutes = () => {
   return (
@@ -145,6 +146,14 @@ const AppRoutes = () => {
         element={ 
           <PrivateRoute>
               <ProductList />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/catalog"
+        element={
+          <PrivateRoute>
+              <CatalogPage />
           </PrivateRoute>
         }
       />
