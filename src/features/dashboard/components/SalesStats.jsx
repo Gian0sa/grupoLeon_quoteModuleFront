@@ -62,7 +62,7 @@ export function SalesStats({ data }) {
       <Box mb={4} w="full">
         <HStack flexDirection="column" justify="space-between" mb={2}>
           <Text fontSize="sm" color="text">
-            Pendiente: $ {diferencia}
+           Dif: $ {diferencia}
           </Text>
           <Text
             fontSize="sm"
