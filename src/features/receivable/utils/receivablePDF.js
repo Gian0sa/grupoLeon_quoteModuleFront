@@ -142,9 +142,18 @@ const addClientInfo = (doc, debt) => {
   ];
 
   leftData.forEach((item, i) => {
-    const y = startY + 9 + i * 6;
+    const y = startY + 9 + i * 8;
     doc.setFont("helvetica", "bold").text(item.label, leftX, y);
-    doc.setFont("helvetica", "normal").text(item.value, leftX + 23, y);
+    doc.setFont("helvetica", "normal");
+    
+    // Si es el nombre del cliente y es muy largo, dividir en líneas
+    if (item.label === "Cliente:" && item.value.length > 35) {
+      const maxWidth = 70; // Ancho máximo en mm
+      const lines = doc.splitTextToSize(item.value, maxWidth);
+      doc.text(lines, leftX + 23, y);
+    } else {
+      doc.text(item.value, leftX + 23, y);
+    }
   });
 
   rightData.forEach((item, i) => {
@@ -161,12 +170,12 @@ const addClientInfo = (doc, debt) => {
   const saldoVencidoPEN = debt.overdueAmount?.PEN || 0;
   const saldoVencidoUSD = debt.overdueAmount?.USD || 0;
 
-  doc.setFont("helvetica", "bold").setFontSize(8).text("SALDOS:", leftX, montosY + 5);
+  doc.setFont("helvetica", "bold").setFontSize(8).text("SALDOS:", leftX, montosY + 4);
   doc.setFont("helvetica", "normal")
     .text(`PEN: ${formatCurrency(saldoPEN, "PEN")}`, leftX, montosY + 10)
     .text(`USD: ${formatCurrency(saldoUSD, "USD")}`, leftX, montosY + 15);
 
-  doc.setFont("helvetica", "bold").text("VENCIDOS:", rightX, montosY + 5);
+  doc.setFont("helvetica", "bold").text("VENCIDOS:", rightX, montosY + 4);
   doc.setFont("helvetica", "normal")
     .text(`PEN: ${formatCurrency(saldoVencidoPEN, "PEN")}`, rightX, montosY + 10)
     .text(`USD: ${formatCurrency(saldoVencidoUSD, "USD")}`, rightX, montosY + 15);
@@ -297,7 +306,7 @@ const addSummary = (doc, debt) => {
   doc.setFont("helvetica", "bold").setFontSize(10).text("RESUMEN EJECUTIVO", leftX, startY);
   doc.setDrawColor(52, 58, 64).setLineWidth(0.4).line(leftX, startY + 1.5, leftX + 60, startY + 1.5);
 
-   const leftData = [
+  const leftData = [
     { label: "Docs Vencidos:", value: `${vencidosTotal.length} de ${debt.totalDocumentos}` },
     { label: "Monto Venc PEN:", value: formatCurrency(sum(vencidosTotal, "PEN"), "PEN") },
     { label: "Monto Venc USD:", value: formatCurrency(sum(vencidosTotal, "USD"), "USD") },
