@@ -12,8 +12,6 @@ export function DebtList({ debts, onViewInvoices, onViewDetails }) {
     );
   }
 
-  console.log(debts);
-
   return (
     <VStack spacing={1} align="stretch">
       {debts.map((debt, index) => {
@@ -23,71 +21,55 @@ export function DebtList({ debts, onViewInvoices, onViewDetails }) {
         const saldoVencidoPEN = debt.overdueAmount?.PEN || 0;
         const saldoVencidoUSD = debt.overdueAmount?.USD || 0;
 
-        // Determinar saldo y moneda principal (si tiene USD, se prioriza USD)
-        const saldoPrincipal = saldoUSD > 0 ? saldoUSD : saldoPEN;
-        const monedaPrincipal = saldoUSD > 0 ? "USD" : "PEN";
+        // Determinar saldo y moneda principal
+        const saldoPrincipal = saldoUSD !== 0 ? saldoUSD : saldoPEN;
+        const monedaPrincipal = saldoUSD !== 0 ? "USD" : "PEN";
 
         // Documentos
         const totalDocumentos = debt.totalDocuments || 0;
         const documentosVencidos = debt.overdueDocumentsCount || 0;
-        const porcentajeVencidos =
-          totalDocumentos > 0
-            ? Math.round((documentosVencidos / totalDocumentos) * 100)
-            : 0;
 
         // Estado
         let estado = "al_dia";
-        let colorEstado = "green";
-
         if (documentosVencidos > 0) {
-          if (porcentajeVencidos === 100) {
-            estado = "vencido";
-            colorEstado = "red";
-          } else {
-            estado = "parcialmente_vencido";
-            colorEstado = "yellow";
-          }
+          const porcentajeVencidos = Math.round((documentosVencidos / totalDocumentos) * 100);
+          estado = porcentajeVencidos === 100 ? "vencido" : "parcialmente_vencido";
         }
+
+        // Determinar tipo de documento (para casos especiales como Notas de Crédito)
+        const tieneNotaCredito = debt.documents?.some(
+          d => d.tipoDocumento === "Nota de Crédito"
+        );
 
         return (
           <DebtCard
             key={debt.clientCode || index}
             debt={{
-              clienteCodigo: debt.clientCode,
+              // Información del cliente
               nombre: debt.clientName || "Sin nombre",
               ruc: debt.clientCode || "Sin RUC",
               vendedor: debt.vendedor || "Sin vendedor",
 
-              // Montos
+              // Montos principales
               saldoPrincipal,
               monedaPrincipal,
-              saldoPEN,
-              saldoUSD,
+              
+              // Montos vencidos por moneda
               saldoVencidoPEN,
               saldoVencidoUSD,
 
-              // Documentos
+              // Información de documentos
               totalDocumentos,
               documentosVencidos,
-              porcentajeVencidos,
-              antiguedadPromedio: debt.averageAge || 0, // si después calculas edad promedio
 
-              // Estado y prioridad
+              // Estado
               estado,
-              colorEstado,
-              prioridad: debt.priority || 0,
+              
+              // Tipo de documento especial
+              tipoDocumento: tieneNotaCredito ? "Nota de Crédito" : "",
 
-              // Documento principal (para validar tipo)
-              tipoDocumento: debt.documents?.some(d => d.tipoDocumento === "Nota de Crédito")
-              ? "Nota de Crédito"
-              : debt.documents?.[0]?.tipoDocumento || "",
-
-
-              // Lista de documentos
-              documentos: debt.documents || [],
-
-              // Data completa
-              raw: debt,
+              // Data original para acciones (PDF, detalles, etc)
+              ...debt
             }}
             onViewInvoices={onViewInvoices}
             onViewDetails={onViewDetails}

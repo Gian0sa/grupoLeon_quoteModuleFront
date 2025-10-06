@@ -7,7 +7,7 @@ export default function ProductSpecsTable({ product }) {
 
   return (
     <Box bg="white">
-      <Box bg="red.600" color="white" px={4} py={1}>
+      <Box bg="green.600" color="white" px={4} py={1}>
         <Text fontWeight="bold" fontSize="sm">MEDIDAS</Text>
       </Box>
       <Table size="sm" variant="simple">

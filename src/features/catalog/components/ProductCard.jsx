@@ -1,54 +1,86 @@
-import { Card, CardBody, Stack, Box, Badge, HStack, Heading, Flex, VStack, Text , Button } from '@chakra-ui/react';
+import {
+  Card,
+  CardBody,
+  Stack,
+  Box,
+  Badge,
+  Text,
+  Flex,
+  Button
+} from '@chakra-ui/react';
 import ProductHeader from './ProductHeader';
 import ProductImage from './ProductImage';
 import ProductSpecsTable from './ProductSpecsTable';
-import ProductCrossReferences from './ProductCrossReferences';
 import ProductApplications from './ProductApplications';
-import ProductCompatibilities from './ProductCompatibilities';
+import ProductRelations from './ProductRelations';
 import { Link } from 'react-router-dom';
 
 export default function ProductCard({ product }) {
-  const allCompatibilities = [
-    ...(product.compatibilitiesA || []).map(c => ({ id: c.id, compatibleProduct: c.productB })),
-    ...(product.compatibilitiesB || []).map(c => ({ id: c.id, compatibleProduct: c.productA }))
+  const allRelations = [
+    // Internos
+    ...(product.compatibilitiesA || []).map(c => ({
+      id: c.id,
+      code: c.productB?.itemCode,
+      name: c.productB?.itemName,
+      type: "internal"
+    })),
+    ...(product.compatibilitiesB || []).map(c => ({
+      id: c.id,
+      code: c.productA?.itemCode,
+      name: c.productA?.itemName,
+      type: "internal"
+    })),
+    // Externos
+    ...(product.crossReferences || []).map((ref, idx) => ({
+      id: `cross-${idx}`,
+      code: ref.referenceCode,
+      name: ref.referenceBrand,
+      type: "external"
+    }))
   ];
 
   return (
     <Card
-      key={product.id}
       overflow="hidden"
-      borderWidth="2px"
+      borderWidth="1px"
       borderColor="gray.200"
-      _hover={{ shadow: 'xl', borderColor: 'red.500', transform: 'translateY(-4px)', transition: 'all 0.3s' }}
+      borderRadius="lg"
+      _hover={{ 
+        shadow: 'xl', 
+        borderColor: 'green.500', 
+        transform: 'translateY(-4px)', 
+        transition: 'all 0.3s' 
+      }}
     >
-        <Link to={`/catalog/edit/${product.id}`}>
-  <Button size="sm" colorScheme="yellow">Editar</Button>
-</Link>
       <ProductHeader product={product} />
 
       <CardBody p={0}>
         <Stack spacing={0}>
-          <ProductImage product={product} />
-          <ProductSpecsTable product={product} />
-          <ProductCrossReferences product={product} />
-          <ProductApplications product={product} />
-          <ProductCompatibilities compatibilities={allCompatibilities} />
-
-          {/* Info extra */}
-          <Box px={4} py={3} bg="gray.50">
-            <VStack align="stretch" spacing={2}>
-              <Text fontWeight="bold" fontSize="sm" color="red.600">{product.itemName || 'Sin nombre'}</Text>
-              {product.brand && <Text fontSize="xs" color="gray.600">Marca: {product.brand}</Text>}
-              {product.description && <Text fontSize="xs" color="gray.700" noOfLines={3}>{product.description}</Text>}
-            </VStack>
+          {/* Etiqueta Filtro */}
+          <Box bg="green.100" px={4} py={2}>
+            <Text 
+              fontSize="sm" 
+              fontWeight="semibold" 
+              color="green.900"
+              textAlign="center"
+            >
+              Filtro
+            </Text>
           </Box>
 
-          {/* Badge cantidad */}
-          <Flex justify="flex-start" px={4} py={2} bg="white">
-            <Badge colorScheme="red" fontSize="sm" px={3} py={1} borderRadius="full">
-              📦 {product.packageQty || 24} UND.
-            </Badge>
-          </Flex>
+          <ProductImage product={product} />
+          <ProductSpecsTable product={product} />
+          <ProductRelations relations={allRelations} />
+          <ProductApplications product={product} />
+
+          {/* Botón editar */}
+          <Box px={4} py={3} bg="gray.50" borderTopWidth="1px">
+            <Link to={`/catalog/edit/${product.id}`}>
+              <Button size="sm" colorScheme="yellow" width="full">
+                Editar
+              </Button>
+            </Link>
+          </Box>
         </Stack>
       </CardBody>
     </Card>

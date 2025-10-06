@@ -173,7 +173,7 @@ export function DebtCard({ debt, onViewInvoices }) {
               borderRadius="full"
               fontSize="sm"
               px={4}
-              onClick={() => generateReceivablePDF(debt)}
+              onClick={() => {console.log(debt),generateReceivablePDF(debt)}}
             >
               Ver detalles
             </Button>

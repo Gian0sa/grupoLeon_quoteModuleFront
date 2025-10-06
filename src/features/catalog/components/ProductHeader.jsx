@@ -2,7 +2,7 @@ import { Box, HStack, Heading, Badge } from '@chakra-ui/react';
 
 export default function ProductHeader({ product }) {
   return (
-    <Box bg="red.600" color="white" px={4} py={2}>
+    <Box bg="green.600" color="white" px={4} py={2}>
       <HStack justify="space-between">
         <Heading size="md" fontWeight="bold">
           {product.itemCode || product.id}
