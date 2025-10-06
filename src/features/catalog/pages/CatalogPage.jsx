@@ -1,139 +1,73 @@
-import React, { useState } from "react";
-import { Container, Card, CardBody, VStack, Heading, useColorModeValue, Divider } from "@chakra-ui/react";
+import { useState } from 'react';
+import { Container, VStack, Heading, Text, SimpleGrid, Spinner, Alert, AlertIcon, AlertTitle, AlertDescription } from '@chakra-ui/react';
+import { useProducts, useSearchProducts } from "../hooks/queries/catalogQueries";
+import CatalogSearchBar from "../components/CatalogSearchBar";
+import ProductCard from "../components/ProductCard";
+import EmptyState from "../components/EmptyState";
+import { Button } from "@chakra-ui/react";
+import { Link } from "react-router-dom";
 
-import BasicInfoForm from "../components/BasicInfoForm";
-import CrossReferencesForm from "../components/CrossReferencesForm";
-import ApplicationsForm from "../components/ApplicationsForm";
-import SpecificationsForm from "../components/SpecificationsForm";
-import ActionButtons from "../components/ActionButtons";
-import  CompatibilityIdsForm  from "../components/CompatibilityIdsForm";
-import { useCreateProduct } from "../hooks/mutations/catalogMutations";
+export default function CatalogPage() {
+  const [searchParams, setSearchParams] = useState({ query: '', year: '' });
 
-export function CatalogPage() {
-  const [formData, setFormData] = useState({
-    sigla: "",
-    itemCode: "",
-    itemName: "",
-    description: "",
-    brand: "",
-    type: "",
-    subtype: "",
-    unit: "pieza",
-    weight: 0,
-    packageQty: 1,
-    barcode: "",
-    imageUrl: "",
-    isActive: true,
-    compatibilityIds: [],
-    crossReferences: [],
-    applications: [],
-    specifications: []
-  });
+  const { data: allProducts, isLoading: isLoadingAll, error: errorAll } = useProducts();
+  const { data: searchResults, isLoading: isLoadingSearch, error: errorSearch } = useSearchProducts(searchParams);
 
-  const cardBg = useColorModeValue("white", "gray.700");
-  const createProductMutation = useCreateProduct();
+  const hasActiveSearch = searchParams.query || searchParams.year;
+  const data = hasActiveSearch ? searchResults : allProducts;
+  const isLoading = hasActiveSearch ? isLoadingSearch : isLoadingAll;
+  const error = hasActiveSearch ? errorSearch : errorAll;
 
-  const handleInputChange = (field, value) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
-  };
+  const handleSearch = (params) => setSearchParams(params);
 
-const handleSubmit = () => {
-  if (!formData.sigla || !formData.itemCode || !formData.itemName || !formData.brand) {
-    alert("Por favor complete los campos obligatorios (Sigla, Código, Nombre y Marca)");
-    return;
+  if (isLoading) {
+    return (
+      <Container maxW="container.xl" py={8}>
+        <VStack spacing={4}>
+          <Spinner size="xl" color="red.500" thickness="4px" />
+          <Text>Cargando productos...</Text>
+        </VStack>
+      </Container>
+    );
   }
 
-  const productData = {
-    sigla: formData.sigla,
-    itemCode: formData.itemCode,
-    itemName: formData.itemName,
-    description: formData.description,
-    brand: formData.brand,
-    type: formData.type,
-    subtype: formData.subtype,
-    unit: formData.unit,
-    weight: parseFloat(formData.weight) || 0,
-    packageQty: parseInt(formData.packageQty) || 1,
-    barcode: formData.barcode,
-    imageUrl: formData.imageUrl,
-    isActive: formData.isActive,
-    compatibilityIds: formData.compatibilityIds, // ← AGREGAR ESTA LÍNEA
-    crossReferences: formData.crossReferences.map((ref) => ({
-      referenceBrand: ref.referenceBrand,
-      referenceCode: ref.referenceCode,
-      source: ref.source,
-      isOfficial: ref.isOfficial,
-      note: ref.note
-    })),
-    applications: formData.applications.map((app) => ({
-      vehicleBrand: app.vehicleBrand,
-      vehicleModel: app.vehicleModel,
-      yearFrom: parseInt(app.yearFrom) || new Date().getFullYear(),
-      yearTo: parseInt(app.yearTo) || new Date().getFullYear(),
-      engineType: app.engineType,
-      engineDisplacement: app.engineDisplacement,
-      fuelType: app.fuelType,
-      bodyType: app.bodyType,
-      notes: app.notes
-    })),
-    specifications: formData.specifications.map((spec) => ({
-      name: spec.name,
-      value: spec.value,
-      unit: spec.unit || null,
-      order: parseInt(spec.order) || 1
-    }))
-  };
-
-  console.log("Datos a enviar:", JSON.stringify(productData, null, 2));
-
-  createProductMutation.mutate(productData);
-};
-
-  const resetForm = () => {
-    setFormData({
-      sigla: "",
-      itemCode: "",
-      itemName: "",
-      description: "",
-      brand: "",
-      type: "",
-      subtype: "",
-      unit: "pieza",
-      weight: 0,
-      packageQty: 1,
-      barcode: "",
-      imageUrl: "",
-      isActive: true,
-      compatibilityIds: [], // ← AGREGAR ESTA LÍNEA
-      crossReferences: [],
-      applications: [],
-      specifications: []
-    });
-  };
+  if (error) {
+    return (
+      <Container maxW="container.xl" py={8}>
+        <Alert status="error" borderRadius="md">
+          <AlertIcon />
+          <AlertTitle>Error al cargar productos</AlertTitle>
+          <AlertDescription>{error.message}</AlertDescription>
+        </Alert>
+      </Container>
+    );
+  }
 
   return (
-    <Container maxW="6xl" py={8} bg="gray.50" minH="100vh">
-      <Card shadow="lg" bg={cardBg}>
-        <CardBody p={8}>
-          <Heading size="xl" mb={8} color="blue.600">
-            Catálogo de Productos
-          </Heading>
+    <Container maxW="container.xl" py={8}>
+        <Link to="/catalog/create">
+  <Button colorScheme="blue">+ Nuevo producto</Button>
+</Link>
+      <VStack spacing={6} align="stretch">
+        {/* Header */}
+        <Heading size="xl" mb={2} color="gray.800">Catálogo de Productos</Heading>
+        <Text color="gray.600">
+          {data?.length || 0} producto{data?.length !== 1 ? 's' : ''} 
+          {hasActiveSearch ? ' encontrado' : ' disponible'}{data?.length !== 1 ? 's' : ''}
+        </Text>
 
-          <VStack spacing={8} align="stretch">
-            <BasicInfoForm formData={formData} onChange={handleInputChange} />
-            <CompatibilityIdsForm formData={formData} setFormData={setFormData} />
-            <CrossReferencesForm formData={formData} setFormData={setFormData} />
-            <ApplicationsForm formData={formData} setFormData={setFormData} />
-            <SpecificationsForm formData={formData} setFormData={setFormData} />
-            <Divider />
-            <ActionButtons
-              onSubmit={handleSubmit}
-              onReset={resetForm}
-              isLoading={createProductMutation.isLoading}
-            />
-          </VStack>
-        </CardBody>
-      </Card>
+        {/* Barra de búsqueda */}
+        <CatalogSearchBar onSearch={handleSearch} isLoading={isLoading} />
+
+        {/* Lista de productos */}
+        {data?.length > 0 ? (
+          <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={6}>
+            {data.map((product) => <ProductCard key={product.id} product={product} />)}
+          </SimpleGrid>
+        ) : (
+          <EmptyState hasActiveSearch={hasActiveSearch} />
+        )}
+      </VStack>
     </Container>
   );
 }

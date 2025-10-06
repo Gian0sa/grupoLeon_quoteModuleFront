@@ -7,7 +7,7 @@ export const postCreateProduct = async (data) => {
     return response.data;
   } catch (error) {
     console.error("Error al crear producto:", error);
-    return null;
+    throw error;
   }
 };
 
@@ -22,16 +22,32 @@ export const getAllProducts = async () => {
   }
 };
 
-// Buscar productos (ejemplo: ?q=nombre)
-export const searchProducts = async (query) => {
+export const searchProducts = async (searchParams) => {
   try {
+    // Si no hay parámetros, retornar array vacío
+    if (!searchParams?.query && !searchParams?.year) {
+      return [];
+    }
+
+    // Construir los query params
+    const params = {};
+    
+    if (searchParams?.query) {
+      params.q = searchParams.query;
+    }
+    
+    if (searchParams?.year) {
+      params.year = searchParams.year;
+    }
+
     const response = await axiosInstance.get(`/catalogModule/catalogProducts/search`, {
-      params: { q: query },
+      params
     });
+    
     return response.data;
   } catch (error) {
-    console.error("Error al buscar productos:", error);
-    return [];
+    console.error('Error al buscar productos:', error);
+    throw error;
   }
 };
 

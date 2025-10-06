@@ -19,7 +19,8 @@ import { Profile } from "../features/auth/pages/Profile.jsx";
 import { ProfileAdmin } from "../features/admin/pages/profileAdmin.jsx";
 import { NotificationPage } from "../features/dashboard/pages/NotificationPage.jsx";
 import { ProductList } from "../features/products/pages/ProductsPriceList.jsx";
-import { CatalogPage } from "../features/catalog/pages/CatalogPage.jsx";
+import { FormCatalogPage } from "../features/catalog/pages/FormCatalogPage.jsx";
+import CatalogPage from "../features/catalog/pages/CatalogPage.jsx";
 
 const AppRoutes = () => {
   return (
@@ -146,6 +147,22 @@ const AppRoutes = () => {
         element={ 
           <PrivateRoute>
               <ProductList />
+          </PrivateRoute>
+        }
+      />
+     <Route
+        path="/catalog/create"
+        element={
+          <PrivateRoute>
+            <FormCatalogPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/catalog/edit/:id"
+        element={
+          <PrivateRoute>
+            <FormCatalogPage />
           </PrivateRoute>
         }
       />
