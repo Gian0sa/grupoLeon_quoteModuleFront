@@ -1,7 +1,41 @@
-import React from "react";
-import { FormControl, FormLabel, Input, Select, Switch, VStack } from "@chakra-ui/react";
+import React, { useState, useEffect } from "react";
+import { 
+  FormControl, 
+  FormLabel, 
+  Input, 
+  Select, 
+  Switch, 
+  VStack,
+  Image,
+  Box,
+  Text
+} from "@chakra-ui/react";
 
 export default function BasicInfoForm({ formData, onChange }) {
+  const [imagePreview, setImagePreview] = useState(null);
+
+  // Mostrar preview cuando hay imagen existente o nueva
+  useEffect(() => {
+    if (formData.imageFile) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result);
+      };
+      reader.readAsDataURL(formData.imageFile);
+    } else if (formData.imageUrl) {
+      setImagePreview(formData.imageUrl);
+    } else {
+      setImagePreview(null);
+    }
+  }, [formData.imageFile, formData.imageUrl]);
+
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      onChange("imageFile", file);
+    }
+  };
+
   return (
     <VStack spacing={4} align="stretch">
       <FormControl isRequired>
@@ -74,8 +108,23 @@ export default function BasicInfoForm({ formData, onChange }) {
       </FormControl>
 
       <FormControl>
-        <FormLabel>Imagen (URL)</FormLabel>
-        <Input value={formData.imageUrl} onChange={(e) => onChange("imageUrl", e.target.value)} />
+        <FormLabel>Imagen</FormLabel>
+        <Input 
+          type="file"
+          accept="image/*"
+          onChange={handleImageChange}
+        />
+        {imagePreview && (
+          <Box mt={4} borderWidth={1} borderRadius="md" p={2}>
+            <Text fontSize="sm" mb={2}>Vista previa:</Text>
+            <Image 
+              src={imagePreview} 
+              alt="Preview" 
+              maxH="200px"
+              objectFit="contain"
+            />
+          </Box>
+        )}
       </FormControl>
 
       <FormControl display="flex" alignItems="center">

@@ -9,16 +9,11 @@ export default function ProductApplications({ product }) {
         <Text fontWeight="bold" fontSize="sm">APLICACION</Text>
       </Box>
       <VStack align="stretch" spacing={1}>
-        {product.applications.slice(0, 3).map((app, index) => (
+        {product.applications.map((app, index) => (
           <Text key={index} fontSize="xs" color="gray.700">
             • {app.vehicleBrand} {app.vehicleModel} ({app.yearFrom}-{app.yearTo})
           </Text>
         ))}
-        {product.applications.length > 3 && (
-          <Text fontSize="xs" color="gray.500" fontStyle="italic">
-            +{product.applications.length - 3} más...
-          </Text>
-        )}
       </VStack>
     </Box>
   );

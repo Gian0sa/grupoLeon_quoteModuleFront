@@ -13,9 +13,10 @@ import ProductImage from './ProductImage';
 import ProductSpecsTable from './ProductSpecsTable';
 import ProductApplications from './ProductApplications';
 import ProductRelations from './ProductRelations';
-import { Link } from 'react-router-dom';
 
 export default function ProductCard({ product }) {
+  
+
   const allRelations = [
     // Internos
     ...(product.compatibilitiesA || []).map(c => ({
@@ -38,6 +39,7 @@ export default function ProductCard({ product }) {
       type: "external"
     }))
   ];
+
 
   return (
     <Card
@@ -73,14 +75,7 @@ export default function ProductCard({ product }) {
           <ProductRelations relations={allRelations} />
           <ProductApplications product={product} />
 
-          {/* Botón editar */}
-          <Box px={4} py={3} bg="gray.50" borderTopWidth="1px">
-            <Link to={`/catalog/edit/${product.id}`}>
-              <Button size="sm" colorScheme="yellow" width="full">
-                Editar
-              </Button>
-            </Link>
-          </Box>
+          
         </Stack>
       </CardBody>
     </Card>

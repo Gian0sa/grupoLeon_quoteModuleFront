@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Container, VStack, Heading, Text, SimpleGrid, Spinner, Alert, AlertIcon, AlertTitle, AlertDescription } from '@chakra-ui/react';
+import { Container, VStack, Heading, Text, SimpleGrid, Spinner, Alert, AlertIcon, AlertTitle, AlertDescription , Flex } from '@chakra-ui/react';
 import { useProducts, useSearchProducts } from "../hooks/queries/catalogQueries";
 import CatalogSearchBar from "../components/CatalogSearchBar";
 import ProductCard from "../components/ProductCard";
@@ -45,12 +45,14 @@ export default function CatalogPage() {
 
   return (
     <Container maxW="container.xl" py={8}>
-        <Link to="/catalog/create">
-  <Button colorScheme="blue">+ Nuevo producto</Button>
-</Link>
+    
       <VStack spacing={6} align="stretch">
+        <Flex gap={3} align="center">
         {/* Header */}
         <Heading size="xl" mb={2} color="gray.800">Catálogo de Productos</Heading>
+        <Link to="/catalog/create">
+            <Button _hover="none" background="green.700" borderRadius="full" color="white" px={5} py={2}>+ Nuevo producto</Button>
+        </Link></Flex>
         <Text color="gray.600">
           {data?.length || 0} producto{data?.length !== 1 ? 's' : ''} 
           {hasActiveSearch ? ' encontrado' : ' disponible'}{data?.length !== 1 ? 's' : ''}

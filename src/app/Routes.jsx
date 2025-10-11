@@ -21,6 +21,7 @@ import { NotificationPage } from "../features/dashboard/pages/NotificationPage.j
 import { ProductList } from "../features/products/pages/ProductsPriceList.jsx";
 import { FormCatalogPage } from "../features/catalog/pages/FormCatalogPage.jsx";
 import CatalogPage from "../features/catalog/pages/CatalogPage.jsx";
+import OrdersDashboard from "../features/dashboard/pages/OrdersDashboard.jsx";
 
 const AppRoutes = () => {
   return (
@@ -171,6 +172,14 @@ const AppRoutes = () => {
         element={
           <PrivateRoute>
               <CatalogPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/OrdersDashboard"
+        element={
+          <PrivateRoute>
+            <OrdersDashboard />
           </PrivateRoute>
         }
       />

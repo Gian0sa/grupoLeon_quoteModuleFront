@@ -120,8 +120,7 @@ export default function CatalogSearchBar({ onSearch, isLoading }) {
         {/* Botones de acción */}
         <HStack spacing={2}>
           <Button
-            colorScheme="red"
-            size="lg"
+            _hover="none" background="green.700" borderRadius="full" color="white" px={5} py={2}
             onClick={handleSearch}
             isLoading={isLoading}
             loadingText="Buscando"
