@@ -102,7 +102,7 @@ export function ReceivablePage() {
   };
 
   const handleViewInvoices = (debt) => {
-    setSelectedInvoices(debt.documentos || []);
+    setSelectedInvoices(debt.documents || []);
     setIsModalOpen(true);
   };
 
