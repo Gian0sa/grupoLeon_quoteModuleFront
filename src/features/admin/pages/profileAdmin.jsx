@@ -31,176 +31,59 @@ import { useGetServices } from "../../auth/hooks/queries/authQueries";
 import { BackButton } from "../../../components/BackButton";
 import Select from "react-select";
 
-// Función para agrupar servicios (copiada del componente Register)
 function groupServicesByCategory(services) {
   if (!services || services.length === 0) return {};
 
-  // Categorías manuales prioritarias
-  const manualCategories = {
-    'ventas': {
-      name: 'Ventas',
-      icon: '💼',
-      color: 'blue',
-      keywords: ['orders', 'order', 'sellers', 'quotations', 'sales'],
-      services: []
-    },
-    'servicios': {
-      name: 'Servicios',
-      icon: '⚙️',
-      color: 'green',
-      keywords: ['services'],
-      services: []
-    },
-    'reportes': {
-      name: 'Reportes',
-      icon: '📊',
-      color: 'purple',
-      keywords: ['reports', 'pdf', 'analytics'],
-      services: []
-    },
-    'documentos': {
-      name: 'Documentos',
-      icon: '📄',
-      color: 'orange',
-      keywords: ['deliveryNote', 'invoice'],
-      services: []
-    },
-    'finanzas': {
-      name: 'Finanzas',
-      icon: '💰',
-      color: 'yellow',
-      keywords: ['accountsReceivable', 'receivable', 'payments', 'expenses'],
-      services: []
-    },
-    'administracion': {
-      name: 'Administración',
-      icon: '👥',
-      color: 'teal',
-      keywords: ['users', 'requests', 'roles', 'permissions'],
-      services: []
-    }
+  const iconMap = {
+    'notificación': '🔔',
+    'producto': '🛍️',
+    'pedido': '📦',
+    'cliente': '👤',
+    'reporte': '📊',
+    'usuario': '👥',
+    'factura': '📄',
+    'orden': '📃',
+    'admin': '⚙️',
+  };
+
+  const colorMap = {
+    'notificación': 'purple',
+    'producto': 'orange',
+    'pedido': 'blue',
+    'vendedor': 'green',
+    'admin': 'yellow',
+    'usuario': 'pink',
+    'factura': 'red',
+    'orden': 'teal',
   };
 
   const dynamicCategories = {};
-  
-  // Función para generar nombres legibles automáticamente
-  const getCategoryDisplayName = (basePath) => {
-    const displayNames = {
-      'inventory': 'Inventario',
-      'customers': 'Clientes',
-      'suppliers': 'Proveedores',
-      'products': 'Productos',
-      'categories': 'Categorías',
-      'brands': 'Marcas',
-      'warehouses': 'Almacenes',
-      'purchases': 'Compras',
-      'payments': 'Pagos',
-      'expenses': 'Gastos',
-      'dashboard': 'Dashboard',
-      'analytics': 'Análisis',
-      'notifications': 'Notificaciones',
-      'settings': 'Configuración',
-      'auth': 'Autenticación',
-      'profile': 'Perfil',
-      'audit': 'Auditoría',
-      'logs': 'Registros',
-      'backup': 'Respaldo',
-      'maintenance': 'Mantenimiento'
-    };
-    
-    const normalized = basePath.toLowerCase().replace(/[-_]/g, '');
-    return displayNames[normalized] || 
-           basePath.charAt(0).toUpperCase() + basePath.slice(1).replace(/[-_]/g, ' ');
-  };
 
-  // Función para asignar iconos automáticamente
-  const getCategoryIcon = (basePath) => {
-    const icons = {
-      'inventory': '📦',
-      'customers': '👨‍💼',
-      'suppliers': '🏭',
-      'products': '🛍️',
-      'categories': '🏷️',
-      'brands': '🏪',
-      'warehouses': '🏬',
-      'purchases': '🛒',
-      'payments': '💴',
-      'expenses': '💸',
-      'dashboard': '📈',
-      'analytics': '📊',
-      'notifications': '🔔',
-      'settings': '⚙️',
-      'auth': '🔐',
-      'profile': '👤',
-      'audit': '🔍',
-      'logs': '📋',
-      'backup': '💾',
-      'maintenance': '🔧'
-    };
-    
-    const normalized = basePath.toLowerCase().replace(/[-_]/g, '');
-    return icons[normalized] || '📁';
-  };
-
-  // Función para asignar colores automáticamente
-  const getCategoryColor = (basePath) => {
-    const colors = ['blue', 'green', 'purple', 'orange', 'yellow', 'teal', 'pink', 'cyan', 'red', 'gray'];
-    let hash = 0;
-    for (let i = 0; i < basePath.length; i++) {
-      hash = basePath.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    return colors[Math.abs(hash) % colors.length];
-  };
-  
   services.forEach(service => {
-    const pathParts = service.path.split('/').filter(part => part && !part.includes(':'));
-    const basePath = pathParts[0] || 'general';
-    
-    let assigned = false;
-    
-    // Primero intentar asignar a categorías manuales
-    for (const [categoryKey, category] of Object.entries(manualCategories)) {
-      if (category.keywords.some(keyword => basePath.toLowerCase().includes(keyword.toLowerCase()))) {
-        category.services.push(service);
-        assigned = true;
-        break;
-      }
+    // Extraer prefijo antes del primer "-"
+    const rawPrefix = service.name?.split('-')[0]?.trim() || 'Otros';
+    const prefixKey = rawPrefix.toLowerCase();
+
+    if (!dynamicCategories[prefixKey]) {
+      dynamicCategories[prefixKey] = {
+        name: rawPrefix,
+        icon: iconMap[prefixKey] || '📁',
+        color: colorMap[prefixKey] || 'gray',
+        services: []
+      };
     }
-    
-    // Si no se asignó manualmente, crear categoría dinámica
-    if (!assigned) {
-      const categoryKey = basePath.toLowerCase();
-      
-      if (!dynamicCategories[categoryKey]) {
-        dynamicCategories[categoryKey] = {
-          name: getCategoryDisplayName(basePath),
-          icon: getCategoryIcon(basePath),
-          color: getCategoryColor(basePath),
-          services: []
-        };
-      }
-      
-      dynamicCategories[categoryKey].services.push(service);
-    }
+
+    dynamicCategories[prefixKey].services.push(service);
   });
 
-  // Combinar categorías manuales (con servicios) y dinámicas
-  const result = {};
-  
-  // Agregar categorías manuales que tienen servicios
-  Object.entries(manualCategories).forEach(([key, category]) => {
-    if (category.services.length > 0) {
-      result[key] = category;
-    }
-  });
-  
-  // Agregar categorías dinámicas
-  Object.entries(dynamicCategories).forEach(([key, category]) => {
-    result[key] = category;
-  });
-
-  return result;
+  return dynamicCategories;
 }
+
+const getServiceDisplayName = (name) => {
+  if (!name) return '';
+  const parts = name.split('-');
+  return parts.length > 1 ? parts.slice(1).join('-').trim() : name.trim();
+};
 
 export function ProfileAdmin() {
   const { data: users, isLoading } = useGetAllUsersAdmin();
@@ -233,10 +116,8 @@ export function ProfileAdmin() {
     if (selectedUserId && users) {
       const user = users.find(u => u.id === Number(selectedUserId));
       if (user) {
-        // Convertir permisos de string format a IDs si es necesario
         let userPermissions = user.permittedServices || [];
         
-        // Si los permisos están en formato string "METHOD:/path", convertir a IDs
         if (services && userPermissions.length > 0 && typeof userPermissions[0] === 'string') {
           userPermissions = services
             .filter(service => {
@@ -530,7 +411,7 @@ export function ProfileAdmin() {
                                   colorScheme={category.color}
                                 >
                                   <VStack align="start" spacing={0}>
-                                    <Text fontWeight="medium">{srv.name}</Text>
+                                    <Text fontWeight="medium">{getServiceDisplayName(srv.name)}</Text>
                                     <HStack>
                                       <Badge colorScheme="gray" size="sm">
                                         {srv.method}
