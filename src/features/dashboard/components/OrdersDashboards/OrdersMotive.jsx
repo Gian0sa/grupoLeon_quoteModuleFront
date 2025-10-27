@@ -1,43 +1,61 @@
-import { Table, Thead, Tbody, Tr, Th, Td, TableContainer, Text } from "@chakra-ui/react";
+import { Box, VStack, HStack, Text, Spinner, Center, Badge } from "@chakra-ui/react";
 
-export default function OrdersMotive({ ordersMotive }) {
-  // Ejemplo de estructura esperada:
-  // ordersMotive = [
-  //   { motivo: "Falta de stock", cantidad: 12 },
-  //   { motivo: "Anulación por cliente", cantidad: 8 },
-  //   { motivo: "Error de digitación", cantidad: 3 },
-  //   { motivo: "Otros", cantidad: 2 },
-  // ];
+export default function OrdersMotive({ ordersMotive, isLoading, isError }) {
+  if (isLoading) {
+    return (
+      <Center py={6}>
+        <Spinner size="lg" />
+      </Center>
+    );
+  }
+
+  if (isError) {
+    return (
+      <Center py={6} color="red.500">
+        Error al cargar los motivos
+      </Center>
+    );
+  }
 
   return (
-    <TableContainer borderWidth="1px" borderRadius="lg" p={4} bg="white" shadow="sm">
+    <Box borderWidth="1px" borderRadius="lg" p={4} bg="white" shadow="sm" mb={6}>
       <Text fontSize="lg" fontWeight="bold" mb={4}>
-        Motivos de No Atención
+        Motivos de Cancelación
       </Text>
-      <Table variant="simple">
-        <Thead bg="gray.100">
-          <Tr>
-            <Th>Motivo</Th>
-            <Th isNumeric>Cantidad</Th>
-          </Tr>
-        </Thead>
-        <Tbody>
-          {ordersMotive && ordersMotive.length > 0 ? (
-            ordersMotive.map((item, index) => (
-              <Tr key={index}>
-                <Td>{item.motivo}</Td>
-                <Td isNumeric>{item.cantidad}</Td>
-              </Tr>
-            ))
-          ) : (
-            <Tr>
-              <Td colSpan={2} textAlign="center" py={4} color="gray.500">
-                No hay datos disponibles
-              </Td>
-            </Tr>
-          )}
-        </Tbody>
-      </Table>
-    </TableContainer>
+      
+      {ordersMotive && ordersMotive.length > 0 ? (
+        <VStack spacing={3} align="stretch">
+          {ordersMotive.map((item, index) => (
+            <Box 
+              key={index} 
+              p={3} 
+              bg="gray.50" 
+              borderRadius="md"
+              borderLeftWidth="4px"
+              borderLeftColor="red.400"
+            >
+              <HStack justify="space-between" mb={2}>
+                <Text fontSize="sm" fontWeight="bold" flex="1">
+                  {item.cancellationReason}
+                </Text>
+                <Badge colorScheme="red" fontSize="sm">
+                  {item.ordersCount} órdenes
+                </Badge>
+              </HStack>
+              
+              <HStack spacing={3} fontSize="xs" color="gray.600" flexWrap="wrap">
+                <Text>👥 Clientes: {item.affectedClients}</Text>
+                <Text>📦 Unidades: {item.cancelledUnits?.toLocaleString() || 0}</Text>
+                <Text>🏷️ Productos: {item.differentProducts}</Text>
+              </HStack>
+            </Box>
+          ))}
+        </VStack>
+      ) : (
+        <Center py={4} color="gray.500">
+          No hay datos disponibles
+        </Center>
+      )}
+    </Box>
   );
 }

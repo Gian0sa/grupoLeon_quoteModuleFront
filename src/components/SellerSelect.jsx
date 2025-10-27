@@ -5,14 +5,16 @@ import { useSellersData } from "../features/auth/hooks/queries/authQueries";
 export default function SellerSelect({ selectedSeller, setSelectedSeller, setValue, error }) {
   const { data: sellers, isLoading } = useSellersData();
 
- const sellerOptions =
-  (sellers?.sellers || [])
-    .filter((s) => s.SalesEmployeeCode !== -1 && s.Active === "tYES")
-    .map((s) => ({
-      value: s.SalesEmployeeCode,
-      label: s.SalesEmployeeName,
-      email: s.Email,
-    }));
+  const sellerOptions = [
+    { value: 0, label: "Todos los vendedores" }, // ✅ Opción global
+    ...(sellers?.sellers || [])
+      .filter((s) => s.SalesEmployeeCode !== -1 && s.Active === "tYES")
+      .map((s) => ({
+        value: s.SalesEmployeeCode,
+        label: s.SalesEmployeeName,
+        email: s.Email,
+      })),
+  ];
 
   return (
     <FormControl isInvalid={!!error}>
@@ -45,7 +47,7 @@ export default function SellerSelect({ selectedSeller, setSelectedSeller, setVal
           options={sellerOptions}
           onChange={(selected) => {
             setSelectedSeller(selected);
-            setValue("salesPerson", selected);
+            setValue("salesPerson", selected?.value === 0 ? null : selected);
           }}
           value={selectedSeller}
           placeholder="Selecciona un vendedor"
