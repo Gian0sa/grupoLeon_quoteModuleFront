@@ -50,3 +50,55 @@ export const getExchangeRate = async ({ currency, date }) => {
         return null;
     }
 };
+
+export const getDashboardMotives = async ({ yearFrom, monthFrom, monthTo, slpCode }) => {
+  try {
+    console.log(`Obteniendo motivos del dashboard para vendedor ${slpCode}`);
+    const response = await axiosInstance.get(`/reportModule/dashboardMotives`, {
+      params: { yearFrom, monthFrom, monthTo, slpCode },
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error al obtener los motivos del dashboard:', error);
+    return null;
+  }
+};
+
+export const getOrdersCancelated = async ({ yearFrom, monthFrom, monthTo, slpCode }) => {
+  try {
+    console.log(`Obteniendo pedidos cancelados para vendedor ${slpCode}`);
+    const response = await axiosInstance.get(`/reportModule/ordersCancelated`, {
+      params: { yearFrom, monthFrom, monthTo, slpCode },
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error al obtener los pedidos cancelados:', error);
+    return null;
+  }
+};
+
+export const getTopCanceledProducts = async ({ yearFrom, monthFrom, monthTo, slpCode }) => {
+  try {
+    console.log(`Obteniendo productos más cancelados para vendedor ${slpCode}`);
+    const response = await axiosInstance.get(`/reportModule/topCanceledProducts`, {
+      params: { yearFrom, monthFrom, monthTo, slpCode },
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error al obtener los productos cancelados:', error);
+    return null;
+  }
+};
+
+export const getTopSelledProducts = async ({ yearFrom, monthFrom, monthTo, slpCode }) => {
+  try {
+    console.log(`Obteniendo productos más vendidos para vendedor ${slpCode}`);
+    const response = await axiosInstance.get(`/reportModule/topSelledProducts`, {
+      params: { yearFrom, monthFrom, monthTo, slpCode },
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error al obtener los productos más vendidos:', error);
+    return null;
+  }
+};

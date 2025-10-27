@@ -5,7 +5,11 @@ import {
   getHistory, 
   getQuotesSellers,
   getQuotesSellersAdmin,
-  getExchangeRate
+  getExchangeRate,
+  getDashboardMotives,
+  getOrdersCancelated,
+  getTopCanceledProducts,
+  getTopSelledProducts
 } from "../../services/dashboardService";
 import { 
   adaptTopProducts, 
@@ -16,9 +20,6 @@ import {
 import {
   getNotifications,
   getNotificationById,
-  createNotification,
-  updateNotification,
-  deleteNotification,
 } from "../../services/notificationService";
 
 // ✅ Hook para Top Products
@@ -96,4 +97,44 @@ export const useExchangeRate = ({ currency, date }) => {
         queryFn: () => getExchangeRate({ currency, date }),
         enabled: !!currency && !!date,
     });
+};
+
+export const useDashboardMotives = ({ yearFrom, monthFrom, monthTo, slpCode }) => {
+  console.log(`useDashboardMotives llamado con: yearFrom=${yearFrom}, monthFrom=${monthFrom}, monthTo=${monthTo}, sellerCode=${slpCode}`);
+  return useQuery({
+    queryKey: ['dashboardMotives', yearFrom, monthFrom, monthTo, slpCode],
+    queryFn: () => getDashboardMotives({ yearFrom, monthFrom, monthTo, slpCode }),
+    enabled: !!yearFrom && !!monthFrom && !!monthTo,
+  });
+};
+
+export const useOrdersCancelated = ({ yearFrom, monthFrom, monthTo, slpCode }) => {
+  console.log(`useOrdersCancelated llamado con: yearFrom=${yearFrom}, monthFrom=${monthFrom}, monthTo=${monthTo}, slpCode=${slpCode}`);
+  
+  return useQuery({
+    queryKey: ['ordersCancelated', yearFrom, monthFrom, monthTo, slpCode],
+    queryFn: () => getOrdersCancelated({ yearFrom, monthFrom, monthTo, slpCode }),
+    enabled: !!yearFrom && !!monthFrom && !!monthTo,
+  });
+};
+
+export const useTopCanceled = ({ yearFrom, monthFrom, monthTo, slpCode }) => {
+  console.log(`useTopCanceled llamado con: yearFrom=${yearFrom}, monthFrom=${monthFrom}, monthTo=${monthTo}, slpCode=${slpCode}`);
+  
+  return useQuery({
+    queryKey: ['topCanceled', yearFrom, monthFrom, monthTo, slpCode],
+    queryFn: () => getTopCanceledProducts({ yearFrom, monthFrom, monthTo, slpCode }),
+    enabled: !!yearFrom && !!monthFrom && !!monthTo,
+  });
+};
+
+
+export const useTopSelled = ({ yearFrom, monthFrom, monthTo, slpCode }) => {
+  console.log(`useTopSelled llamado con: yearFrom=${yearFrom}, monthFrom=${monthFrom}, monthTo=${monthTo}, slpCode=${slpCode}`);
+  
+  return useQuery({
+    queryKey: ['topSelled', yearFrom, monthFrom, monthTo, slpCode],
+    queryFn: () => getTopSelledProducts({ yearFrom, monthFrom, monthTo, slpCode }),
+    enabled: !!yearFrom && !!monthFrom && !!monthTo,
+  });
 };
