@@ -1,4 +1,3 @@
-// SalesStats.jsx
 import {
   Box,
   Text,
@@ -10,8 +9,11 @@ import {
   Progress,
 } from "@chakra-ui/react";
 import { FiFileText } from "react-icons/fi";
+import { useNavigate } from "react-router-dom";
 
 export function SalesStats({ data }) {
+  const navigate = useNavigate();
+
   if (!data) return null;
 
   // 👉 Formateador de moneda con 2 decimales
@@ -37,6 +39,9 @@ export function SalesStats({ data }) {
       justifyContent="space-evenly"
       alignItems="center"
       position="relative"
+      cursor="pointer"
+      _hover={{ transform: "scale(1.02)", transition: "0.2s" }}
+      onClick={() => navigate("/ordersDashboard")}
     >
       {/* Header */}
       <VStack spacing={1} mb={6}>
@@ -62,7 +67,7 @@ export function SalesStats({ data }) {
       <Box mb={4} w="full">
         <HStack flexDirection="column" justify="space-between" mb={2}>
           <Text fontSize="sm" color="text">
-           Dif: $ {diferencia}
+            Dif: $ {diferencia}
           </Text>
           <Text
             fontSize="sm"
