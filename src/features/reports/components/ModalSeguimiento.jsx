@@ -15,11 +15,9 @@ import { useGetInvoiceDeliveryNoteperOrder } from "../hooks/queries/reportQuerie
 export default function ModalSeguimiento({ isOpen, onClose, orden }) {
   const docEntry = orden?.DocEntry || orden?.orden?.id;
 
+  console.log(docEntry)
   const { data, isLoading, isError, error } =
     useGetInvoiceDeliveryNoteperOrder({ docEntry });
-
-    console.log("Orden para seguimiento:", orden);
-    console.log("Datos de seguimiento:", data);
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="6xl">

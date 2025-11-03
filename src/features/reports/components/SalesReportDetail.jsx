@@ -30,6 +30,8 @@ import {
 
 const TrackingPage = ({ orden, data }) => {
 
+  console.log("la orden es :  " , orden)
+
   const [loadingOrden, setLoadingOrden] = useState(false);
   const [loadingEntrega, setLoadingEntrega] = useState(false);
   const [loadingFactura, setLoadingFactura] = useState(false);
@@ -173,24 +175,34 @@ const TrackingPage = ({ orden, data }) => {
             <Box bg={bgSection} borderRadius="md">
               {/* Pedido Header */}
               <HStack spacing={3} mb={6}>
-                <VStack align="start" spacing={0}>
-                  <Text fontWeight="bold" fontSize="lg" color="green.600">
-                    Pedido #{ordenData.numero}
-                  </Text>
-                  <HStack>
-                    <Text justifyContent="start" alignItems="start">Cliente:</Text>
-                    <Text fontSize="sm" fontWeight="bold" color={textMuted}>
-                      {clienteData.nombre} ({clienteData.codigo})
-                    </Text>
-                  </HStack>
-                  <HStack>
-                    <Text fontSize="sm" color={textMuted}>Fecha:</Text>
-                    <Text fontSize="sm" color={textMuted}>
-                      {ordenData.fechaCreacion}
-                    </Text>
-                  </HStack>
-                </VStack>
-              </HStack>
+  <VStack align="start" spacing={0}>
+    <Text fontWeight="bold" fontSize="lg" color="green.600">
+      Pedido #{ordenData?.numero || orden?.DocEntry}
+    </Text>
+
+    <HStack>
+      <Text justifyContent="start" alignItems="start">
+        Cliente:
+      </Text>
+      <Text fontSize="sm" fontWeight="bold" color={textMuted}>
+        {clienteData?.nombre
+          ? `${clienteData.nombre} (${clienteData.codigo})`
+          : `${orden?.clienteData.nombre} (${orden?.clienteData.codigo})`}
+      </Text>
+    </HStack>
+
+    <HStack>
+      <Text fontSize="sm" color={textMuted}>
+        Fecha:
+      </Text>
+      <Text fontSize="sm" color={textMuted}>
+        {ordenData?.fechaCreacion || orden?.ordenData.fechaCreacion}
+      </Text>
+    </HStack>
+
+  </VStack>
+</HStack>
+
 
               {/* Productos Section */}
               <Box bg={bgSection} borderRadius="md" mb={6}>
@@ -249,8 +261,16 @@ const TrackingPage = ({ orden, data }) => {
               </Text>
               <Box bg="white" p={3} borderRadius="md">
                 <HStack justify="space-between" mb={3}>
-                  <Text fontSize="sm" color={textMuted}>Monto:</Text>
-                  <Text fontSize="sm" fontWeight="medium">${ordenData.montoUsd.toFixed(2)}</Text>
+                  <Text fontSize="sm" color={textMuted}>
+                    Monto:
+                  </Text>
+                  <Text fontSize="sm" fontWeight="medium">
+                    {ordenData?.montoUsd.toFixed(2)
+                      ? `$${ordenData?.montoUsd.toFixed(2)}`
+                      : orden?.ordenData.total
+                      ? `$${orden?.ordenData.total.toFixed(2)}`
+                      : "--"}
+                  </Text>
                 </HStack>
                 {/* <Button 
                   size="sm" 

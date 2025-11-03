@@ -1,4 +1,3 @@
-// src/components/OrdersDashboards/FiltersBar.jsx
 import React, { useMemo, useState, useEffect } from "react";
 import {
   Box,
@@ -7,7 +6,17 @@ import {
   Button,
   FormControl,
   FormLabel,
+  VStack,
+  Icon,
+  Text,
+  useColorModeValue,
+  IconButton,
+  Tooltip,
+  Badge,
+  Divider,
+  Flex,
 } from "@chakra-ui/react";
+import { CalendarIcon, RepeatIcon } from "@chakra-ui/icons";
 import SellerSelect from "../../../../components/SellerSelect";
 
 export default function FiltersBar({
@@ -17,35 +26,28 @@ export default function FiltersBar({
 }) {
   const currentYear = new Date().getFullYear();
 
-  // Crear lista de años
+  // 🎨 Colores adaptativos
+  const bg = useColorModeValue("white", "gray.800");
+  const borderColor = useColorModeValue("gray.200", "gray.700");
+  const labelColor = useColorModeValue("gray.600", "gray.300");
+  const iconColor = useColorModeValue("blue.500", "blue.300");
+  const cardBg = useColorModeValue("gray.50", "gray.700");
+
+  // 📅 Datos
   const years = useMemo(() => {
     const arr = [];
     for (let y = currentYear; y >= currentYear - 5; y--) arr.push(y);
     return arr;
   }, [currentYear]);
 
-  // Lista de meses (1-12)
-  const months = useMemo(() => {
-    return Array.from({ length: 12 }, (_, i) => i + 1);
-  }, []);
-
-  // Nombres de los meses
   const monthNames = [
-    "Enero",
-    "Febrero",
-    "Marzo",
-    "Abril",
-    "Mayo",
-    "Junio",
-    "Julio",
-    "Agosto",
-    "Septiembre",
-    "Octubre",
-    "Noviembre",
-    "Diciembre",
+    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
   ];
 
-  // Estado local
+  const months = useMemo(() => Array.from({ length: 12 }, (_, i) => i + 1), []);
+
+  // ⚙️ Estado local
   const [local, setLocal] = useState({
     yearFrom: initialFilters.yearFrom ?? currentYear,
     monthFrom: initialFilters.monthFrom ?? 1,
@@ -53,20 +55,16 @@ export default function FiltersBar({
     sellerCode: initialFilters.sellerCode ?? 0,
   });
 
-  // Estado para el SellerSelect
   const [selectedSeller, setSelectedSeller] = useState(null);
+  const [hasChanges, setHasChanges] = useState(false);
 
-  // Sincronizar selectedSeller cuando cambia initialFilters.sellerCode
+  // 🧩 Efectos
   useEffect(() => {
     if (initialFilters.sellerCode && initialFilters.sellerCode > 0) {
-      setLocal((prev) => ({
-        ...prev,
-        sellerCode: initialFilters.sellerCode,
-      }));
+      setLocal((prev) => ({ ...prev, sellerCode: initialFilters.sellerCode }));
     }
   }, [initialFilters.sellerCode]);
 
-  // Cuando cambia el seller seleccionado, actualizar local.sellerCode
   useEffect(() => {
     if (selectedSeller?.value) {
       setLocal((prev) => ({ ...prev, sellerCode: selectedSeller.value }));
@@ -75,102 +73,162 @@ export default function FiltersBar({
     }
   }, [selectedSeller]);
 
-  const handleApply = () => {
-    const monthFrom = Number(local.monthFrom);
-    const monthTo = Number(local.monthTo);
+  useEffect(() => {
+    const changed =
+      local.yearFrom !== initialFilters.yearFrom ||
+      local.monthFrom !== initialFilters.monthFrom ||
+      local.monthTo !== initialFilters.monthTo ||
+      local.sellerCode !== initialFilters.sellerCode;
+    setHasChanges(changed);
+  }, [local, initialFilters]);
 
-    // Si from > to, invertir
-    if (monthFrom > monthTo) {
-      onApply &&
-        onApply({ ...local, monthFrom: monthTo, monthTo: monthFrom });
-      return;
-    }
-    onApply && onApply(local);
+  // 🧠 Handlers
+  const handleApply = () => {
+    const { monthFrom, monthTo } = local;
+    const adjusted =
+      monthFrom > monthTo
+        ? { ...local, monthFrom: monthTo, monthTo: monthFrom }
+        : local;
+
+    onApply?.(adjusted);
+    setHasChanges(false);
   };
 
+  const handleReset = () => {
+    const reset = {
+      yearFrom: currentYear,
+      monthFrom: 1,
+      monthTo: 12,
+      sellerCode: hideSellerField ? initialFilters.sellerCode : 0,
+    };
+    setLocal(reset);
+    setSelectedSeller(null);
+    onApply?.(reset);
+    setHasChanges(false);
+  };
+
+  // 🧱 UI
   return (
-    <Box mb={4} p={4} bg="white" borderRadius="md" shadow="sm">
-      <HStack spacing={3} align="end" flexWrap="wrap">
-        <FormControl width="140px">
-          <FormLabel fontSize="sm">Año</FormLabel>
-          <Select
-            value={local.yearFrom}
-            onChange={(e) =>
-              setLocal((s) => ({
-                ...s,
-                yearFrom: Number(e.target.value),
-              }))
-            }
-            size="sm"
-          >
-            {years.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </Select>
-        </FormControl>
+    <Box bg={bg} borderRadius="lg" p={4}>
+      <VStack spacing={5} align="stretch">
+        {/* 🔹 Encabezado */}
+        <Flex justify="space-between" align="center">
+          <HStack spacing={2}>
+            <Icon as={CalendarIcon} color={iconColor} boxSize={5} />
+            <Text fontWeight="semibold" fontSize="lg" color={labelColor}>
+              Filtros
+            </Text>
+          </HStack>
+          {hasChanges && (
+            <Badge colorScheme="orange" fontSize="xs">
+              Cambios sin aplicar
+            </Badge>
+          )}
+        </Flex>
 
-        <FormControl width="160px">
-          <FormLabel fontSize="sm">Mes desde</FormLabel>
-          <Select
-            value={local.monthFrom}
-            onChange={(e) =>
-              setLocal((s) => ({
-                ...s,
-                monthFrom: Number(e.target.value),
-              }))
-            }
-            size="sm"
-          >
-            {months.map((m) => (
-              <option key={m} value={m}>
-                {String(m).padStart(2, "0")} - {monthNames[m - 1]}
-              </option>
-            ))}
-          </Select>
-        </FormControl>
-
-        <FormControl width="160px">
-          <FormLabel fontSize="sm">Mes hasta</FormLabel>
-          <Select
-            value={local.monthTo}
-            onChange={(e) =>
-              setLocal((s) => ({
-                ...s,
-                monthTo: Number(e.target.value),
-              }))
-            }
-            size="sm"
-          >
-            {months.map((m) => (
-              <option key={m} value={m}>
-                {String(m).padStart(2, "0")} - {monthNames[m - 1]}
-              </option>
-            ))}
-          </Select>
-        </FormControl>
-
-        {!hideSellerField && (
-          <Box width="250px">
-            <SellerSelect
-              selectedSeller={selectedSeller}
-              setSelectedSeller={setSelectedSeller}
-              setValue={() => {}}
-              error={null}
-            />
-          </Box>
-        )}
-
-        <Button
-          colorScheme="blue"
-          size="sm"
-          onClick={handleApply}
-          mt={hideSellerField ? 0 : 6}
+        {/* 🔸 Cuerpo de filtros */}
+        <VStack
+          spacing={4}
+          align="stretch"
+          bg={cardBg}
+          borderRadius="md"
+          p={4}
+          border="1px solid"
+          borderColor={borderColor}
         >
-          Aplicar
-        </Button>
-      </HStack>
+          {/* Año */}
+          <FormControl>
+            <FormLabel fontSize="sm" fontWeight="medium" color={labelColor}>
+              Año
+            </FormLabel>
+            <Select
+              value={local.yearFrom}
+              onChange={(e) => setLocal((s) => ({ ...s, yearFrom: +e.target.value }))}
+              size="sm"
+            >
+              {years.map((y) => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </Select>
+          </FormControl>
+
+          {/* Rango de meses */}
+          <HStack spacing={3}>
+            <FormControl>
+              <FormLabel fontSize="sm" color={labelColor}>
+                Desde
+              </FormLabel>
+              <Select
+                value={local.monthFrom}
+                onChange={(e) => setLocal((s) => ({ ...s, monthFrom: +e.target.value }))}
+                size="sm"
+              >
+                {months.map((m) => (
+                  <option key={m} value={m}>{monthNames[m - 1]}</option>
+                ))}
+              </Select>
+            </FormControl>
+
+            <FormControl>
+              <FormLabel fontSize="sm" color={labelColor}>
+                Hasta
+              </FormLabel>
+              <Select
+                value={local.monthTo}
+                onChange={(e) => setLocal((s) => ({ ...s, monthTo: +e.target.value }))}
+                size="sm"
+              >
+                {months.map((m) => (
+                  <option key={m} value={m}>{monthNames[m - 1]}</option>
+                ))}
+              </Select>
+            </FormControl>
+          </HStack>
+
+          {/* Vendedor */}
+          {!hideSellerField && (
+            <FormControl>
+              <FormLabel fontSize="sm" color={labelColor}>
+                Vendedor
+              </FormLabel>
+              <SellerSelect
+                selectedSeller={selectedSeller}
+                setSelectedSeller={setSelectedSeller}
+                setValue={() => {}}
+                error={null}
+              />
+            </FormControl>
+          )}
+        </VStack>
+
+        <Divider />
+
+        {/* 🔘 Botones */}
+        <HStack justify="flex-end" spacing={3}>
+          <Tooltip label="Restablecer filtros" hasArrow>
+            <IconButton
+              icon={<RepeatIcon />}
+              variant="ghost"
+              colorScheme="gray"
+              size="sm"
+              onClick={handleReset}
+              aria-label="Restablecer filtros"
+            />
+          </Tooltip>
+
+          <Button
+            colorScheme="blue"
+            size="sm"
+            onClick={handleApply}
+            leftIcon={<Icon as={CalendarIcon} />}
+            isDisabled={!hasChanges}
+            px={6}
+            shadow="sm"
+          >
+            Aplicar
+          </Button>
+        </HStack>
+      </VStack>
     </Box>
   );
 }
