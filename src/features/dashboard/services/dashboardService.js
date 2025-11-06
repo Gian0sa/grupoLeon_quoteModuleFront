@@ -15,28 +15,51 @@ export const getHistory = async () => {
     return response.data;
 };
 
-export const getQuotesSellersAdmin = async ({ slpCode, month, page = 1, pageSize = 20 }) => {
+export const getQuotesSellersAdmin = async ({ slpCode, yearFrom, monthFrom, monthTo, page = 1, pageSize = 20 }) => {
   try {
     const skip = (page - 1) * pageSize;
 
-    const url = `/reportModule/AdminQuotesSellers/${slpCode}/${month}`;
+    const url = `/reportModule/AdminQuotesSellers/${slpCode}`;
 
-    const response = await axiosInstance.get(url);
+    const response = await axiosInstance.get(url, {
+      params: {
+        yearFrom,
+        monthFrom,
+        monthTo,
+        skip,
+        pageSize,
+      },
+    });
+
     return response.data;
   } catch (error) {
-    console.error("Error al obtener cuotas del vendedor:", error);
+    console.error("❌ Error al obtener cuotas del vendedor (Admin):", error);
     return null;
   }
 };
 
-export const getQuotesSellers = async ({ slpCode, month }) => {
-    try {
-        const response = await axiosInstance.get(`/reportModule/quotesSellers/${slpCode}/${month}`);
-        return response.data;
-    } catch (error) {
-        console.error("Error al obtener cuotas del vendedor:", error);
-        return null;
-    }       
+export const getQuotesSellers = async ({ slpCode, yearFrom, monthFrom, monthTo, page = 1, pageSize = 20 }) => {
+  try {
+    const skip = (page - 1) * pageSize;
+
+
+    const url = `/reportModule/quotesSellers/${slpCode}`;
+
+    const response = await axiosInstance.get(url, {
+      params: {
+        yearFrom,
+        monthFrom,
+        monthTo,
+        skip,
+        pageSize,
+      },
+    });
+console.log("Datos de cuotas del vendedor recibidos:", response.data);
+    return response.data;
+  } catch (error) {
+    console.error("❌ Error al obtener cuotas del vendedor:", error);
+    return null;
+  }
 };
 
 export const getExchangeRate = async ({ currency, date }) => {

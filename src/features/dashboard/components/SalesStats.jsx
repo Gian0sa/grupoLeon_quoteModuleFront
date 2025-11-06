@@ -1,3 +1,4 @@
+// SalesStats.jsx
 import {
   Box,
   Text,
@@ -16,23 +17,22 @@ export function SalesStats({ data }) {
 
   if (!data) return null;
 
-  // 👉 Formateador de moneda con 2 decimales
   const formatCurrency = (value) =>
-    Number(value).toLocaleString("en-US", {
+    Number(value || 0).toLocaleString("en-US", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
 
   const pedidosMes = formatCurrency(data.PEDIDOS_MES_USD);
-  const diferencia = formatCurrency(Math.abs(data.DIF_FACT_VS_PED_USD));
-  const pctFactVsPed = data.PCT_FACT_VS_PED;
-  const cantidadPedidos = data.CANT_PEDIDOS;
+  const diferencia = formatCurrency(Math.abs(data.DIF_FACT_VS_PED_USD || 0));
+  const pctFactVsPed = Number(data.PCT_FACT_VS_PED || 0);
+  const cantidadPedidos = data.CANT_PEDIDOS || 0;
 
   return (
     <Box
       bg="card"
       borderRadius="xl"
-      p={1}
+      p={6} // ✅ Cambiado de 1 a 6
       w="full"
       display="flex"
       flexDirection="column"
@@ -44,9 +44,9 @@ export function SalesStats({ data }) {
       onClick={() => navigate("/ordersDashboard")}
     >
       {/* Header */}
-      <VStack spacing={1} mb={6}>
-        <HStack spacing={1} opacity={0.9}>
-          <Icon as={FiFileText} boxSize={4} color="subtitle" />
+      <VStack spacing={1} mb={4}>
+        <HStack spacing={2} opacity={0.9}>
+          <Icon as={FiFileText} boxSize={5} color="subtitle" />
           <Text fontSize="sm" color="subtitle" fontWeight="medium">
             Total Pedido
           </Text>
@@ -54,28 +54,28 @@ export function SalesStats({ data }) {
       </VStack>
 
       {/* Valor principal */}
-      <VStack spacing={1} mb={6}>
-        <Text fontSize="2xl" fontWeight="900" color="accentAlt" lineHeight="1">
+      <VStack spacing={1} mb={4}>
+        <Text fontSize="3xl" fontWeight="900" color="accentAlt" lineHeight="1">
           ${pedidosMes}
         </Text>
-        <Text fontSize="sm" color="text">
+        <Text fontSize="sm" color="text" mt={2}>
           Pedidos: {cantidadPedidos}
         </Text>
       </VStack>
 
       {/* Progreso visual */}
       <Box mb={4} w="full">
-        <HStack flexDirection="column" justify="space-between" mb={2}>
+        <HStack justify="space-between" mb={2}>
           <Text fontSize="sm" color="text">
-            Dif: $ {diferencia}
+            Dif: ${diferencia}
           </Text>
           <Text
             fontSize="sm"
             fontWeight="bold"
-            color={parseFloat(data.DIF_FACT_VS_PED_USD) >= 0 ? "success" : "info"}
+            color={parseFloat(data.DIF_FACT_VS_PED_USD || 0) >= 0 ? "success" : "info"}
           >
-            {parseFloat(data.DIF_FACT_VS_PED_USD) >= 0 ? "+" : ""}
-            {pctFactVsPed} %
+            {parseFloat(data.DIF_FACT_VS_PED_USD || 0) >= 0 ? "+" : ""}
+            {pctFactVsPed.toFixed(2)}%
           </Text>
         </HStack>
 

@@ -1,3 +1,4 @@
+// SalesSummary.jsx
 import {
   Box,
   Text,
@@ -12,30 +13,26 @@ import {
 import { FiTrendingUp } from "react-icons/fi";
 
 export function SalesSummary({ data }) {
-  console.log("SalesSummary data:", data); // Debugging line
-  const cardBg = useColorModeValue("white", "gray.800");
-  const textColor = useColorModeValue("gray.600", "gray.300");
-  const accentColor = useColorModeValue("teal.500", "teal.300");
-
+  console.log("SalesSummary data:", data);
+  
   if (!data) return null;
 
-  // 👉 Formateador de moneda con 2 decimales
   const formatCurrency = (value) =>
-    Number(value).toLocaleString("en-US", {
+    Number(value || 0).toLocaleString("en-US", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
 
-  const progressValue = data.CUMPLIMIENTO_PCT;
+  const progressValue = Number(data.CUMPLIMIENTO_PCT || 0);
   const pedidos = formatCurrency(data.AVANCE_MES_USD);
   const cuota = formatCurrency(data.CUOTA_MES_USD);
-  const cantidadPedidos = data.CANT_FACTURAS || "#"; 
+  const cantidadPedidos = data.CANT_PEDIDOS || 0; // ✅ Campo correcto
 
   return (
     <Box
       bg="card"
       borderRadius="xl"
-      p={1}
+      p={6} // ✅ Cambiado de 1 a 6
       w="full"
       display="flex"
       flexDirection="column"
@@ -44,9 +41,9 @@ export function SalesSummary({ data }) {
       position="relative"
     >
       {/* Header */}
-      <VStack spacing={1} mb={6}>
-        <HStack spacing={1} opacity={0.8}>
-          <Icon as={FiTrendingUp} boxSize={4} color="subtitle" />
+      <VStack spacing={1} mb={4}>
+        <HStack spacing={2} opacity={0.8}>
+          <Icon as={FiTrendingUp} boxSize={5} color="subtitle" />
           <Text fontSize="sm" color="subtitle" fontWeight="medium">
             Total Facturado
           </Text>
@@ -54,23 +51,23 @@ export function SalesSummary({ data }) {
       </VStack>
 
       {/* Valor principal */}
-      <VStack spacing={1} mb={6}>
-        <Text fontSize="2xl" fontWeight="900" color="accentTeal" lineHeight="1">
+      <VStack spacing={1} mb={4}>
+        <Text fontSize="3xl" fontWeight="900" color="accentTeal" lineHeight="1">
           ${pedidos}
         </Text>
-        <Text fontSize="sm" color="text">
+        <Text fontSize="sm" color="text" mt={2}>
           Facturas: {cantidadPedidos}
         </Text>
       </VStack>
 
       {/* Progreso visual */}
       <Box mb={4} w="full">
-        <HStack justify="space-between" flexDirection="column" mb={2}>
+        <HStack justify="space-between" mb={2}>
           <Text fontSize="sm" color="text">
             Meta: ${cuota}
           </Text>
           <Text fontSize="sm" fontWeight="bold" color="accentTeal">
-            {progressValue}%
+            {progressValue.toFixed(2)}%
           </Text>
         </HStack>
 

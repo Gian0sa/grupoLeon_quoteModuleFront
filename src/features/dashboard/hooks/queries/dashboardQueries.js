@@ -55,23 +55,23 @@ export const useHistory = () => {
   });
 };
 
-// ✅ Hook para Quotes by Seller
-export const useQuotesSellers = ({ slpCode, month }) => {
+// ✅ Hook para Quotes by Seller (V3)
+export const useQuotesSellers = ({ slpCode, yearFrom, monthFrom, monthTo, skip = 0, pageSize = 20 }) => {
   return useQuery({
-    queryKey: ['quotesSellers', slpCode, month],
-    queryFn: () => getQuotesSellers({ slpCode, month }),
-    enabled: slpCode != null && month != null,
+    queryKey: ['quotesSellers', slpCode, yearFrom, monthFrom, monthTo, skip, pageSize],
+    queryFn: () => getQuotesSellers({ slpCode, yearFrom, monthFrom, monthTo, skip, pageSize }),
+    enabled: slpCode != null && yearFrom != null && monthFrom != null && monthTo != null,
   });
 };
 
-export const useQuotesSellersAdmin = ({ slpCode, month }) => {
+// ✅ Hook para Quotes by Seller (Admin) (V3)
+export const useQuotesSellersAdmin = ({ slpCode, yearFrom, monthFrom, monthTo }) => {
   return useQuery({
-    queryKey: ["quotesSellersAdmin", slpCode, month,],      
-    queryFn: () => getQuotesSellersAdmin ({ slpCode, month }),
-    enabled: slpCode != null && month != null,
+    queryKey: ['quotesSellersAdmin', slpCode, yearFrom, monthFrom, monthTo],
+    queryFn: () => getQuotesSellersAdmin({ slpCode, yearFrom, monthFrom, monthTo }),
+    enabled: slpCode != null && yearFrom != null && monthFrom != null && monthTo != null,
   });
 };
-
 
 // ✅ Obtener todas las notificaciones
 export const useNotifications = () => {

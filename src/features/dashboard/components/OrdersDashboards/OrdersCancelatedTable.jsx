@@ -64,6 +64,8 @@ export default function OrdersCancelatedTable({ data, isLoading, isError }) {
   const endIndex = startIndex + pageSize;
   const currentData = filteredData.slice(startIndex, endIndex);
 
+  console.log("la orden selceiioonada es : ",selectedOrder);
+
   const handleSearch = (value) => {
     setSearchTerm(value);
     setCurrentPage(1);
@@ -147,7 +149,7 @@ const handleOpenTracking = (order) => {
     },
     motivoCancelacion: order.cancellationReason,
     comentarios: order.comments,
-    DocEntry: order.internalNumber || order.orderNumber, // compatibilidad con ModalSeguimiento
+    DocEntry: order.orderNumber || order.internalNumber,
     orden: { id: order.internalNumber || order.orderNumber },
   };
 

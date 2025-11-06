@@ -23,19 +23,34 @@ export default function ChartsSection({ data }) {
   const textColor = useColorModeValue("gray.700", "gray.200");
   const COLORS = ["#3182CE", "#CBD5E0"]; // Azul y gris claro
 
-  if (!data) return null;
+  if (!data) {
+    return (
+      <Box w="100%" px={{ base: 2, md: 4 }} py={2} textAlign="center">
+        <Text color="gray.500">No hay datos disponibles para mostrar gráficos</Text>
+      </Box>
+    );
+  }
 
-  // 🎯 Construcción de datasets dinámicos
+  // 🎯 Construcción de datasets dinámicos con valores seguros
+  const cumplimiento = Number(data.CUMPLIMIENTO_PCT) || 0;
   const pieData = [
-    { name: "Cumplimiento", value: data.CUMPLIMIENTO_PCT || 0 },
-    { name: "Faltante", value: 100 - (data.CUMPLIMIENTO_PCT || 0) },
+    { name: "Cumplimiento", value: cumplimiento },
+    { name: "Faltante", value: Math.max(0, 100 - cumplimiento) },
   ];
 
   const barData = [
-    { name: "Avance", value: data.AVANCE_MES_USD || 0 },
-    { name: "Cuota", value: data.CUOTA_MES_USD || 0 },
-    { name: "Pedidos", value: data.PEDIDOS_MES_USD || 0 },
+    { name: "Avance", value: Number(data.AVANCE_MES_USD) || 0 },
+    { name: "Cuota", value: Number(data.CUOTA_MES_USD) || 0 },
+    { name: "Pedidos", value: Number(data.PEDIDOS_MES_USD) || 0 },
   ];
+
+  // 📅 Formatear periodo
+  const formatPeriodo = () => {
+    if (data.YEAR === 'MULTI' || data.MONTH === 'MULTI') {
+      return 'Consolidado';
+    }
+    return `${data.MONTH}/${data.YEAR}`;
+  };
 
   return (
     <Box w="100%" px={{ base: 2, md: 4 }} py={2}>
@@ -71,11 +86,11 @@ export default function ChartsSection({ data }) {
                 label={({ name, value }) => `${name}: ${value.toFixed(1)}%`}
               >
                 {pieData.map((entry, index) => (
-                  <Cell key={index} fill={COLORS[index % COLORS.length]} />
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
               <Tooltip
-                formatter={(val) => `${val.toFixed(2)}%`}
+                formatter={(val) => `${Number(val).toFixed(2)}%`}
                 contentStyle={{
                   background: cardBg,
                   borderRadius: "10px",
@@ -101,20 +116,25 @@ export default function ChartsSection({ data }) {
             <BarChart data={barData}>
               <XAxis
                 dataKey="name"
-                tick={{ fill: textColor }}
+                tick={{ fill: textColor, fontSize: 12 }}
                 axisLine={false}
                 tickLine={false}
               />
               <YAxis
-                tick={{ fill: textColor }}
+                tick={{ fill: textColor, fontSize: 12 }}
                 axisLine={false}
                 tickLine={false}
+                tickFormatter={(value) =>
+                  `$${(value / 1000).toFixed(0)}K`
+                }
               />
               <Tooltip
                 formatter={(val) =>
-                  val.toLocaleString("en-US", {
+                  Number(val).toLocaleString("en-US", {
                     style: "currency",
                     currency: "USD",
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
                   })
                 }
                 contentStyle={{
@@ -139,16 +159,34 @@ export default function ChartsSection({ data }) {
           <Heading size="sm" mb={3} color={textColor}>
             Total de Pedidos USD
           </Heading>
-          <Box display="flex" flexDir="column" alignItems="center" justifyContent="center" h="full">
-            <Text fontSize={{ base: "2xl", md: "3xl" }} fontWeight="bold" color="blue.500">
-              {data.PEDIDOS_MES_USD?.toLocaleString("en-US", {
+          <Box 
+            display="flex" 
+            flexDir="column" 
+            alignItems="center" 
+            justifyContent="center" 
+            h="220px"
+          >
+            <Text 
+              fontSize={{ base: "2xl", md: "4xl" }} 
+              fontWeight="bold" 
+              color="blue.500"
+              mb={2}
+            >
+              {Number(data.PEDIDOS_MES_USD || 0).toLocaleString("en-US", {
                 style: "currency",
                 currency: "USD",
-              }) ?? "-"}
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
             </Text>
-            <Text fontSize="sm" color={textColor}>
-              Periodo: {data.MONTH}/{data.YEAR}
+            <Text fontSize="sm" color={textColor} fontWeight="medium">
+              Periodo: {formatPeriodo()}
             </Text>
+            {data.CANT_PEDIDOS && (
+              <Text fontSize="xs" color={textColor} mt={1}>
+                Total: {data.CANT_PEDIDOS} pedidos
+              </Text>
+            )}
           </Box>
         </GridItem>
       </Grid>

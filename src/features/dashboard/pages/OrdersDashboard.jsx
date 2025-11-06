@@ -58,11 +58,22 @@ export default function OrdersDashboard() {
     sellerCode: querySlpCode,
   });
 
-  const { data: vendedorData, isLoading: vendedorLoading, error: vendedorError } =
-    useQuotesSellers({ slpCode: querySlpCode, month: defaultMonth }, { enabled: isVendedor });
+const { data: vendedorData, isLoading: vendedorLoading, error: vendedorError } =
+  useQuotesSellers({
+    slpCode: querySlpCode,
+    yearFrom: filters.yearFrom,
+    monthFrom: filters.monthFrom,
+    monthTo: filters.monthTo,
+  }, { enabled: isVendedor });
 
-  const { data: adminData, isLoading: adminLoading, error: adminError } =
-    useQuotesSellersAdmin({ slpCode: querySlpCode, month: defaultMonth }, { enabled: isAdmin });
+const { data: adminData, isLoading: adminLoading, error: adminError } =
+  useQuotesSellersAdmin({
+    slpCode: querySlpCode,
+    yearFrom: filters.yearFrom,
+    monthFrom: filters.monthFrom,
+    monthTo: filters.monthTo,
+  }, { enabled: isAdmin });
+
 
   const { data: ordersMotive, isLoading: motivesLoading, error: motivesError } =
     useDashboardMotives({
@@ -98,7 +109,10 @@ export default function OrdersDashboard() {
 
   const isLoading = isVendedor ? vendedorLoading : adminLoading;
   const error = isVendedor ? vendedorError : adminError;
-  const resumenData = isVendedor ? vendedorData?.[0] ?? null : adminData ?? null;
+  const resumenData = isVendedor ? vendedorData : adminData;
+
+
+  console.log("resume data es : ", resumenData);
 
   const handleApplyFilters = (newFilters) => {
     if (isVendedor) {
