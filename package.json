@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:qa": "dotenv -e .env.qa -- vite build",
     "lint": "eslint . --ext .js,.jsx",
     "preview": "vite preview"
   },
