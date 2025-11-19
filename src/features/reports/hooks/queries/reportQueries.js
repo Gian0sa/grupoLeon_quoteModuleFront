@@ -8,7 +8,8 @@ import {
   getAccountsReceivable,
   getcompareOrderAndDelivery,
   getOrderswithStatusReports,
-  getInvoiceDeliveryNoteperOrder
+  getInvoiceDeliveryNoteperOrder,
+  getCancelledOrderData
 } from "../../services/reportService";
 
 export const useGetOrderByCode = (code, enabled = true) => {
@@ -58,6 +59,14 @@ export const useGetCompareOrderAndDeliveryNote = (orderCode, deliveryNoteCode, e
     enabled: Boolean(orderCode) && Boolean(enabled),
   });
 }
+
+export const useGetCancelledOrderData = (orderCode, enabled = true) => {
+  return useQuery({
+    queryKey: ["cancelledOrderData", orderCode],
+    queryFn: () => getCancelledOrderData(orderCode),
+    enabled: Boolean(orderCode) && Boolean(enabled),
+  });
+};
 
 export const useGetOrderswithStatusReports = ({
   salesPersonCode,

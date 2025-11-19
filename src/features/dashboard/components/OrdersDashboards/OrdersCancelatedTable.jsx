@@ -30,6 +30,7 @@ import {
   ViewIcon,
 } from "@chakra-ui/icons";
 import ModalSeguimiento from "../../../reports/components/ModalSeguimiento";
+import CancelledOrderModal from "./CancelledOrderModal";
 
 export default function OrdersCancelatedTable({ data, isLoading, isError }) {
   const [currentPage, setCurrentPage] = useState(1);
@@ -57,6 +58,8 @@ export default function OrdersCancelatedTable({ data, isLoading, isError }) {
         item.cancellationReason?.toLowerCase().includes(term)
     );
   }, [data, searchTerm]);
+
+  console.log(selectedOrder)
 
   // --- PAGINACIÓN ---
   const totalPages = Math.ceil(filteredData.length / pageSize);
@@ -129,33 +132,7 @@ export default function OrdersCancelatedTable({ data, isLoading, isError }) {
   // --- FUNCIÓN PARA ABRIR MODAL DE SEGUIMIENTO ---
  // --- FUNCIÓN PARA ABRIR MODAL DE SEGUIMIENTO ---
 const handleOpenTracking = (order) => {
-  console.log("Orden original (cancelada):", order);
-
-  // Adaptar al formato que TrackingPage espera
-  const adaptedOrder = {
-    ordenData: {
-      numero: order.orderNumber || order.internalNumber, // TrackingPage usa "ordenData.numero"
-      fechaCreacion: order.orderDate,
-      total: order.totalAmount,
-      moneda: order.currency,
-    },
-    clienteData: {
-      nombre: order.clientName,
-      codigo: order.clientCode,
-    },
-    vendedorData: {
-      nombre: order.sellerName,
-      codigo: order.sellerCode,
-    },
-    motivoCancelacion: order.cancellationReason,
-    comentarios: order.comments,
-    DocEntry: order.orderNumber || order.internalNumber,
-    orden: { id: order.internalNumber || order.orderNumber },
-  };
-
-  console.log("Orden adaptada para TrackingPage:", adaptedOrder);
-
-  setSelectedOrder(adaptedOrder);
+  setSelectedOrder(order);
   onOpen();
 };
 
@@ -360,7 +337,11 @@ const handleOpenTracking = (order) => {
       </VStack>
 
       {/* --- MODAL DE SEGUIMIENTO --- */}
-      <ModalSeguimiento isOpen={isOpen} onClose={onClose} orden={selectedOrder} />
+      <CancelledOrderModal 
+        isOpen={isOpen} 
+        onClose={onClose} 
+        order={selectedOrder} 
+      />
     </>
   );
 }

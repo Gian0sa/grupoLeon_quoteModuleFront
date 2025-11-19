@@ -65,6 +65,17 @@ export const getcompareOrderAndDelivery = async (orderCode, deliveryCode) => {
   }
 }
 
+export const getCancelledOrderData = async (orderCode) => {
+  try {
+    console.log("Fetching cancelled order data for orderCode:", orderCode);
+    const response = await axiosInstance.get(`/reportModule/cancelledOrder/${orderCode}`);
+    return response.data;
+  } catch (error) {
+    console.error("Error al obtener datos de la orden cancelada:", error);
+    return null;
+  }
+};
+
 export const getOrderswithStatusReports = async ({
   salesPersonCode,
   estadopedido = '',

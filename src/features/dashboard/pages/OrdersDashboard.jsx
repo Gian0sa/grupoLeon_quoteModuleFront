@@ -50,11 +50,12 @@ export default function OrdersDashboard() {
   const querySlpCode = isVendedor ? salesEmployeeCode : 0;
   const currentYear = new Date().getFullYear();
   const defaultMonth = format(subMonths(new Date(), 0), "MM");
+  const currentMonth = new Date().getMonth() + 1; // date-fns: 1-12
 
   const [filters, setFilters] = useState({
     yearFrom: currentYear,
-    monthFrom: 1,
-    monthTo: 12,
+    monthFrom: currentMonth,
+    monthTo: currentMonth,
     sellerCode: querySlpCode,
   });
 
