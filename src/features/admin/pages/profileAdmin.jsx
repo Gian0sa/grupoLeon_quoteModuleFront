@@ -1,9 +1,7 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import {
   Box,
   Heading,
-  FormControl,
-  FormLabel,
   Input,
   Button,
   Spinner,
@@ -11,91 +9,202 @@ import {
   Flex,
   useColorModeValue,
   useToast,
-  FormErrorMessage,
   Center,
-  SimpleGrid,
-  Checkbox,
-  Accordion,
-  AccordionItem,
-  AccordionButton,
-  AccordionPanel,
-  AccordionIcon,
-  Text,
+  Divider,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalCloseButton,
+  useDisclosure,
+  Table,
+  Thead,
+  Tbody,
+  Tr,
+  Th,
+  Td,
   Badge,
+  IconButton,
+  InputGroup,
+  InputLeftElement,
+  Text,
   HStack,
-  Divider
+  Stack,
+  useBreakpointValue,
+  Card,
+  CardBody,
+  Select,
 } from "@chakra-ui/react";
+import { SearchIcon, EditIcon, ChevronLeftIcon, ChevronRightIcon } from "@chakra-ui/icons";
 import { useGetAllUsersAdmin } from "../hooks/queries/authAdminQueries";
 import { useAuthAdminMutations } from "../hooks/mutations/authAdminMutations";
 import { useGetServices } from "../../auth/hooks/queries/authQueries";
 import { BackButton } from "../../../components/BackButton";
-import Select from "react-select";
+import PermissionsSection from "../components/PermissionsSection";
+import UserBasicFields from "../components/UserBasicFields";
+import { groupServicesByCategory } from "../../../shared/utils/serviceHelpers";
 
-function groupServicesByCategory(services) {
-  if (!services || services.length === 0) return {};
-
-  const iconMap = {
-    'notificación': '🔔',
-    'producto': '🛍️',
-    'pedido': '📦',
-    'cliente': '👤',
-    'reporte': '📊',
-    'usuario': '👥',
-    'factura': '📄',
-    'orden': '📃',
-    'admin': '⚙️',
-  };
-
-  const colorMap = {
-    'notificación': 'purple',
-    'producto': 'orange',
-    'pedido': 'blue',
-    'vendedor': 'green',
-    'admin': 'yellow',
-    'usuario': 'pink',
-    'factura': 'red',
-    'orden': 'teal',
-  };
-
-  const dynamicCategories = {};
-
-  services.forEach(service => {
-    // Extraer prefijo antes del primer "-"
-    const rawPrefix = service.name?.split('-')[0]?.trim() || 'Otros';
-    const prefixKey = rawPrefix.toLowerCase();
-
-    if (!dynamicCategories[prefixKey]) {
-      dynamicCategories[prefixKey] = {
-        name: rawPrefix,
-        icon: iconMap[prefixKey] || '📁',
-        color: colorMap[prefixKey] || 'gray',
-        services: []
-      };
-    }
-
-    dynamicCategories[prefixKey].services.push(service);
-  });
-
-  return dynamicCategories;
+// Componente de tarjeta para móvil
+function UserCard({ user, onEdit, hoverBg }) {
+  return (
+    <Card
+      cursor="pointer"
+      _hover={{ bg: hoverBg, transform: "translateY(-2px)", boxShadow: "md" }}
+      transition="all 0.2s"
+      onClick={() => onEdit(user)}
+    >
+      <CardBody>
+        <VStack align="stretch" spacing={3}>
+          <HStack justify="space-between">
+            <Text fontWeight="bold" fontSize="lg">{user.username}</Text>
+            <Badge colorScheme={user.active ? "green" : "red"}>
+              {user.active ? "Activo" : "Inactivo"}
+            </Badge>
+          </HStack>
+          
+          <Text fontSize="sm" color="gray.600">{user.email}</Text>
+          
+          <Button
+            leftIcon={<EditIcon />}
+            colorScheme="green"
+            size="sm"
+            variant="ghost"
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit(user);
+            }}
+          >
+            Editar
+          </Button>
+        </VStack>
+      </CardBody>
+    </Card>
+  );
 }
 
-const getServiceDisplayName = (name) => {
-  if (!name) return '';
-  const parts = name.split('-');
-  return parts.length > 1 ? parts.slice(1).join('-').trim() : name.trim();
-};
+// Componente de paginación
+function Pagination({ currentPage, totalPages, onPageChange, pageSize, onPageSizeChange }) {
+  const isMobile = useBreakpointValue({ base: true, md: false });
+  
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxVisible = isMobile ? 3 : 5;
+    
+    if (totalPages <= maxVisible) {
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      if (currentPage <= 3) {
+        for (let i = 1; i <= Math.min(maxVisible, totalPages); i++) {
+          pages.push(i);
+        }
+        if (totalPages > maxVisible) {
+          pages.push('...');
+          pages.push(totalPages);
+        }
+      } else if (currentPage >= totalPages - 2) {
+        pages.push(1);
+        pages.push('...');
+        for (let i = totalPages - (maxVisible - 2); i <= totalPages; i++) {
+          pages.push(i);
+        }
+      } else {
+        pages.push(1);
+        pages.push('...');
+        pages.push(currentPage - 1);
+        pages.push(currentPage);
+        pages.push(currentPage + 1);
+        pages.push('...');
+        pages.push(totalPages);
+      }
+    }
+    
+    return pages;
+  };
+
+  return (
+    <Stack 
+      direction={{ base: "column", md: "row" }}
+      spacing={4}
+      justify="space-between"
+      align="center"
+      mt={6}
+    >
+      <HStack spacing={2}>
+        <Text fontSize="sm" color="gray.600">Mostrar</Text>
+        <Select 
+          size="sm" 
+          w="70px" 
+          value={pageSize}
+          onChange={(e) => onPageSizeChange(Number(e.target.value))}
+        >
+          <option value={10}>10</option>
+          <option value={25}>25</option>
+          <option value={50}>50</option>
+          <option value={100}>100</option>
+        </Select>
+        <Text fontSize="sm" color="gray.600">por página</Text>
+      </HStack>
+
+      <HStack spacing={2}>
+        <IconButton
+          icon={<ChevronLeftIcon />}
+          size="sm"
+          onClick={() => onPageChange(currentPage - 1)}
+          isDisabled={currentPage === 1}
+          aria-label="Página anterior"
+        />
+        
+        {getPageNumbers().map((page, index) => (
+          page === '...' ? (
+            <Text key={`ellipsis-${index}`} px={2}>...</Text>
+          ) : (
+            <Button
+              key={page}
+              size="sm"
+              onClick={() => onPageChange(page)}
+              colorScheme={currentPage === page ? "green" : "gray"}
+              variant={currentPage === page ? "solid" : "ghost"}
+            >
+              {page}
+            </Button>
+          )
+        ))}
+        
+        <IconButton
+          icon={<ChevronRightIcon />}
+          size="sm"
+          onClick={() => onPageChange(currentPage + 1)}
+          isDisabled={currentPage === totalPages}
+          aria-label="Página siguiente"
+        />
+      </HStack>
+
+      <Text fontSize="sm" color="gray.600">
+        Página {currentPage} de {totalPages}
+      </Text>
+    </Stack>
+  );
+}
 
 export function ProfileAdmin() {
   const { data: users, isLoading } = useGetAllUsersAdmin();
   const { data: services, isLoading: isLoadingServices } = useGetServices();
   const { updateProfileAdmin } = useAuthAdminMutations();
+  const { isOpen, onOpen, onClose } = useDisclosure();
+  
   const toast = useToast();
-
-
-  const boxBg = useColorModeValue("white", "gray.800");
   const pageBg = useColorModeValue("gray.50", "gray.900");
+  const tableBg = useColorModeValue("white", "gray.800");
+  const hoverBg = useColorModeValue("gray.50", "gray.700");
 
-  const [selectedUserId, setSelectedUserId] = useState("");
+  // Responsive: mostrar tabla o cards
+  const isMobile = useBreakpointValue({ base: true, md: false });
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedUser, setSelectedUser] = useState(null);
   const [formData, setFormData] = useState({
     userId: "",
     username: "",
@@ -103,56 +212,106 @@ export function ProfileAdmin() {
     salesEmployeeCode: "",
     newPassword: "",
     permittedServices: [],
+    active: true,
   });
   const [errors, setErrors] = useState({});
 
-  // Agrupar servicios usando useMemo para optimizar rendimiento
+  // Estados de paginación
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
   const groupedServices = useMemo(() => {
     return groupServicesByCategory(services);
   }, [services]);
 
-  // Actualizar formulario al seleccionar un usuario
-  useEffect(() => {
-    if (selectedUserId && users) {
-      const user = users.find(u => u.id === Number(selectedUserId));
-      if (user) {
-        let userPermissions = user.permittedServices || [];
-        
-        if (services && userPermissions.length > 0 && typeof userPermissions[0] === 'string') {
-          userPermissions = services
-            .filter(service => {
-              const serviceString = `${service.method}:${service.path}`;
-              return userPermissions.includes(serviceString);
-            })
-            .map(service => service.id);
-        }
-        
-        setFormData({
-          userId: Number(selectedUserId),
-          username: user.username || "",
-          email: user.email || "",
-          salesEmployeeCode: user.salesEmployeeCode ?? null,
-          newPassword: "",
-          permittedServices: userPermissions,
-        });
-        setErrors({});
-      }
-    } else {
-      setFormData({
-        userId: "",
-        username: "",
-        email: "",
-        salesEmployeeCode: "",
-        newPassword: "",
-        permittedServices: [],
-      });
+  const filteredUsers = useMemo(() => {
+    if (!users) return [];
+    return users
+      .filter(u =>
+        `${u.username} ${u.email} ${u.salesEmployeeCode || ''}`
+          .toLowerCase()
+          .includes(searchTerm.toLowerCase())
+      )
+      .sort((a, b) => a.username.localeCompare(b.username));
+  }, [users, searchTerm]);
+
+  const totalPages = Math.ceil(filteredUsers.length / pageSize);
+
+  const paginatedUsers = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    const end = start + pageSize;
+    return filteredUsers.slice(start, end);
+  }, [filteredUsers, currentPage, pageSize]);
+
+  // Resetear a página 1 cuando cambia el término de búsqueda
+  const handleSearchChange = (e) => {
+    setSearchTerm(e.target.value);
+    setCurrentPage(1);
+  };
+
+  const handlePageSizeChange = (newSize) => {
+    setPageSize(newSize);
+    setCurrentPage(1);
+  };
+
+  const handleOpenModal = (user) => {
+    setSelectedUser(user);
+    
+    let userPermissions = user.permittedServices || [];
+    
+    if (services && userPermissions.length > 0 && typeof userPermissions[0] === 'string') {
+      userPermissions = services
+        .filter(service => {
+          const serviceString = `${service.method}:${service.path}`;
+          return userPermissions.includes(serviceString);
+        })
+        .map(service => service.id);
     }
-  }, [selectedUserId, users, services]);
+    
+    setFormData({
+      userId: user.id,
+      username: user.username || "",
+      email: user.email || "",
+      salesEmployeeCode: 
+    user.salesEmployeeCode === null || user.salesEmployeeCode === undefined
+      ? null
+      : Number(user.salesEmployeeCode),
+      newPassword: "",
+      permittedServices: userPermissions,
+      active: user.active,
+    });
+    setErrors({});
+    onOpen();
+  };
+
+  const handleCloseModal = () => {
+    setSelectedUser(null);
+    setFormData({
+      userId: "",
+      username: "",
+      email: "",
+      salesEmployeeCode: "",
+      newPassword: "",
+      permittedServices: [],
+      active: true,
+    });
+    setErrors({});
+    onClose();
+  };
 
   const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
+  const { name, value } = e.target;
+
+  if (name === "salesEmployeeCode") {
+    setFormData(prev => ({
+      ...prev,
+      salesEmployeeCode: value === "" ? null : Number(value)
+    }));
+    return;
+  }
+
+  setFormData(prev => ({ ...prev, [name]: value }));
+};
 
   const validate = () => {
     const newErrors = {};
@@ -164,7 +323,6 @@ export function ProfileAdmin() {
     return newErrors;
   };
 
-  // Función para manejar selección de servicios
   const handleServiceChange = (serviceId, checked) => {
     const currentServices = formData.permittedServices || [];
     const updatedServices = checked
@@ -174,68 +332,71 @@ export function ProfileAdmin() {
     setFormData(prev => ({ ...prev, permittedServices: updatedServices }));
   };
 
-  // Función para seleccionar/deseleccionar todos los servicios de una categoría
   const handleCategoryChange = (categoryServices, checked) => {
     const serviceIds = categoryServices.map(service => service.id);
     const currentServices = formData.permittedServices || [];
     
     let updatedServices;
     if (checked) {
-      // Agregar todos los servicios de la categoría
       updatedServices = [...new Set([...currentServices, ...serviceIds])];
     } else {
-      // Remover todos los servicios de la categoría
       updatedServices = currentServices.filter(id => !serviceIds.includes(id));
     }
     
     setFormData(prev => ({ ...prev, permittedServices: updatedServices }));
   };
 
-  // Verificar si todos los servicios de una categoría están seleccionados
   const isCategoryFullySelected = (categoryServices) => {
     const serviceIds = categoryServices.map(service => service.id);
     const permittedServices = formData.permittedServices || [];
     return serviceIds.every(id => permittedServices.includes(id));
   };
 
-  // Verificar si algunos servicios de una categoría están seleccionados
   const isCategoryPartiallySelected = (categoryServices) => {
     const serviceIds = categoryServices.map(service => service.id);
     const permittedServices = formData.permittedServices || [];
     return serviceIds.some(id => permittedServices.includes(id)) && !isCategoryFullySelected(categoryServices);
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!selectedUserId) {
-      toast({
-        title: "Selecciona un usuario",
-        status: "warning",
-        duration: 3000,
-        isClosable: true,
-      });
-      return;
-    }
-
+  const handleSubmit = () => {
     const validationErrors = validate();
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
       return;
     }
+    
     setErrors({});
     
-    updateProfileAdmin.mutate(formData);
+    updateProfileAdmin.mutate(formData, {
+      onSuccess: () => {
+        toast({
+          title: "Cambios guardados",
+          description: "El perfil se actualizó correctamente",
+          status: "success",
+          duration: 3000,
+          isClosable: true,
+        });
+        handleCloseModal();
+      },
+      onError: (error) => {
+        toast({
+          title: "Error al guardar",
+          description: error?.message || "Ocurrió un error al actualizar el perfil",
+          status: "error",
+          duration: 3000,
+          isClosable: true,
+        });
+      }
+    });
   };
 
   if (isLoading || isLoadingServices) {
     return (
       <Center height="100vh" bg={pageBg}>
-        <Spinner size="xl" />
+        <Spinner size="xl" color="green.500" thickness="4px" />
       </Center>
     );
   }
-
-  const permittedServices = formData.permittedServices || [];
 
   return (
     <Flex direction="column" h="100vh" w="full" bg={pageBg}>
@@ -248,205 +409,202 @@ export function ProfileAdmin() {
         borderBottomRadius="2xl"
         justify="center"
         position="relative"
-        boxShadow="sm"
+        boxShadow="lg"
       >
         <Box position="absolute" left="4">
           <BackButton color="white" />
         </Box>
-        <Heading size="md">Perfil Admin</Heading>
+        <Heading size={{ base: "sm", md: "md" }}>👤 Gestión de Usuarios</Heading>
       </Flex>
 
-      {/* Formulario */}
-      <Flex
-        as="form"
-        onSubmit={handleSubmit}
-        direction="column"
-        justify="flex-start"
-        align="center"
-        w="full"
-        flex="1"
-        px={4}
-        py={6}
-        overflowY="auto"
-      >
-        <Box
-          bg={boxBg}
-          p={8}
-          borderRadius="xl"
-          boxShadow="lg"
-          w="full"
-          maxW="2xl"
-        >
-          <VStack spacing={6} align="stretch">
-            {/* Selector de usuario */}
-            <FormControl>
-              <FormLabel fontWeight="semibold">Selecciona Usuario</FormLabel>
-                <Select
-                placeholder="Selecciona un usuario"
-                options={users?.map((u) => ({
-                  value: u.id,
-                  label: `${u.username} (${u.email})`,
-                }))}
-                value={
-                  users
-                    ?.map((u) => ({ value: u.id, label: `${u.username} (${u.email})` }))
-                    .find((option) => option.value === Number(selectedUserId)) || null
-                }
-                onChange={(option) => setSelectedUserId(option?.value || "")}
-                styles={{
-                  container: (base) => ({
-                    ...base,
-                    width: "100%", // full responsive
-                    maxWidth: "100%", 
-                  }),
-                  menu: (base) => ({
-                    ...base,
-                    zIndex: 9999, // evita que se esconda detrás de otros elementos
-                  }),
-                }}
+      {/* Contenido Principal */}
+      <Box flex="1" p={{ base: 3, md: 6 }} overflowY="auto">
+        <Box bg={tableBg} borderRadius="xl" boxShadow="lg" p={{ base: 4, md: 6 }}>
+          {/* Buscador */}
+          <Stack 
+            direction={{ base: "column", md: "row" }}
+            mb={6} 
+            spacing={4}
+            justify="space-between"
+            align={{ base: "stretch", md: "center" }}
+          >
+            <InputGroup maxW={{ base: "100%", md: "400px" }}>
+              <InputLeftElement pointerEvents="none">
+                <SearchIcon color="gray.400" />
+              </InputLeftElement>
+              <Input
+                placeholder="Buscar usuario..."
+                value={searchTerm}
+                onChange={handleSearchChange}
+                focusBorderColor="green.500"
+                bg={useColorModeValue("white", "gray.700")}
               />
-            </FormControl>
+            </InputGroup>
+            <Badge colorScheme="blue" fontSize="md" px={3} py={2} alignSelf={{ base: "flex-start", md: "center" }}>
+              {filteredUsers.length} usuario{filteredUsers.length !== 1 ? 's' : ''}
+            </Badge>
+          </Stack>
 
-            {selectedUserId && (
-              <>
-                <Divider />
-                
-                <FormControl isInvalid={errors.username}>
-                  <FormLabel fontWeight="semibold">Usuario</FormLabel>
-                  <Input
-                    name="username"
-                    value={formData.username}
-                    onChange={handleChange}
-                    focusBorderColor="green.500"
+          {/* Vista Responsive */}
+          {isMobile ? (
+            // Vista Mobile: Cards
+            <VStack spacing={3} align="stretch">
+              {paginatedUsers.length === 0 ? (
+                <Center py={8}>
+                  <VStack spacing={2}>
+                    <Text fontSize="2xl">🔍</Text>
+                    <Text color="gray.500">No se encontraron usuarios</Text>
+                  </VStack>
+                </Center>
+              ) : (
+                paginatedUsers.map((user) => (
+                  <UserCard
+                    key={user.id}
+                    user={user}
+                    onEdit={handleOpenModal}
+                    hoverBg={hoverBg}
                   />
-                  <FormErrorMessage>{errors.username}</FormErrorMessage>
-                </FormControl>
-
-                <FormControl isInvalid={errors.email}>
-                  <FormLabel fontWeight="semibold">Email</FormLabel>
-                  <Input
-                    name="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={handleChange}
-                    focusBorderColor="green.500"
-                  />
-                  <FormErrorMessage>{errors.email}</FormErrorMessage>
-                </FormControl>
-
-                <FormControl>
-                  <FormLabel fontWeight="semibold">Código de Vendedor</FormLabel>
-                  <Input
-                    name="salesEmployeeCode"
-                    value={formData.salesEmployeeCode}
-                    onChange={handleChange}
-                    focusBorderColor="green.500"
-                  />
-                </FormControl>
-
-                <FormControl>
-                  <FormLabel fontWeight="semibold">Nueva contraseña</FormLabel>
-                  <Input
-                    name="newPassword"
-                    type="password"
-                    value={formData.newPassword}
-                    onChange={handleChange}
-                    focusBorderColor="green.500"
-                    placeholder="Dejar vacío para mantener la actual"
-                  />
-                </FormControl>
-
-                <Divider />
-
-                {/* Sección de Permisos */}
-                <FormControl>
-                  <FormLabel fontWeight="semibold">
-                    Permisos / Servicios
-                    <Badge ml={2} colorScheme="blue">
-                      {permittedServices.length} seleccionados
-                    </Badge>
-                  </FormLabel>
-                  
-                  <Accordion allowToggle>
-                    {Object.entries(groupedServices).map(([categoryKey, category]) => (
-                      <AccordionItem key={categoryKey}>
-                        <AccordionButton>
-                          <HStack flex="1" textAlign="left">
-                            <Text fontSize="lg">{category.icon}</Text>
-                            <Text fontWeight="bold">{category.name}</Text>
-                            <Badge 
-                              colorScheme={category.color} 
-                              variant={isCategoryFullySelected(category.services) ? "solid" : "outline"}
-                            >
-                              {category.services.length} servicios
-                            </Badge>
-                            {isCategoryPartiallySelected(category.services) && (
-                              <Badge colorScheme="orange" variant="subtle">
-                                Parcial
-                              </Badge>
-                            )}
-                          </HStack>
-                          <AccordionIcon />
-                        </AccordionButton>
-                        <AccordionPanel pb={4}>
-                          <VStack align="stretch" spacing={2}>
-                            {/* Checkbox para seleccionar toda la categoría */}
-                            <Checkbox
-                              isChecked={isCategoryFullySelected(category.services)}
-                              isIndeterminate={isCategoryPartiallySelected(category.services)}
-                              onChange={(e) => handleCategoryChange(category.services, e.target.checked)}
-                              colorScheme={category.color}
-                              fontWeight="bold"
-                            >
-                              Seleccionar todos en {category.name}
-                            </Checkbox>
-                            
-                            {/* Lista de servicios individuales */}
-                            <SimpleGrid columns={1} spacing={2} pl={6}>
-                              {category.services.map((srv) => (
-                                <Checkbox
-                                  key={srv.id}
-                                  isChecked={permittedServices.includes(srv.id)}
-                                  onChange={(e) => handleServiceChange(srv.id, e.target.checked)}
-                                  colorScheme={category.color}
-                                >
-                                  <VStack align="start" spacing={0}>
-                                    <Text fontWeight="medium">{getServiceDisplayName(srv.name)}</Text>
-                                    <HStack>
-                                      <Badge colorScheme="gray" size="sm">
-                                        {srv.method}
-                                      </Badge>
-                                      <Text fontSize="xs" color="gray.500">
-                                        {srv.path}
-                                      </Text>
-                                    </HStack>
-                                  </VStack>
-                                </Checkbox>
-                              ))}
-                            </SimpleGrid>
+                ))
+              )}
+            </VStack>
+          ) : (
+            // Vista Desktop: Tabla
+            <Box overflowX="auto">
+              <Table variant="simple">
+                <Thead>
+                  <Tr>
+                    <Th>Usuario</Th>
+                    <Th>Email</Th>
+                    <Th>Estado</Th>
+                    <Th textAlign="center">Acciones</Th>
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {paginatedUsers.length === 0 ? (
+                    <Tr>
+                      <Td colSpan={4} textAlign="center" py={8}>
+                        <VStack spacing={2}>
+                          <Text fontSize="2xl">🔍</Text>
+                          <Text color="gray.500">No se encontraron usuarios</Text>
+                        </VStack>
+                      </Td>
+                    </Tr>
+                  ) : (
+                    paginatedUsers.map((user) => (
+                      <Tr
+                        key={user.id}
+                        _hover={{ bg: hoverBg }}
+                        transition="background 0.2s"
+                      >
+                        <Td>
+                          <VStack align="start" spacing={1}>
+                            <Text fontWeight="semibold">{user.username}</Text>
                           </VStack>
-                        </AccordionPanel>
-                      </AccordionItem>
-                    ))}
-                  </Accordion>
-                </FormControl>
+                        </Td>
+                        <Td>{user.email}</Td>
+                        <Td>
+                          <Badge colorScheme={user.active ? "green" : "red"}>
+                            {user.active ? "Activo" : "Inactivo"}
+                          </Badge>
+                        </Td>
+                        <Td textAlign="center">
+                          <IconButton
+                            icon={<EditIcon />}
+                            colorScheme="green"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleOpenModal(user)}
+                            aria-label="Editar usuario"
+                          />
+                        </Td>
+                      </Tr>
+                    ))
+                  )}
+                </Tbody>
+              </Table>
+            </Box>
+          )}
 
+          {/* Paginación */}
+          {filteredUsers.length > 0 && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+              pageSize={pageSize}
+              onPageSizeChange={handlePageSizeChange}
+            />
+          )}
+        </Box>
+      </Box>
+
+      {/* Modal de Edición */}
+      <Modal 
+        isOpen={isOpen} 
+        onClose={handleCloseModal} 
+        size={{ base: "full", md: "4xl" }}
+        scrollBehavior="inside"
+      >
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>
+            <Stack direction={{ base: "column", sm: "row" }} spacing={2}>
+              <Text>✏️ Editar Usuario</Text>
+              {selectedUser && (
+                <Badge colorScheme="blue" fontSize="sm" alignSelf={{ base: "flex-start", sm: "center" }}>
+                  {selectedUser.username}
+                </Badge>
+              )}
+            </Stack>
+          </ModalHeader>
+          <ModalCloseButton />
+          <ModalBody pb={6}>
+            <VStack spacing={6} align="stretch">
+              <UserBasicFields
+                formData={formData}
+                errors={errors}
+                onChange={handleChange}
+              />
+
+              <Divider />
+
+              <PermissionsSection
+                groupedServices={groupedServices}
+                permittedServices={formData.permittedServices || []}
+                onServiceChange={handleServiceChange}
+                onCategoryChange={handleCategoryChange}
+                isCategoryFullySelected={isCategoryFullySelected}
+                isCategoryPartiallySelected={isCategoryPartiallySelected}
+              />
+
+              <Stack 
+                direction={{ base: "column", sm: "row" }}
+                spacing={3} 
+                pt={4}
+              >
                 <Button
-                  type="submit"
+                  onClick={handleSubmit}
                   colorScheme="green"
-                  width="full"
+                  flex={1}
                   size="lg"
-                  borderRadius="lg"
                   isLoading={updateProfileAdmin.isPending || updateProfileAdmin.isLoading}
                   loadingText="Guardando..."
                 >
-                  Guardar cambios
+                  💾 Guardar
                 </Button>
-              </>
-            )}
-          </VStack>
-        </Box>
-      </Flex>
+                <Button
+                  variant="outline"
+                  onClick={handleCloseModal}
+                  size="lg"
+                  flex={{ base: 1, sm: "initial" }}
+                >
+                  Cancelar
+                </Button>
+              </Stack>
+            </VStack>
+          </ModalBody>
+        </ModalContent>
+      </Modal>
     </Flex>
   );
 }
