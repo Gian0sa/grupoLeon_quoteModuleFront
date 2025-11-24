@@ -70,6 +70,17 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
                 </HStack>
               )}
 
+              {ITEM_CODE && (
+                <HStack>
+                  <Text fontSize="md" color="green.600" fontWeight="medium" minW="80px">
+                    Codigo:
+                  </Text>
+                  <Text fontSize="md" color="gray.700" fontFamily="mono">
+                    {ITEM_CODE}
+                  </Text>
+                </HStack>
+              )}
+
               {/* Marca */}
               <HStack>
                 <Text fontSize="xs" color="green.600" fontWeight="medium" minW="80px">
