@@ -86,11 +86,11 @@ function UserCard({ user, onEdit, hoverBg }) {
 // Componente de paginación
 function Pagination({ currentPage, totalPages, onPageChange, pageSize, onPageSizeChange }) {
   const isMobile = useBreakpointValue({ base: true, md: false });
-  
+
   const getPageNumbers = () => {
     const pages = [];
     const maxVisible = isMobile ? 3 : 5;
-    
+
     if (totalPages <= maxVisible) {
       for (let i = 1; i <= totalPages; i++) {
         pages.push(i);
@@ -120,7 +120,7 @@ function Pagination({ currentPage, totalPages, onPageChange, pageSize, onPageSiz
         pages.push(totalPages);
       }
     }
-    
+
     return pages;
   };
 
@@ -156,7 +156,7 @@ function Pagination({ currentPage, totalPages, onPageChange, pageSize, onPageSiz
           isDisabled={currentPage === 1}
           aria-label="Página anterior"
         />
-        
+
         {getPageNumbers().map((page, index) => (
           page === '...' ? (
             <Text key={`ellipsis-${index}`} px={2}>...</Text>
@@ -194,7 +194,7 @@ export function ProfileAdmin() {
   const { data: services, isLoading: isLoadingServices } = useGetServices();
   const { updateProfileAdmin } = useAuthAdminMutations();
   const { isOpen, onOpen, onClose } = useDisclosure();
-  
+
   const toast = useToast();
   const pageBg = useColorModeValue("gray.50", "gray.900");
   const tableBg = useColorModeValue("white", "gray.800");
@@ -219,6 +219,8 @@ export function ProfileAdmin() {
   // Estados de paginación
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("username_asc");
 
   const groupedServices = useMemo(() => {
     return groupServicesByCategory(services);
@@ -226,14 +228,48 @@ export function ProfileAdmin() {
 
   const filteredUsers = useMemo(() => {
     if (!users) return [];
-    return users
-      .filter(u =>
-        `${u.username} ${u.email} ${u.salesEmployeeCode || ''}`
-          .toLowerCase()
-          .includes(searchTerm.toLowerCase())
-      )
-      .sort((a, b) => a.username.localeCompare(b.username));
-  }, [users, searchTerm]);
+
+    let result = users;
+
+    // Filtro de búsqueda
+    result = result.filter(u =>
+      `${u.username} ${u.email} ${u.salesEmployeeCode || ''}`
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase())
+    );
+
+    // Filtro de estado
+    if (statusFilter === "active") {
+      result = result.filter(u => u.active === true);
+    } else if (statusFilter === "inactive") {
+      result = result.filter(u => u.active === false);
+    }
+
+    // Ordenamiento
+    result = [...result]; // copiar array
+
+    if (sortBy === "username_asc") {
+      result.sort((a, b) => a.username.localeCompare(b.username));
+    }
+    else if (sortBy === "username_desc") {
+      result.sort((a, b) => b.username.localeCompare(a.username));
+    }
+    else if (sortBy === "email_asc") {
+      result.sort((a, b) => a.email.localeCompare(b.email));
+    }
+    else if (sortBy === "email_desc") {
+      result.sort((a, b) => b.email.localeCompare(a.email));
+    }
+    else if (sortBy === "active_first") {
+      result.sort((a, b) => Number(b.active) - Number(a.active));
+    }
+    else if (sortBy === "inactive_first") {
+      result.sort((a, b) => Number(a.active) - Number(b.active));
+    }
+
+    return result;
+  }, [users, searchTerm, statusFilter, sortBy]);
+
 
   const totalPages = Math.ceil(filteredUsers.length / pageSize);
 
@@ -256,9 +292,9 @@ export function ProfileAdmin() {
 
   const handleOpenModal = (user) => {
     setSelectedUser(user);
-    
+
     let userPermissions = user.permittedServices || [];
-    
+
     if (services && userPermissions.length > 0 && typeof userPermissions[0] === 'string') {
       userPermissions = services
         .filter(service => {
@@ -267,15 +303,15 @@ export function ProfileAdmin() {
         })
         .map(service => service.id);
     }
-    
+
     setFormData({
       userId: user.id,
       username: user.username || "",
       email: user.email || "",
-      salesEmployeeCode: 
-    user.salesEmployeeCode === null || user.salesEmployeeCode === undefined
-      ? null
-      : Number(user.salesEmployeeCode),
+      salesEmployeeCode:
+        user.salesEmployeeCode === null || user.salesEmployeeCode === undefined
+          ? null
+          : Number(user.salesEmployeeCode),
       newPassword: "",
       permittedServices: userPermissions,
       active: user.active,
@@ -300,18 +336,18 @@ export function ProfileAdmin() {
   };
 
   const handleChange = (e) => {
-  const { name, value } = e.target;
+    const { name, value } = e.target;
 
-  if (name === "salesEmployeeCode") {
-    setFormData(prev => ({
-      ...prev,
-      salesEmployeeCode: value === "" ? null : Number(value)
-    }));
-    return;
-  }
+    if (name === "salesEmployeeCode") {
+      setFormData(prev => ({
+        ...prev,
+        salesEmployeeCode: value === "" ? null : Number(value)
+      }));
+      return;
+    }
 
-  setFormData(prev => ({ ...prev, [name]: value }));
-};
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
 
   const validate = () => {
     const newErrors = {};
@@ -328,21 +364,21 @@ export function ProfileAdmin() {
     const updatedServices = checked
       ? [...currentServices, serviceId]
       : currentServices.filter((id) => id !== serviceId);
-    
+
     setFormData(prev => ({ ...prev, permittedServices: updatedServices }));
   };
 
   const handleCategoryChange = (categoryServices, checked) => {
     const serviceIds = categoryServices.map(service => service.id);
     const currentServices = formData.permittedServices || [];
-    
+
     let updatedServices;
     if (checked) {
       updatedServices = [...new Set([...currentServices, ...serviceIds])];
     } else {
       updatedServices = currentServices.filter(id => !serviceIds.includes(id));
     }
-    
+
     setFormData(prev => ({ ...prev, permittedServices: updatedServices }));
   };
 
@@ -364,9 +400,9 @@ export function ProfileAdmin() {
       setErrors(validationErrors);
       return;
     }
-    
+
     setErrors({});
-    
+
     updateProfileAdmin.mutate(formData, {
       onSuccess: () => {
         toast({
@@ -421,9 +457,9 @@ export function ProfileAdmin() {
       <Box flex="1" p={{ base: 3, md: 6 }} overflowY="auto">
         <Box bg={tableBg} borderRadius="xl" boxShadow="lg" p={{ base: 4, md: 6 }}>
           {/* Buscador */}
-          <Stack 
+          <Stack
             direction={{ base: "column", md: "row" }}
-            mb={6} 
+            mb={6}
             spacing={4}
             justify="space-between"
             align={{ base: "stretch", md: "center" }}
@@ -440,6 +476,36 @@ export function ProfileAdmin() {
                 bg={useColorModeValue("white", "gray.700")}
               />
             </InputGroup>
+            <Stack
+              direction={{ base: "column", md: "row" }}
+              spacing={4}
+            >
+              {/* Filtro estado */}
+              <Select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                maxW="200px"
+              >
+                <option value="all">Todos</option>
+                <option value="active">Activos</option>
+                <option value="inactive">Inactivos</option>
+              </Select>
+
+              {/* Ordenamiento */}
+              <Select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                maxW="220px"
+              >
+                <option value="username_asc">Usuario A → Z</option>
+                <option value="username_desc">Usuario Z → A</option>
+                <option value="email_asc">Email A → Z</option>
+                <option value="email_desc">Email Z → A</option>
+                <option value="active_first">Activos primero</option>
+                <option value="inactive_first">Inactivos primero</option>
+              </Select>
+            </Stack>
+
             <Badge colorScheme="blue" fontSize="md" px={3} py={2} alignSelf={{ base: "flex-start", md: "center" }}>
               {filteredUsers.length} usuario{filteredUsers.length !== 1 ? 's' : ''}
             </Badge>
@@ -539,9 +605,9 @@ export function ProfileAdmin() {
       </Box>
 
       {/* Modal de Edición */}
-      <Modal 
-        isOpen={isOpen} 
-        onClose={handleCloseModal} 
+      <Modal
+        isOpen={isOpen}
+        onClose={handleCloseModal}
         size={{ base: "full", md: "4xl" }}
         scrollBehavior="inside"
       >
@@ -577,9 +643,9 @@ export function ProfileAdmin() {
                 isCategoryPartiallySelected={isCategoryPartiallySelected}
               />
 
-              <Stack 
+              <Stack
                 direction={{ base: "column", sm: "row" }}
-                spacing={3} 
+                spacing={3}
                 pt={4}
               >
                 <Button
