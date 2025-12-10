@@ -25,4 +25,10 @@ export const updateClient = async (client) => {
   return response.data;
 }
 
+export const fetchClientProductHistory = async ({ clientQuery, slpCode }) => {
+  console.log(clientQuery, slpCode);
+    const encodedEndpoint = `/reportModule/historyClient?clientQuery=${encodeURIComponent(clientQuery)}&slpCode=${slpCode}`;
 
+    const response = await axiosInstance.get(encodedEndpoint);
+    return response.data;
+}

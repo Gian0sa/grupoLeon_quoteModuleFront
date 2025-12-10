@@ -123,7 +123,11 @@ export default function SalespersonReports({ salespersonId }) {
           </div>
           <div>Reporte de Órdenes</div>          
           <div className={styles.refreshBtn}>   
-            <RefreshButton />
+            <RefreshButton 
+              queries={refreshQueries}
+              showToast={true} 
+              mode="refetch"
+            />
           </div>
         </div>
 
