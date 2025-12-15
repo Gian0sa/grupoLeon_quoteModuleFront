@@ -32,3 +32,30 @@ export const fetchClientProductHistory = async ({ clientQuery, slpCode }) => {
     const response = await axiosInstance.get(encodedEndpoint);
     return response.data;
 }
+
+export const fetchClientProductHistoryAdmin = async ({ clientQuery }) => {
+    console.log(clientQuery);
+    const encodedEndpoint = `/reportModule/historyClientAdmin?clientQuery=${encodeURIComponent(clientQuery)}`;
+
+    const response = await axiosInstance.get(encodedEndpoint);
+    return response.data;
+}
+
+export const fetchPriceListByItemCodes = async ({ itemCodes }) => {
+    if (!itemCodes || (Array.isArray(itemCodes) && itemCodes.length === 0)) {
+        throw new Error('itemCodes es requerido');
+    }
+
+    const itemCodesCsv = Array.isArray(itemCodes)
+        ? itemCodes.join(',')
+        : itemCodes;
+    
+    const encodedItemCodes = encodeURIComponent(itemCodesCsv);
+
+    const endpoint = `/reportModule/priceListByItemCodes?itemCodes=${encodedItemCodes}`;
+
+    console.log('Fetching price list:', itemCodesCsv);
+
+    const response = await axiosInstance.get(endpoint);
+    return response.data;
+};

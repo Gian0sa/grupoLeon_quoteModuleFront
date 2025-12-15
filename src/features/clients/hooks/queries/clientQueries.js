@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchClientByCode, fetchDeliveryPoints , fetchClientByName , fetchClientProductHistory} from "../../services/clientService";
+import { fetchClientByCode, fetchDeliveryPoints , fetchClientByName , fetchClientProductHistory , fetchClientProductHistoryAdmin , fetchPriceListByItemCodes} from "../../services/clientService";
 
 export function useClientQueries(code) {
   const { data, isLoading, error } = useQuery({
@@ -44,22 +44,63 @@ export function useClientPointsDelivery(id){
 }
 
 export function useClientProductHistory(clientQuery, slpCode) {
-    const { data, isLoading, error, refetch } = useQuery({
-        queryKey: ["clientHistory", clientQuery, slpCode], 
-        queryFn: () => fetchClientProductHistory({ clientQuery, slpCode }),
-        enabled: !!clientQuery && !!slpCode, 
-        refetchOnWindowFocus: false,
-        
-        // Agregar opciones de retry y timeout
-        retry: 1, // Solo reintentar 1 vez
-        retryDelay: 1000, // Esperar 1 segundo antes de reintentar
-        staleTime: 5 * 60 * 1000, // Los datos son válidos por 5 minutos
-    });
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ["clientHistory", clientQuery, slpCode],
+    queryFn: () => fetchClientProductHistory({ clientQuery, slpCode }),
+    enabled: !!clientQuery,
+    refetchOnWindowFocus: false,
+    retry: 1,
+    retryDelay: 1000,
+    staleTime: 5 * 60 * 1000,
+  });
 
-    return {
-        dataProductHistory: data,
-        isLoadingProductHistory: isLoading,
-        errorProductHistory: error,
-        refetchProductHistory: refetch,
-    };
+  return {
+    dataProductHistory: data,
+    isLoadingProductHistory: isLoading,
+    errorProductHistory: error,
+    refetchProductHistory: refetch,
+  };
+}
+
+export function useClientProductHistoryAdmin(clientQuery) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ["clientHistory", clientQuery],
+    queryFn: () => fetchClientProductHistoryAdmin({ clientQuery }),
+    enabled: !!clientQuery,
+    refetchOnWindowFocus: false,
+    retry: 1,
+    retryDelay: 1000,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  return {
+    dataProductHistory: data,
+    isLoadingProductHistory: isLoading,
+    errorProductHistory: error,
+    refetchProductHistory: refetch,
+  };
+}
+
+export function usePriceListByItemCodes(itemCodes) {
+  const itemCodesKey = Array.isArray(itemCodes)
+    ? itemCodes.join(',')
+    : itemCodes;
+
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['priceListByItems', itemCodesKey],
+    queryFn: () =>
+      fetchPriceListByItemCodes({ itemCodes }),
+    enabled: !!itemCodesKey && itemCodesKey.length > 0,
+    refetchOnWindowFocus: false,
+    retry: 1,
+    retryDelay: 1000,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  return {
+    dataPriceList: data,
+    isLoadingPriceList: isLoading,
+    errorPriceList: error,
+    refetchPriceList: refetch,
+  };
 }
