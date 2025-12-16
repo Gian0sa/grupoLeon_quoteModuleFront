@@ -63,7 +63,7 @@ export function LateralMenu() {
     { label: 'Cuentas por Cobrar', icon: MdBubbleChart, path: '/receivable', access: 'GET:/receivable' },
     { label: 'Lista de Precios', icon: MdBubbleChart, path: '/productsPriceList', access: 'GET:/receivable' },
     { label: 'Catalogo', icon: MdBubbleChart, path: '/catalog', access: 'GET:/receivable' },
-    { label: 'Historial de Cliente', icon: MdBubbleChart, path: '/clienteInfo', access: 'GET:/receivable' }
+    { label: 'Historial de Cliente', icon: MdBubbleChart, path: '/clienteBusqueda', access: 'GET:/receivable' }
   ];
 
   const accountOptions = [

@@ -29,6 +29,7 @@ import {
 } from "@chakra-ui/react";
 import { useClientProductHistory, useClientProductHistoryAdmin, usePriceListByItemCodes } from "../hooks/queries/clientQueries";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
+import { BackButton } from "../../../components/BackButton";
 
 export default function ClienteBusquedaPage() {
     const [search, setSearch] = useState("");
@@ -192,11 +193,36 @@ export default function ClienteBusquedaPage() {
     const tieneHistorico = productos.some((p) => p.productCode !== null);
 
     return (
-        <Container maxW="container.xl" py={10}>
-            <VStack bg="#E0F1E6" p={8} borderRadius="2xl" spacing={8}>
+        <Container maxW="container.xl" py={{ base: 6, md: 10 }}>
+  <VStack
+    bg="green.50"
+    p={{ base: 4, md: 8 }}
+    borderRadius="2xl"
+    spacing={8}
+    boxShadow="xl"
+  >
+    <Flex
+      bg="green.700"
+      color="white"
+      align="center"
+      justify="center"
+      position="relative"
+      w="100%"
+      p={4}
+      borderRadius="xl"
+    >
+      <Box position="absolute" left={4}>
+        <BackButton color="white" />
+      </Box>
 
-                {/* Título */}
-                <Heading color="green.700">Búsqueda de cliente</Heading>
+      <Heading
+        size={{ base: "md", md: "lg" }}
+        textAlign="center"
+        color="white"
+      >
+        Búsqueda de cliente
+      </Heading>
+    </Flex>
 
                 {/* Barra de búsqueda */}
                 <Flex
