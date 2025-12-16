@@ -34,6 +34,7 @@ export default function ClienteBusquedaPage() {
     const [search, setSearch] = useState("");
     const [clientQuery, setClientQuery] = useState("");
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+    const [sortConfigStock, setSortConfigStock] = useState({ key: null, direction: 'asc' });
     const salesEmployeeCode = useAuthStore((state) => state.salesEmployeeCode);
 
     // Determinar si es admin
@@ -45,14 +46,14 @@ export default function ClienteBusquedaPage() {
         isLoadingProductHistory,
         errorProductHistory,
         refetchProductHistory
-    } = isAdmin 
-        ? useClientProductHistoryAdmin(clientQuery)
-        : useClientProductHistory(clientQuery, salesEmployeeCode);
+    } = isAdmin
+            ? useClientProductHistoryAdmin(clientQuery)
+            : useClientProductHistory(clientQuery, salesEmployeeCode);
 
     // Extraer códigos de productos del histórico
     const itemCodes = useMemo(() => {
         if (!dataProductHistory || dataProductHistory.length === 0) return [];
-        
+
         return dataProductHistory
             .filter(p => p.productCode !== null)
             .map(p => p.productCode);
@@ -68,23 +69,44 @@ export default function ClienteBusquedaPage() {
     // Crear un mapa de precios para acceso rápido
     const priceMap = useMemo(() => {
         if (!dataPriceList) return {};
-        
+
         return dataPriceList.reduce((map, item) => {
-            map[item.ITEM_CODE] = item;
+            const itemCode = item.ITEM_CODE || item.itemCode;
+            map[itemCode] = item;
             return map;
         }, {});
     }, [dataPriceList]);
 
+    // Combinar datos históricos con precios actuales para el tab Stock
+    const stockData = useMemo(() => {
+        if (!dataProductHistory || dataProductHistory.length === 0) return [];
+
+        return dataProductHistory
+            .filter(p => p.productCode !== null)
+            .map(producto => ({
+                ...producto,
+                priceInfo: priceMap[producto.productCode] || null
+            }));
+    }, [dataProductHistory, priceMap]);
+
+    // Función para verificar si un producto no se ha pedido hace más de un mes
+    const isOlderThanOneMonth = (lastPurchaseDate) => {
+        if (!lastPurchaseDate) return true;
+        const oneMonthAgo = new Date();
+        oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+        return new Date(lastPurchaseDate) < oneMonthAgo;
+    };
+
     const handleSearch = () => {
         if (!search.trim()) return;
-        
+
         let searchQuery = search.trim();
-        
+
         // Si el usuario ingresó solo números, añadir el prefijo "CL"
         if (/^\d+$/.test(searchQuery)) {
             searchQuery = `CL${searchQuery}`;
         }
-        
+
         setClientQuery(searchQuery);
     };
 
@@ -92,7 +114,7 @@ export default function ClienteBusquedaPage() {
         if (e.key === "Enter") handleSearch();
     };
 
-    // Función para ordenar
+    // Función para ordenar histórico
     const handleSort = (key) => {
         let direction = 'asc';
         if (sortConfig.key === key && sortConfig.direction === 'asc') {
@@ -101,28 +123,34 @@ export default function ClienteBusquedaPage() {
         setSortConfig({ key, direction });
     };
 
+    // Función para ordenar stock
+    const handleSortStock = (key) => {
+        let direction = 'asc';
+        if (sortConfigStock.key === key && sortConfigStock.direction === 'asc') {
+            direction = 'desc';
+        }
+        setSortConfigStock({ key, direction });
+    };
+
     // Datos
     const productos = dataProductHistory || [];
     const clienteInfo = productos[0];
 
-    // Aplicar ordenamiento
+    // Aplicar ordenamiento a histórico
     const sortedProductos = [...productos].sort((a, b) => {
         if (!sortConfig.key) return 0;
 
         let aValue = a[sortConfig.key];
         let bValue = b[sortConfig.key];
 
-        // Manejar valores nulos
         if (aValue === null || aValue === undefined) return 1;
         if (bValue === null || bValue === undefined) return -1;
 
-        // Convertir fechas
         if (sortConfig.key === 'lastPurchaseDate') {
             aValue = new Date(aValue).getTime();
             bValue = new Date(bValue).getTime();
         }
 
-        // Comparar
         if (aValue < bValue) {
             return sortConfig.direction === 'asc' ? -1 : 1;
         }
@@ -132,15 +160,36 @@ export default function ClienteBusquedaPage() {
         return 0;
     });
 
+    // Aplicar ordenamiento a stock
+    const sortedStockData = [...stockData].sort((a, b) => {
+        if (!sortConfigStock.key) return 0;
+
+        let aValue, bValue;
+
+        // Manejar campos de priceInfo
+        if (sortConfigStock.key.startsWith('price_')) {
+            const field = sortConfigStock.key.replace('price_', '');
+            aValue = a.priceInfo?.[field] ?? null;
+            bValue = b.priceInfo?.[field] ?? null;
+        } else {
+            aValue = a[sortConfigStock.key];
+            bValue = b[sortConfigStock.key];
+        }
+
+        if (aValue === null || aValue === undefined) return 1;
+        if (bValue === null || bValue === undefined) return -1;
+
+        if (aValue < bValue) {
+            return sortConfigStock.direction === 'asc' ? -1 : 1;
+        }
+        if (aValue > bValue) {
+            return sortConfigStock.direction === 'asc' ? 1 : -1;
+        }
+        return 0;
+    });
+
     // Validar si hay histórico real
     const tieneHistorico = productos.some((p) => p.productCode !== null);
-
-    console.log("clienteInfo", clienteInfo);
-    console.log("productos", productos);
-    console.log("isAdmin", isAdmin);
-    console.log("itemCodes", itemCodes);
-    console.log("dataPriceList", dataPriceList);
-    console.log("priceMap", priceMap);
 
     return (
         <Container maxW="container.xl" py={10}>
@@ -158,7 +207,9 @@ export default function ClienteBusquedaPage() {
                     align="center"
                     gap={4}
                     border="1px solid #dcdcdc"
+                    direction={{ base: "column", md: "row" }}
                 >
+
                     <Input
                         placeholder="Insertar nombre, apellido o código"
                         value={search}
@@ -171,6 +222,7 @@ export default function ClienteBusquedaPage() {
                     <Button
                         bg="green.600"
                         color="white"
+                        w={{ base: "100%", md: "auto" }}
                         px={8}
                         borderRadius="full"
                         _hover={{ bg: "green.500" }}
@@ -180,6 +232,7 @@ export default function ClienteBusquedaPage() {
                     >
                         Buscar cliente
                     </Button>
+
                 </Flex>
 
                 <Divider />
@@ -201,7 +254,7 @@ export default function ClienteBusquedaPage() {
                                 {errorProductHistory.response?.status === 504
                                     ? "El servidor tardó demasiado en responder. Intenta una búsqueda más específica o intenta nuevamente."
                                     : errorProductHistory.message ||
-                                      "Ocurrió un error al buscar el cliente"}
+                                    "Ocurrió un error al buscar el cliente"}
                             </AlertDescription>
                         </Box>
                         <Button
@@ -232,26 +285,6 @@ export default function ClienteBusquedaPage() {
                             Último vendedor que atendió: {clienteInfo.lastSellerName}
                         </Text>
 
-                        {/* Indicador de carga de precios */}
-                        {isLoadingPriceList && (
-                            <Flex align="center" gap={2} mb={4}>
-                                <Spinner size="sm" color="blue.500" />
-                                <Text fontSize="sm" color="blue.500">
-                                    Cargando precios actuales...
-                                </Text>
-                            </Flex>
-                        )}
-
-                        {/* Error al cargar precios */}
-                        {errorPriceList && (
-                            <Alert status="warning" borderRadius="md" mb={4}>
-                                <AlertIcon />
-                                <Text fontSize="sm">
-                                    No se pudieron cargar los precios actuales
-                                </Text>
-                            </Alert>
-                        )}
-
                         {/* Si no hay histórico */}
                         {!tieneHistorico ? (
                             <Box
@@ -261,14 +294,23 @@ export default function ClienteBusquedaPage() {
                                 border="1px solid #E2E8F0"
                             >
                                 <Text color="yellow.700">
-                                    {isAdmin 
+                                    {isAdmin
                                         ? "Este cliente no tiene compras registradas."
                                         : "Este cliente no tiene compras registradas con este vendedor."}
                                 </Text>
                             </Box>
                         ) : (
                             <Tabs variant="soft-rounded" colorScheme="green">
-                                <TabList gap={4}>
+                                <TabList
+                                    gap={4}
+                                    overflowX="auto"
+                                    whiteSpace="nowrap"
+                                    css={{
+                                        scrollbarWidth: "none",
+                                        "&::-webkit-scrollbar": { display: "none" },
+                                    }}
+                                >
+
                                     <Tab
                                         bg="transparent"
                                         color="gray.700"
@@ -296,7 +338,7 @@ export default function ClienteBusquedaPage() {
                                             borderColor: "green.700",
                                         }}
                                     >
-                                        Stock
+                                        Stock y Precios
                                     </Tab>
 
                                     <Tab
@@ -322,142 +364,101 @@ export default function ClienteBusquedaPage() {
                                             <Table variant="simple" bg="white" borderRadius="md">
                                                 <Thead bg="green.700">
                                                     <Tr>
-                                                        <Th 
-                                                            color="white" 
-                                                            cursor="pointer" 
+                                                        <Th color="white" textAlign="center" width="50px">
+                                                            #
+                                                        </Th>
+                                                        <Th
+                                                            color="white"
+                                                            cursor="pointer"
                                                             onClick={() => handleSort('productCode')}
                                                             _hover={{ bg: "green.600" }}
                                                         >
                                                             Código {sortConfig.key === 'productCode' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                                                         </Th>
-                                                        <Th 
-                                                            color="white" 
-                                                            cursor="pointer" 
+                                                        <Th
+                                                            color="white"
+                                                            cursor="pointer"
                                                             onClick={() => handleSort('productName')}
                                                             _hover={{ bg: "green.600" }}
                                                         >
                                                             Artículo {sortConfig.key === 'productName' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                                                         </Th>
-                                                        <Th 
-                                                            color="white" 
+                                                        <Th
+                                                            color="white"
                                                             isNumeric
-                                                            cursor="pointer" 
+                                                            cursor="pointer"
                                                             onClick={() => handleSort('historicQuantity')}
                                                             _hover={{ bg: "green.600" }}
                                                         >
-                                                            Cant. Total {sortConfig.key === 'historicQuantity' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                                                            Cantidad Total {sortConfig.key === 'historicQuantity' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                                                         </Th>
-                                                        <Th 
+                                                        <Th
                                                             color="white"
-                                                            cursor="pointer" 
+                                                            cursor="pointer"
                                                             onClick={() => handleSort('lastPurchaseDate')}
                                                             _hover={{ bg: "green.600" }}
                                                         >
                                                             Última Compra {sortConfig.key === 'lastPurchaseDate' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                                                         </Th>
-                                                        <Th 
-                                                            color="white" 
+                                                        <Th
+                                                            color="white"
                                                             isNumeric
-                                                            cursor="pointer" 
+                                                            cursor="pointer"
                                                             onClick={() => handleSort('lastSalePrice')}
                                                             _hover={{ bg: "green.600" }}
                                                         >
                                                             Último Precio {sortConfig.key === 'lastSalePrice' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                                                        </Th>
-                                                        <Th color="white" isNumeric>
-                                                            Stock
-                                                        </Th>
-                                                        <Th color="white" isNumeric>
-                                                            Precio Lista
-                                                        </Th>
-                                                        <Th color="white" isNumeric>
-                                                            Dto. %
-                                                        </Th>
-                                                        <Th color="white" isNumeric>
-                                                            Precio Final
                                                         </Th>
                                                     </Tr>
                                                 </Thead>
 
                                                 <Tbody>
                                                     {sortedProductos.map((producto, i) => {
-                                                        const priceInfo = priceMap[producto.productCode];
-                                                        
+                                                        const isOld = isOlderThanOneMonth(producto.lastPurchaseDate);
+
                                                         return (
                                                             <Tr
                                                                 key={i}
-                                                                bg={i % 2 === 0 ? "green.50" : "green.100"}
+                                                                bg={isOld
+                                                                    ? (i % 2 === 0 ? "orange.100" : "orange.200")
+                                                                    : (i % 2 === 0 ? "green.50" : "green.100")
+                                                                }
+                                                                borderLeft={isOld ? "4px solid" : "none"}
+                                                                borderLeftColor={isOld ? "orange.500" : "transparent"}
                                                             >
+                                                                <Td
+                                                                    textAlign="center"
+                                                                    fontWeight="bold"
+                                                                    color="gray.600"
+                                                                    fontSize="sm"
+                                                                >
+                                                                    {i + 1}
+                                                                </Td>
                                                                 <Td fontWeight="medium">
                                                                     {producto.productCode}
                                                                 </Td>
-                                                                <Td>{producto.productName}</Td>
+                                                                <Td>
+                                                                    {producto.productName}
+                                                                    {isOld && (
+                                                                        <Badge ml={2} colorScheme="orange" fontSize="xs">
+                                                                            +30 días
+                                                                        </Badge>
+                                                                    )}
+                                                                </Td>
                                                                 <Td isNumeric>
                                                                     {producto.historicQuantity}
                                                                 </Td>
                                                                 <Td>
                                                                     {producto.lastPurchaseDate
                                                                         ? new Date(
-                                                                              producto.lastPurchaseDate
-                                                                          ).toLocaleDateString("es-PE")
+                                                                            producto.lastPurchaseDate
+                                                                        ).toLocaleDateString("es-PE")
                                                                         : "-"}
                                                                 </Td>
                                                                 <Td isNumeric>
                                                                     {producto.lastSalePrice
                                                                         ? `S/ ${producto.lastSalePrice.toFixed(2)}`
                                                                         : "-"}
-                                                                </Td>
-                                                                
-                                                                {/* Columnas de Price List */}
-                                                                <Td isNumeric>
-                                                                    {isLoadingPriceList ? (
-                                                                        <Spinner size="xs" />
-                                                                    ) : priceInfo ? (
-                                                                        <Badge 
-                                                                            colorScheme={priceInfo.STOCK_DISPONIBLE > 0 ? "green" : "red"}
-                                                                        >
-                                                                            {priceInfo.STOCK_DISPONIBLE}
-                                                                        </Badge>
-                                                                    ) : (
-                                                                        "-"
-                                                                    )}
-                                                                </Td>
-                                                                <Td isNumeric>
-                                                                    {isLoadingPriceList ? (
-                                                                        <Spinner size="xs" />
-                                                                    ) : priceInfo ? (
-                                                                        `S/ ${priceInfo.PRECIO_LISTA.toFixed(2)}`
-                                                                    ) : (
-                                                                        "-"
-                                                                    )}
-                                                                </Td>
-                                                                <Td isNumeric>
-                                                                    {isLoadingPriceList ? (
-                                                                        <Spinner size="xs" />
-                                                                    ) : priceInfo ? (
-                                                                        priceInfo.DESCUENTO_PCT > 0 ? (
-                                                                            <Badge colorScheme="orange">
-                                                                                {priceInfo.DESCUENTO_PCT}%
-                                                                            </Badge>
-                                                                        ) : (
-                                                                            "-"
-                                                                        )
-                                                                    ) : (
-                                                                        "-"
-                                                                    )}
-                                                                </Td>
-                                                                <Td isNumeric fontWeight="bold" color="green.700">
-                                                                    {isLoadingPriceList ? (
-                                                                        <Spinner size="xs" />
-                                                                    ) : priceInfo ? (
-                                                                        priceInfo.PRECIO_DESCUENTO > 0 ? (
-                                                                            `S/ ${priceInfo.PRECIO_DESCUENTO.toFixed(2)}`
-                                                                        ) : (
-                                                                            `S/ ${priceInfo.PRECIO_LISTA.toFixed(2)}`
-                                                                        )
-                                                                    ) : (
-                                                                        "-"
-                                                                    )}
                                                                 </Td>
                                                             </Tr>
                                                         );
@@ -467,25 +468,218 @@ export default function ClienteBusquedaPage() {
                                         </Box>
                                     </TabPanel>
 
-                                    {/* Panel Stock */}
+                                    {/* Panel Stock y Precios */}
                                     <TabPanel>
-                                        <Table variant="simple" bg="white" borderRadius="md">
-                                            <Thead bg="green.700">
-                                                <Tr>
-                                                    <Th color="white">Item</Th>
-                                                    <Th color="white">Cantidad</Th>
-                                                    <Th color="white">Fecha</Th>
-                                                </Tr>
-                                            </Thead>
+                                        {/* Indicador de carga de precios */}
+                                        {isLoadingPriceList && (
+                                            <Flex align="center" gap={2} mb={4}>
+                                                <Spinner size="sm" color="blue.500" />
+                                                <Text fontSize="sm" color="blue.500">
+                                                    Cargando información de stock y precios...
+                                                </Text>
+                                            </Flex>
+                                        )}
 
-                                            <Tbody>
-                                                <Tr bg="green.50">
-                                                    <Td colSpan={3} textAlign="center" py={8}>
-                                                        Función en desarrollo
-                                                    </Td>
-                                                </Tr>
-                                            </Tbody>
-                                        </Table>
+                                        {/* Error al cargar precios */}
+                                        {errorPriceList && (
+                                            <Alert status="warning" borderRadius="md" mb={4}>
+                                                <AlertIcon />
+                                                <Text fontSize="sm">
+                                                    No se pudieron cargar los precios actuales. Mostrando solo datos históricos.
+                                                </Text>
+                                            </Alert>
+                                        )}
+
+                                        <Box overflowX="auto">
+                                            <Table variant="simple" bg="white" borderRadius="md" size="sm">
+                                                <Thead bg="blue.700">
+                                                    <Tr>
+                                                        <Th color="white" textAlign="center" width="50px">
+                                                            #
+                                                        </Th>
+                                                        <Th
+                                                            color="white"
+                                                            cursor="pointer"
+                                                            onClick={() => handleSortStock('productCode')}
+                                                            _hover={{ bg: "blue.600" }}
+                                                        >
+                                                            Código {sortConfigStock.key === 'productCode' && (sortConfigStock.direction === 'asc' ? '↑' : '↓')}
+                                                        </Th>
+                                                        <Th
+                                                            color="white"
+                                                            cursor="pointer"
+                                                            onClick={() => handleSortStock('productName')}
+                                                            _hover={{ bg: "blue.600" }}
+                                                        >
+                                                            Artículo {sortConfigStock.key === 'productName' && (sortConfigStock.direction === 'asc' ? '↑' : '↓')}
+                                                        </Th>
+                                                        <Th
+                                                            color="white"
+                                                            isNumeric
+                                                            cursor="pointer"
+                                                            onClick={() => handleSortStock('price_STOCK_DISPONIBLE')}
+                                                            _hover={{ bg: "blue.600" }}
+                                                        >
+                                                            Stock {sortConfigStock.key === 'price_STOCK_DISPONIBLE' && (sortConfigStock.direction === 'asc' ? '↑' : '↓')}
+                                                        </Th>
+                                                        <Th
+                                                            color="white"
+                                                            isNumeric
+                                                            cursor="pointer"
+                                                            onClick={() => handleSortStock('price_PRECIO_LISTA')}
+                                                            _hover={{ bg: "blue.600" }}
+                                                        >
+                                                            Precio Lista {sortConfigStock.key === 'price_PRECIO_LISTA' && (sortConfigStock.direction === 'asc' ? '↑' : '↓')}
+                                                        </Th>
+                                                        <Th
+                                                            color="white"
+                                                            isNumeric
+                                                            cursor="pointer"
+                                                            onClick={() => handleSortStock('price_DESCUENTO_PCT')}
+                                                            _hover={{ bg: "blue.600" }}
+                                                        >
+                                                            Descuento {sortConfigStock.key === 'price_DESCUENTO_PCT' && (sortConfigStock.direction === 'asc' ? '↑' : '↓')}
+                                                        </Th>
+                                                        <Th
+                                                            color="white"
+                                                            isNumeric
+                                                            cursor="pointer"
+                                                            onClick={() => handleSortStock('price_PRECIO_DESCUENTO')}
+                                                            _hover={{ bg: "blue.600" }}
+                                                        >
+                                                            Precio Final {sortConfigStock.key === 'price_PRECIO_DESCUENTO' && (sortConfigStock.direction === 'asc' ? '↑' : '↓')}
+                                                        </Th>
+                                                        <Th color="white">
+                                                            Marca
+                                                        </Th>
+                                                    </Tr>
+                                                </Thead>
+
+                                                <Tbody>
+                                                    {sortedStockData.map((item, i) => {
+                                                        const priceInfo = item.priceInfo;
+                                                        const isOld = isOlderThanOneMonth(item.lastPurchaseDate);
+
+                                                        return (
+                                                            <Tr
+                                                                key={i}
+                                                                bg={isOld
+                                                                    ? (i % 2 === 0 ? "orange.100" : "orange.200")
+                                                                    : (i % 2 === 0 ? "blue.50" : "blue.100")
+                                                                }
+                                                                borderLeft={isOld ? "4px solid" : "none"}
+                                                                borderLeftColor={isOld ? "orange.500" : "transparent"}
+                                                            >
+                                                                <Td
+                                                                    textAlign="center"
+                                                                    fontWeight="bold"
+                                                                    color="gray.600"
+                                                                    fontSize="sm"
+                                                                >
+                                                                    {i + 1}
+                                                                </Td>
+                                                                <Td fontWeight="medium" fontSize="sm">
+                                                                    {item.productCode}
+                                                                </Td>
+                                                                <Td fontSize="sm">
+                                                                    {item.productName}
+                                                                    {isOld && (
+                                                                        <Badge ml={2} colorScheme="orange" fontSize="xs">
+                                                                            +30 días
+                                                                        </Badge>
+                                                                    )}
+                                                                </Td>
+
+                                                                {/* Stock */}
+                                                                <Td isNumeric>
+                                                                    {isLoadingPriceList ? (
+                                                                        <Spinner size="xs" />
+                                                                    ) : priceInfo ? (
+                                                                        (() => {
+                                                                            const stock = priceInfo.STOCK_DISPONIBLE ?? priceInfo.stockDisponible ?? 0;
+                                                                            return (
+                                                                                <Badge
+                                                                                    colorScheme={stock > 0 ? "green" : "red"}
+                                                                                    fontSize="xs"
+                                                                                >
+                                                                                    {stock}
+                                                                                </Badge>
+                                                                            );
+                                                                        })()
+                                                                    ) : (
+                                                                        <Text fontSize="xs" color="gray.400">Sin info</Text>
+                                                                    )}
+                                                                </Td>
+
+                                                                {/* Precio Lista */}
+                                                                <Td isNumeric>
+                                                                    {isLoadingPriceList ? (
+                                                                        <Spinner size="xs" />
+                                                                    ) : priceInfo ? (
+                                                                        (() => {
+                                                                            const precio = priceInfo.PRECIO_LISTA ?? priceInfo.precioLista;
+                                                                            return precio != null ? (
+                                                                                <Text fontSize="sm">S/ {Number(precio).toFixed(2)}</Text>
+                                                                            ) : (
+                                                                                <Text fontSize="xs" color="gray.400">-</Text>
+                                                                            );
+                                                                        })()
+                                                                    ) : (
+                                                                        <Text fontSize="xs" color="gray.400">Sin info</Text>
+                                                                    )}
+                                                                </Td>
+
+                                                                {/* Descuento */}
+                                                                <Td isNumeric>
+                                                                    {isLoadingPriceList ? (
+                                                                        <Spinner size="xs" />
+                                                                    ) : priceInfo ? (
+                                                                        (() => {
+                                                                            const descuento = priceInfo.DESCUENTO_PCT ?? priceInfo.descuentoPct ?? 0;
+                                                                            return descuento > 0 ? (
+                                                                                <Badge colorScheme="orange" fontSize="xs">
+                                                                                    {descuento}%
+                                                                                </Badge>
+                                                                            ) : (
+                                                                                <Text fontSize="xs" color="gray.400">-</Text>
+                                                                            );
+                                                                        })()
+                                                                    ) : (
+                                                                        <Text fontSize="xs" color="gray.400">Sin info</Text>
+                                                                    )}
+                                                                </Td>
+
+                                                                {/* Precio Final */}
+                                                                <Td isNumeric fontWeight="bold" color="blue.700">
+                                                                    {isLoadingPriceList ? (
+                                                                        <Spinner size="xs" />
+                                                                    ) : priceInfo ? (
+                                                                        (() => {
+                                                                            const precioDesc = priceInfo.PRECIO_DESCUENTO ?? priceInfo.precioDescuento;
+                                                                            const precioLista = priceInfo.PRECIO_LISTA ?? priceInfo.precioLista;
+
+                                                                            if (precioDesc != null && precioDesc > 0) {
+                                                                                return <Text fontSize="sm">S/ {Number(precioDesc).toFixed(2)}</Text>;
+                                                                            } else if (precioLista != null) {
+                                                                                return <Text fontSize="sm">S/ {Number(precioLista).toFixed(2)}</Text>;
+                                                                            }
+                                                                            return <Text fontSize="xs" color="gray.400">-</Text>;
+                                                                        })()
+                                                                    ) : (
+                                                                        <Text fontSize="xs" color="gray.400">Sin info</Text>
+                                                                    )}
+                                                                </Td>
+
+                                                                {/* Marca */}
+                                                                <Td fontSize="xs">
+                                                                    {priceInfo?.MARCA || priceInfo?.marca || "-"}
+                                                                </Td>
+                                                            </Tr>
+                                                        );
+                                                    })}
+                                                </Tbody>
+                                            </Table>
+                                        </Box>
                                     </TabPanel>
 
                                     {/* Panel Importaciones */}
