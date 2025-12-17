@@ -483,7 +483,7 @@ export default function ClienteBusquedaPage() {
                                                                 </Td>
                                                                 <Td isNumeric>
                                                                     {producto.lastSalePrice
-                                                                        ? `S/ ${producto.lastSalePrice.toFixed(2)}`
+                                                                        ? `$/ ${producto.lastSalePrice.toFixed(2)}`
                                                                         : "-"}
                                                                 </Td>
                                                             </Tr>
@@ -645,7 +645,7 @@ export default function ClienteBusquedaPage() {
                                                                         (() => {
                                                                             const precio = priceInfo.PRECIO_LISTA ?? priceInfo.precioLista;
                                                                             return precio != null ? (
-                                                                                <Text fontSize="sm">S/ {Number(precio).toFixed(2)}</Text>
+                                                                                <Text fontSize="sm">$/ {Number(precio).toFixed(2)}</Text>
                                                                             ) : (
                                                                                 <Text fontSize="xs" color="gray.400">-</Text>
                                                                             );
@@ -685,9 +685,9 @@ export default function ClienteBusquedaPage() {
                                                                             const precioLista = priceInfo.PRECIO_LISTA ?? priceInfo.precioLista;
 
                                                                             if (precioDesc != null && precioDesc > 0) {
-                                                                                return <Text fontSize="sm">S/ {Number(precioDesc).toFixed(2)}</Text>;
+                                                                                return <Text fontSize="sm">$/ {Number(precioDesc).toFixed(2)}</Text>;
                                                                             } else if (precioLista != null) {
-                                                                                return <Text fontSize="sm">S/ {Number(precioLista).toFixed(2)}</Text>;
+                                                                                return <Text fontSize="sm">$/ {Number(precioLista).toFixed(2)}</Text>;
                                                                             }
                                                                             return <Text fontSize="xs" color="gray.400">-</Text>;
                                                                         })()
