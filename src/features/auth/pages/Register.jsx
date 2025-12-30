@@ -12,16 +12,7 @@ import {
   Spinner,
   InputGroup,
   InputRightElement,
-  SimpleGrid,
-  Checkbox,
-  Accordion,
-  AccordionItem,
-  AccordionButton,
-  AccordionPanel,
-  AccordionIcon,
-  Text,
   Badge,
-  HStack
 } from "@chakra-ui/react";
 import { useForm } from "react-hook-form";
 import { useAuthMutations } from "../hooks/mutations/authMutations";
@@ -32,167 +23,8 @@ import { BackButton } from "../../../components/BackButton";
 import SellerSelect from "../../../components/SellerSelect";
 import { useNavigate } from "react-router-dom";
 import { useGetServices } from "../hooks/queries/authQueries";
-
-function groupServicesByCategory(services) {
-  if (!services || services.length === 0) return {};
-
-  const manualCategories = {
-    'ventas': {
-      name: 'Ventas',
-      icon: '💼',
-      color: 'blue',
-      keywords: ['orders', 'order', 'sellers', 'quotations', 'sales'],
-      services: []
-    },
-    'servicios': {
-      name: 'Servicios',
-      icon: '⚙️',
-      color: 'green',
-      keywords: ['services'],
-      services: []
-    },
-    'reportes': {
-      name: 'Reportes',
-      icon: '📊',
-      color: 'purple',
-      keywords: ['reports', 'pdf', 'analytics'],
-      services: []
-    },
-    'documentos': {
-      name: 'Documentos',
-      icon: '📄',
-      color: 'orange',
-      keywords: ['deliveryNote', 'invoice'],
-      services: []
-    },
-    'finanzas': {
-      name: 'Finanzas',
-      icon: '💰',
-      color: 'yellow',
-      keywords: ['accountsReceivable', 'receivable', 'payments', 'expenses'],
-      services: []
-    },
-    'administracion': {
-      name: 'Administración',
-      icon: '👥',
-      color: 'teal',
-      keywords: ['users', 'requests', 'roles', 'permissions'],
-      services: []
-    }
-  };
-
-  const dynamicCategories = {};
-  
-  const getCategoryDisplayName = (basePath) => {
-    const displayNames = {
-      'inventory': 'Inventario',
-      'customers': 'Clientes',
-      'suppliers': 'Proveedores',
-      'products': 'Productos',
-      'categories': 'Categorías',
-      'brands': 'Marcas',
-      'warehouses': 'Almacenes',
-      'purchases': 'Compras',
-      'payments': 'Pagos',
-      'expenses': 'Gastos',
-      'dashboard': 'Dashboard',
-      'analytics': 'Análisis',
-      'notifications': 'Notificaciones',
-      'settings': 'Configuración',
-      'auth': 'Autenticación',
-      'profile': 'Perfil',
-      'audit': 'Auditoría',
-      'logs': 'Registros',
-      'backup': 'Respaldo',
-      'maintenance': 'Mantenimiento'
-    };
-    
-    const normalized = basePath.toLowerCase().replace(/[-_]/g, '');
-    return displayNames[normalized] || 
-           basePath.charAt(0).toUpperCase() + basePath.slice(1).replace(/[-_]/g, ' ');
-  };
-
-  const getCategoryIcon = (basePath) => {
-    const icons = {
-      'inventory': '📦',
-      'customers': '👨‍💼',
-      'suppliers': '🏭',
-      'products': '🛍️',
-      'categories': '🏷️',
-      'brands': '🏪',
-      'warehouses': '🏬',
-      'purchases': '🛒',
-      'payments': '💴',
-      'expenses': '💸',
-      'dashboard': '📈',
-      'analytics': '📊',
-      'notifications': '🔔',
-      'settings': '⚙️',
-      'auth': '🔐',
-      'profile': '👤',
-      'audit': '🔍',
-      'logs': '📋',
-      'backup': '💾',
-      'maintenance': '🔧'
-    };
-    
-    const normalized = basePath.toLowerCase().replace(/[-_]/g, '');
-    return icons[normalized] || '📁';
-  };
-
-  const getCategoryColor = (basePath) => {
-    const colors = ['blue', 'green', 'purple', 'orange', 'yellow', 'teal', 'pink', 'cyan', 'red', 'gray'];
-    let hash = 0;
-    for (let i = 0; i < basePath.length; i++) {
-      hash = basePath.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    return colors[Math.abs(hash) % colors.length];
-  };
-  
-  services.forEach(service => {
-    const pathParts = service.path.split('/').filter(part => part && !part.includes(':'));
-    const basePath = pathParts[0] || 'general';
-    
-    let assigned = false;
-    
-    for (const [categoryKey, category] of Object.entries(manualCategories)) {
-      if (category.keywords.some(keyword => basePath.toLowerCase().includes(keyword.toLowerCase()))) {
-        category.services.push(service);
-        assigned = true;
-        break;
-      }
-    }
-    
-    if (!assigned) {
-      const categoryKey = basePath.toLowerCase();
-      
-      if (!dynamicCategories[categoryKey]) {
-        dynamicCategories[categoryKey] = {
-          name: getCategoryDisplayName(basePath),
-          icon: getCategoryIcon(basePath),
-          color: getCategoryColor(basePath),
-          services: []
-        };
-      }
-      
-      dynamicCategories[categoryKey].services.push(service);
-    }
-  });
-
-  const result = {};
-  
-  Object.entries(manualCategories).forEach(([key, category]) => {
-    if (category.services.length > 0) {
-      result[key] = category;
-    }
-  });
-
-  Object.entries(dynamicCategories).forEach(([key, category]) => {
-    result[key] = category;
-  });
-
-  return result;
-}
+import { groupServicesByCategory } from "../../../shared/utils/serviceHelpers";
+import PermissionsSection from "../../admin/components/PermissionsSection";
 
 export function Register() {
   const navigate = useNavigate();
@@ -414,75 +246,17 @@ export function Register() {
             </FormControl>
 
             <FormControl>
-              <FormLabel>
-                Permisos / Servicios
-                <Badge ml={2} colorScheme="blue">
-                  {permittedServices.length} seleccionados
-                </Badge>
-              </FormLabel>
               {isLoadingServices ? (
                 <Spinner />
               ) : (
-                <Accordion allowToggle>
-                  {Object.entries(groupedServices).map(([categoryKey, category]) => (
-                    <AccordionItem key={categoryKey}>
-                      <AccordionButton>
-                        <HStack flex="1" textAlign="left">
-                          <Text fontSize="lg">{category.icon}</Text>
-                          <Text fontWeight="bold">{category.name}</Text>
-                          <Badge 
-                            colorScheme={category.color} 
-                            variant={isCategoryFullySelected(category.services) ? "solid" : "outline"}
-                          >
-                            {category.services.length} servicios
-                          </Badge>
-                          {isCategoryPartiallySelected(category.services) && (
-                            <Badge colorScheme="orange" variant="subtle">
-                              Parcial
-                            </Badge>
-                          )}
-                        </HStack>
-                        <AccordionIcon />
-                      </AccordionButton>
-                      <AccordionPanel pb={4}>
-                        <VStack align="stretch" spacing={2}>
-                          <Checkbox
-                            isChecked={isCategoryFullySelected(category.services)}
-                            isIndeterminate={isCategoryPartiallySelected(category.services)}
-                            onChange={(e) => handleCategoryChange(category.services, e.target.checked)}
-                            colorScheme={category.color}
-                            fontWeight="bold"
-                          >
-                            Seleccionar todos en {category.name}
-                          </Checkbox>
-                          
-                          <SimpleGrid columns={1} spacing={2} pl={6}>
-                            {category.services.map((srv) => (
-                              <Checkbox
-                                key={srv.id}
-                                isChecked={permittedServices.includes(srv.id)}
-                                onChange={(e) => handleServiceChange(srv.id, e.target.checked)}
-                                colorScheme={category.color}
-                              >
-                                <VStack align="start" spacing={0}>
-                                  <Text fontWeight="medium">{srv.name}</Text>
-                                  <HStack>
-                                    <Badge colorScheme="gray" size="sm">
-                                      {srv.method}
-                                    </Badge>
-                                    <Text fontSize="xs" color="gray.500">
-                                      {srv.path}
-                                    </Text>
-                                  </HStack>
-                                </VStack>
-                              </Checkbox>
-                            ))}
-                          </SimpleGrid>
-                        </VStack>
-                      </AccordionPanel>
-                    </AccordionItem>
-                  ))}
-                </Accordion>
+                <PermissionsSection
+                  groupedServices={groupedServices}
+                  permittedServices={permittedServices}
+                  onServiceChange={handleServiceChange}
+                  onCategoryChange={handleCategoryChange}
+                  isCategoryFullySelected={isCategoryFullySelected}
+                  isCategoryPartiallySelected={isCategoryPartiallySelected}
+                />
               )}
             </FormControl>
 
