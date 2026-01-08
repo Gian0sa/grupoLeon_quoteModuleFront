@@ -59,3 +59,27 @@ export const fetchPriceListByItemCodes = async ({ itemCodes }) => {
     const response = await axiosInstance.get(endpoint);
     return response.data;
 };
+
+export const fetchPurchaseOrdersImportacion = async (page = 1, pageSize = 20) => {
+    const endpoint = `/reportModule/purchaseOrdersImportacion`;
+
+    console.log(`Fetching Purchase Orders - Page: ${page}, PageSize: ${pageSize}`);
+
+    const response = await axiosInstance.get(endpoint, {
+        params: {
+            page,
+            pageSize
+        }
+    });
+    
+    return response.data;
+};
+
+export const fetchPurchaseOrderDetail = async (docEntry) => {
+    const endpoint = `/reportModule/purchaseOrdersImportacion/${docEntry}`;
+
+    console.log(`Fetching Purchase Order Detail - DocEntry: ${docEntry}`);
+
+    const response = await axiosInstance.get(endpoint);
+    return response.data;
+};

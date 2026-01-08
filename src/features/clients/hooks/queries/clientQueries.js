@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchClientByCode, fetchDeliveryPoints , fetchClientByName , fetchClientProductHistory , fetchClientProductHistoryAdmin , fetchPriceListByItemCodes} from "../../services/clientService";
+import { fetchClientByCode, fetchDeliveryPoints , fetchClientByName , fetchClientProductHistory , fetchClientProductHistoryAdmin , fetchPriceListByItemCodes , fetchPurchaseOrdersImportacion , fetchPurchaseOrderDetail} from "../../services/clientService";
 
 export function useClientQueries(code) {
   const { data, isLoading, error } = useQuery({
@@ -102,5 +102,43 @@ export function usePriceListByItemCodes(itemCodes) {
     isLoadingPriceList: isLoading,
     errorPriceList: error,
     refetchPriceList: refetch,
+  };
+}
+
+export function usePurchaseOrdersImportacion() {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['purchaseOrdersImportacion'],
+    queryFn: fetchPurchaseOrdersImportacion,
+    enabled: true,
+    refetchOnWindowFocus: false,
+    retry: 1,
+    retryDelay: 1000,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  return {
+    dataPurchaseOrdersImportacion: data,
+    isLoadingPurchaseOrdersImportacion: isLoading,
+    errorPurchaseOrdersImportacion: error,
+    refetchPurchaseOrdersImportacion: refetch,
+  };
+}
+
+export function usePurchaseOrderDetail(docEntry) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['purchaseOrderDetail', docEntry],
+    queryFn: () => fetchPurchaseOrderDetail(docEntry),
+    enabled: !!docEntry,
+    refetchOnWindowFocus: false,
+    retry: 1,
+    retryDelay: 1000,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  return {
+    dataPurchaseOrderDetail: data,
+    isLoadingPurchaseOrderDetail: isLoading,
+    errorPurchaseOrderDetail: error,
+    refetchPurchaseOrderDetail: refetch,
   };
 }
