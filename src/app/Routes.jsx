@@ -24,6 +24,7 @@ import CatalogPage from "../features/catalog/pages/CatalogPage.jsx";
 import OrdersDashboard from "../features/dashboard/pages/OrdersDashboard.jsx";
 import ClienteInfo from "../features/reports/pages/ClienteInfo.jsx";
 import ClienteBusquedaPage from "../features/clients/pages/ClienteBusquedaPage.jsx";
+import ImportacionesPage from "../features/imports/pages/ImportacionesPage.jsx";
 
 const AppRoutes = () => {
   return (
@@ -198,6 +199,14 @@ const AppRoutes = () => {
         element={
           <PrivateRoute>
             <ClienteBusquedaPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/importaciones"
+        element={
+          <PrivateRoute>
+            <ImportacionesPage />
           </PrivateRoute>
         }
       />
