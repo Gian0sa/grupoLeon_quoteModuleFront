@@ -17,7 +17,6 @@ export default function ImportacionesPage() {
     <Container maxW="container.xl" py={{ base: 6, md: 10 }}>
       <VStack
         bg="green.50"
-        p={{ base: 4, md: 8 }}
         borderRadius="2xl"
         spacing={8}
         boxShadow="xl"
@@ -41,7 +40,7 @@ export default function ImportacionesPage() {
           </Heading>
         </Flex>
 
-        <Box w="100%" bg="white" p={{ base: 4, md: 6 }} borderRadius="xl">
+        <Box w="100%" bg="white" borderRadius="xl">
           <Importations
             data={dataPurchaseOrdersImportacion}
             isLoading={isLoadingPurchaseOrdersImportacion}
