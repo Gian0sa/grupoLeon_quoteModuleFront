@@ -16,8 +16,7 @@ import {
     InputGroup,
     InputLeftElement,
     Icon,
-    useColorModeValue,
-    Divider,
+    useColorModeValue
 } from "@chakra-ui/react";
 import { useMemo, useState } from "react";
 import { Search, Calendar, Package, Hash, Tag } from "lucide-react";
@@ -37,21 +36,26 @@ export function Importations({ data = [], isLoading, error, onRetry }) {
     const filteredData = useMemo(() => {
         if (!search) return data;
         const q = search.toLowerCase();
-        return data.filter(i =>
-            i.linea?.toLowerCase().includes(q) ||
-            i.itemCode?.toLowerCase().includes(q) ||
-            i.itemDescription?.toLowerCase().includes(q) ||
-            String(i.nroImportacion).includes(q)
+
+        return data.filter(item =>
+            item.linea?.toLowerCase().includes(q) ||
+            item.itemCode?.toLowerCase().includes(q) ||
+            item.itemDescription?.toLowerCase().includes(q) ||
+            String(item.nroImportacion).includes(q)
         );
     }, [data, search]);
 
     const groupedByLine = useMemo(() => {
         const map = new Map();
+
         filteredData.forEach(item => {
             const key = item.linea || "Sin línea";
-            if (!map.has(key)) map.set(key, { linea: key, products: [] });
+            if (!map.has(key)) {
+                map.set(key, { linea: key, products: [] });
+            }
             map.get(key).products.push(item);
         });
+
         return Array.from(map.values()).sort(
             (a, b) => b.products.length - a.products.length
         );
@@ -67,9 +71,20 @@ export function Importations({ data = [], isLoading, error, onRetry }) {
         return (
             <VStack py={10}>
                 <Spinner size="lg" />
-                <Text fontSize="sm" color={textMuted}>
-                    Cargando importaciones…
-                </Text>
+                <Text color={textMuted}>Cargando importaciones...</Text>
+            </VStack>
+        );
+    }
+
+    if (error) {
+        return (
+            <VStack py={10}>
+                <Text color="red.500">Error al cargar importaciones</Text>
+                {onRetry && (
+                    <Button onClick={onRetry} leftIcon={<Search size={16} />}>
+                        Reintentar
+                    </Button>
+                )}
             </VStack>
         );
     }
@@ -77,21 +92,20 @@ export function Importations({ data = [], isLoading, error, onRetry }) {
     if (!data.length) {
         return (
             <VStack py={12}>
-                <Package size={40} />
-                <Text fontWeight="medium">No hay importaciones</Text>
+                <Package size={32} />
+                <Text color={textMuted}>No hay importaciones</Text>
             </VStack>
         );
     }
 
     return (
-        <VStack spacing={5} align="stretch">
-            {/* 🔍 Buscar */}
+        <VStack spacing={4} align="stretch">
             <InputGroup>
                 <InputLeftElement pointerEvents="none">
                     <Search size={16} />
                 </InputLeftElement>
                 <Input
-                    placeholder="Buscar importaciones…"
+                    placeholder="Buscar..."
                     value={search}
                     onChange={e => {
                         setSearch(e.target.value);
@@ -101,17 +115,9 @@ export function Importations({ data = [], isLoading, error, onRetry }) {
                 />
             </InputGroup>
 
-            <HStack justify="space-between">
-                <Text fontSize="sm" color={textMuted}>
-                    Líneas ({groupedByLine.length})
-                </Text>
-                <Badge fontSize="xs">Agrupado por línea</Badge>
-            </HStack>
-
-            {/* 📦 Líneas */}
-            <Accordion allowMultiple>
+            <Accordion allowMultiple reduceMotion>
                 {paginatedLines.map(line => {
-                    const totalQty = line.products.reduce(
+                    const totalQuantity = line.products.reduce(
                         (sum, p) => sum + p.quantity,
                         0
                     );
@@ -122,108 +128,145 @@ export function Importations({ data = [], isLoading, error, onRetry }) {
                             border="1px solid"
                             borderColor={borderColor}
                             borderRadius="lg"
-                            mb={2}
+                            mb={3}
                         >
-                            <AccordionButton px={3} py={3} _hover={{ bg: bgHover }}>
-                                <Stack
-                                    w="full"
-                                    direction={{ base: "column", md: "row" }}
-                                    spacing={2}
-                                    align={{ md: "center" }}
-                                    justify="space-between"
-                                >
-                                    <HStack>
-                                        <Badge colorScheme="purple">
-                                            <HStack spacing={1}>
-                                                <Tag size={12} />
-                                                <Text fontSize="sm">{line.linea}</Text>
-                                            </HStack>
-                                        </Badge>
-                                        <Badge fontSize="xs">
-                                            {line.products.length} prod.
-                                        </Badge>
-                                    </HStack>
+                            <AccordionButton _hover={{ bg: bgHover }} px={{ base: 3, sm: 4 }}>
+                                <Box flex="1" textAlign="left" minW={0}>
+                                    <Stack
+                                        direction={{ base: "column", sm: "row" }}
+                                        spacing={2}
+                                        justify="space-between"
+                                        align={{ base: "flex-start", sm: "center" }}
+                                    >
+                                        <HStack spacing={2} flexWrap="wrap">
+                                            <Badge
+                                                colorScheme="purple"
+                                                fontSize={{ base: "xs", sm: "md" }}
+                                                maxW="100%"
+                                                noOfLines={1}
+                                            >
+                                                <HStack spacing={1}>
+                                                    <Tag size={12} />
+                                                    <Text noOfLines={1}>{line.linea}</Text>
+                                                </HStack>
+                                            </Badge>
 
-                                    <HStack>
-                                        <Badge colorScheme="green">
-                                            Total: {totalQty}
-                                        </Badge>
-                                        <AccordionIcon />
-                                    </HStack>
-                                </Stack>
+                                            <Badge fontSize="xs" variant="outline">
+                                                {line.products.length} prod.
+                                            </Badge>
+                                        </HStack>
+
+                                        <HStack spacing={2}>
+                                            <Badge colorScheme="green" fontSize="xs">
+                                                Total: {totalQuantity}
+                                            </Badge>
+                                            <AccordionIcon />
+                                        </HStack>
+                                    </Stack>
+                                </Box>
                             </AccordionButton>
 
-                            <AccordionPanel bg={bgAccordion} px={2} py={3}>
-                                <VStack spacing={3}>
-                                    {line.products.map((p, idx) => {
-                                        const arrived =
-                                            new Date() >= new Date(p.fechaIngreso);
+                            <AccordionPanel bg={bgAccordion} p={{ base: 2, sm: 3 }}>
+                                <VStack spacing={2} align="stretch">
+                                    {line.products.map((product, idx) => {
+                                        const today = new Date().setHours(0, 0, 0, 0);
+                                        const arrival = new Date(product.fechaIngreso).setHours(
+                                            0,
+                                            0,
+                                            0,
+                                            0
+                                        );
+                                        const hasArrived = today >= arrival;
 
                                         return (
                                             <Box
-                                                key={idx}
-                                                w="full"
-                                                p={3}
+                                                key={`${product.itemCode}-${idx}`}
+                                                p={{ base: 2, sm: 3 }}
                                                 bg={bgCard}
                                                 border="1px solid"
                                                 borderColor={borderColor}
                                                 borderRadius="md"
+                                                minW={0}
                                             >
-                                                {(() => {
-                                                    const desc = p.itemDescription || "";
+                                                {/* Código + descripción */}
+                                                <Text
+                                                    fontSize="xs"
+                                                    noOfLines={1}
+                                                    display="flex"
+                                                    alignItems="center"
+                                                    gap={1}
+                                                    flexWrap="nowrap"
+                                                >
+                                                    {(() => {
+                                                        const match =
+                                                            product.itemDescription?.match(/^([A-Z0-9\-\/]+)\s/);
+                                                        const vendorCode = match ? match[1] : null;
 
-                                                    // Código vendedor = primera palabra
-                                                    const match = desc.match(/^([A-Z0-9]+)\s+(.*)$/);
-                                                    const vendorCode = match?.[1];
-                                                    const cleanDescription = match?.[2] || desc;
+                                                        return vendorCode ? (
+                                                            <Badge
+                                                                colorScheme="purple"
+                                                                fontSize="xs"
+                                                                px={1.5}
+                                                                py={0.5}
+                                                                borderRadius="md"
+                                                                fontWeight="bold"
+                                                                flexShrink={0}
+                                                            >
+                                                                {vendorCode}
+                                                            </Badge>
+                                                        ) : null;
+                                                    })()}
 
-                                                    return (
-                                                        <VStack align="stretch" spacing={1}>
-                                                            <HStack justify="space-between" align="center">
-                                                                {vendorCode && (
-                                                                    <Badge
-                                                                        colorScheme="purple"
-                                                                        fontSize="xs"
-                                                                        px={2}
-                                                                        py={0.5}
-                                                                        borderRadius="md"
-                                                                        fontWeight="bold"
-                                                                    >
-                                                                        {vendorCode}
-                                                                    </Badge>
-                                                                )}
 
-                                                                <HStack spacing={1}>
-                                                                    <Calendar size={14} />
-                                                                    <Text fontSize="md">
-                                                                        {new Date(p.fechaIngreso).toLocaleDateString()}
-                                                                    </Text>
-                                                                </HStack>
-                                                            </HStack>
 
-                                                            <Text fontSize="xs" lineHeight="short">
-                                                                {cleanDescription}
-                                                            </Text>
+                                                    <Text as="span" color={textMuted} isTruncated>
+                                                        ·{" "}
+                                                        {(() => {
+                                                            const desc = product.itemDescription || "";
+                                                            const match = desc.match(
+                                                                /^[A-Z0-9\-\/]+\s(.+)$/
+                                                            );
+                                                            return match ? match[1] : desc;
+                                                        })()}
+                                                    </Text>
 
-                                                            <Divider />
+                                                    <Text as="span" fontWeight="bold" flexShrink={0}>
+                                                        {product.itemCode}
+                                                    </Text>
+                                                </Text>
 
-                                                            <HStack justify="space-between">
-                                                                <Badge
-                                                                    colorScheme={arrived ? "green" : "orange"}
-                                                                    fontSize="xs"
-                                                                >
-                                                                    {arrived ? "Arribó" : "En tránsito"}
-                                                                </Badge>
+                                                {/* Fecha */}
+                                                <HStack spacing={1} mt={1}>
+                                                    <Calendar size={14} />
+                                                    <Text fontSize="xs" color={textMuted}>
+                                                        {new Date(product.fechaIngreso).toLocaleDateString("es-PE", {
+                                                            day: "2-digit",
+                                                            month: "short",
+                                                            year: "2-digit"
+                                                        })}
+                                                    </Text>
+                                                </HStack>
 
-                                                                <Text fontSize="sm" fontWeight="bold">
-                                                                    Cant: {p.quantity}
-                                                                </Text>
-                                                            </HStack>
-                                                        </VStack>
-                                                    );
-                                                })()}
+
+                                                {/* Estado + cantidad */}
+                                                <Stack
+                                                    direction="row"
+                                                    justify="space-between"
+                                                    align="center"
+                                                    mt={1}
+                                                >
+                                                    <Badge
+                                                        fontSize="xs"
+                                                        colorScheme={hasArrived ? "green" : "orange"}
+                                                    >
+                                                        {hasArrived ? "Arribó" : "En tránsito"}
+                                                    </Badge>
+
+                                                    <Text fontSize="xs" fontWeight="bold">
+                                                        Cant: {product.quantity}
+                                                    </Text>
+                                                </Stack>
                                             </Box>
-
                                         );
                                     })}
                                 </VStack>
@@ -233,13 +276,8 @@ export function Importations({ data = [], isLoading, error, onRetry }) {
                 })}
             </Accordion>
 
-            {/* 📄 Paginación */}
             {groupedByLine.length > PAGE_SIZE && (
-                <Stack
-                    direction={{ base: "column", sm: "row" }}
-                    justify="space-between"
-                    spacing={3}
-                >
+                <HStack justify="space-between">
                     <Button
                         size="sm"
                         onClick={() => setPage(p => Math.max(p - 1, 1))}
@@ -248,9 +286,9 @@ export function Importations({ data = [], isLoading, error, onRetry }) {
                         Anterior
                     </Button>
 
-                    <Badge>
-                        Página {page} de {totalPages}
-                    </Badge>
+                    <Text fontSize="xs">
+                        {page} / {totalPages}
+                    </Text>
 
                     <Button
                         size="sm"
@@ -259,7 +297,7 @@ export function Importations({ data = [], isLoading, error, onRetry }) {
                     >
                         Siguiente
                     </Button>
-                </Stack>
+                </HStack>
             )}
         </VStack>
     );
