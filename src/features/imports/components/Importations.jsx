@@ -191,9 +191,48 @@ export function Importations({ data = [], isLoading, error, onRetry }) {
                           {/* CONTENIDO */}
                           <HStack w="full" justify="space-between">
                             <VStack align="start" spacing={1}>
-                              <Text fontSize="xs" fontWeight="bold">
+                              {/* <Text fontSize="xs" fontWeight="bold">
                                 {product.itemCode}
-                              </Text>
+                              </Text>  */}
+                              {(() => {
+                                const match = product.itemDescription?.match(/^([A-Z0-9\-\/]+)\s/);
+                                const vendorCode = match?.[1];
+
+                                return vendorCode ? (
+                                  <HStack spacing={1}>
+                                    {/* Código vendedor con fondo */}
+                                    <Badge
+                                      colorScheme="purple"
+                                      fontSize="xs"
+                                      px={2}
+                                      py={0.5}
+                                      borderRadius="md"
+                                      fontWeight="bold"
+                                    >
+                                      {vendorCode}
+                                    </Badge>
+
+                                    {/* Código normal sin fondo */}
+                                    <Text
+                                      fontSize="xs"
+                                      color="gray.500"
+                                      fontWeight="semibold"
+                                      whiteSpace="nowrap"
+                                    >
+                                      {product.itemCode}
+                                    </Text>
+                                  </HStack>
+                                ) : (
+                                  <Text
+                                    fontSize="xs"
+                                    color="gray.500"
+                                    fontWeight="semibold"
+                                  >
+                                    {product.itemCode}
+                                  </Text>
+                                );
+                              })()}
+
                               <Text fontSize="sm" color={textMuted}>
                                 {product.itemDescription}
                               </Text>

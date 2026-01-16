@@ -2,22 +2,25 @@ import { Tabs, TabList, TabPanels, Tab } from "@chakra-ui/react";
 
 export function ClientTabs({ children }) {
   return (
-    <Tabs variant="soft-rounded" colorScheme="green">
+    <Tabs variant="soft-rounded" colorScheme="green" w="100%">
       <TabList
-        gap={4}
+        gap={{ base: 1, sm: 2, md: 4 }}
         overflowX="auto"
         whiteSpace="nowrap"
+        px={{ base: 1, md: 0 }}
         css={{
           scrollbarWidth: "none",
           "&::-webkit-scrollbar": { display: "none" },
         }}
       >
-        <TabStyled>Histórico de Facturas</TabStyled>
-        <TabStyled>Stock y Precios</TabStyled>
+        <TabStyled>Histórico</TabStyled>
+        <TabStyled>Stock</TabStyled>
         <TabStyled>Importaciones</TabStyled>
       </TabList>
 
-      <TabPanels mt={4}>{children}</TabPanels>
+      <TabPanels mt={{ base: 2, md: 4 }}>
+        {children}
+      </TabPanels>
     </Tabs>
   );
 }
@@ -27,9 +30,13 @@ function TabStyled({ children }) {
     <Tab
       bg="transparent"
       color="gray.700"
-      border="1px solid #c3e2cc"
+      border="1px solid"
+      borderColor="green.200"
       borderRadius="full"
-      px={6}
+      fontSize={{ base: "xs", sm: "sm", md: "md" }}
+      px={{ base: 2.5, sm: 4, md: 6 }}
+      py={{ base: 1.5, sm: 2 }}
+      minH="auto"
       _selected={{
         bg: "green.700",
         color: "white",

@@ -54,8 +54,6 @@ export const fetchPriceListByItemCodes = async ({ itemCodes }) => {
 
     const endpoint = `/reportModule/priceListByItemCodes?itemCodes=${encodedItemCodes}`;
 
-    console.log('Fetching price list:', itemCodesCsv);
-
     const response = await axiosInstance.get(endpoint);
     return response.data;
 };
