@@ -25,6 +25,8 @@ import OrdersDashboard from "../features/dashboard/pages/OrdersDashboard.jsx";
 import ClienteInfo from "../features/reports/pages/ClienteInfo.jsx";
 import ClienteBusquedaPage from "../features/clients/pages/ClienteBusquedaPage.jsx";
 import ImportacionesPage from "../features/imports/pages/ImportacionesPage.jsx";
+import VisitLogPage from "../features/checkinout/pages/VisitLogPage.jsx";
+import VisitLogsMapView from "../features/checkinout/pages/VisitLogsMapView.jsx";
 
 const AppRoutes = () => {
   return (
@@ -207,6 +209,22 @@ const AppRoutes = () => {
         element={
           <PrivateRoute>
             <ImportacionesPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/visitLog"
+        element={
+          <PrivateRoute>
+            <VisitLogPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/VisitMap"
+        element={
+          <PrivateRoute>
+            <VisitLogsMapView/>
           </PrivateRoute>
         }
       />
