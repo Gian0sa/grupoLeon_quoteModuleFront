@@ -64,7 +64,9 @@ export function LateralMenu() {
     { label: 'Lista de Precios', icon: MdBubbleChart, path: '/productsPriceList', access: 'GET:/receivable' },
     { label: 'Catalogo', icon: MdBubbleChart, path: '/catalog', access: 'GET:/receivable' },
     { label: 'Historial de Cliente', icon: MdBubbleChart, path: '/clienteBusqueda', access: 'GET:/receivable' },
-    { label: 'Importaciones', icon: MdBubbleChart, path: '/importaciones', access: 'GET:/receivable' }
+    { label: 'Importaciones', icon: MdBubbleChart, path: '/importaciones', access: 'GET:/receivable' },
+    { label: 'Visitas', icon: MdBubbleChart, path: '/visitLog', access: 'GET:/receivable' },
+    { label: 'VisitasMapa', icon: MdBubbleChart, path: '/visitMap', access: 'GET:/receivable' }
   ];
 
   const accountOptions = [
