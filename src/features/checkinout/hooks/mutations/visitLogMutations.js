@@ -8,13 +8,17 @@ export const useCreateVisitLog = () => {
   const toast = useToast();
 
   return useMutation({
-    mutationFn: (data) => createVisitLog(data),
+    mutationFn: (formData) => createVisitLog(formData),
 
     onSuccess: (response, variables) => {
       queryClient.invalidateQueries(["visitLogs"]);
 
+      const type = variables.get("type");
+
       toast({
-        title: variables.type === "IN" ? "Check-in registrado" : "Check-out registrado",
+        title: type === "IN"
+          ? "Check-in registrado"
+          : "Check-out registrado",
         description: "La visita se registró correctamente.",
         status: "success",
         duration: 4000,

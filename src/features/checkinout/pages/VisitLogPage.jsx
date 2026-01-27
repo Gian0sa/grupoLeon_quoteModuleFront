@@ -28,24 +28,32 @@ export default function VisitLogPage() {
     // Vendedor se obtiene del auth store
     const { salesEmployeeCode, username } = useAuthStore();
     const [storeName, setStoreName] = useState("Tienda Prueba");
+    const [image, setImage] = useState(null);
+
 
     const { mutate: createVisit, isLoading } = useCreateVisitLog();
 
     const handleSubmit = async (type) => {
-        try {
-            const location = await getLocation();
+    try {
+        const location = await getLocation();
 
-            createVisit({
-                type,
-                vendorName: username,
-                storeName,
-                latitude: location.latitude,
-                longitude: location.longitude,
-            });
-        } catch (error) {
-            console.error("Error obteniendo ubicación", error);
+        const formData = new FormData();
+        formData.append("type", type);
+        formData.append("vendorName", username);
+        formData.append("storeName", storeName);
+        formData.append("latitude", location.latitude);
+        formData.append("longitude", location.longitude);
+
+        if (image) {
+        formData.append("image", image);
         }
+
+        createVisit(formData);
+    } catch (error) {
+        console.error("Error obteniendo ubicación", error);
+    }
     };
+
 
     return (
         <Box maxW="md" mx="auto" mt={10} p={6} borderWidth="1px" borderRadius="xl">
@@ -85,6 +93,12 @@ export default function VisitLogPage() {
                     placeholder="Nombre de la tienda"
                     value={storeName}
                     onChange={(e) => setStoreName(e.target.value)}
+                />
+
+                <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setImage(e.target.files?.[0] || null)}
                 />
 
                 <Divider />

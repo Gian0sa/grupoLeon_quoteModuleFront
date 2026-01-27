@@ -3,6 +3,14 @@ import { axiosInstance } from "../../../shared/lib/axiosInstance";
 // Crear Check IN / OUT
 export const createVisitLog = async (data) => {
   try {
+    const debugObj = {};
+    for (const [key, value] of data.entries()) {
+    debugObj[key] = value instanceof File ? value.name : value;
+    }
+
+    console.log(debugObj);
+
+
     const response = await axiosInstance.post(
       `/reportModule/visit-logs`,
       data
