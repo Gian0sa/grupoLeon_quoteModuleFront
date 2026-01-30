@@ -48,6 +48,8 @@ export default function ClienteBusquedaPage() {
         ? useClientProductHistoryAdmin(clientQuery)
         : useClientProductHistory(clientQuery, salesEmployeeCode);
 
+    console.log("dataProductHistory : ", dataProductHistory);
+
     const {
         dataPurchaseOrdersImportacion,
         isLoadingPurchaseOrdersImportacion,
@@ -56,56 +58,73 @@ export default function ClienteBusquedaPage() {
     } = usePurchaseOrdersImportacion();
 
     const processedData = useMemo(() => {
-        if (!dataProductHistory?.length) {
-            return { invoices: [], products: [], clientInfo: null };
-        }
+  if (!dataProductHistory?.length) {
+    return { invoices: [], products: [], clientInfo: null, isBasicOnly: false };
+  }
 
-        const invoices = dataProductHistory;
-        const first = invoices[0];
+  const first = dataProductHistory[0];
 
-        const clientInfo = {
-            clientCode: first.client?.code,
-            clientName: first.client?.name,
-            lastSellerName: first.seller?.name,
-            lastSellerCode: first.seller?.code
-        };
+  const isBasicOnly =
+    !first.invoiceDate &&
+    !first.invoiceNumber &&
+    !first.invoice?.date &&
+    !first.invoice?.number;
 
-        const productMap = new Map();
+  const clientInfo = {
+    clientCode: first.client?.code,
+    clientName: first.client?.name,
+    lastSellerName: first.seller?.name,
+    lastSellerCode: first.seller?.code
+  };
 
-        invoices.forEach(inv => {
-            const invDate = new Date(inv.invoice.date);
+  if (isBasicOnly) {
+    return {
+      invoices: [],
+      products: [],
+      clientInfo,
+      isBasicOnly: true
+    };
+  }
 
-            inv.items.forEach(item => {
-                const code = item.productCode;
-                const existing = productMap.get(code);
+  const productMap = new Map();
 
-                if (!existing) {
-                    productMap.set(code, {
-                        productCode: code,
-                        productName: item.productName,
-                        historicQuantity: item.quantity,
-                        lastPurchaseDate: inv.invoice.date,
-                        lastSalePrice: item.unitPrice,
-                        invoiceCount: 1
-                    });
-                } else {
-                    existing.historicQuantity += item.quantity;
-                    existing.invoiceCount++;
+  dataProductHistory.forEach(inv => {
+    if (!inv.invoice?.date) return;
 
-                    if (invDate >= new Date(existing.lastPurchaseDate)) {
-                        existing.lastPurchaseDate = inv.invoice.date;
-                        existing.lastSalePrice = item.unitPrice;
-                    }
-                }
-            });
+    const invDate = new Date(inv.invoice.date);
+
+    inv.items.forEach(item => {
+      const code = item.productCode;
+      const existing = productMap.get(code);
+
+      if (!existing) {
+        productMap.set(code, {
+          productCode: code,
+          productName: item.productName,
+          historicQuantity: item.quantity,
+          lastPurchaseDate: inv.invoice.date,
+          lastSalePrice: item.unitPrice,
+          invoiceCount: 1
         });
+      } else {
+        existing.historicQuantity += item.quantity;
+        existing.invoiceCount++;
 
-        return {
-            invoices,
-            products: Array.from(productMap.values()),
-            clientInfo
-        };
-    }, [dataProductHistory]);
+        if (invDate >= new Date(existing.lastPurchaseDate)) {
+          existing.lastPurchaseDate = inv.invoice.date;
+          existing.lastSalePrice = item.unitPrice;
+        }
+      }
+    });
+  });
+
+  return {
+    invoices: dataProductHistory,
+    products: Array.from(productMap.values()),
+    clientInfo,
+    isBasicOnly: false
+  };
+}, [dataProductHistory]);
 
     const historyProductCodesSet = useMemo(() => {
         return new Set(
@@ -252,30 +271,90 @@ export default function ClienteBusquedaPage() {
 
     {/* CONTENT */}
     {processedData.clientInfo && (
-      <Box w="100%" overflow="hidden">
-        <ClientTabs>
-          <TabPanel p={{ base: 0, md: 4 }}>
-            <InvoiceHistoryTab invoices={processedData.invoices} />
-          </TabPanel>
+      <>
+        {processedData.isBasicOnly ? (
+          <VStack spacing={3} w="100%" align="stretch">
+            {/* Info del cliente */}
+            <Box
+              bg="white"
+              p={{ base: 3, md: 4 }}
+              borderRadius="lg"
+              boxShadow="sm"
+              border="1px solid"
+              borderColor="gray.200"
+            >
+              <VStack align="stretch" spacing={2}>
+                <Heading size="sm" color="green.700">
+                  Información del Cliente
+                </Heading>
+                <Divider />
+                <Flex justify="space-between" align="center">
+                  <Text fontSize="xs" color="gray.500" fontWeight="bold">
+                    CÓDIGO
+                  </Text>
+                  <Text fontSize="sm" fontWeight="bold">
+                    {processedData.clientInfo.clientCode}
+                  </Text>
+                </Flex>
+                <Flex justify="space-between" align="center">
+                  <Text fontSize="xs" color="gray.500" fontWeight="bold">
+                    NOMBRE
+                  </Text>
+                  <Text fontSize="sm" fontWeight="bold" textAlign="right">
+                    {processedData.clientInfo.clientName}
+                  </Text>
+                </Flex>
+                <Flex justify="space-between" align="center">
+                  <Text fontSize="xs" color="gray.500" fontWeight="bold">
+                    VENDEDOR ASIGNADO
+                  </Text>
+                  <Text fontSize="sm" fontWeight="bold" color="green.600" textAlign="right">
+                    {processedData.clientInfo.lastSellerName}
+                  </Text>
+                </Flex>
+              </VStack>
+            </Box>
 
-          <TabPanel p={{ base: 0, md: 4 }}>
-            <StockPricesTab
-              data={stockData}
-              isLoading={isLoadingPriceList}
-              isOlderThanOneMonth={isOlderThanOneMonth}
-            />
-          </TabPanel>
+            {/* Alert de sin historial */}
+            <Alert status="info" borderRadius="md">
+              <AlertIcon />
+              <Box>
+                <AlertTitle fontSize="sm">
+                  Sin historial de compras
+                </AlertTitle>
+                <AlertDescription fontSize="xs">
+                  Este cliente no tiene facturas registradas en el sistema.
+                </AlertDescription>
+              </Box>
+            </Alert>
+          </VStack>
+        ) : (
+          <Box w="100%" overflow="hidden">
+            <ClientTabs>
+              <TabPanel p={{ base: 0, md: 4 }}>
+                <InvoiceHistoryTab invoices={processedData.invoices} />
+              </TabPanel>
 
-          <TabPanel p={{ base: 0, md: 4 }}>
-            <ImportationsTab
-              data={filteredImportations}
-              isLoading={isLoadingPurchaseOrdersImportacion}
-              error={errorPurchaseOrdersImportacion}
-              onRetry={refetchPurchaseOrdersImportacion}
-            />
-          </TabPanel>
-        </ClientTabs>
-      </Box>
+              <TabPanel p={{ base: 0, md: 4 }}>
+                <StockPricesTab
+                  data={stockData}
+                  isLoading={isLoadingPriceList}
+                  isOlderThanOneMonth={isOlderThanOneMonth}
+                />
+              </TabPanel>
+
+              <TabPanel p={{ base: 0, md: 4 }}>
+                <ImportationsTab
+                  data={filteredImportations}
+                  isLoading={isLoadingPurchaseOrdersImportacion}
+                  error={errorPurchaseOrdersImportacion}
+                  onRetry={refetchPurchaseOrdersImportacion}
+                />
+              </TabPanel>
+            </ClientTabs>
+          </Box>
+        )}
+      </>
     )}
   </VStack>
 </Container>
