@@ -15,10 +15,15 @@ import { ClientTabs } from "../components/ClientTabs";
 import { InvoiceHistoryTab } from "../components/tabs/InvoiceHistoryTab";
 import { StockPricesTab } from "../components/tabs/StockPricesTab";
 import { ImportationsTab } from "../components/tabs/ImportationsTab";
+import { useSearchParams } from "react-router-dom";
+import { useEffect } from "react";
+
 
 const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 
 export default function ClienteBusquedaPage() {
+    const [searchParams, setSearchParams] = useSearchParams();
+    const storeNameFromUrl = searchParams.get("storeName");
     const [search, setSearch] = useState("");
     const [clientQuery, setClientQuery] = useState("");
     const [sortConfigStock, setSortConfigStock] = useState({ key: null, direction: 'asc' });
@@ -26,6 +31,13 @@ export default function ClienteBusquedaPage() {
 
     const salesEmployeeCode = useAuthStore((state) => state.salesEmployeeCode);
     const isAdmin = !salesEmployeeCode || salesEmployeeCode === "0";
+
+    useEffect(() => {
+        if (storeNameFromUrl) {
+            setSearch(storeNameFromUrl);
+            setClientQuery(storeNameFromUrl);
+        }
+    }, [storeNameFromUrl]);
 
     const {
         dataProductHistory,

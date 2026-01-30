@@ -1,11 +1,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@chakra-ui/react";
 import { createVisitLog } from "../../services/visitLogService";
+import { useNavigate } from "react-router-dom";
 
-// Crear Check IN / OUT
 export const useCreateVisitLog = () => {
   const queryClient = useQueryClient();
   const toast = useToast();
+  const navigate = useNavigate();
 
   return useMutation({
     mutationFn: (formData) => createVisitLog(formData),
@@ -14,6 +15,7 @@ export const useCreateVisitLog = () => {
       queryClient.invalidateQueries(["visitLogs"]);
 
       const type = variables.get("type");
+      const storeName = variables.get("storeName");
 
       toast({
         title: type === "IN"
@@ -25,6 +27,10 @@ export const useCreateVisitLog = () => {
         isClosable: true,
         position: "top",
       });
+
+      navigate(
+        `/clienteBusqueda?storeName=${encodeURIComponent(storeName)}`
+      );
     },
 
     onError: (error) => {
