@@ -175,14 +175,6 @@ export default function VisitLogPage() {
         setSearchTerm("");
 
         console.log("Cliente seleccionado:", client);
-
-        toast({
-            title: "Cliente seleccionado",
-            description: client.firstName,
-            status: "success",
-            duration: 2000,
-            isClosable: true,
-        });
     };
 
     const handleClearClient = () => {
@@ -204,15 +196,6 @@ export default function VisitLogPage() {
                 type: file.type
             });
 
-            // Mostrar toast inicial
-            toast({
-                title: "Procesando imagen...",
-                description: `Tamaño original: ${(file.size / 1024 / 1024).toFixed(2)}MB`,
-                status: "info",
-                duration: 2000,
-                isClosable: true,
-            });
-
             // Comprimir imagen
             const compressedFile = await compressImage(file, 1); // Máximo 1MB
 
@@ -229,14 +212,6 @@ export default function VisitLogPage() {
             reader.onloadend = () => {
                 setImagePreview(reader.result);
                 setIsProcessingImage(false);
-
-                toast({
-                    title: "Imagen lista",
-                    description: `Tamaño final: ${(compressedFile.size / 1024 / 1024).toFixed(2)}MB`,
-                    status: "success",
-                    duration: 2000,
-                    isClosable: true,
-                });
             };
             reader.readAsDataURL(compressedFile);
 
@@ -287,25 +262,9 @@ export default function VisitLogPage() {
             console.log("✅ Validaciones iniciales pasadas");
 
             // Paso 1: Obtener ubicación
-            toast({
-                title: "Obteniendo ubicación...",
-                description: "Asegúrate de haber dado permisos de ubicación",
-                status: "info",
-                duration: 3000,
-                isClosable: true,
-            });
-
             const location = await getLocation();
 
             console.log("✅ Ubicación obtenida:", location);
-
-            toast({
-                title: "Ubicación obtenida",
-                description: `Lat: ${location.latitude.toFixed(4)}, Lng: ${location.longitude.toFixed(4)}`,
-                status: "success",
-                duration: 2000,
-                isClosable: true,
-            });
 
             // Paso 2: Preparar FormData
             const formData = new FormData();
@@ -329,15 +288,6 @@ export default function VisitLogPage() {
                     console.log(`${pair[0]}: ${pair[1]}`);
                 }
             }
-
-            // Paso 3: Enviar
-            toast({
-                title: "Enviando registro...",
-                description: "Por favor espera",
-                status: "info",
-                duration: 2000,
-                isClosable: true,
-            });
 
             console.log("📤 Enviando request...");
 
