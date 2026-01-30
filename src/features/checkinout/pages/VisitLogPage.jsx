@@ -8,22 +8,118 @@ import { useClientQueries } from "../../clients/hooks/queries/clientQueries";
 import { useClientQueriesByName } from "../../clients/hooks/queries/clientQueries";
 import { adaptClientFromApi } from "../../clients/adapters/clientAdapter";
 
-// Utilidad para obtener ubicación
+// Función para comprimir imagen
+const compressImage = (file, maxSizeMB = 1) => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target.result;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+
+                // Reducir dimensiones si es muy grande
+                const MAX_WIDTH = 1920;
+                const MAX_HEIGHT = 1920;
+
+                if (width > height) {
+                    if (width > MAX_WIDTH) {
+                        height *= MAX_WIDTH / width;
+                        width = MAX_WIDTH;
+                    }
+                } else {
+                    if (height > MAX_HEIGHT) {
+                        width *= MAX_HEIGHT / height;
+                        height = MAX_HEIGHT;
+                    }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // Comprimir con calidad variable hasta lograr el tamaño deseado
+                let quality = 0.8;
+                const compress = () => {
+                    canvas.toBlob(
+                        (blob) => {
+                            if (blob) {
+                                const sizeMB = blob.size / 1024 / 1024;
+                                console.log(`Imagen comprimida: ${sizeMB.toFixed(2)}MB con calidad ${quality}`);
+
+                                if (sizeMB > maxSizeMB && quality > 0.1) {
+                                    quality -= 0.1;
+                                    compress();
+                                } else {
+                                    const compressedFile = new File([blob], file.name, {
+                                        type: 'image/jpeg',
+                                        lastModified: Date.now()
+                                    });
+                                    resolve(compressedFile);
+                                }
+                            } else {
+                                reject(new Error('Error al comprimir imagen'));
+                            }
+                        },
+                        'image/jpeg',
+                        quality
+                    );
+                };
+
+                compress();
+            };
+            img.onerror = () => reject(new Error('Error al cargar imagen'));
+        };
+        reader.onerror = () => reject(new Error('Error al leer archivo'));
+    });
+};
+
+// Utilidad para obtener ubicación con mejor manejo de errores
 const getLocation = () => {
     return new Promise((resolve, reject) => {
         if (!navigator.geolocation) {
-            reject("Geolocalización no soportada");
+            reject(new Error("GEOLOCATION_NOT_SUPPORTED"));
+            return;
         }
+
+        console.log("Solicitando ubicación...");
 
         navigator.geolocation.getCurrentPosition(
             (pos) => {
+                console.log("Ubicación obtenida:", pos.coords);
                 resolve({
                     latitude: pos.coords.latitude,
                     longitude: pos.coords.longitude,
                 });
             },
-            (err) => reject(err),
-            { enableHighAccuracy: true }
+            (err) => {
+                console.error("Error de geolocalización:", err);
+                let errorMessage = "ERROR_DESCONOCIDO";
+
+                switch (err.code) {
+                    case err.PERMISSION_DENIED:
+                        errorMessage = "PERMISSION_DENIED";
+                        break;
+                    case err.POSITION_UNAVAILABLE:
+                        errorMessage = "POSITION_UNAVAILABLE";
+                        break;
+                    case err.TIMEOUT:
+                        errorMessage = "TIMEOUT";
+                        break;
+                }
+
+                reject(new Error(errorMessage));
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0
+            }
         );
     });
 };
@@ -36,6 +132,7 @@ export default function VisitLogPage() {
     const [selectedClient, setSelectedClient] = useState(null);
     const [image, setImage] = useState(null);
     const [imagePreview, setImagePreview] = useState(null);
+    const [isProcessingImage, setIsProcessingImage] = useState(false);
     const toast = useToast();
 
     const { mutate: createVisit, isLoading: isCreatingVisit } = useCreateVisitLog();
@@ -76,6 +173,16 @@ export default function VisitLogPage() {
         setSelectedClient(client);
         setInputValue("");
         setSearchTerm("");
+
+        console.log("Cliente seleccionado:", client);
+
+        toast({
+            title: "Cliente seleccionado",
+            description: client.firstName,
+            status: "success",
+            duration: 2000,
+            isClosable: true,
+        });
     };
 
     const handleClearClient = () => {
@@ -84,22 +191,76 @@ export default function VisitLogPage() {
         setSearchTerm("");
     };
 
-    const handleImageChange = (e) => {
+    const handleImageChange = async (e) => {
         const file = e.target.files?.[0];
-        if (file) {
-            setImage(file);
-            // Crear preview de la imagen
+        if (!file) return;
+
+        setIsProcessingImage(true);
+
+        try {
+            console.log("Archivo original:", {
+                name: file.name,
+                size: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
+                type: file.type
+            });
+
+            // Mostrar toast inicial
+            toast({
+                title: "Procesando imagen...",
+                description: `Tamaño original: ${(file.size / 1024 / 1024).toFixed(2)}MB`,
+                status: "info",
+                duration: 2000,
+                isClosable: true,
+            });
+
+            // Comprimir imagen
+            const compressedFile = await compressImage(file, 1); // Máximo 1MB
+
+            console.log("Archivo comprimido:", {
+                name: compressedFile.name,
+                size: `${(compressedFile.size / 1024 / 1024).toFixed(2)}MB`,
+                type: compressedFile.type
+            });
+
+            setImage(compressedFile);
+
+            // Crear preview
             const reader = new FileReader();
             reader.onloadend = () => {
                 setImagePreview(reader.result);
+                setIsProcessingImage(false);
+
+                toast({
+                    title: "Imagen lista",
+                    description: `Tamaño final: ${(compressedFile.size / 1024 / 1024).toFixed(2)}MB`,
+                    status: "success",
+                    duration: 2000,
+                    isClosable: true,
+                });
             };
-            reader.readAsDataURL(file);
+            reader.readAsDataURL(compressedFile);
+
+        } catch (error) {
+            console.error("Error procesando imagen:", error);
+            setIsProcessingImage(false);
+
+            toast({
+                title: "Error al procesar imagen",
+                description: error.message || "Intenta con otra foto",
+                status: "error",
+                duration: 4000,
+                isClosable: true,
+            });
         }
     };
 
     const handleSubmit = async (type) => {
+        console.log("=== INICIANDO CHECK", type, "===");
+
         try {
+            // Validación 1: Imagen para Check-In
             if (type === "IN" && !image) {
+                console.log("❌ Falta imagen para Check-In");
                 toast({
                     title: "Imagen requerida",
                     description: "Debes subir una imagen para el Check-In",
@@ -110,7 +271,9 @@ export default function VisitLogPage() {
                 return;
             }
 
+            // Validación 2: Cliente seleccionado
             if (!selectedClient) {
+                console.log("❌ Falta seleccionar cliente");
                 toast({
                     title: "Cliente requerido",
                     description: "Debes buscar y seleccionar un cliente",
@@ -121,8 +284,30 @@ export default function VisitLogPage() {
                 return;
             }
 
+            console.log("✅ Validaciones iniciales pasadas");
+
+            // Paso 1: Obtener ubicación
+            toast({
+                title: "Obteniendo ubicación...",
+                description: "Asegúrate de haber dado permisos de ubicación",
+                status: "info",
+                duration: 3000,
+                isClosable: true,
+            });
+
             const location = await getLocation();
 
+            console.log("✅ Ubicación obtenida:", location);
+
+            toast({
+                title: "Ubicación obtenida",
+                description: `Lat: ${location.latitude.toFixed(4)}, Lng: ${location.longitude.toFixed(4)}`,
+                status: "success",
+                duration: 2000,
+                isClosable: true,
+            });
+
+            // Paso 2: Preparar FormData
             const formData = new FormData();
             formData.append("type", type);
             formData.append("vendorName", username);
@@ -132,24 +317,108 @@ export default function VisitLogPage() {
 
             if (type === "IN" && image) {
                 formData.append("image", image);
+                console.log("✅ Imagen agregada al FormData");
             }
 
-            createVisit(formData);
-        } catch (error) {
-            console.error("Error obteniendo ubicación", error);
+            // Log del FormData
+            console.log("📦 FormData preparado:");
+            for (let pair of formData.entries()) {
+                if (pair[0] === 'image') {
+                    console.log(`${pair[0]}: [File: ${pair[1].name}, ${(pair[1].size / 1024).toFixed(2)}KB]`);
+                } else {
+                    console.log(`${pair[0]}: ${pair[1]}`);
+                }
+            }
+
+            // Paso 3: Enviar
             toast({
-                title: "Error de ubicación",
-                description: "No se pudo obtener la ubicación. Verifica los permisos.",
+                title: "Enviando registro...",
+                description: "Por favor espera",
+                status: "info",
+                duration: 2000,
+                isClosable: true,
+            });
+
+            console.log("📤 Enviando request...");
+
+            createVisit(formData, {
+                onSuccess: (data) => {
+                    console.log("✅ SUCCESS:", data);
+                    toast({
+                        title: "¡Registro exitoso!",
+                        description: `Check ${type} registrado correctamente`,
+                        status: "success",
+                        duration: 3000,
+                        isClosable: true,
+                    });
+
+                    // Limpiar formulario
+                    setSelectedClient(null);
+                    setImage(null);
+                    setImagePreview(null);
+                },
+                onError: (error) => {
+                    console.error("❌ ERROR:", error);
+                    console.error("Error completo:", JSON.stringify(error, null, 2));
+
+                    let errorMessage = "Error desconocido";
+
+                    if (error.response) {
+                        console.error("Response data:", error.response.data);
+                        console.error("Response status:", error.response.status);
+                        errorMessage = error.response.data?.message || `Error ${error.response.status}`;
+                    } else if (error.request) {
+                        console.error("No response received:", error.request);
+                        errorMessage = "No se recibió respuesta del servidor";
+                    } else {
+                        console.error("Error message:", error.message);
+                        errorMessage = error.message;
+                    }
+
+                    toast({
+                        title: "Error al registrar",
+                        description: errorMessage,
+                        status: "error",
+                        duration: 5000,
+                        isClosable: true,
+                    });
+                }
+            });
+
+        } catch (error) {
+            console.error("❌ ERROR GENERAL:", error);
+
+            let errorTitle = "Error";
+            let errorDescription = error.message || "Error desconocido";
+
+            // Errores específicos de ubicación
+            if (error.message === "GEOLOCATION_NOT_SUPPORTED") {
+                errorTitle = "Geolocalización no disponible";
+                errorDescription = "Tu navegador no soporta geolocalización";
+            } else if (error.message === "PERMISSION_DENIED") {
+                errorTitle = "Permiso denegado";
+                errorDescription = "Debes permitir el acceso a la ubicación en la configuración";
+            } else if (error.message === "POSITION_UNAVAILABLE") {
+                errorTitle = "Ubicación no disponible";
+                errorDescription = "No se pudo determinar tu ubicación. Verifica que el GPS esté activado";
+            } else if (error.message === "TIMEOUT") {
+                errorTitle = "Tiempo agotado";
+                errorDescription = "Tardó mucho en obtener la ubicación. Intenta de nuevo";
+            }
+
+            toast({
+                title: errorTitle,
+                description: errorDescription,
                 status: "error",
-                duration: 3000,
+                duration: 5000,
                 isClosable: true,
             });
         }
     };
 
     return (
-        <Box 
-            minH="100vh" 
+        <Box
+            minH="100vh"
             bg="gray.50"
             pb={6}
         >
@@ -184,9 +453,9 @@ export default function VisitLogPage() {
             <Box px={4} pt={6}>
                 <VStack spacing={5} align="stretch">
                     {/* Vendedor Card */}
-                    <Box 
-                        bg="white" 
-                        p={4} 
+                    <Box
+                        bg="white"
+                        p={4}
                         borderRadius="lg"
                         boxShadow="sm"
                     >
@@ -208,9 +477,9 @@ export default function VisitLogPage() {
                     </Box>
 
                     {/* Cliente Card - Búsqueda */}
-                    <Box 
-                        bg="white" 
-                        p={4} 
+                    <Box
+                        bg="white"
+                        p={4}
                         borderRadius="lg"
                         boxShadow="sm"
                     >
@@ -252,9 +521,9 @@ export default function VisitLogPage() {
 
                                 {/* Error state */}
                                 {searchError && (
-                                    <Box 
-                                        p={3} 
-                                        bg="red.50" 
+                                    <Box
+                                        p={3}
+                                        bg="red.50"
                                         borderRadius="md"
                                         borderLeft="4px solid"
                                         borderColor="red.500"
@@ -382,9 +651,9 @@ export default function VisitLogPage() {
                     </Box>
 
                     {/* Imagen Card */}
-                    <Box 
-                        bg="white" 
-                        p={4} 
+                    <Box
+                        bg="white"
+                        p={4}
                         borderRadius="lg"
                         boxShadow="sm"
                     >
@@ -394,27 +663,27 @@ export default function VisitLogPage() {
                                 Fotografía (Check-In)
                             </Text>
                         </Flex>
-                        
+
                         {imagePreview && (
-                            <Box 
-                                mb={3} 
-                                borderRadius="md" 
+                            <Box
+                                mb={3}
+                                borderRadius="md"
                                 overflow="hidden"
                                 border="2px solid"
                                 borderColor="green.200"
                             >
-                                <img 
-                                    src={imagePreview} 
-                                    alt="Preview" 
-                                    style={{ 
-                                        width: "100%", 
-                                        height: "200px", 
-                                        objectFit: "cover" 
-                                    }} 
+                                <img
+                                    src={imagePreview}
+                                    alt="Preview"
+                                    style={{
+                                        width: "100%",
+                                        height: "200px",
+                                        objectFit: "cover"
+                                    }}
                                 />
                             </Box>
                         )}
-                        
+
                         <Button
                             as="label"
                             htmlFor="file-input"
@@ -424,6 +693,8 @@ export default function VisitLogPage() {
                             cursor="pointer"
                             leftIcon={<FiCamera />}
                             size="lg"
+                            isLoading={isProcessingImage}
+                            loadingText="Procesando..."
                         >
                             {image ? "Cambiar Foto" : "Tomar/Subir Foto"}
                         </Button>
@@ -435,6 +706,12 @@ export default function VisitLogPage() {
                             onChange={handleImageChange}
                             display="none"
                         />
+
+                        {image && (
+                            <Text fontSize="xs" color="gray.500" mt={2} textAlign="center">
+                                Tamaño: {(image.size / 1024).toFixed(2)} KB
+                            </Text>
+                        )}
                     </Box>
 
                     {/* Location Info */}
