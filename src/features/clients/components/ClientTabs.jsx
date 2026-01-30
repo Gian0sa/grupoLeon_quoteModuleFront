@@ -15,7 +15,7 @@ export function ClientTabs({ children }) {
       >
         <TabStyled>Histórico</TabStyled>
         <TabStyled>Stock</TabStyled>
-        <TabStyled>Importaciones</TabStyled>
+        {/* <TabStyled>Importaciones</TabStyled> */}
       </TabList>
 
       <TabPanels mt={{ base: 2, md: 4 }}>
