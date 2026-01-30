@@ -43,6 +43,7 @@ const CalendarIcon = () => <span>📅</span>;
 const ChevronDownIcon = () => <span>▼</span>;
 const ChevronUpIcon = () => <span>▲</span>;
 const FilterIcon = () => <span>🔽</span>;
+const ImageIcon = () => <span>🖼️</span>;
 
 // Fix para los iconos de Leaflet
 delete L.Icon.Default.prototype._getIconUrl;
@@ -113,16 +114,16 @@ function MapUpdater({ center, zoom }) {
 function MapMarkers({ groupedVisits, selectedVendor, hoveredStore, onMarkerClick }) {
     return (
         <>
-            {Object.values(groupedVisits).map((group, idx) => {
+            {groupedVisits.map((group, idx) => {
                 const hasIn = group.in &&
                     (selectedVendor === "all" || group.in.vendorName === selectedVendor);
                 const hasOut = group.out &&
                     (selectedVendor === "all" || group.out.vendorName === selectedVendor);
 
-                const isHovered = hoveredStore === group.storeName;
+                const isHovered = hoveredStore === group.id;
 
                 return (
-                    <div key={idx}>
+                    <div key={group.id}>
                         {hasIn && (
                             <Marker
                                 position={[group.in.latitude, group.in.longitude]}
@@ -141,6 +142,11 @@ function MapMarkers({ groupedVisits, selectedVendor, hoveredStore, onMarkerClick
                                         <Text fontSize="sm">
                                             🕐 {formatDateTime(group.in.createdAt)}
                                         </Text>
+                                        {group.in.imageUrl && (
+                                            <Text fontSize="xs" color="blue.500">
+                                                <ImageIcon /> Con foto
+                                            </Text>
+                                        )}
                                     </Box>
                                 </Popup>
                             </Marker>
@@ -204,33 +210,77 @@ export default function VisitLogsMapView() {
     const statBg = useColorModeValue("blue.50", "blue.900");
     const hoverBg = useColorModeValue("gray.50", "gray.600");
 
-    // Agrupar visitas
+    // Agrupar visitas - nueva lógica
     const groupedVisits = useMemo(() => {
-        return visitLogs?.reduce((acc, visit) => {
-            const key = `${visit.storeName}-${new Date(visit.createdAt).toDateString()}`;
-            if (!acc[key]) {
-                acc[key] = { in: null, out: null, storeName: visit.storeName };
-            }
+        if (!visitLogs || visitLogs.length === 0) return [];
+
+        // Ordenar por fecha ascendente (más antiguo primero)
+        const sorted = [...visitLogs].sort((a, b) => 
+            new Date(a.createdAt) - new Date(b.createdAt)
+        );
+
+        const groups = [];
+        const processed = new Set();
+
+        sorted.forEach((visit) => {
+            if (processed.has(visit.id)) return;
+
             if (visit.type === "IN") {
-                acc[key].in = visit;
-            } else {
-                acc[key].out = visit;
+                // Buscar el OUT más cercano POSTERIOR a este IN
+                const matchingOut = sorted.find(v => 
+                    !processed.has(v.id) &&
+                    v.type === "OUT" &&
+                    v.storeName === visit.storeName &&
+                    v.vendorName === visit.vendorName &&
+                    new Date(v.createdAt) > new Date(visit.createdAt) && // OUT debe ser después del IN
+                    Math.abs(new Date(v.createdAt) - new Date(visit.createdAt)) < 24 * 60 * 60 * 1000 // Dentro de 24 horas
+                );
+
+                groups.push({
+                    id: `group-${visit.id}`,
+                    storeName: visit.storeName,
+                    vendorName: visit.vendorName,
+                    in: visit,
+                    out: matchingOut || null,
+                });
+
+                processed.add(visit.id);
+                if (matchingOut) processed.add(matchingOut.id);
+            } else if (visit.type === "OUT") {
+                // Si es un OUT sin IN previo, agregarlo solo
+                const hasMatchingIn = sorted.some(v =>
+                    v.type === "IN" &&
+                    v.storeName === visit.storeName &&
+                    v.vendorName === visit.vendorName &&
+                    new Date(v.createdAt) < new Date(visit.createdAt) && // IN debe ser antes del OUT
+                    Math.abs(new Date(visit.createdAt) - new Date(v.createdAt)) < 24 * 60 * 60 * 1000
+                );
+
+                if (!hasMatchingIn) {
+                    groups.push({
+                        id: `group-${visit.id}`,
+                        storeName: visit.storeName,
+                        vendorName: visit.vendorName,
+                        in: null,
+                        out: visit,
+                    });
+                    processed.add(visit.id);
+                }
             }
-            return acc;
-        }, {}) || {};
+        });
+
+        return groups;
     }, [visitLogs]);
 
     // Filtros aplicados
     const filteredGroups = useMemo(() => {
-        return Object.values(groupedVisits).filter(group => {
+        return groupedVisits.filter(group => {
             const vendorMatch = selectedVendor === "all" ||
-                group.in?.vendorName === selectedVendor ||
-                group.out?.vendorName === selectedVendor;
+                group.vendorName === selectedVendor;
 
             const searchMatch = searchTerm === "" ||
                 group.storeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                group.in?.vendorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                group.out?.vendorName.toLowerCase().includes(searchTerm.toLowerCase());
+                group.vendorName.toLowerCase().includes(searchTerm.toLowerCase());
 
             return vendorMatch && searchMatch;
         });
@@ -241,12 +291,13 @@ export default function VisitLogsMapView() {
         const totalVisits = filteredGroups.length;
         const completedVisits = filteredGroups.filter(g => g.in && g.out).length;
         const pendingCheckOut = filteredGroups.filter(g => g.in && !g.out).length;
+        const orphanCheckOut = filteredGroups.filter(g => !g.in && g.out).length;
 
         let totalDuration = 0;
         let visitCount = 0;
         filteredGroups.forEach(g => {
             if (g.in && g.out) {
-                const diff = new Date(g.out.createdAt) - new Date(g.in.createdAt);
+                const diff = new Date(g.in.createdAt) - new Date(g.out.createdAt);
                 totalDuration += diff;
                 visitCount++;
             }
@@ -259,7 +310,8 @@ export default function VisitLogsMapView() {
             totalVisits,
             completedVisits,
             pendingCheckOut,
-            avgDuration: `${avgHours}h ${avgMinutes}m`,
+            orphanCheckOut,
+            avgDuration: visitCount > 0 ? `${avgHours}h ${avgMinutes}m` : "N/A",
         };
     }, [filteredGroups]);
 
@@ -270,17 +322,19 @@ export default function VisitLogsMapView() {
 
     // Centrar mapa en visita seleccionada
     const handleMarkerClick = (group) => {
-        setSelectedStore(group.storeName);
-        if (group.in) {
-            setMapCenter([group.in.latitude, group.in.longitude]);
+        setSelectedStore(group.id);
+        const location = group.in || group.out;
+        if (location) {
+            setMapCenter([location.latitude, location.longitude]);
             setMapZoom(16);
         }
     };
 
     const handleCardClick = (group) => {
-        setSelectedStore(group.storeName);
-        if (group.in) {
-            setMapCenter([group.in.latitude, group.in.longitude]);
+        setSelectedStore(group.id);
+        const location = group.in || group.out;
+        if (location) {
+            setMapCenter([location.latitude, location.longitude]);
             setMapZoom(16);
         }
     };
@@ -328,6 +382,7 @@ export default function VisitLogsMapView() {
                         Mapa de Visitas
                     </Heading>
                 </Flex>
+
                 {/* Estadísticas */}
                 <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} spacing={4}>
                     <Card bg={statBg} borderColor={borderColor}>
@@ -429,7 +484,7 @@ export default function VisitLogsMapView() {
                                 />
                                 <MapUpdater center={mapCenter} zoom={mapZoom} />
                                 <MapMarkers
-                                    groupedVisits={groupedVisits}
+                                    groupedVisits={filteredGroups}
                                     selectedVendor={selectedVendor}
                                     hoveredStore={hoveredStore}
                                     onMarkerClick={handleMarkerClick}
@@ -456,12 +511,12 @@ export default function VisitLogsMapView() {
                         }
                         gap={4}
                     >
-                        {filteredGroups.map((group, idx) => (
+                        {filteredGroups.map((group) => (
                             <Card
-                                key={idx}
+                                key={group.id}
                                 bg={cardBg}
-                                borderColor={selectedStore === group.storeName ? "blue.500" : borderColor}
-                                borderWidth={selectedStore === group.storeName ? "2px" : "1px"}
+                                borderColor={selectedStore === group.id ? "blue.500" : borderColor}
+                                borderWidth={selectedStore === group.id ? "2px" : "1px"}
                                 cursor="pointer"
                                 transition="all 0.2s"
                                 _hover={{
@@ -470,7 +525,7 @@ export default function VisitLogsMapView() {
                                     shadow: "md"
                                 }}
                                 onClick={() => handleCardClick(group)}
-                                onMouseEnter={() => setHoveredStore(group.storeName)}
+                                onMouseEnter={() => setHoveredStore(group.id)}
                                 onMouseLeave={() => setHoveredStore(null)}
                             >
                                 <CardBody>
@@ -484,6 +539,9 @@ export default function VisitLogsMapView() {
                                             )}
                                             {group.in && !group.out && (
                                                 <Badge colorScheme="orange">Pendiente</Badge>
+                                            )}
+                                            {!group.in && group.out && (
+                                                <Badge colorScheme="red">Sin Check-In</Badge>
                                             )}
                                         </HStack>
 
@@ -503,6 +561,25 @@ export default function VisitLogsMapView() {
                                                     <CalendarIcon /> {formatDateTime(group.in.createdAt)}
                                                 </Text>
                                                 <Text fontSize="xs" mt={1}>👤 {group.in.vendorName}</Text>
+                                                {group.in.imageUrl && (
+                                                    <HStack mt={2}>
+                                                        <Badge colorScheme="blue" fontSize="xs">
+                                                            <ImageIcon /> Con foto
+                                                        </Badge>
+                                                        <Text
+                                                            fontSize="xs"
+                                                            color="blue.500"
+                                                            cursor="pointer"
+                                                            textDecoration="underline"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                window.open(group.in.imageUrl, '_blank');
+                                                            }}
+                                                        >
+                                                            Ver imagen
+                                                        </Text>
+                                                    </HStack>
+                                                )}
                                             </Box>
                                         )}
 
@@ -533,7 +610,7 @@ export default function VisitLogsMapView() {
                                                         ⏱️ Duración:
                                                     </Text>
                                                     <Badge colorScheme="blue" fontSize="md" p={2}>
-                                                        {calculateDuration(group.in.createdAt, group.out.createdAt)}
+                                                        {calculateDuration(group.out.createdAt, group.in.createdAt)}
                                                     </Badge>
                                                 </HStack>
                                             </>
