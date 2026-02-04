@@ -8,6 +8,7 @@ import { useClientQueries } from "../../clients/hooks/queries/clientQueries";
 import { useClientQueriesByName } from "../../clients/hooks/queries/clientQueries";
 import { adaptClientFromApi } from "../../clients/adapters/clientAdapter";
 import { useActiveVisitByVendor } from "../../checkinout/hooks/queries/visitLogQueries";
+import { useNavigate } from "react-router-dom";
 
 // Función para comprimir imagen
 const compressImage = (file, maxSizeMB = 1) => {
@@ -127,6 +128,7 @@ const getLocation = () => {
 
 export default function VisitLogPage() {
     const { salesEmployeeCode, username } = useAuthStore();
+    const navigate = useNavigate();
     const toast = useToast();
 
     const {
@@ -153,7 +155,7 @@ export default function VisitLogPage() {
     useEffect(() => {
         if (hasActiveCheckIn && activeVisit && !selectedClient) {
             console.log("📍 Check-In activo detectado, auto-rellenando cliente:", activeVisit.storeName);
-            
+
             // Crear objeto de cliente simulado con los datos de la visita activa
             const clientFromActiveVisit = {
                 firstName: activeVisit.storeName,
@@ -708,7 +710,7 @@ export default function VisitLogPage() {
                                         Cambiar
                                     </Button>
                                 )}
-                                
+
                                 <Badge colorScheme="green" mb={2}>
                                     {hasActiveCheckIn ? "Check-In Activo" : "Seleccionado"}
                                 </Badge>
@@ -828,7 +830,27 @@ export default function VisitLogPage() {
                                 Check In
                             </Button>
                         )}
+                        {hasActiveCheckIn && (
+                            <Button
+                                colorScheme="green"
+                                variant="outline"
+                                width="100%"
+                                size="lg"
+                                height="56px"
+                                fontSize="md"
+                                fontWeight="600"
+                                onClick={() => {
+                                    const storeName =
+                                        selectedClient?.firstName || activeVisit?.storeName;
 
+                                    navigate(
+                                        `/clienteBusqueda?storeName=${encodeURIComponent(storeName)}`
+                                    );
+                                }}
+                            >
+                                Volver al historial del cliente
+                            </Button>
+                        )}
                         {/* Solo mostrar botón Check-Out si HAY activo */}
                         {hasActiveCheckIn && (
                             <Button
@@ -848,6 +870,8 @@ export default function VisitLogPage() {
                                 Check Out
                             </Button>
                         )}
+                        
+
                     </VStack>
 
                     {isCreatingVisit && (

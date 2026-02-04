@@ -28,6 +28,7 @@ export default function ClienteBusquedaPage() {
     const [clientQuery, setClientQuery] = useState("");
     const [sortConfigStock, setSortConfigStock] = useState({ key: null, direction: 'asc' });
     const [sortConfigInvoices, setSortConfigInvoices] = useState({ key: 'date', direction: 'desc' });
+    const [isLockedFromUrl, setIsLockedFromUrl] = useState(false);
 
     const salesEmployeeCode = useAuthStore((state) => state.salesEmployeeCode);
     const isAdmin = !salesEmployeeCode || salesEmployeeCode === "0";
@@ -36,6 +37,7 @@ export default function ClienteBusquedaPage() {
         if (storeNameFromUrl) {
             setSearch(storeNameFromUrl);
             setClientQuery(storeNameFromUrl);
+            setIsLockedFromUrl(true);
         }
     }, [storeNameFromUrl]);
 
@@ -230,6 +232,10 @@ export default function ClienteBusquedaPage() {
         onChange={(e) => setSearch(e.target.value)}
         onKeyPress={handleKeyPress}
         fontSize={{ base: "sm", md: "md" }}
+        isReadOnly={isLockedFromUrl}
+        isDisabled={isLockedFromUrl}
+        bg={isLockedFromUrl ? "gray.100" : "white"}
+        cursor={isLockedFromUrl ? "not-allowed" : "text"}
       />
 
       <Button
@@ -239,7 +245,7 @@ export default function ClienteBusquedaPage() {
         borderRadius="md"
         onClick={handleSearch}
         isLoading={isLoadingProductHistory}
-        isDisabled={!search.trim()}
+        isDisabled={!search.trim() || isLockedFromUrl}
         w="100%"
         fontSize={{ base: "sm", md: "md" }}
       >
