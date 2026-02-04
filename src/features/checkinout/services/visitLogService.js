@@ -47,3 +47,24 @@ export const getVisitLogById = async (id) => {
     return null;
   }
 };
+
+export const getActiveVisitByVendor = async (vendorName) => {
+  try {
+    const response = await axiosInstance.get(
+      `/reportModule/visit-logs/active/${vendorName}`
+    );
+
+    console.log(response.data);
+
+    return response.data;
+  } catch (error) {
+    // 404 significa que NO hay visita activa (esto es normal, no un error)
+    if (error.response?.status === 404) {
+      return null;
+    }
+
+    // Otros errores sí son problemas reales
+    console.error("Error al obtener visita activa:", error);
+    throw error;
+  }
+};

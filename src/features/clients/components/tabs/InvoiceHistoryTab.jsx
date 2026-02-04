@@ -3,153 +3,194 @@ import {
   Box,
   Flex,
   Text,
-  HStack,
   Table,
   Thead,
   Tbody,
   Tr,
   Th,
   Td,
-  Divider,
-  useBreakpointValue
+  useBreakpointValue,
+  Badge
 } from "@chakra-ui/react";
+import { useMemo } from "react";
 
 export function InvoiceHistoryTab({ invoices }) {
   const isMobile = useBreakpointValue({ base: true, md: false });
 
+  // Agrupar productos y calcular totales
+  const productSummary = useMemo(() => {
+    const productMap = new Map();
+
+    invoices.forEach((inv) => {
+      inv.items.forEach((item) => {
+        const code = item.productCode;
+        const invDate = new Date(inv.invoice.date);
+
+        if (!productMap.has(code)) {
+          productMap.set(code, {
+            productCode: code,
+            productName: item.productName,
+            totalQuantity: item.quantity,
+            lastPrice: item.unitPrice,
+            lastPurchaseDate: inv.invoice.date,
+            invoiceCount: 1
+          });
+        } else {
+          const existing = productMap.get(code);
+          existing.totalQuantity += item.quantity;
+          existing.invoiceCount++;
+
+          // Actualizar si esta factura es más reciente
+          if (invDate > new Date(existing.lastPurchaseDate)) {
+            existing.lastPurchaseDate = inv.invoice.date;
+            existing.lastPrice = item.unitPrice;
+          }
+        }
+      });
+    });
+
+    // Convertir a array y ordenar por fecha más reciente
+    return Array.from(productMap.values()).sort(
+      (a, b) => new Date(b.lastPurchaseDate) - new Date(a.lastPurchaseDate)
+    );
+  }, [invoices]);
+
+  const isOlderThan30Days = (dateString) => {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    return new Date(dateString) < thirtyDaysAgo;
+  };
+
   return (
     <VStack spacing={4} align="stretch">
-      {invoices.map((inv, i) => (
-        <Box
-          key={i}
-          bg="white"
-          border="1px solid"
-          borderColor="gray.200"
-          borderRadius="lg"
-          boxShadow="sm"
-          overflow="hidden"
-        >
-          {/* HEADER */}
-          <Box bg="green.50" p={3} borderBottom="1px solid" borderColor="green.100">
-            <VStack align="stretch" spacing={2}>
-              <Flex justify="space-between">
-                <Info label="FACTURA" value={inv.invoice.number} />
-                <Info
-                  label="FECHA"
-                  value={new Date(inv.invoice.date).toLocaleDateString("es-PE")}
-                  align="end"
-                />
-              </Flex>
-
-              <Flex justify="space-between" align="center">
-                <Info label="ITEMS" value={inv.summary.totalItems} />
-
-                <Box textAlign="right">
-                  <Text fontSize="xs" color="gray.500" fontWeight="bold">
-                    TOTAL PAGADO
-                  </Text>
-                  <Text fontWeight="bold" color="green.600" fontSize="lg">
-                    $/ {inv.summary.totalAmount.toFixed(2)}
-                  </Text>
-                </Box>
-              </Flex>
-            </VStack>
-          </Box>
-
-          {/* MOBILE VIEW */}
-          {isMobile && (
-            <VStack align="stretch" spacing={3} p={3}>
-              {inv.items.map((item, idx) => (
+      <Box
+        bg="white"
+        border="1px solid"
+        borderColor="gray.200"
+        borderRadius="lg"
+        boxShadow="sm"
+        overflow="hidden"
+      >
+        {/* MOBILE VIEW */}
+        {isMobile && (
+          <VStack align="stretch" spacing={3} p={3}>
+            {productSummary.map((product, idx) => {
+              const isOld = isOlderThan30Days(product.lastPurchaseDate);
+              
+              return (
                 <Box
                   key={idx}
                   border="1px solid"
-                  borderColor="gray.100"
+                  borderColor={isOld ? "orange.300" : "gray.100"}
+                  bg={isOld ? "orange.50" : "white"}
                   borderRadius="md"
-                  p={2}
+                  p={3}
                 >
-                  <Text fontSize="xs" fontWeight="bold">
-                    {item.productCode}
-                  </Text>
-
-                  <Text fontSize="sm" noOfLines={2}>
-                    {item.productName}
-                  </Text>
-
-                  <Divider my={2} />
-
-                  <Flex justify="space-between">
-                    <Text fontSize="xs" color="gray.500">
-                      Cant.
-                    </Text>
-                    <Text fontSize="sm" fontWeight="bold">
-                      {item.quantity}
-                    </Text>
+                  <Flex justify="space-between" align="start" mb={2}>
+                    <Box flex={1}>
+                      <Text fontSize="xs" fontWeight="bold" color="gray.600">
+                        {product.productCode}
+                      </Text>
+                      <Text fontSize="sm" fontWeight="medium" noOfLines={2}>
+                        {product.productName}
+                      </Text>
+                    </Box>
+                    {isOld && (
+                      <Badge colorScheme="orange" fontSize="xs" ml={2}>
+                        +30 días
+                      </Badge>
+                    )}
                   </Flex>
 
-                  <Flex justify="space-between">
-                    <Text fontSize="xs" color="gray.500">
-                      Precio
-                    </Text>
-                    <Text fontSize="sm">
-                      $/ {item.unitPrice.toFixed(2)}
-                    </Text>
-                  </Flex>
+                  <VStack align="stretch" spacing={1}>
+                    <Flex justify="space-between">
+                      <Text fontSize="xs" color="gray.500">
+                        Cantidad Total:
+                      </Text>
+                      <Text fontSize="sm" fontWeight="bold">
+                        {product.totalQuantity}
+                      </Text>
+                    </Flex>
 
-                  <Flex justify="space-between">
-                    <Text fontSize="xs" color="gray.500">
-                      Subtotal
-                    </Text>
-                    <Text fontSize="sm" fontWeight="bold">
-                      $/ {(item.quantity * item.unitPrice).toFixed(2)}
-                    </Text>
-                  </Flex>
+                    <Flex justify="space-between">
+                      <Text fontSize="xs" color="gray.500">
+                        Último Precio:
+                      </Text>
+                      <Text fontSize="sm" fontWeight="bold" color="green.600">
+                        $/ {product.lastPrice.toFixed(2)}
+                      </Text>
+                    </Flex>
+
+                    <Flex justify="space-between">
+                      <Text fontSize="xs" color="gray.500">
+                        Última Compra:
+                      </Text>
+                      <Text fontSize="sm" fontWeight="medium">
+                        {new Date(product.lastPurchaseDate).toLocaleDateString("es-PE")}
+                      </Text>
+                    </Flex>
+                  </VStack>
                 </Box>
-              ))}
-            </VStack>
-          )}
+              );
+            })}
+          </VStack>
+        )}
 
-          {/* DESKTOP VIEW */}
-          {!isMobile && (
-            <Table size="sm">
-              <Thead bg="gray.50">
-                <Tr>
-                  <Th>Código</Th>
-                  <Th>Producto</Th>
-                  <Th isNumeric>Cant.</Th>
-                  <Th isNumeric>Precio</Th>
-                  <Th isNumeric>Subtotal</Th>
-                </Tr>
-              </Thead>
-              <Tbody>
-                {inv.items.map((item, idx) => (
-                  <Tr key={idx}>
-                    <Td fontWeight="bold">{item.productCode}</Td>
-                    <Td>{item.productName}</Td>
-                    <Td isNumeric>{item.quantity}</Td>
-                    <Td isNumeric>$/ {item.unitPrice.toFixed(2)}</Td>
-                    <Td isNumeric fontWeight="bold">
-                      $/ {(item.quantity * item.unitPrice).toFixed(2)}
+        {/* DESKTOP VIEW */}
+        {!isMobile && (
+          <Table size="sm">
+            <Thead bg="gray.50">
+              <Tr>
+                <Th>Código</Th>
+                <Th>Producto</Th>
+                <Th isNumeric>Cant. Total</Th>
+                <Th isNumeric>Último Precio</Th>
+                <Th>Última Compra</Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {productSummary.map((product, idx) => {
+                const isOld = isOlderThan30Days(product.lastPurchaseDate);
+                
+                return (
+                  <Tr
+                    key={idx}
+                    bg={isOld ? "orange.50" : "white"}
+                    _hover={{ bg: isOld ? "orange.100" : "gray.50" }}
+                  >
+                    <Td fontWeight="bold">{product.productCode}</Td>
+                    <Td maxW="300px">
+                      <Text noOfLines={2}>{product.productName}</Text>
+                    </Td>
+                    <Td isNumeric fontWeight="bold">{product.totalQuantity}</Td>
+                    <Td isNumeric fontWeight="bold" color="green.600">
+                      $/ {product.lastPrice.toFixed(2)}
+                    </Td>
+                    <Td>
+                      <Flex align="center" gap={2}>
+                        <Text fontSize="sm">
+                          {new Date(product.lastPurchaseDate).toLocaleDateString("es-PE")}
+                        </Text>
+                        {isOld && (
+                          <Badge colorScheme="orange" fontSize="xs">
+                            +30 días
+                          </Badge>
+                        )}
+                      </Flex>
                     </Td>
                   </Tr>
-                ))}
-              </Tbody>
-            </Table>
-          )}
-        </Box>
-      ))}
-    </VStack>
-  );
-}
+                );
+              })}
+            </Tbody>
+          </Table>
+        )}
+      </Box>
 
-function Info({ label, value, align = "start" }) {
-  return (
-    <Box textAlign={align}>
-      <Text fontSize="xs" color="gray.500" fontWeight="bold">
-        {label}
-      </Text>
-      <Text fontWeight="bold" fontSize="sm">
-        {value}
-      </Text>
-    </Box>
+      {productSummary.length === 0 && (
+        <Box textAlign="center" py={8} color="gray.500">
+          <Text>No hay productos en el historial</Text>
+        </Box>
+      )}
+    </VStack>
   );
 }

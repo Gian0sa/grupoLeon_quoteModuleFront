@@ -13,8 +13,8 @@ export function ClientTabs({ children }) {
           "&::-webkit-scrollbar": { display: "none" },
         }}
       >
-        <TabStyled>Histórico</TabStyled>
-        <TabStyled>Stock</TabStyled>
+        {/* <TabStyled>Histórico</TabStyled> */}
+        {/* <TabStyled>Stock</TabStyled> */}
         {/* <TabStyled>Importaciones</TabStyled> */}
       </TabList>
 

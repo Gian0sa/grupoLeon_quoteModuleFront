@@ -28,9 +28,11 @@ export const useCreateVisitLog = () => {
         position: "top",
       });
 
-      navigate(
-        `/clienteBusqueda?storeName=${encodeURIComponent(storeName)}`
-      );
+      if (type === "IN") {
+        navigate(
+          `/clienteBusqueda?storeName=${encodeURIComponent(storeName)}`
+        );
+      }
     },
 
     onError: (error) => {

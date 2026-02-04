@@ -1,5 +1,5 @@
 import { VStack, Box, Heading, Input, Button, Divider, Spinner, Flex, Text, Icon, useToast, Badge } from "@chakra-ui/react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { FiCamera, FiMapPin, FiUser, FiShoppingBag, FiSearch, FiX } from "react-icons/fi";
 import { useCreateVisitLog } from "../../checkinout/hooks/mutations/visitLogMutations";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
@@ -7,6 +7,7 @@ import { BackButton } from "../../../components/BackButton";
 import { useClientQueries } from "../../clients/hooks/queries/clientQueries";
 import { useClientQueriesByName } from "../../clients/hooks/queries/clientQueries";
 import { adaptClientFromApi } from "../../clients/adapters/clientAdapter";
+import { useActiveVisitByVendor } from "../../checkinout/hooks/queries/visitLogQueries";
 
 // Función para comprimir imagen
 const compressImage = (file, maxSizeMB = 1) => {
@@ -126,6 +127,14 @@ const getLocation = () => {
 
 export default function VisitLogPage() {
     const { salesEmployeeCode, username } = useAuthStore();
+    const toast = useToast();
+
+    const {
+        data: activeVisitData,
+        isLoading: isLoadingActiveVisit,
+        refetch: refetchActiveVisit,
+    } = useActiveVisitByVendor(username);
+
     const [inputValue, setInputValue] = useState("");
     const [searchTerm, setSearchTerm] = useState("");
     const [isSearchingByCode, setIsSearchingByCode] = useState(true);
@@ -133,9 +142,28 @@ export default function VisitLogPage() {
     const [image, setImage] = useState(null);
     const [imagePreview, setImagePreview] = useState(null);
     const [isProcessingImage, setIsProcessingImage] = useState(false);
-    const toast = useToast();
 
     const { mutate: createVisit, isLoading: isCreatingVisit } = useCreateVisitLog();
+
+    // Extraer la visita activa del response
+    const activeVisit = activeVisitData?.visit || null;
+    const hasActiveCheckIn = activeVisitData?.active || false;
+
+    // 🔥 EFECTO: Auto-rellenar cliente cuando hay check-in activo
+    useEffect(() => {
+        if (hasActiveCheckIn && activeVisit && !selectedClient) {
+            console.log("📍 Check-In activo detectado, auto-rellenando cliente:", activeVisit.storeName);
+            
+            // Crear objeto de cliente simulado con los datos de la visita activa
+            const clientFromActiveVisit = {
+                firstName: activeVisit.storeName,
+                id: "AUTO", // No tenemos el código del cliente en la respuesta
+                address: `Lat: ${activeVisit.latitude}, Lon: ${activeVisit.longitude}`,
+            };
+
+            setSelectedClient(clientFromActiveVisit);
+        }
+    }, [hasActiveCheckIn, activeVisit, selectedClient]);
 
     // Client search hooks
     const {
@@ -233,7 +261,32 @@ export default function VisitLogPage() {
         console.log("=== INICIANDO CHECK", type, "===");
 
         try {
-            // Validación 1: Imagen para Check-In
+            // 🔥 VALIDACIÓN CRÍTICA: Verificar estado de check-in según tipo
+            if (type === "IN" && hasActiveCheckIn) {
+                console.log("❌ Ya existe un Check-In activo");
+                toast({
+                    title: "Check-In ya registrado",
+                    description: `Tienes un Check-In activo en "${activeVisit.storeName}" desde ${new Date(activeVisit.createdAt).toLocaleTimeString()}. Debes hacer Check-Out primero.`,
+                    status: "warning",
+                    duration: 5000,
+                    isClosable: true,
+                });
+                return;
+            }
+
+            if (type === "OUT" && !hasActiveCheckIn) {
+                console.log("❌ No hay Check-In activo para cerrar");
+                toast({
+                    title: "Sin Check-In activo",
+                    description: "No tienes un Check-In abierto. Debes hacer Check-In primero.",
+                    status: "warning",
+                    duration: 4000,
+                    isClosable: true,
+                });
+                return;
+            }
+
+            // Validación: Imagen solo para Check-In
             if (type === "IN" && !image) {
                 console.log("❌ Falta imagen para Check-In");
                 toast({
@@ -246,7 +299,7 @@ export default function VisitLogPage() {
                 return;
             }
 
-            // Validación 2: Cliente seleccionado
+            // Validación: Cliente seleccionado
             if (!selectedClient) {
                 console.log("❌ Falta seleccionar cliente");
                 toast({
@@ -259,14 +312,13 @@ export default function VisitLogPage() {
                 return;
             }
 
-            console.log("✅ Validaciones iniciales pasadas");
+            console.log("✅ Validaciones pasadas");
 
-            // Paso 1: Obtener ubicación
+            // Obtener ubicación
             const location = await getLocation();
-
             console.log("✅ Ubicación obtenida:", location);
 
-            // Paso 2: Preparar FormData
+            // Preparar FormData
             const formData = new FormData();
             formData.append("type", type);
             formData.append("vendorName", username);
@@ -302,10 +354,15 @@ export default function VisitLogPage() {
                         isClosable: true,
                     });
 
-                    // Limpiar formulario
-                    setSelectedClient(null);
+                    // Limpiar formulario solo si es Check-Out
+                    if (type === "OUT") {
+                        setSelectedClient(null);
+                    }
                     setImage(null);
                     setImagePreview(null);
+
+                    // 🔥 IMPORTANTE: Refrescar el estado de visita activa
+                    refetchActiveVisit();
                 },
                 onError: (error) => {
                     console.error("❌ ERROR:", error);
@@ -341,19 +398,29 @@ export default function VisitLogPage() {
             let errorTitle = "Error";
             let errorDescription = error.message || "Error desconocido";
 
-            // Errores específicos de ubicación
-            if (error.message === "GEOLOCATION_NOT_SUPPORTED") {
-                errorTitle = "Geolocalización no disponible";
-                errorDescription = "Tu navegador no soporta geolocalización";
-            } else if (error.message === "PERMISSION_DENIED") {
-                errorTitle = "Permiso denegado";
-                errorDescription = "Debes permitir el acceso a la ubicación en la configuración";
-            } else if (error.message === "POSITION_UNAVAILABLE") {
-                errorTitle = "Ubicación no disponible";
-                errorDescription = "No se pudo determinar tu ubicación. Verifica que el GPS esté activado";
-            } else if (error.message === "TIMEOUT") {
-                errorTitle = "Tiempo agotado";
-                errorDescription = "Tardó mucho en obtener la ubicación. Intenta de nuevo";
+            // Manejar errores específicos de geolocalización
+            const locationErrors = {
+                "GEOLOCATION_NOT_SUPPORTED": {
+                    title: "Geolocalización no disponible",
+                    description: "Tu navegador no soporta geolocalización"
+                },
+                "PERMISSION_DENIED": {
+                    title: "Permiso denegado",
+                    description: "Debes permitir el acceso a la ubicación"
+                },
+                "POSITION_UNAVAILABLE": {
+                    title: "Ubicación no disponible",
+                    description: "No se pudo determinar tu ubicación. Verifica el GPS"
+                },
+                "TIMEOUT": {
+                    title: "Tiempo agotado",
+                    description: "Tardó mucho en obtener la ubicación. Intenta de nuevo"
+                }
+            };
+
+            if (locationErrors[error.message]) {
+                errorTitle = locationErrors[error.message].title;
+                errorDescription = locationErrors[error.message].description;
             }
 
             toast({
@@ -398,6 +465,60 @@ export default function VisitLogPage() {
                     Registro de Visita
                 </Heading>
             </Flex>
+
+            {/* Alert de Check-In activo */}
+            {hasActiveCheckIn && activeVisit && (
+                <Box mx={4} mt={4}>
+                    <Box
+                        bg="orange.50"
+                        borderLeft="4px solid"
+                        borderColor="orange.400"
+                        p={3}
+                        borderRadius="md"
+                    >
+                        <Flex justify="space-between" align="center">
+                            <Box flex={1}>
+                                <Text fontSize="sm" color="orange.800" mb={1}>
+                                    Tienes un <strong>Check-In activo</strong> en{" "}
+                                    <strong>{activeVisit.storeName}</strong>
+                                </Text>
+                                <Text fontSize="xs" color="orange.700">
+                                    Desde {new Date(activeVisit.createdAt).toLocaleTimeString()} • No olvides marcar tu Check-Out
+                                </Text>
+                            </Box>
+                            {activeVisit.imageUrl && (
+                                <Box
+                                    ml={3}
+                                    w="60px"
+                                    h="60px"
+                                    borderRadius="md"
+                                    overflow="hidden"
+                                    border="2px solid"
+                                    borderColor="orange.300"
+                                    flexShrink={0}
+                                >
+                                    <img
+                                        src={activeVisit.imageUrl}
+                                        alt="Check-In"
+                                        style={{
+                                            width: "100%",
+                                            height: "100%",
+                                            objectFit: "cover"
+                                        }}
+                                    />
+                                </Box>
+                            )}
+                        </Flex>
+                    </Box>
+                </Box>
+            )}
+
+            {/* Loading state inicial */}
+            {isLoadingActiveVisit && (
+                <Flex justify="center" py={4}>
+                    <Spinner color="green.500" size="sm" />
+                </Flex>
+            )}
 
             {/* Content */}
             <Box px={4} pt={6}>
@@ -572,27 +693,33 @@ export default function VisitLogPage() {
                                 borderColor="green.400"
                                 position="relative"
                             >
-                                <Button
-                                    size="sm"
-                                    position="absolute"
-                                    top={2}
-                                    right={2}
-                                    colorScheme="red"
-                                    variant="ghost"
-                                    onClick={handleClearClient}
-                                    leftIcon={<FiX />}
-                                >
-                                    Cambiar
-                                </Button>
+                                {/* Solo permitir cambiar cliente si NO hay check-in activo */}
+                                {!hasActiveCheckIn && (
+                                    <Button
+                                        size="sm"
+                                        position="absolute"
+                                        top={2}
+                                        right={2}
+                                        colorScheme="red"
+                                        variant="ghost"
+                                        onClick={handleClearClient}
+                                        leftIcon={<FiX />}
+                                    >
+                                        Cambiar
+                                    </Button>
+                                )}
+                                
                                 <Badge colorScheme="green" mb={2}>
-                                    Seleccionado
+                                    {hasActiveCheckIn ? "Check-In Activo" : "Seleccionado"}
                                 </Badge>
                                 <Text fontWeight="700" fontSize="lg" color="green.800" mb={2}>
                                     {selectedClient.firstName}
                                 </Text>
-                                <Text fontSize="sm" color="gray.700" mb={1}>
-                                    <strong>Código:</strong> {selectedClient.id}
-                                </Text>
+                                {selectedClient.id !== "AUTO" && (
+                                    <Text fontSize="sm" color="gray.700" mb={1}>
+                                        <strong>Código:</strong> {selectedClient.id}
+                                    </Text>
+                                )}
                                 <Text fontSize="sm" color="gray.700">
                                     <strong>Dirección:</strong> {selectedClient.address}
                                 </Text>
@@ -600,69 +727,71 @@ export default function VisitLogPage() {
                         )}
                     </Box>
 
-                    {/* Imagen Card */}
-                    <Box
-                        bg="white"
-                        p={4}
-                        borderRadius="lg"
-                        boxShadow="sm"
-                    >
-                        <Flex align="center" mb={3}>
-                            <Icon as={FiCamera} color="green.600" mr={2} />
-                            <Text fontSize="sm" fontWeight="500" color="gray.600">
-                                Fotografía (Check-In)
-                            </Text>
-                        </Flex>
-
-                        {imagePreview && (
-                            <Box
-                                mb={3}
-                                borderRadius="md"
-                                overflow="hidden"
-                                border="2px solid"
-                                borderColor="green.200"
-                            >
-                                <img
-                                    src={imagePreview}
-                                    alt="Preview"
-                                    style={{
-                                        width: "100%",
-                                        height: "200px",
-                                        objectFit: "cover"
-                                    }}
-                                />
-                            </Box>
-                        )}
-
-                        <Button
-                            as="label"
-                            htmlFor="file-input"
-                            variant="outline"
-                            colorScheme="green"
-                            width="100%"
-                            cursor="pointer"
-                            leftIcon={<FiCamera />}
-                            size="lg"
-                            isLoading={isProcessingImage}
-                            loadingText="Procesando..."
+                    {/* Imagen Card - Solo mostrar si NO hay check-in activo */}
+                    {!hasActiveCheckIn && (
+                        <Box
+                            bg="white"
+                            p={4}
+                            borderRadius="lg"
+                            boxShadow="sm"
                         >
-                            {image ? "Cambiar Foto" : "Tomar/Subir Foto"}
-                        </Button>
-                        <Input
-                            id="file-input"
-                            type="file"
-                            accept="image/*"
-                            capture="environment"
-                            onChange={handleImageChange}
-                            display="none"
-                        />
+                            <Flex align="center" mb={3}>
+                                <Icon as={FiCamera} color="green.600" mr={2} />
+                                <Text fontSize="sm" fontWeight="500" color="gray.600">
+                                    Fotografía (Check-In)
+                                </Text>
+                            </Flex>
 
-                        {image && (
-                            <Text fontSize="xs" color="gray.500" mt={2} textAlign="center">
-                                Tamaño: {(image.size / 1024).toFixed(2)} KB
-                            </Text>
-                        )}
-                    </Box>
+                            {imagePreview && (
+                                <Box
+                                    mb={3}
+                                    borderRadius="md"
+                                    overflow="hidden"
+                                    border="2px solid"
+                                    borderColor="green.200"
+                                >
+                                    <img
+                                        src={imagePreview}
+                                        alt="Preview"
+                                        style={{
+                                            width: "100%",
+                                            height: "200px",
+                                            objectFit: "cover"
+                                        }}
+                                    />
+                                </Box>
+                            )}
+
+                            <Button
+                                as="label"
+                                htmlFor="file-input"
+                                variant="outline"
+                                colorScheme="green"
+                                width="100%"
+                                cursor="pointer"
+                                leftIcon={<FiCamera />}
+                                size="lg"
+                                isLoading={isProcessingImage}
+                                loadingText="Procesando..."
+                            >
+                                {image ? "Cambiar Foto" : "Tomar/Subir Foto"}
+                            </Button>
+                            <Input
+                                id="file-input"
+                                type="file"
+                                accept="image/*"
+                                capture="environment"
+                                onChange={handleImageChange}
+                                display="none"
+                            />
+
+                            {image && (
+                                <Text fontSize="xs" color="gray.500" mt={2} textAlign="center">
+                                    Tamaño: {(image.size / 1024).toFixed(2)} KB
+                                </Text>
+                            )}
+                        </Box>
+                    )}
 
                     {/* Location Info */}
                     <Flex
@@ -680,39 +809,45 @@ export default function VisitLogPage() {
 
                     {/* Action Buttons */}
                     <VStack spacing={3} pt={2}>
-                        <Button
-                            colorScheme="green"
-                            width="100%"
-                            size="lg"
-                            height="56px"
-                            fontSize="md"
-                            fontWeight="600"
-                            onClick={() => handleSubmit("IN")}
-                            isLoading={isCreatingVisit}
-                            loadingText="Registrando..."
-                            boxShadow="md"
-                            _hover={{ transform: "translateY(-2px)", boxShadow: "lg" }}
-                            transition="all 0.2s"
-                        >
-                            Check In
-                        </Button>
+                        {/* Solo mostrar botón Check-In si NO hay activo */}
+                        {!hasActiveCheckIn && (
+                            <Button
+                                colorScheme="green"
+                                width="100%"
+                                size="lg"
+                                height="56px"
+                                fontSize="md"
+                                fontWeight="600"
+                                onClick={() => handleSubmit("IN")}
+                                isLoading={isCreatingVisit}
+                                loadingText="Registrando..."
+                                boxShadow="md"
+                                _hover={{ transform: "translateY(-2px)", boxShadow: "lg" }}
+                                transition="all 0.2s"
+                            >
+                                Check In
+                            </Button>
+                        )}
 
-                        <Button
-                            colorScheme="red"
-                            width="100%"
-                            size="lg"
-                            height="56px"
-                            fontSize="md"
-                            fontWeight="600"
-                            onClick={() => handleSubmit("OUT")}
-                            isLoading={isCreatingVisit}
-                            loadingText="Registrando..."
-                            boxShadow="md"
-                            _hover={{ transform: "translateY(-2px)", boxShadow: "lg" }}
-                            transition="all 0.2s"
-                        >
-                            Check Out
-                        </Button>
+                        {/* Solo mostrar botón Check-Out si HAY activo */}
+                        {hasActiveCheckIn && (
+                            <Button
+                                colorScheme="red"
+                                width="100%"
+                                size="lg"
+                                height="56px"
+                                fontSize="md"
+                                fontWeight="600"
+                                onClick={() => handleSubmit("OUT")}
+                                isLoading={isCreatingVisit}
+                                loadingText="Registrando..."
+                                boxShadow="md"
+                                _hover={{ transform: "translateY(-2px)", boxShadow: "lg" }}
+                                transition="all 0.2s"
+                            >
+                                Check Out
+                            </Button>
+                        )}
                     </VStack>
 
                     {isCreatingVisit && (
