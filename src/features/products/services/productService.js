@@ -27,9 +27,9 @@ export const getProductsPriceList = async ({
     params.append('page', page);
 
     const url = `/reportModule/priceList?${params.toString()}`;
-    console.log("Consultando:", url);
 
     const response = await axiosInstance.get(url);
+    console.log("Respuesta:", response.data);
     return response.data;
   } catch (error) {
     console.error("Error al obtener la lista de precios:", error);

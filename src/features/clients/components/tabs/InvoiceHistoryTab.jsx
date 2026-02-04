@@ -10,14 +10,42 @@ import {
   Th,
   Td,
   useBreakpointValue,
-  Badge
+  Badge,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalCloseButton,
+  Spinner,
+  useDisclosure,
+  SimpleGrid,
+  Icon,
+  Divider,
+  HStack,
+  IconButton,
+  Input,
+  InputGroup,
+  InputLeftElement,
 } from "@chakra-ui/react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { useProductsPriceList } from "../../../products/hooks/queries/productQueries";
+import { FiPackage, FiCalendar, FiDollarSign, FiHash, FiSearch, FiX } from "react-icons/fi";
 
 export function InvoiceHistoryTab({ invoices }) {
   const isMobile = useBreakpointValue({ base: true, md: false });
+  const { isOpen, onOpen, onClose } = useDisclosure();
+  const [selectedItemCode, setSelectedItemCode] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
 
-  // Agrupar productos y calcular totales
+  // Hook para obtener detalles del producto
+  const { data, isLoading } = useProductsPriceList({
+    itemCode: selectedItemCode ?? "",
+    page: 1,
+    enabled: !!selectedItemCode,
+  });
+
+  // Agrupar productos
   const productSummary = useMemo(() => {
     const productMap = new Map();
 
@@ -33,14 +61,13 @@ export function InvoiceHistoryTab({ invoices }) {
             totalQuantity: item.quantity,
             lastPrice: item.unitPrice,
             lastPurchaseDate: inv.invoice.date,
-            invoiceCount: 1
+            purchaseCount: 1,
           });
         } else {
           const existing = productMap.get(code);
           existing.totalQuantity += item.quantity;
-          existing.invoiceCount++;
+          existing.purchaseCount += 1;
 
-          // Actualizar si esta factura es más reciente
           if (invDate > new Date(existing.lastPurchaseDate)) {
             existing.lastPurchaseDate = inv.invoice.date;
             existing.lastPrice = item.unitPrice;
@@ -49,134 +76,271 @@ export function InvoiceHistoryTab({ invoices }) {
       });
     });
 
-    // Convertir a array y ordenar por fecha más reciente
     return Array.from(productMap.values()).sort(
       (a, b) => new Date(b.lastPurchaseDate) - new Date(a.lastPurchaseDate)
     );
   }, [invoices]);
 
+  // Filtrar productos por búsqueda
+  const filteredProducts = useMemo(() => {
+    if (!searchTerm.trim()) return productSummary;
+    
+    const term = searchTerm.toLowerCase();
+    return productSummary.filter(
+      (product) =>
+        product.productCode.toLowerCase().includes(term) ||
+        product.productName.toLowerCase().includes(term)
+    );
+  }, [productSummary, searchTerm]);
+
   const isOlderThan30Days = (dateString) => {
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    return new Date(dateString) < thirtyDaysAgo;
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return new Date(dateString) < d;
+  };
+
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffTime = Math.abs(now - date);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return "Hoy";
+    if (diffDays === 1) return "Ayer";
+    if (diffDays < 7) return `Hace ${diffDays} días`;
+    if (diffDays < 30) return `Hace ${Math.floor(diffDays / 7)} semanas`;
+    
+    return date.toLocaleDateString("es-PE", { 
+      day: '2-digit', 
+      month: 'short',
+      year: 'numeric'
+    });
+  };
+
+  const handleOpenProduct = (code) => {
+    setSelectedItemCode(code);
+    onOpen();
+  };
+
+  const handleClose = () => {
+    setSelectedItemCode(null);
+    onClose();
+  };
+
+  const clearSearch = () => {
+    setSearchTerm("");
   };
 
   return (
     <VStack spacing={4} align="stretch">
+      {/* Barra de búsqueda y estadísticas */}
+      <Box>
+        <InputGroup size={isMobile ? "md" : "lg"}>
+          <InputLeftElement pointerEvents="none">
+            <Icon as={FiSearch} color="gray.400" />
+          </InputLeftElement>
+          <Input
+            placeholder="Buscar por código o nombre..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            bg="white"
+            borderColor="gray.300"
+            _hover={{ borderColor: "gray.400" }}
+            _focus={{ borderColor: "blue.500", boxShadow: "0 0 0 1px #3182ce" }}
+          />
+          {searchTerm && (
+            <IconButton
+              position="absolute"
+              right={2}
+              top="50%"
+              transform="translateY(-50%)"
+              size="sm"
+              variant="ghost"
+              icon={<FiX />}
+              onClick={clearSearch}
+              aria-label="Limpiar búsqueda"
+            />
+          )}
+        </InputGroup>
+
+        {/* Resumen de estadísticas */}
+        <Flex 
+          mt={3} 
+          gap={3} 
+          flexWrap="wrap"
+          fontSize="sm"
+        >
+          <Badge colorScheme="blue" px={3} py={1} borderRadius="full">
+            {filteredProducts.length} productos
+          </Badge>
+          <Badge colorScheme="green" px={3} py={1} borderRadius="full">
+            {filteredProducts.reduce((sum, p) => sum + p.totalQuantity, 0)} unidades
+          </Badge>
+          <Badge colorScheme="purple" px={3} py={1} borderRadius="full">
+            {filteredProducts.filter(p => isOlderThan30Days(p.lastPurchaseDate)).length} sin comprar +30d
+          </Badge>
+        </Flex>
+      </Box>
+
       <Box
         bg="white"
         border="1px solid"
         borderColor="gray.200"
-        borderRadius="lg"
+        borderRadius="xl"
         boxShadow="sm"
         overflow="hidden"
       >
-        {/* MOBILE VIEW */}
+        {/* ================= MOBILE ================= */}
         {isMobile && (
-          <VStack align="stretch" spacing={3} p={3}>
-            {productSummary.map((product, idx) => {
+          <VStack align="stretch" spacing={0} divider={<Divider />}>
+            {filteredProducts.map((product, idx) => {
               const isOld = isOlderThan30Days(product.lastPurchaseDate);
-              
+
               return (
                 <Box
                   key={idx}
-                  border="1px solid"
-                  borderColor={isOld ? "orange.300" : "gray.100"}
+                  cursor="pointer"
+                  onClick={() => handleOpenProduct(product.productCode)}
                   bg={isOld ? "orange.50" : "white"}
-                  borderRadius="md"
-                  p={3}
+                  p={4}
+                  _active={{ bg: isOld ? "orange.100" : "gray.100" }}
+                  transition="all 0.2s"
                 >
-                  <Flex justify="space-between" align="start" mb={2}>
-                    <Box flex={1}>
+                  {/* Header con código y badge */}
+                  <Flex justify="space-between" align="start" mb={3}>
+                    <HStack spacing={2} flex={1}>
+                      <Icon as={FiPackage} color="gray.500" boxSize={4} />
                       <Text fontSize="xs" fontWeight="bold" color="gray.600">
                         {product.productCode}
                       </Text>
-                      <Text fontSize="sm" fontWeight="medium" noOfLines={2}>
-                        {product.productName}
-                      </Text>
-                    </Box>
+                    </HStack>
                     {isOld && (
-                      <Badge colorScheme="orange" fontSize="xs" ml={2}>
+                      <Badge 
+                        colorScheme="orange" 
+                        fontSize="xs"
+                        borderRadius="full"
+                      >
                         +30 días
                       </Badge>
                     )}
                   </Flex>
 
-                  <VStack align="stretch" spacing={1}>
-                    <Flex justify="space-between">
-                      <Text fontSize="xs" color="gray.500">
-                        Cantidad Total:
-                      </Text>
-                      <Text fontSize="sm" fontWeight="bold">
+                  {/* Nombre del producto */}
+                  <Text 
+                    fontSize="md" 
+                    fontWeight="semibold" 
+                    mb={3}
+                    noOfLines={2}
+                    color="gray.800"
+                  >
+                    {product.productName}
+                  </Text>
+
+                  {/* Grid de información */}
+                  <SimpleGrid columns={2} spacing={3}>
+                    {/* Cantidad total */}
+                    <Box>
+                      <HStack spacing={1} mb={1}>
+                        <Icon as={FiHash} boxSize={3} color="gray.500" />
+                        <Text fontSize="xs" color="gray.500">Cantidad</Text>
+                      </HStack>
+                      <Text fontWeight="bold" fontSize="lg">
                         {product.totalQuantity}
                       </Text>
-                    </Flex>
-
-                    <Flex justify="space-between">
                       <Text fontSize="xs" color="gray.500">
-                        Último Precio:
+                        {product.purchaseCount} {product.purchaseCount === 1 ? 'compra' : 'compras'}
                       </Text>
-                      <Text fontSize="sm" fontWeight="bold" color="green.600">
-                        $/ {product.lastPrice.toFixed(2)}
-                      </Text>
-                    </Flex>
+                    </Box>
 
-                    <Flex justify="space-between">
+                    {/* Último precio */}
+                    <Box>
+                      <HStack spacing={1} mb={1}>
+                        <Icon as={FiDollarSign} boxSize={3} color="green.500" />
+                        <Text fontSize="xs" color="gray.500">Último Precio</Text>
+                      </HStack>
+                      <Text fontWeight="bold" color="green.600" fontSize="lg">
+                        S/ {product.lastPrice.toFixed(2)}
+                      </Text>
+                    </Box>
+                  </SimpleGrid>
+
+                  {/* Fecha de última compra */}
+                  <Box mt={3} pt={3} borderTop="1px solid" borderColor="gray.100">
+                    <HStack spacing={1}>
+                      <Icon as={FiCalendar} boxSize={3} color="gray.500" />
                       <Text fontSize="xs" color="gray.500">
-                        Última Compra:
+                        Última compra:
                       </Text>
-                      <Text fontSize="sm" fontWeight="medium">
-                        {new Date(product.lastPurchaseDate).toLocaleDateString("es-PE")}
+                      <Text fontSize="xs" fontWeight="medium" color={isOld ? "orange.600" : "gray.700"}>
+                        {formatDate(product.lastPurchaseDate)}
                       </Text>
-                    </Flex>
-                  </VStack>
+                    </HStack>
+                  </Box>
                 </Box>
               );
             })}
           </VStack>
         )}
 
-        {/* DESKTOP VIEW */}
+        {/* ================= DESKTOP ================= */}
         {!isMobile && (
-          <Table size="sm">
+          <Table size="sm" variant="simple">
             <Thead bg="gray.50">
               <Tr>
                 <Th>Código</Th>
                 <Th>Producto</Th>
                 <Th isNumeric>Cant. Total</Th>
+                <Th isNumeric>Compras</Th>
                 <Th isNumeric>Último Precio</Th>
                 <Th>Última Compra</Th>
               </Tr>
             </Thead>
             <Tbody>
-              {productSummary.map((product, idx) => {
+              {filteredProducts.map((product, idx) => {
                 const isOld = isOlderThan30Days(product.lastPurchaseDate);
-                
+
                 return (
                   <Tr
                     key={idx}
+                    cursor="pointer"
+                    onClick={() => handleOpenProduct(product.productCode)}
                     bg={isOld ? "orange.50" : "white"}
                     _hover={{ bg: isOld ? "orange.100" : "gray.50" }}
+                    transition="all 0.2s"
                   >
-                    <Td fontWeight="bold">{product.productCode}</Td>
-                    <Td maxW="300px">
-                      <Text noOfLines={2}>{product.productName}</Text>
+                    <Td fontWeight="bold" color="gray.700">
+                      <HStack spacing={2}>
+                        <Icon as={FiPackage} color="gray.500" boxSize={4} />
+                        <Text>{product.productCode}</Text>
+                      </HStack>
                     </Td>
-                    <Td isNumeric fontWeight="bold">{product.totalQuantity}</Td>
-                    <Td isNumeric fontWeight="bold" color="green.600">
-                      $/ {product.lastPrice.toFixed(2)}
+                    <Td maxW="350px">
+                      <Text noOfLines={2} fontWeight="medium">
+                        {product.productName}
+                      </Text>
+                    </Td>
+                    <Td isNumeric fontWeight="bold" fontSize="md">
+                      {product.totalQuantity}
+                    </Td>
+                    <Td isNumeric>
+                      <Badge colorScheme="blue" borderRadius="full">
+                        {product.purchaseCount}
+                      </Badge>
+                    </Td>
+                    <Td isNumeric fontWeight="bold" color="green.600" fontSize="md">
+                      S/ {product.lastPrice.toFixed(2)}
                     </Td>
                     <Td>
-                      <Flex align="center" gap={2}>
-                        <Text fontSize="sm">
-                          {new Date(product.lastPurchaseDate).toLocaleDateString("es-PE")}
+                      <VStack align="flex-start" spacing={1}>
+                        <Text fontSize="sm" fontWeight="medium">
+                          {formatDate(product.lastPurchaseDate)}
                         </Text>
                         {isOld && (
-                          <Badge colorScheme="orange" fontSize="xs">
+                          <Badge colorScheme="orange" fontSize="xs" borderRadius="full">
                             +30 días
                           </Badge>
                         )}
-                      </Flex>
+                      </VStack>
                     </Td>
                   </Tr>
                 );
@@ -186,11 +350,156 @@ export function InvoiceHistoryTab({ invoices }) {
         )}
       </Box>
 
-      {productSummary.length === 0 && (
-        <Box textAlign="center" py={8} color="gray.500">
-          <Text>No hay productos en el historial</Text>
+      {/* Mensaje cuando no hay resultados */}
+      {filteredProducts.length === 0 && (
+        <Box 
+          textAlign="center" 
+          py={12} 
+          bg="white"
+          borderRadius="xl"
+          border="1px solid"
+          borderColor="gray.200"
+        >
+          <Icon as={FiPackage} boxSize={12} color="gray.300" mb={3} />
+          <Text color="gray.600" fontWeight="medium" mb={1}>
+            {searchTerm ? "No se encontraron productos" : "No hay productos en el historial"}
+          </Text>
+          {searchTerm && (
+            <Text color="gray.500" fontSize="sm">
+              Intenta con otro término de búsqueda
+            </Text>
+          )}
         </Box>
       )}
+
+      {/* ================= MODAL ================= */}
+      <Modal isOpen={isOpen} onClose={handleClose} size="lg" isCentered>
+        <ModalOverlay backdropFilter="blur(4px)" />
+        <ModalContent mx={4} borderRadius="xl">
+          <ModalHeader borderBottom="1px solid" borderColor="gray.100">
+            <HStack spacing={2}>
+              <Icon as={FiPackage} color="blue.500" />
+              <Text>Detalle del producto</Text>
+            </HStack>
+          </ModalHeader>
+          <ModalCloseButton />
+
+          <ModalBody pb={6} pt={6}>
+            {isLoading && (
+              <Flex justify="center" align="center" py={12}>
+                <VStack spacing={3}>
+                  <Spinner size="xl" color="blue.500" thickness="3px" />
+                  <Text color="gray.500">Cargando información...</Text>
+                </VStack>
+              </Flex>
+            )}
+
+            {!isLoading && data?.records?.[0] && (() => {
+              const p = data.records[0];
+              return (
+                <VStack align="stretch" spacing={5}>
+                  {/* Header del producto */}
+                  <Box 
+                    bg="blue.50" 
+                    p={4} 
+                    borderRadius="lg"
+                    border="1px solid"
+                    borderColor="blue.100"
+                  >
+                    <Text fontWeight="bold" fontSize="lg" mb={1} color="gray.800">
+                      {p.ITEM_NAME}
+                    </Text>
+                    <HStack spacing={2} flexWrap="wrap">
+                      <Badge colorScheme="blue">{p.ITEM_CODE}</Badge>
+                      <Badge colorScheme="purple">{p.MARCA}</Badge>
+                    </HStack>
+                  </Box>
+
+                  {/* Información del producto */}
+                  <SimpleGrid columns={2} spacing={4}>
+                    <Box 
+                      p={3} 
+                      bg="gray.50" 
+                      borderRadius="md"
+                      border="1px solid"
+                      borderColor="gray.200"
+                    >
+                      <Text fontSize="xs" color="gray.500" mb={1}>Tipo</Text>
+                      <Text fontWeight="semibold">{p.TIPO || '-'}</Text>
+                    </Box>
+
+                    <Box 
+                      p={3} 
+                      bg="gray.50" 
+                      borderRadius="md"
+                      border="1px solid"
+                      borderColor="gray.200"
+                    >
+                      <Text fontSize="xs" color="gray.500" mb={1}>Subtipo</Text>
+                      <Text fontWeight="semibold">{p.SUBTIPO || '-'}</Text>
+                    </Box>
+
+                    <Box 
+                      p={3} 
+                      bg="blue.50" 
+                      borderRadius="md"
+                      border="1px solid"
+                      borderColor="blue.200"
+                    >
+                      <Text fontSize="xs" color="blue.600" mb={1}>Precio Lista</Text>
+                      <Text fontWeight="bold" fontSize="lg">S/ {p.PRECIO_LISTA}</Text>
+                    </Box>
+
+                    <Box 
+                      p={3} 
+                      bg="green.50" 
+                      borderRadius="md"
+                      border="1px solid"
+                      borderColor="green.200"
+                    >
+                      <Text fontSize="xs" color="green.600" mb={1}>Precio Desc.</Text>
+                      <Text fontWeight="bold" fontSize="lg" color="green.600">
+                        S/ {p.PRECIO_DESCUENTO}
+                      </Text>
+                    </Box>
+
+                    <Box 
+                      p={3} 
+                      bg="orange.50" 
+                      borderRadius="md"
+                      border="1px solid"
+                      borderColor="orange.200"
+                    >
+                      <Text fontSize="xs" color="orange.600" mb={1}>Descuento</Text>
+                      <Text fontWeight="bold" fontSize="lg">{p.DESCUENTO_PCT}%</Text>
+                    </Box>
+
+                    <Box 
+                      p={3} 
+                      bg="purple.50" 
+                      borderRadius="md"
+                      border="1px solid"
+                      borderColor="purple.200"
+                    >
+                      <Text fontSize="xs" color="purple.600" mb={1}>Stock Disponible</Text>
+                      <Text fontWeight="bold" fontSize="lg">{p.STOCK_DISPONIBLE}</Text>
+                    </Box>
+                  </SimpleGrid>
+                </VStack>
+              );
+            })()}
+
+            {!isLoading && !data?.records?.[0] && (
+              <Box textAlign="center" py={8}>
+                <Icon as={FiPackage} boxSize={12} color="gray.300" mb={3} />
+                <Text color="gray.500">
+                  No se encontró información adicional del producto
+                </Text>
+              </Box>
+            )}
+          </ModalBody>
+        </ModalContent>
+      </Modal>
     </VStack>
   );
 }
