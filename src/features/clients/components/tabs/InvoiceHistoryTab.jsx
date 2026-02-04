@@ -32,12 +32,14 @@ import { useMemo, useState } from "react";
 import { useProductsPriceList } from "../../../products/hooks/queries/productQueries";
 import { FiPackage, FiCalendar, FiDollarSign, FiHash, FiSearch, FiX } from "react-icons/fi";
 
-export function InvoiceHistoryTab({ invoices }) {
+export function InvoiceHistoryTab({ invoices = [] }) {
   const isMobile = useBreakpointValue({ base: true, md: false });
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [selectedItemCode, setSelectedItemCode] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
 
+  // Debug: ver qué está llegando
+  console.log("InvoiceHistoryTab - invoices recibidas:", invoices);
 
   // Hook para obtener detalles del producto
   const { data, isLoading } = useProductsPriceList({
@@ -48,53 +50,59 @@ export function InvoiceHistoryTab({ invoices }) {
 
   // Agrupar productos
   const productSummary = useMemo(() => {
-    // Validar que invoices exista y sea un array
-    if (!invoices || !Array.isArray(invoices)) {
-      return [];
-    }
-
-    const productMap = new Map();
-
-    invoices.forEach((inv) => {
-      // Validar que la factura tenga items
-      if (!inv || !inv.items || !Array.isArray(inv.items)) {
-        return;
+    try {
+      // Validar que invoices exista y sea un array
+      if (!invoices || !Array.isArray(invoices) || invoices.length === 0) {
+        console.log("No hay invoices válidas");
+        return [];
       }
 
-      inv.items.forEach((item) => {
-        // Validar que el item tenga las propiedades necesarias
-        if (!item || !item.productCode || !item.productName) {
+      const productMap = new Map();
+
+      invoices.forEach((inv) => {
+        // Validar que la factura tenga items
+        if (!inv || !inv.items || !Array.isArray(inv.items)) {
           return;
         }
 
-        const code = item.productCode;
-        const invDate = inv.invoice?.date ? new Date(inv.invoice.date) : new Date();
-
-        if (!productMap.has(code)) {
-          productMap.set(code, {
-            productCode: code,
-            productName: item.productName,
-            totalQuantity: item.quantity || 0,
-            lastPrice: item.unitPrice || 0,
-            lastPurchaseDate: inv.invoice?.date || new Date().toISOString(),
-            purchaseCount: 1,
-          });
-        } else {
-          const existing = productMap.get(code);
-          existing.totalQuantity += item.quantity || 0;
-          existing.purchaseCount += 1;
-
-          if (invDate > new Date(existing.lastPurchaseDate)) {
-            existing.lastPurchaseDate = inv.invoice?.date || existing.lastPurchaseDate;
-            existing.lastPrice = item.unitPrice || existing.lastPrice;
+        inv.items.forEach((item) => {
+          // Validar que el item tenga las propiedades necesarias
+          if (!item || !item.productCode || !item.productName) {
+            return;
           }
-        }
-      });
-    });
 
-    return Array.from(productMap.values()).sort(
-      (a, b) => new Date(b.lastPurchaseDate) - new Date(a.lastPurchaseDate)
-    );
+          const code = item.productCode;
+          const invDate = inv.invoice?.date ? new Date(inv.invoice.date) : new Date();
+
+          if (!productMap.has(code)) {
+            productMap.set(code, {
+              productCode: code,
+              productName: item.productName,
+              totalQuantity: item.quantity || 0,
+              lastPrice: item.unitPrice || 0,
+              lastPurchaseDate: inv.invoice?.date || new Date().toISOString(),
+              purchaseCount: 1,
+            });
+          } else {
+            const existing = productMap.get(code);
+            existing.totalQuantity += item.quantity || 0;
+            existing.purchaseCount += 1;
+
+            if (invDate > new Date(existing.lastPurchaseDate)) {
+              existing.lastPurchaseDate = inv.invoice?.date || existing.lastPurchaseDate;
+              existing.lastPrice = item.unitPrice || existing.lastPrice;
+            }
+          }
+        });
+      });
+
+      return Array.from(productMap.values()).sort(
+        (a, b) => new Date(b.lastPurchaseDate) - new Date(a.lastPurchaseDate)
+      );
+    } catch (error) {
+      console.error("Error procesando invoices:", error);
+      return [];
+    }
   }, [invoices]);
 
   // Filtrar productos por búsqueda
@@ -109,10 +117,16 @@ export function InvoiceHistoryTab({ invoices }) {
     );
   }, [productSummary, searchTerm]);
 
+  const getDaysSinceLastPurchase = (dateString) => {
+    const purchaseDate = new Date(dateString);
+    const now = new Date();
+    const diffTime = Math.abs(now - purchaseDate);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  };
+
   const isOlderThan30Days = (dateString) => {
-    const d = new Date();
-    d.setDate(d.getDate() - 30);
-    return new Date(dateString) < d;
+    return getDaysSinceLastPurchase(dateString) > 30;
   };
 
   const formatDate = (dateString) => {
@@ -149,6 +163,7 @@ export function InvoiceHistoryTab({ invoices }) {
 
   return (
     <VStack spacing={4} align="stretch">
+      {/* Barra de búsqueda y estadísticas - solo mostrar si hay invoices */}
       {invoices && invoices.length > 0 && (
         <Box>
           <InputGroup size={isMobile ? "md" : "lg"}>
@@ -199,9 +214,6 @@ export function InvoiceHistoryTab({ invoices }) {
             >
               {filteredProducts.reduce((sum, p) => sum + p.totalQuantity, 0)} unidades
             </Badge>
-            <Badge colorScheme="orange" px={3} py={1} borderRadius="full">
-              {filteredProducts.filter(p => isOlderThan30Days(p.lastPurchaseDate)).length} sin comprar +30d
-            </Badge>
           </Flex>
         </Box>
       )}
@@ -246,7 +258,7 @@ export function InvoiceHistoryTab({ invoices }) {
                         fontSize="xs"
                         borderRadius="full"
                       >
-                        +30 días
+                        {getDaysSinceLastPurchase(product.lastPurchaseDate)} días
                       </Badge>
                     )}
                   </Flex>
@@ -278,14 +290,18 @@ export function InvoiceHistoryTab({ invoices }) {
                       </Text>
                     </Box>
 
-                    {/* Último precio */}
+                    {/* Días sin comprar */}
                     <Box>
                       <HStack spacing={1} mb={1}>
-                        <Icon as={FiDollarSign} boxSize={3} color="green.500" />
-                        <Text fontSize="xs" color="gray.500">Último Precio</Text>
+                        <Icon as={FiCalendar} boxSize={3} color={isOld ? "orange.500" : "gray.500"} />
+                        <Text fontSize="xs" color="gray.500">Sin comprar</Text>
                       </HStack>
-                      <Text fontWeight="bold" color="green.600" fontSize="lg">
-                        S/ {product.lastPrice.toFixed(2)}
+                      <Text 
+                        fontWeight="bold" 
+                        fontSize="lg"
+                        color={isOld ? "orange.600" : "gray.700"}
+                      >
+                        {getDaysSinceLastPurchase(product.lastPurchaseDate)} días
                       </Text>
                     </Box>
                   </SimpleGrid>
@@ -317,13 +333,13 @@ export function InvoiceHistoryTab({ invoices }) {
                 <Th color="green.700">Producto</Th>
                 <Th color="green.700" isNumeric>Cant. Total</Th>
                 <Th color="green.700" isNumeric>Compras</Th>
-                <Th color="green.700" isNumeric>Último Precio</Th>
                 <Th color="green.700">Última Compra</Th>
               </Tr>
             </Thead>
             <Tbody>
               {filteredProducts.map((product, idx) => {
                 const isOld = isOlderThan30Days(product.lastPurchaseDate);
+                const daysSince = getDaysSinceLastPurchase(product.lastPurchaseDate);
 
                 return (
                   <Tr
@@ -353,19 +369,18 @@ export function InvoiceHistoryTab({ invoices }) {
                         {product.purchaseCount}
                       </Badge>
                     </Td>
-                    <Td isNumeric fontWeight="bold" color="green.600" fontSize="md">
-                      S/ {product.lastPrice.toFixed(2)}
-                    </Td>
                     <Td>
                       <VStack align="flex-start" spacing={1}>
                         <Text fontSize="sm" fontWeight="medium">
                           {formatDate(product.lastPurchaseDate)}
                         </Text>
-                        {isOld && (
-                          <Badge colorScheme="orange" fontSize="xs" borderRadius="full">
-                            +30 días
-                          </Badge>
-                        )}
+                        <Badge 
+                          colorScheme={isOld ? "orange" : "gray"} 
+                          fontSize="xs" 
+                          borderRadius="full"
+                        >
+                          {daysSince} {daysSince === 1 ? 'día' : 'días'}
+                        </Badge>
                       </VStack>
                     </Td>
                   </Tr>
@@ -405,23 +420,21 @@ export function InvoiceHistoryTab({ invoices }) {
 
       {/* ================= MODAL ================= */}
       <Modal isOpen={isOpen} onClose={handleClose} size="lg" isCentered>
-        <ModalOverlay backdropFilter="blur(4px)" />
-        <ModalContent mx={4} borderRadius="xl">
+        <ModalOverlay />
+        <ModalContent>
           <ModalHeader 
-            borderBottom="1px solid" 
-            borderColor="gray.100"
-            bg="green.700"
-            color="white"
-            borderTopRadius="xl"
+            fontWeight="bold" 
+            fontSize="lg" 
+            color="gray.800" 
+            lineHeight="1.2"
+            pb={2}
+            width="95%"
           >
-            <HStack spacing={2}>
-              <Icon as={FiPackage} />
-              <Text>Detalle del producto</Text>
-            </HStack>
+            {data?.records?.[0]?.ITEM_NAME || "Cargando..."}
           </ModalHeader>
-          <ModalCloseButton color="white" _hover={{ bg: "green.600" }} />
+          <ModalCloseButton />
 
-          <ModalBody pb={6} pt={6}>
+          <ModalBody pb={6}>
             {isLoading && (
               <Flex justify="center" align="center" py={12}>
                 <VStack spacing={3}>
@@ -433,100 +446,153 @@ export function InvoiceHistoryTab({ invoices }) {
 
             {!isLoading && data?.records?.[0] && (() => {
               const p = data.records[0];
+              const hasDiscount = (p.DESCUENTO_PCT || 0) > 0;
+              const finalPrice = hasDiscount ? p.PRECIO_DESCUENTO : p.PRECIO_LISTA;
+
+              const formatNumber = (num, decimals = 0) =>
+                num?.toLocaleString("es-PE", {
+                  minimumFractionDigits: decimals,
+                  maximumFractionDigits: decimals
+                }) ?? "0";
+
               return (
-                <VStack align="stretch" spacing={5}>
-                  {/* Header del producto */}
-                  <Box 
-                    bg="green.50" 
-                    p={4} 
-                    borderRadius="lg"
-                    border="1px solid"
-                    borderColor="green.200"
-                  >
-                    <Text fontWeight="bold" fontSize="lg" mb={1} color="gray.800">
-                      {p.ITEM_NAME}
-                    </Text>
-                    <HStack spacing={2} flexWrap="wrap">
-                      <Badge colorScheme="green">{p.ITEM_CODE}</Badge>
-                      <Badge 
-                        bg="green.700" 
-                        color="white"
+                <VStack align="stretch" spacing={4}>
+                  
+                  {/* Información del producto */}
+                  <VStack spacing={0} align="stretch">
+
+                    {/* Sigla */}
+                    {p.SIGLA && (
+                      <HStack>
+                        <Text fontSize="md" color="green.600" fontWeight="medium" minW="80px">
+                          Sigla:
+                        </Text>
+                        <Text fontSize="md" color="gray.700" fontFamily="mono">
+                          {p.SIGLA}
+                        </Text>
+                      </HStack>
+                    )}
+
+                    {/* Código */}
+                    {p.ITEM_CODE && (
+                      <HStack>
+                        <Text fontSize="md" color="green.600" fontWeight="medium" minW="80px">
+                          Código:
+                        </Text>
+                        <Text fontSize="md" color="gray.700" fontFamily="mono">
+                          {p.ITEM_CODE}
+                        </Text>
+                      </HStack>
+                    )}
+
+                    {/* Marca */}
+                    <HStack>
+                      <Text fontSize="xs" color="green.600" fontWeight="medium" minW="80px">
+                        Marca:
+                      </Text>
+                      <Text fontSize="xs" color="gray.700">
+                        {p.MARCA || "Sin marca"}
+                      </Text>
+                    </HStack>
+
+                    {/* Tipo */}
+                    {p.TIPO && (
+                      <HStack>
+                        <Text fontSize="xs" color="green.600" fontWeight="medium" minW="80px">
+                          Tipo:
+                        </Text>
+                        <Text fontSize="xs" color="gray.700">
+                          {p.TIPO}
+                        </Text>
+                      </HStack>
+                    )}
+
+                    {/* Subtipo */}
+                    {p.SUBTIPO && (
+                      <HStack>
+                        <Text fontSize="xs" color="green.600" fontWeight="medium" minW="80px">
+                          Subtipo:
+                        </Text>
+                        <Text fontSize="xs" color="gray.700">
+                          {p.SUBTIPO}
+                        </Text>
+                      </HStack>
+                    )}
+                  </VStack>
+
+                  <Divider />
+
+                  {/* Precios */}
+                  <VStack spacing={1} align="stretch">
+                    {/* Precio Listado */}
+                    <Flex align="center" justify="space-between">
+                      <Box
+                        bg="blue.200"
+                        fontSize="xs"
+                        px={4}
+                        py={2}
+                        borderRadius="full"
+                        fontWeight="medium"
+                        color="gray.800"
                       >
-                        {p.MARCA}
+                        Precio Listado: $ {p.PRECIO_LISTA?.toFixed(2) || "0.00"}
+                      </Box>
+                      {hasDiscount && (
+                        <Box
+                          bg="red.800"
+                          color="white"
+                          fontSize="xs"
+                          px={4}
+                          py={2}
+                          borderRadius="full"
+                          fontWeight="medium"
+                        >
+                          Descuento: {p.DESCUENTO_PCT}%
+                        </Box>
+                      )}
+                    </Flex>
+
+                    {/* Precio Final */}
+                    <Box
+                      bg="green.700"
+                      color="white"
+                      fontSize="lg"
+                      fontWeight="bold"
+                      py={3}
+                      px={4}
+                      borderRadius="full"
+                      textAlign="center"
+                    >
+                      Precio Final: $ {finalPrice?.toFixed(2) || "0.00"}
+                    </Box>
+                  </VStack>
+
+                  {/* Stock */}
+                  <Box
+                    bg="gray.50"
+                    px={2}
+                    py={2}
+                    borderRadius="md"
+                    border="1px"
+                    borderColor="gray.200"
+                  >
+                    <HStack justify="space-between" align="center">
+                      <Text fontSize="xs" color="green.600" fontWeight="bold">
+                        Stock:
+                      </Text>
+                      <Badge
+                        colorScheme={p.STOCK_DISPONIBLE === 0 ? "red" : p.STOCK_DISPONIBLE <= 5 ? "yellow" : "green"}
+                        variant="solid"
+                        fontSize="xs"
+                        px={2}
+                        py={1}
+                        borderRadius="md"
+                        fontWeight="bold"
+                      >
+                        {formatNumber(p.STOCK_DISPONIBLE)} und.
                       </Badge>
                     </HStack>
                   </Box>
-
-                  {/* Información del producto */}
-                  <SimpleGrid columns={2} spacing={4}>
-                    <Box 
-                      p={3} 
-                      bg="gray.50" 
-                      borderRadius="md"
-                      border="1px solid"
-                      borderColor="gray.200"
-                    >
-                      <Text fontSize="xs" color="gray.500" mb={1}>Tipo</Text>
-                      <Text fontWeight="semibold">{p.TIPO || '-'}</Text>
-                    </Box>
-
-                    <Box 
-                      p={3} 
-                      bg="gray.50" 
-                      borderRadius="md"
-                      border="1px solid"
-                      borderColor="gray.200"
-                    >
-                      <Text fontSize="xs" color="gray.500" mb={1}>Subtipo</Text>
-                      <Text fontWeight="semibold">{p.SUBTIPO || '-'}</Text>
-                    </Box>
-
-                    <Box 
-                      p={3} 
-                      bg="green.50" 
-                      borderRadius="md"
-                      border="1px solid"
-                      borderColor="green.200"
-                    >
-                      <Text fontSize="xs" color="green.700" mb={1}>Precio Lista</Text>
-                      <Text fontWeight="bold" fontSize="lg">S/ {p.PRECIO_LISTA}</Text>
-                    </Box>
-
-                    <Box 
-                      p={3} 
-                      bg="green.100" 
-                      borderRadius="md"
-                      border="1px solid"
-                      borderColor="green.300"
-                    >
-                      <Text fontSize="xs" color="green.700" mb={1}>Precio Desc.</Text>
-                      <Text fontWeight="bold" fontSize="lg" color="green.700">
-                        S/ {p.PRECIO_DESCUENTO}
-                      </Text>
-                    </Box>
-
-                    <Box 
-                      p={3} 
-                      bg="orange.50" 
-                      borderRadius="md"
-                      border="1px solid"
-                      borderColor="orange.200"
-                    >
-                      <Text fontSize="xs" color="orange.600" mb={1}>Descuento</Text>
-                      <Text fontWeight="bold" fontSize="lg">{p.DESCUENTO_PCT}%</Text>
-                    </Box>
-
-                    <Box 
-                      p={3} 
-                      bg="gray.50" 
-                      borderRadius="md"
-                      border="1px solid"
-                      borderColor="gray.200"
-                    >
-                      <Text fontSize="xs" color="gray.600" mb={1}>Stock Disponible</Text>
-                      <Text fontWeight="bold" fontSize="lg">{p.STOCK_DISPONIBLE}</Text>
-                    </Box>
-                  </SimpleGrid>
                 </VStack>
               );
             })()}
