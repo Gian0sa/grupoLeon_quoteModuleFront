@@ -32,7 +32,7 @@ import { useMemo, useState } from "react";
 import { useProductsPriceList } from "../../products/hooks/queries/productQueries";
 import { FiPackage, FiCalendar, FiDollarSign, FiHash, FiSearch, FiX } from "react-icons/fi";
 
-export function InvoiceHistoryTab({ invoices }) {
+export default function InvoiceHistoryTab({ invoices }) {
   const isMobile = useBreakpointValue({ base: true, md: false });
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [selectedItemCode, setSelectedItemCode] = useState(null);
