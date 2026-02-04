@@ -38,6 +38,7 @@ export function InvoiceHistoryTab({ invoices }) {
   const [selectedItemCode, setSelectedItemCode] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
 
+
   // Hook para obtener detalles del producto
   const { data, isLoading } = useProductsPriceList({
     itemCode: selectedItemCode ?? "",
@@ -47,30 +48,45 @@ export function InvoiceHistoryTab({ invoices }) {
 
   // Agrupar productos
   const productSummary = useMemo(() => {
+    // Validar que invoices exista y sea un array
+    if (!invoices || !Array.isArray(invoices)) {
+      return [];
+    }
+
     const productMap = new Map();
 
     invoices.forEach((inv) => {
+      // Validar que la factura tenga items
+      if (!inv || !inv.items || !Array.isArray(inv.items)) {
+        return;
+      }
+
       inv.items.forEach((item) => {
+        // Validar que el item tenga las propiedades necesarias
+        if (!item || !item.productCode || !item.productName) {
+          return;
+        }
+
         const code = item.productCode;
-        const invDate = new Date(inv.invoice.date);
+        const invDate = inv.invoice?.date ? new Date(inv.invoice.date) : new Date();
 
         if (!productMap.has(code)) {
           productMap.set(code, {
             productCode: code,
             productName: item.productName,
-            totalQuantity: item.quantity,
-            lastPrice: item.unitPrice,
-            lastPurchaseDate: inv.invoice.date,
+            totalQuantity: item.quantity || 0,
+            lastPrice: item.unitPrice || 0,
+            lastPurchaseDate: inv.invoice?.date || new Date().toISOString(),
             purchaseCount: 1,
           });
         } else {
           const existing = productMap.get(code);
-          existing.totalQuantity += item.quantity;
+          existing.totalQuantity += item.quantity || 0;
           existing.purchaseCount += 1;
 
           if (invDate > new Date(existing.lastPurchaseDate)) {
-            existing.lastPurchaseDate = inv.invoice.date;
-            existing.lastPrice = item.unitPrice;
+            existing.lastPurchaseDate = inv.invoice?.date || existing.lastPurchaseDate;
+            existing.lastPrice = item.unitPrice || existing.lastPrice;
           }
         }
       });
@@ -133,63 +149,73 @@ export function InvoiceHistoryTab({ invoices }) {
 
   return (
     <VStack spacing={4} align="stretch">
-      {/* Barra de búsqueda y estadísticas */}
-      <Box>
-        <InputGroup size={isMobile ? "md" : "lg"}>
-          <InputLeftElement pointerEvents="none">
-            <Icon as={FiSearch} color="gray.400" />
-          </InputLeftElement>
-          <Input
-            placeholder="Buscar por código o nombre..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            bg="white"
-            borderColor="gray.300"
-            _hover={{ borderColor: "gray.400" }}
-            _focus={{ borderColor: "blue.500", boxShadow: "0 0 0 1px #3182ce" }}
-          />
-          {searchTerm && (
-            <IconButton
-              position="absolute"
-              right={2}
-              top="50%"
-              transform="translateY(-50%)"
-              size="sm"
-              variant="ghost"
-              icon={<FiX />}
-              onClick={clearSearch}
-              aria-label="Limpiar búsqueda"
+      {invoices && invoices.length > 0 && (
+        <Box>
+          <InputGroup size={isMobile ? "md" : "lg"}>
+            <InputLeftElement pointerEvents="none">
+              <Icon as={FiSearch} color="gray.400" />
+            </InputLeftElement>
+            <Input
+              placeholder="Buscar por código o nombre..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              bg="white"
+              borderColor="gray.300"
+              _hover={{ borderColor: "green.500" }}
+              _focus={{ borderColor: "green.600", boxShadow: "0 0 0 1px #38A169" }}
             />
-          )}
-        </InputGroup>
+            {searchTerm && (
+              <IconButton
+                position="absolute"
+                right={2}
+                top="50%"
+                transform="translateY(-50%)"
+                size="sm"
+                variant="ghost"
+                icon={<FiX />}
+                onClick={clearSearch}
+                aria-label="Limpiar búsqueda"
+                _hover={{ bg: "green.50" }}
+              />
+            )}
+          </InputGroup>
 
-        {/* Resumen de estadísticas */}
-        <Flex 
-          mt={3} 
-          gap={3} 
-          flexWrap="wrap"
-          fontSize="sm"
+          {/* Resumen de estadísticas */}
+          <Flex 
+            mt={3} 
+            gap={3} 
+            flexWrap="wrap"
+            fontSize="sm"
+          >
+            <Badge colorScheme="green" px={3} py={1} borderRadius="full">
+              {filteredProducts.length} productos
+            </Badge>
+            <Badge 
+              bg="green.700" 
+              color="white" 
+              px={3} 
+              py={1} 
+              borderRadius="full"
+            >
+              {filteredProducts.reduce((sum, p) => sum + p.totalQuantity, 0)} unidades
+            </Badge>
+            <Badge colorScheme="orange" px={3} py={1} borderRadius="full">
+              {filteredProducts.filter(p => isOlderThan30Days(p.lastPurchaseDate)).length} sin comprar +30d
+            </Badge>
+          </Flex>
+        </Box>
+      )}
+
+      {/* Contenedor principal - solo mostrar si hay productos */}
+      {filteredProducts.length > 0 && (
+        <Box
+          bg="white"
+          border="1px solid"
+          borderColor="gray.200"
+          borderRadius="xl"
+          boxShadow="sm"
+          overflow="hidden"
         >
-          <Badge colorScheme="blue" px={3} py={1} borderRadius="full">
-            {filteredProducts.length} productos
-          </Badge>
-          <Badge colorScheme="green" px={3} py={1} borderRadius="full">
-            {filteredProducts.reduce((sum, p) => sum + p.totalQuantity, 0)} unidades
-          </Badge>
-          <Badge colorScheme="purple" px={3} py={1} borderRadius="full">
-            {filteredProducts.filter(p => isOlderThan30Days(p.lastPurchaseDate)).length} sin comprar +30d
-          </Badge>
-        </Flex>
-      </Box>
-
-      <Box
-        bg="white"
-        border="1px solid"
-        borderColor="gray.200"
-        borderRadius="xl"
-        boxShadow="sm"
-        overflow="hidden"
-      >
         {/* ================= MOBILE ================= */}
         {isMobile && (
           <VStack align="stretch" spacing={0} divider={<Divider />}>
@@ -209,8 +235,8 @@ export function InvoiceHistoryTab({ invoices }) {
                   {/* Header con código y badge */}
                   <Flex justify="space-between" align="start" mb={3}>
                     <HStack spacing={2} flex={1}>
-                      <Icon as={FiPackage} color="gray.500" boxSize={4} />
-                      <Text fontSize="xs" fontWeight="bold" color="gray.600">
+                      <Icon as={FiPackage} color="green.600" boxSize={4} />
+                      <Text fontSize="xs" fontWeight="bold" color="green.700">
                         {product.productCode}
                       </Text>
                     </HStack>
@@ -285,14 +311,14 @@ export function InvoiceHistoryTab({ invoices }) {
         {/* ================= DESKTOP ================= */}
         {!isMobile && (
           <Table size="sm" variant="simple">
-            <Thead bg="gray.50">
+            <Thead bg="green.50">
               <Tr>
-                <Th>Código</Th>
-                <Th>Producto</Th>
-                <Th isNumeric>Cant. Total</Th>
-                <Th isNumeric>Compras</Th>
-                <Th isNumeric>Último Precio</Th>
-                <Th>Última Compra</Th>
+                <Th color="green.700">Código</Th>
+                <Th color="green.700">Producto</Th>
+                <Th color="green.700" isNumeric>Cant. Total</Th>
+                <Th color="green.700" isNumeric>Compras</Th>
+                <Th color="green.700" isNumeric>Último Precio</Th>
+                <Th color="green.700">Última Compra</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -305,12 +331,12 @@ export function InvoiceHistoryTab({ invoices }) {
                     cursor="pointer"
                     onClick={() => handleOpenProduct(product.productCode)}
                     bg={isOld ? "orange.50" : "white"}
-                    _hover={{ bg: isOld ? "orange.100" : "gray.50" }}
+                    _hover={{ bg: isOld ? "orange.100" : "green.50" }}
                     transition="all 0.2s"
                   >
-                    <Td fontWeight="bold" color="gray.700">
+                    <Td fontWeight="bold" color="green.700">
                       <HStack spacing={2}>
-                        <Icon as={FiPackage} color="gray.500" boxSize={4} />
+                        <Icon as={FiPackage} color="green.600" boxSize={4} />
                         <Text>{product.productCode}</Text>
                       </HStack>
                     </Td>
@@ -323,7 +349,7 @@ export function InvoiceHistoryTab({ invoices }) {
                       {product.totalQuantity}
                     </Td>
                     <Td isNumeric>
-                      <Badge colorScheme="blue" borderRadius="full">
+                      <Badge colorScheme="green" borderRadius="full">
                         {product.purchaseCount}
                       </Badge>
                     </Td>
@@ -349,6 +375,7 @@ export function InvoiceHistoryTab({ invoices }) {
           </Table>
         )}
       </Box>
+      )}
 
       {/* Mensaje cuando no hay resultados */}
       {filteredProducts.length === 0 && (
@@ -362,9 +389,13 @@ export function InvoiceHistoryTab({ invoices }) {
         >
           <Icon as={FiPackage} boxSize={12} color="gray.300" mb={3} />
           <Text color="gray.600" fontWeight="medium" mb={1}>
-            {searchTerm ? "No se encontraron productos" : "No hay productos en el historial"}
+            {!invoices || invoices.length === 0 
+              ? "No hay facturas en el historial" 
+              : searchTerm 
+                ? "No se encontraron productos" 
+                : "No hay productos en el historial"}
           </Text>
-          {searchTerm && (
+          {searchTerm && invoices && invoices.length > 0 && (
             <Text color="gray.500" fontSize="sm">
               Intenta con otro término de búsqueda
             </Text>
@@ -376,19 +407,25 @@ export function InvoiceHistoryTab({ invoices }) {
       <Modal isOpen={isOpen} onClose={handleClose} size="lg" isCentered>
         <ModalOverlay backdropFilter="blur(4px)" />
         <ModalContent mx={4} borderRadius="xl">
-          <ModalHeader borderBottom="1px solid" borderColor="gray.100">
+          <ModalHeader 
+            borderBottom="1px solid" 
+            borderColor="gray.100"
+            bg="green.700"
+            color="white"
+            borderTopRadius="xl"
+          >
             <HStack spacing={2}>
-              <Icon as={FiPackage} color="blue.500" />
+              <Icon as={FiPackage} />
               <Text>Detalle del producto</Text>
             </HStack>
           </ModalHeader>
-          <ModalCloseButton />
+          <ModalCloseButton color="white" _hover={{ bg: "green.600" }} />
 
           <ModalBody pb={6} pt={6}>
             {isLoading && (
               <Flex justify="center" align="center" py={12}>
                 <VStack spacing={3}>
-                  <Spinner size="xl" color="blue.500" thickness="3px" />
+                  <Spinner size="xl" color="green.600" thickness="3px" />
                   <Text color="gray.500">Cargando información...</Text>
                 </VStack>
               </Flex>
@@ -400,18 +437,23 @@ export function InvoiceHistoryTab({ invoices }) {
                 <VStack align="stretch" spacing={5}>
                   {/* Header del producto */}
                   <Box 
-                    bg="blue.50" 
+                    bg="green.50" 
                     p={4} 
                     borderRadius="lg"
                     border="1px solid"
-                    borderColor="blue.100"
+                    borderColor="green.200"
                   >
                     <Text fontWeight="bold" fontSize="lg" mb={1} color="gray.800">
                       {p.ITEM_NAME}
                     </Text>
                     <HStack spacing={2} flexWrap="wrap">
-                      <Badge colorScheme="blue">{p.ITEM_CODE}</Badge>
-                      <Badge colorScheme="purple">{p.MARCA}</Badge>
+                      <Badge colorScheme="green">{p.ITEM_CODE}</Badge>
+                      <Badge 
+                        bg="green.700" 
+                        color="white"
+                      >
+                        {p.MARCA}
+                      </Badge>
                     </HStack>
                   </Box>
 
@@ -441,24 +483,24 @@ export function InvoiceHistoryTab({ invoices }) {
 
                     <Box 
                       p={3} 
-                      bg="blue.50" 
-                      borderRadius="md"
-                      border="1px solid"
-                      borderColor="blue.200"
-                    >
-                      <Text fontSize="xs" color="blue.600" mb={1}>Precio Lista</Text>
-                      <Text fontWeight="bold" fontSize="lg">S/ {p.PRECIO_LISTA}</Text>
-                    </Box>
-
-                    <Box 
-                      p={3} 
                       bg="green.50" 
                       borderRadius="md"
                       border="1px solid"
                       borderColor="green.200"
                     >
-                      <Text fontSize="xs" color="green.600" mb={1}>Precio Desc.</Text>
-                      <Text fontWeight="bold" fontSize="lg" color="green.600">
+                      <Text fontSize="xs" color="green.700" mb={1}>Precio Lista</Text>
+                      <Text fontWeight="bold" fontSize="lg">S/ {p.PRECIO_LISTA}</Text>
+                    </Box>
+
+                    <Box 
+                      p={3} 
+                      bg="green.100" 
+                      borderRadius="md"
+                      border="1px solid"
+                      borderColor="green.300"
+                    >
+                      <Text fontSize="xs" color="green.700" mb={1}>Precio Desc.</Text>
+                      <Text fontWeight="bold" fontSize="lg" color="green.700">
                         S/ {p.PRECIO_DESCUENTO}
                       </Text>
                     </Box>
@@ -476,12 +518,12 @@ export function InvoiceHistoryTab({ invoices }) {
 
                     <Box 
                       p={3} 
-                      bg="purple.50" 
+                      bg="gray.50" 
                       borderRadius="md"
                       border="1px solid"
-                      borderColor="purple.200"
+                      borderColor="gray.200"
                     >
-                      <Text fontSize="xs" color="purple.600" mb={1}>Stock Disponible</Text>
+                      <Text fontSize="xs" color="gray.600" mb={1}>Stock Disponible</Text>
                       <Text fontWeight="bold" fontSize="lg">{p.STOCK_DISPONIBLE}</Text>
                     </Box>
                   </SimpleGrid>
