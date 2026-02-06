@@ -23,14 +23,21 @@ import {
   MdRequestQuote,
   MdHistory,
   MdPersonAdd,
-  MdAssignment,
-  MdBarChart,
   MdPerson,
+  MdAssignmentTurnedIn,
+  MdLocalShipping,
+  MdAccountBalanceWallet,
+  MdPriceChange,
+  MdInventory2,
+  MdPersonSearch,
+  MdFileUpload,
+  MdLocationOn,
+  MdMap,
   MdHelp,
+  MdAssignment,
   MdSupport,
-  MdExitToApp,
-  MdBubbleChart
-} from 'react-icons/md';
+  MdExitToApp
+} from "react-icons/md";
 
 import { useDisclosure } from '@chakra-ui/react';
 import { useNavigate } from 'react-router-dom';
@@ -45,7 +52,7 @@ export function LateralMenu() {
   const btnRef = useRef();
   const navigate = useNavigate();
   const { username, isAuthenticated } = useAuthStore();
-   const { logout } = useAuthMutations();
+  const { logout } = useAuthMutations();
 
   const hasAccess = useHasAccess();
   const hasAdminAccess = hasAccess("PUT:/profile/admin/:userId");
@@ -55,18 +62,72 @@ export function LateralMenu() {
   };
 
   const applicationOptions = [
-    { label: 'Generar cotización', icon: MdRequestQuote, path: '#', access: 'POST:/quotations' },
-    { label: 'Historial de cotizaciones', icon: MdHistory, path: '#', access: 'GET:/quotations' },
-    { label: 'Nuevo usuario', icon: MdPersonAdd, path: '/register', access: 'POST:/register' },
-    { label: 'Gestión de solicitudes', icon: MdAssignment, path: '#', access: 'GET:/requests' },
-    { label: 'Seguimiento de Pedidos', icon: MdBarChart, path: '/reports', access: 'GET:/reports' },
-    { label: 'Cuentas por Cobrar', icon: MdBubbleChart, path: '/receivable', access: 'GET:/receivable' },
-    { label: 'Lista de Precios', icon: MdBubbleChart, path: '/productsPriceList', access: 'GET:/receivable' },
-    { label: 'Catalogo', icon: MdBubbleChart, path: '/catalog', access: 'GET:/receivable' },
-    { label: 'Historial de Cliente', icon: MdBubbleChart, path: '/clienteBusqueda', access: 'GET:/receivable' },
-    { label: 'Importaciones', icon: MdBubbleChart, path: '/importaciones', access: 'GET:/receivable' },
-    { label: 'Visitas', icon: MdBubbleChart, path: '/visitLog', access: 'GET:/receivable' },
-    { label: 'VisitasMapa', icon: MdBubbleChart, path: '/visitMap', access: 'GET:/receivable' }
+    {
+      label: 'Nueva cotización',
+      icon: MdRequestQuote,
+      path: '#',
+      access: 'POST:/quotations'
+    },
+    {
+      label: 'Historial de cotizaciones',
+      icon: MdHistory,
+      path: '#',
+      access: 'GET:/quotations'
+    },
+    {
+      label: 'Crear usuario',
+      icon: MdPersonAdd,
+      path: '/register',
+      access: 'POST:/register'
+    },
+    {
+      label: 'Solicitudes',
+      icon: MdAssignmentTurnedIn,
+      path: '#',
+      access: 'GET:/requests'
+    },
+    {
+      label: 'Pedidos',
+      icon: MdLocalShipping,
+      path: '/reports',
+      access: 'GET:/reports'
+    },
+    {
+      label: 'Cuentas por cobrar',
+      icon: MdAccountBalanceWallet,
+      path: '/receivable',
+      access: 'GET:/receivable'
+    },
+    {
+      label: 'Lista de precios',
+      icon: MdPriceChange,
+      path: '/productsPriceList',
+      access: 'GET:/price-list'
+    },
+    {
+      label: 'Catálogo de productos',
+      icon: MdInventory2,
+      path: '/catalog',
+      access: 'GET:/catalogProducts'
+    },
+    {
+      label: 'Importaciones',
+      icon: MdFileUpload,
+      path: '/importaciones',
+      access: 'GET:/purchaseOrdersImportacion'
+    },
+    {
+      label: 'Registro de visitas',
+      icon: MdLocationOn,
+      path: '/visitLog',
+      access: 'GET:/visit-logs'
+    },
+    {
+      label: 'Mapa de visitas',
+      icon: MdMap,
+      path: '/visitMap',
+      access: 'GET:/visit-logs'
+    }
   ];
 
   const accountOptions = [
@@ -75,35 +136,35 @@ export function LateralMenu() {
     { label: 'Asistencia técnica', icon: MdSupport, path: '#' }
   ];
 
-   const adminOptions = [
-    { label: 'Actualizar usuario', icon: MdPerson, path: '/profileAdmin', access: 'PUT:/profile/admin/:userId'  },
-    { label: 'Actualizar servicios', icon: MdHelp, path: '#' , access: 'PUT:/services/:id'  },
-    { label: 'Gestionar Notificaciones', icon: MdAssignment, path: '/notification', access: 'GET:/receivable'} //access: 'POST:/notification' 
+  const adminOptions = [
+    { label: 'Actualizar usuario', icon: MdPerson, path: '/profileAdmin', access: 'PUT:/profile/admin/:userId' },
+    { label: 'Actualizar servicios', icon: MdHelp, path: '#', access: 'PUT:/services/:id' },
+    { label: 'Gestionar Notificaciones', icon: MdAssignment, path: '/notification', access: 'GET:/receivable' } //access: 'POST:/notification' 
   ];
 
-const renderMenuOptions = (options) =>
-  options
-    .filter(({ access }) => !access || hasAccess(access)) 
-    .map(({ label, icon, path }, index) => (
-      <React.Fragment key={index}>
-        <Button
-          variant="ghost"
-          justifyContent="flex-start"
-          leftIcon={<Icon as={icon} color="green.700" />}
-          onClick={() => {
-            navigate(path);
-            onClose();
-          }}
-          _hover={{ bg: "green.50" }}
-          fontWeight="normal"
-          h="30px"
-          color="gray.700"
-        >
-          {label}
-        </Button>
-        <div className={styles.rayita}></div>
-      </React.Fragment>
-    ));
+  const renderMenuOptions = (options) =>
+    options
+      .filter(({ access }) => !access || hasAccess(access))
+      .map(({ label, icon, path }, index) => (
+        <React.Fragment key={index}>
+          <Button
+            variant="ghost"
+            justifyContent="flex-start"
+            leftIcon={<Icon as={icon} color="green.700" />}
+            onClick={() => {
+              navigate(path);
+              onClose();
+            }}
+            _hover={{ bg: "green.50" }}
+            fontWeight="normal"
+            h="30px"
+            color="gray.700"
+          >
+            {label}
+          </Button>
+          <div className={styles.rayita}></div>
+        </React.Fragment>
+      ));
 
   return (
     <>
@@ -143,8 +204,8 @@ const renderMenuOptions = (options) =>
               borderRadius={20}
             >
               <HStack spacing={4}>
-                <Image 
-                  src="/assets/icons/avatar.jpg" 
+                <Image
+                  src="/assets/icons/avatar.jpg"
                   boxSize="60px"
                   borderRadius="full"
                   objectFit="cover"
