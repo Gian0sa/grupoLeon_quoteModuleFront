@@ -200,7 +200,7 @@ export default function VisitLogsMapView() {
     const [mapCenter, setMapCenter] = useState([-12.0464, -77.0428]);
     const [mapZoom, setMapZoom] = useState(13);
     const [searchTerm, setSearchTerm] = useState("");
-    const [viewMode, setViewMode] = useState("grid"); // grid or list
+    const [viewMode, setViewMode] = useState("grid");
     const [showFilters, setShowFilters] = useState(true);
     const [hoveredStore, setHoveredStore] = useState(null);
     const [selectedStore, setSelectedStore] = useState(null);
@@ -214,8 +214,7 @@ export default function VisitLogsMapView() {
     const groupedVisits = useMemo(() => {
         if (!visitLogs || visitLogs.length === 0) return [];
 
-        // Ordenar por fecha ascendente (más antiguo primero)
-        const sorted = [...visitLogs].sort((a, b) => 
+        const sorted = [...visitLogs].sort((a, b) =>
             new Date(a.createdAt) - new Date(b.createdAt)
         );
 
@@ -226,14 +225,13 @@ export default function VisitLogsMapView() {
             if (processed.has(visit.id)) return;
 
             if (visit.type === "IN") {
-                // Buscar el OUT más cercano POSTERIOR a este IN
-                const matchingOut = sorted.find(v => 
+                const matchingOut = sorted.find(v =>
                     !processed.has(v.id) &&
                     v.type === "OUT" &&
                     v.storeName === visit.storeName &&
                     v.vendorName === visit.vendorName &&
-                    new Date(v.createdAt) > new Date(visit.createdAt) && // OUT debe ser después del IN
-                    Math.abs(new Date(v.createdAt) - new Date(visit.createdAt)) < 24 * 60 * 60 * 1000 // Dentro de 24 horas
+                    new Date(v.createdAt) > new Date(visit.createdAt) &&
+                    Math.abs(new Date(v.createdAt) - new Date(visit.createdAt)) < 24 * 60 * 60 * 1000
                 );
 
                 groups.push({
@@ -247,12 +245,11 @@ export default function VisitLogsMapView() {
                 processed.add(visit.id);
                 if (matchingOut) processed.add(matchingOut.id);
             } else if (visit.type === "OUT") {
-                // Si es un OUT sin IN previo, agregarlo solo
                 const hasMatchingIn = sorted.some(v =>
                     v.type === "IN" &&
                     v.storeName === visit.storeName &&
                     v.vendorName === visit.vendorName &&
-                    new Date(v.createdAt) < new Date(visit.createdAt) && // IN debe ser antes del OUT
+                    new Date(v.createdAt) < new Date(visit.createdAt) &&
                     Math.abs(new Date(visit.createdAt) - new Date(v.createdAt)) < 24 * 60 * 60 * 1000
                 );
 
@@ -272,7 +269,6 @@ export default function VisitLogsMapView() {
         return groups;
     }, [visitLogs]);
 
-    // Filtros aplicados
     const filteredGroups = useMemo(() => {
         return groupedVisits.filter(group => {
             const vendorMatch = selectedVendor === "all" ||
@@ -286,7 +282,6 @@ export default function VisitLogsMapView() {
         });
     }, [groupedVisits, selectedVendor, searchTerm]);
 
-    // Estadísticas
     const stats = useMemo(() => {
         const totalVisits = filteredGroups.length;
         const completedVisits = filteredGroups.filter(g => g.in && g.out).length;
@@ -315,12 +310,10 @@ export default function VisitLogsMapView() {
         };
     }, [filteredGroups]);
 
-    // Vendedores únicos
     const vendors = useMemo(() => {
         return [...new Set(visitLogs?.map(v => v.vendorName) || [])];
     }, [visitLogs]);
 
-    // Centrar mapa en visita seleccionada
     const handleMarkerClick = (group) => {
         setSelectedStore(group.id);
         const location = group.in || group.out;
@@ -357,8 +350,8 @@ export default function VisitLogsMapView() {
     }
 
     return (
-        <Box p={6}>
-            <VStack spacing={6} align="stretch">
+        <Box p={{ base: 3, md: 6 }} w="full" maxW="100vw" overflowX="hidden">
+            <VStack spacing={{ base: 4, md: 6 }} align="stretch" w="full">
                 <Flex
                     bg="green.700"
                     color="white"
@@ -384,40 +377,40 @@ export default function VisitLogsMapView() {
                 </Flex>
 
                 {/* Estadísticas */}
-                <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} spacing={4}>
+                <SimpleGrid columns={{ base: 2, md: 2, lg: 4 }} spacing={{ base: 2, md: 4 }} w="full">
                     <Card bg={statBg} borderColor={borderColor}>
-                        <CardBody>
+                        <CardBody p={{ base: 3, md: 4 }}>
                             <Stat>
-                                <StatLabel>Total Visitas</StatLabel>
-                                <StatNumber>{stats.totalVisits}</StatNumber>
-                                <StatHelpText>Registradas</StatHelpText>
+                                <StatLabel fontSize={{ base: "xs", md: "sm" }}>Total Visitas</StatLabel>
+                                <StatNumber fontSize={{ base: "xl", md: "2xl" }}>{stats.totalVisits}</StatNumber>
+                                <StatHelpText fontSize={{ base: "xs", md: "sm" }}>Registradas</StatHelpText>
                             </Stat>
                         </CardBody>
                     </Card>
                     <Card bg={statBg} borderColor={borderColor}>
-                        <CardBody>
+                        <CardBody p={{ base: 3, md: 4 }}>
                             <Stat>
-                                <StatLabel>Completadas</StatLabel>
-                                <StatNumber>{stats.completedVisits}</StatNumber>
-                                <StatHelpText>Con Check-In/Out</StatHelpText>
+                                <StatLabel fontSize={{ base: "xs", md: "sm" }}>Completadas</StatLabel>
+                                <StatNumber fontSize={{ base: "xl", md: "2xl" }}>{stats.completedVisits}</StatNumber>
+                                <StatHelpText fontSize={{ base: "xs", md: "sm" }}>Con Check-In/Out</StatHelpText>
                             </Stat>
                         </CardBody>
                     </Card>
                     <Card bg={statBg} borderColor={borderColor}>
-                        <CardBody>
+                        <CardBody p={{ base: 3, md: 4 }}>
                             <Stat>
-                                <StatLabel>Pendientes</StatLabel>
-                                <StatNumber>{stats.pendingCheckOut}</StatNumber>
-                                <StatHelpText>Sin Check-Out</StatHelpText>
+                                <StatLabel fontSize={{ base: "xs", md: "sm" }}>Pendientes</StatLabel>
+                                <StatNumber fontSize={{ base: "xl", md: "2xl" }}>{stats.pendingCheckOut}</StatNumber>
+                                <StatHelpText fontSize={{ base: "xs", md: "sm" }}>Sin Check-Out</StatHelpText>
                             </Stat>
                         </CardBody>
                     </Card>
                     <Card bg={statBg} borderColor={borderColor}>
-                        <CardBody>
+                        <CardBody p={{ base: 3, md: 4 }}>
                             <Stat>
-                                <StatLabel>Duración Promedio</StatLabel>
-                                <StatNumber fontSize="lg">{stats.avgDuration}</StatNumber>
-                                <StatHelpText>Por visita</StatHelpText>
+                                <StatLabel fontSize={{ base: "xs", md: "sm" }}>Duración Promedio</StatLabel>
+                                <StatNumber fontSize={{ base: "md", md: "lg" }}>{stats.avgDuration}</StatNumber>
+                                <StatHelpText fontSize={{ base: "xs", md: "sm" }}>Por visita</StatHelpText>
                             </Stat>
                         </CardBody>
                     </Card>
@@ -425,10 +418,10 @@ export default function VisitLogsMapView() {
 
                 {/* Filtros */}
                 <Card bg={cardBg} borderColor={borderColor}>
-                    <CardBody>
+                    <CardBody p={{ base: 3, md: 4 }}>
                         <VStack align="stretch" spacing={4}>
                             <Flex justify="space-between" align="center">
-                                <Heading size="sm">
+                                <Heading size={{ base: "xs", md: "sm" }}>
                                     <FilterIcon /> Filtros
                                 </Heading>
                                 <IconButton
@@ -440,7 +433,7 @@ export default function VisitLogsMapView() {
                             </Flex>
 
                             <Collapse in={showFilters}>
-                                <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={4}>
+                                <VStack spacing={3} align="stretch">
                                     <InputGroup>
                                         <InputLeftElement pointerEvents="none">
                                             <SearchIcon />
@@ -449,12 +442,14 @@ export default function VisitLogsMapView() {
                                             placeholder="Buscar tienda o vendedor..."
                                             value={searchTerm}
                                             onChange={(e) => setSearchTerm(e.target.value)}
+                                            fontSize={{ base: "sm", md: "md" }}
                                         />
                                     </InputGroup>
 
                                     <Select
                                         value={selectedVendor}
                                         onChange={(e) => setSelectedVendor(e.target.value)}
+                                        fontSize={{ base: "sm", md: "md" }}
                                     >
                                         <option value="all">👥 Todos los vendedores</option>
                                         {vendors.map((vendor) => (
@@ -463,20 +458,38 @@ export default function VisitLogsMapView() {
                                             </option>
                                         ))}
                                     </Select>
-                                </Grid>
+                                </VStack>
                             </Collapse>
                         </VStack>
                     </CardBody>
                 </Card>
 
-                {/* Mapa */}
+                {/* Mapa con scroll bloqueado en mobile */}
                 <Card bg={cardBg} borderColor={borderColor}>
                     <CardBody p={0}>
-                        <Box height="500px" borderRadius="lg" overflow="hidden">
+                        <Box
+                            height={{ base: "300px", md: "500px" }}
+                            borderRadius="lg"
+                            overflow="hidden"
+                            position="relative"
+                            sx={{
+                                // Bloquear interacción táctil en mobile
+                                '.leaflet-container': {
+                                    touchAction: { base: 'pan-y', md: 'auto' }
+                                }
+                            }}
+                        >
                             <MapContainer
                                 center={mapCenter}
                                 zoom={mapZoom}
                                 style={{ height: "100%", width: "100%" }}
+                                scrollWheelZoom={false}
+                                dragging={false}
+                                touchZoom={false}
+                                doubleClickZoom={false}
+                                zoomControl={false}
+                                boxZoom={false}
+                                keyboard={false}
                             >
                                 <TileLayer
                                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
@@ -495,22 +508,15 @@ export default function VisitLogsMapView() {
                 </Card>
 
                 {/* Lista de visitas */}
-                <Box>
-                    <HStack justify="space-between" mb={4}>
-                        <Heading size="md">Detalle de Visitas</Heading>
-                        <Badge colorScheme="blue" fontSize="md" p={2} borderRadius="md">
+                <Box w="full">
+                    <HStack justify="space-between" mb={4} flexWrap="wrap" gap={2}>
+                        <Heading size={{ base: "sm", md: "md" }}>Detalle de Visitas</Heading>
+                        <Badge colorScheme="blue" fontSize={{ base: "sm", md: "md" }} p={2} borderRadius="md">
                             {filteredGroups.length} resultados
                         </Badge>
                     </HStack>
 
-                    <Grid
-                        templateColumns={
-                            viewMode === "grid"
-                                ? "repeat(auto-fill, minmax(350px, 1fr))"
-                                : "1fr"
-                        }
-                        gap={4}
-                    >
+                    <VStack spacing={{ base: 3, md: 4 }} align="stretch" w="full">
                         {filteredGroups.map((group) => (
                             <Card
                                 key={group.id}
@@ -521,48 +527,49 @@ export default function VisitLogsMapView() {
                                 transition="all 0.2s"
                                 _hover={{
                                     bg: hoverBg,
-                                    transform: "translateY(-2px)",
+                                    transform: { base: "none", md: "translateY(-2px)" },
                                     shadow: "md"
                                 }}
                                 onClick={() => handleCardClick(group)}
                                 onMouseEnter={() => setHoveredStore(group.id)}
                                 onMouseLeave={() => setHoveredStore(null)}
+                                w="full"
                             >
-                                <CardBody>
+                                <CardBody p={{ base: 3, md: 4 }}>
                                     <VStack align="stretch" spacing={3}>
-                                        <HStack justify="space-between">
-                                            <Heading size="sm">
+                                        <HStack justify="space-between" flexWrap="wrap" gap={2}>
+                                            <Heading size={{ base: "xs", md: "sm" }} isTruncated maxW={{ base: "200px", md: "none" }}>
                                                 <MapPinIcon /> {group.storeName}
                                             </Heading>
                                             {group.in && group.out && (
-                                                <Badge colorScheme="green">Completo</Badge>
+                                                <Badge colorScheme="green" fontSize={{ base: "xs", md: "sm" }}>Completo</Badge>
                                             )}
                                             {group.in && !group.out && (
-                                                <Badge colorScheme="orange">Pendiente</Badge>
+                                                <Badge colorScheme="orange" fontSize={{ base: "xs", md: "sm" }}>Pendiente</Badge>
                                             )}
                                             {!group.in && group.out && (
-                                                <Badge colorScheme="red">Sin Check-In</Badge>
+                                                <Badge colorScheme="red" fontSize={{ base: "xs", md: "sm" }}>Sin Check-In</Badge>
                                             )}
                                         </HStack>
 
                                         {group.in && (
                                             <Box
-                                                p={3}
+                                                p={{ base: 2, md: 3 }}
                                                 bg={useColorModeValue("green.50", "green.900")}
                                                 borderRadius="md"
                                             >
-                                                <HStack justify="space-between" mb={1}>
-                                                    <Badge colorScheme="green">✓ CHECK IN</Badge>
-                                                    <Text fontSize="sm" fontWeight="bold">
+                                                <HStack justify="space-between" mb={1} flexWrap="wrap" gap={1}>
+                                                    <Badge colorScheme="green" fontSize={{ base: "xs", md: "sm" }}>✓ CHECK IN</Badge>
+                                                    <Text fontSize={{ base: "xs", md: "sm" }} fontWeight="bold">
                                                         <ClockIcon /> {formatTime(group.in.createdAt)}
                                                     </Text>
                                                 </HStack>
-                                                <Text fontSize="xs" color="gray.600">
+                                                <Text fontSize="xs" color="gray.600" noOfLines={1}>
                                                     <CalendarIcon /> {formatDateTime(group.in.createdAt)}
                                                 </Text>
-                                                <Text fontSize="xs" mt={1}>👤 {group.in.vendorName}</Text>
+                                                <Text fontSize="xs" mt={1} isTruncated>👤 {group.in.vendorName}</Text>
                                                 {group.in.imageUrl && (
-                                                    <HStack mt={2}>
+                                                    <HStack mt={2} flexWrap="wrap" gap={2}>
                                                         <Badge colorScheme="blue" fontSize="xs">
                                                             <ImageIcon /> Con foto
                                                         </Badge>
@@ -585,31 +592,31 @@ export default function VisitLogsMapView() {
 
                                         {group.out && (
                                             <Box
-                                                p={3}
+                                                p={{ base: 2, md: 3 }}
                                                 bg={useColorModeValue("red.50", "red.900")}
                                                 borderRadius="md"
                                             >
-                                                <HStack justify="space-between" mb={1}>
-                                                    <Badge colorScheme="red">✗ CHECK OUT</Badge>
-                                                    <Text fontSize="sm" fontWeight="bold">
+                                                <HStack justify="space-between" mb={1} flexWrap="wrap" gap={1}>
+                                                    <Badge colorScheme="red" fontSize={{ base: "xs", md: "sm" }}>✗ CHECK OUT</Badge>
+                                                    <Text fontSize={{ base: "xs", md: "sm" }} fontWeight="bold">
                                                         <ClockIcon /> {formatTime(group.out.createdAt)}
                                                     </Text>
                                                 </HStack>
-                                                <Text fontSize="xs" color="gray.600">
+                                                <Text fontSize="xs" color="gray.600" noOfLines={1}>
                                                     <CalendarIcon /> {formatDateTime(group.out.createdAt)}
                                                 </Text>
-                                                <Text fontSize="xs" mt={1}>👤 {group.out.vendorName}</Text>
+                                                <Text fontSize="xs" mt={1} isTruncated>👤 {group.out.vendorName}</Text>
                                             </Box>
                                         )}
 
                                         {group.in && group.out && (
                                             <>
                                                 <Divider />
-                                                <HStack justify="center">
-                                                    <Text fontSize="sm" fontWeight="bold">
+                                                <HStack justify="center" flexWrap="wrap" gap={2}>
+                                                    <Text fontSize={{ base: "xs", md: "sm" }} fontWeight="bold">
                                                         ⏱️ Duración:
                                                     </Text>
-                                                    <Badge colorScheme="blue" fontSize="md" p={2}>
+                                                    <Badge colorScheme="blue" fontSize={{ base: "sm", md: "md" }} p={2}>
                                                         {calculateDuration(group.out.createdAt, group.in.createdAt)}
                                                     </Badge>
                                                 </HStack>
@@ -619,7 +626,7 @@ export default function VisitLogsMapView() {
                                 </CardBody>
                             </Card>
                         ))}
-                    </Grid>
+                    </VStack>
                 </Box>
             </VStack>
         </Box>

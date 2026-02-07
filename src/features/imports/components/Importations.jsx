@@ -100,7 +100,7 @@ export function Importations({ data = [], isLoading, error, onRetry }) {
   }
 
   return (
-    <VStack spacing={4} align="stretch">
+    <VStack spacing={4} align="stretch" w="full">
       <InputGroup>
         <InputLeftElement pointerEvents="none">
           <Search size={16} />
@@ -131,32 +131,39 @@ export function Importations({ data = [], isLoading, error, onRetry }) {
               borderRadius="lg"
               mb={3}
             >
-              <AccordionButton _hover={{ bg: bgHover }}>
+              <AccordionButton _hover={{ bg: bgHover }} px={3} py={3}>
                 <Box flex="1" textAlign="left">
-                  <HStack justify="space-between">
-                    <HStack>
-                      <Badge colorScheme="purple">
+                  <Stack 
+                    direction={{ base: "column", sm: "row" }}
+                    justify="space-between"
+                    spacing={2}
+                    align={{ base: "flex-start", sm: "center" }}
+                  >
+                    <HStack flexWrap="wrap" spacing={2}>
+                      <Badge colorScheme="purple" fontSize={{ base: "xs", sm: "sm" }}>
                         <HStack spacing={1}>
                           <Tag size={12} />
-                          <Text>{line.linea}</Text>
+                          <Text isTruncated maxW={{ base: "120px", sm: "none" }}>
+                            {line.linea}
+                          </Text>
                         </HStack>
                       </Badge>
-                      <Badge variant="outline">
+                      <Badge variant="outline" fontSize={{ base: "xs", sm: "sm" }}>
                         {line.products.length} prod.
                       </Badge>
                     </HStack>
 
-                    <HStack>
-                      <Badge colorScheme="green">
+                    <HStack spacing={2}>
+                      <Badge colorScheme="green" fontSize={{ base: "xs", sm: "sm" }}>
                         Total: {totalQuantity}
                       </Badge>
                       <AccordionIcon />
                     </HStack>
-                  </HStack>
+                  </Stack>
                 </Box>
               </AccordionButton>
 
-              <AccordionPanel bg={bgAccordion}>
+              <AccordionPanel bg={bgAccordion} px={2} py={3}>
                 <VStack spacing={2} align="stretch">
                   {line.products.map((product, idx) => {
                     const today = new Date().setHours(0, 0, 0, 0);
@@ -174,33 +181,34 @@ export function Importations({ data = [], isLoading, error, onRetry }) {
                         borderColor={borderColor}
                         borderRadius="md"
                       >
-                        <HStack spacing={3} align="flex-start">
-                          {/* ICONO */}
-                          <Box
-                            p={1.5}
-                            borderRadius="md"
-                            bg={hasArrived ? "green.50" : "blue.50"}
-                          >
-                            <Icon
-                              as={hasArrived ? Package : GiCargoShip}
-                              boxSize={6}
-                              color={hasArrived ? "green.600" : "blue.600"}
-                            />
-                          </Box>
+                        <Stack 
+                          direction={{ base: "column", sm: "row" }}
+                          spacing={3}
+                          align="flex-start"
+                        >
+                          {/* ICONO + INFO EN MOBILE */}
+                          <HStack w="full" spacing={3}>
+                            <Box
+                              p={1.5}
+                              borderRadius="md"
+                              bg={hasArrived ? "green.50" : "blue.50"}
+                              flexShrink={0}
+                            >
+                              <Icon
+                                as={hasArrived ? Package : GiCargoShip}
+                                boxSize={5}
+                                color={hasArrived ? "green.600" : "blue.600"}
+                              />
+                            </Box>
 
-                          {/* CONTENIDO */}
-                          <HStack w="full" justify="space-between">
-                            <VStack align="start" spacing={1}>
-                              {/* <Text fontSize="xs" fontWeight="bold">
-                                {product.itemCode}
-                              </Text>  */}
+                            {/* CONTENIDO */}
+                            <VStack align="start" spacing={1} flex={1} minW={0}>
                               {(() => {
                                 const match = product.itemDescription?.match(/^([A-Z0-9\-\/]+)\s/);
                                 const vendorCode = match?.[1];
 
                                 return vendorCode ? (
-                                  <HStack spacing={1}>
-                                    {/* Código vendedor con fondo */}
+                                  <HStack spacing={1} flexWrap="wrap">
                                     <Badge
                                       colorScheme="purple"
                                       fontSize="xs"
@@ -212,7 +220,6 @@ export function Importations({ data = [], isLoading, error, onRetry }) {
                                       {vendorCode}
                                     </Badge>
 
-                                    {/* Código normal sin fondo */}
                                     <Text
                                       fontSize="xs"
                                       color="gray.500"
@@ -233,12 +240,48 @@ export function Importations({ data = [], isLoading, error, onRetry }) {
                                 );
                               })()}
 
-                              <Text fontSize="sm" color={textMuted}>
+                              <Text 
+                                fontSize="sm" 
+                                color={textMuted}
+                                noOfLines={2}
+                                wordBreak="break-word"
+                              >
                                 {product.itemDescription}
                               </Text>
+
+                              {/* CANTIDAD Y FECHA EN MOBILE */}
+                              <HStack 
+                                w="full" 
+                                justify="space-between" 
+                                mt={2}
+                                display={{ base: "flex", sm: "none" }}
+                              >
+                                <Text
+                                  fontSize="xl"
+                                  fontWeight="extrabold"
+                                  color={hasArrived ? "green.600" : "orange.600"}
+                                >
+                                  {product.quantity}
+                                </Text>
+                                <HStack spacing={1}>
+                                  <Calendar size={14} />
+                                  <Text fontSize="sm" color={textMuted}>
+                                    {new Date(product.fechaIngreso).toLocaleDateString("es-PE", {
+                                      day: "2-digit",
+                                      month: "short"
+                                    })}
+                                  </Text>
+                                </HStack>
+                              </HStack>
                             </VStack>
 
-                            <VStack align="end" spacing={1}>
+                            {/* CANTIDAD Y FECHA EN DESKTOP */}
+                            <VStack 
+                              align="end" 
+                              spacing={1}
+                              display={{ base: "none", sm: "flex" }}
+                              flexShrink={0}
+                            >
                               <Text
                                 fontSize="xl"
                                 fontWeight="extrabold"
@@ -248,7 +291,7 @@ export function Importations({ data = [], isLoading, error, onRetry }) {
                               </Text>
                               <HStack spacing={1}>
                                 <Calendar size={14} />
-                                <Text fontSize="sm" color={textMuted}>
+                                <Text fontSize="sm" color={textMuted} whiteSpace="nowrap">
                                   {new Date(product.fechaIngreso).toLocaleDateString("es-PE", {
                                     day: "2-digit",
                                     month: "short"
@@ -257,7 +300,7 @@ export function Importations({ data = [], isLoading, error, onRetry }) {
                               </HStack>
                             </VStack>
                           </HStack>
-                        </HStack>
+                        </Stack>
                       </Box>
                     );
                   })}
@@ -269,7 +312,7 @@ export function Importations({ data = [], isLoading, error, onRetry }) {
       </Accordion>
 
       {groupedByLine.length > PAGE_SIZE && (
-        <HStack justify="space-between">
+        <HStack justify="space-between" w="full">
           <Button
             size="sm"
             onClick={() => setPage(p => Math.max(p - 1, 1))}
