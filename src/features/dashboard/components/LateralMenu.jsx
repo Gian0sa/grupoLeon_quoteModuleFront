@@ -120,7 +120,7 @@ export function LateralMenu() {
       label: 'Registro de visitas',
       icon: MdLocationOn,
       path: '/visitLog',
-      access: 'GET:/visit-logs'
+      access: 'POST:/visit-logs'
     },
     {
       label: 'Mapa de visitas',
