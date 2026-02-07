@@ -39,9 +39,9 @@ export function SalesStats({ data }) {
       justifyContent="space-evenly"
       alignItems="center"
       position="relative"
-      cursor="pointer"
-      _hover={{ transform: "scale(1.02)", transition: "0.2s" }}
-      onClick={() => navigate("/ordersDashboard")}
+      // cursor="pointer"
+      // _hover={{ transform: "scale(1.02)", transition: "0.2s" }}
+      // onClick={() => navigate("/ordersDashboard")}
     >
       {/* Header */}
       <VStack spacing={1} mb={4}>

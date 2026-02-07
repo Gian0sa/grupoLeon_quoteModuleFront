@@ -104,8 +104,6 @@ export function DashboardPage() {
     resumenData = Array.isArray(adminData) ? adminData[0] : adminData;
   }
 
-  console.log("resumenData final:", resumenData);
-
   const today = format(new Date(), "EEEE, d 'de' MMMM 'del' yyyy", { locale: es });
 
   return (
