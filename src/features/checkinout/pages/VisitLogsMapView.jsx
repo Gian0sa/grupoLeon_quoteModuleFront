@@ -29,13 +29,13 @@ import {
     SimpleGrid,
 } from "@chakra-ui/react";
 import { useState, useEffect, useMemo } from "react";
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, CircleMarker } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { useVisitLogs } from "../hooks/queries/visitLogQueries";
 import { BackButton } from "../../../components/BackButton";
 
-// Icons (using Unicode symbols as replacements for lucide-react)
+// Icons (usando Unicode symbols)
 const SearchIcon = () => <span>🔍</span>;
 const MapPinIcon = () => <span>📍</span>;
 const ClockIcon = () => <span>🕐</span>;
@@ -44,6 +44,7 @@ const ChevronDownIcon = () => <span>▼</span>;
 const ChevronUpIcon = () => <span>▲</span>;
 const FilterIcon = () => <span>🔽</span>;
 const ImageIcon = () => <span>🖼️</span>;
+const RouteIcon = () => <span>🛣️</span>;
 
 // Fix para los iconos de Leaflet
 delete L.Icon.Default.prototype._getIconUrl;
@@ -71,6 +72,34 @@ const checkOutIcon = new L.Icon({
     popupAnchor: [1, -34],
     shadowSize: [41, 41],
 });
+
+// Icono para números de secuencia
+const createNumberedIcon = (number, color = "#2563eb") => {
+    return L.divIcon({
+        className: 'custom-numbered-icon',
+        html: `
+            <div style="
+                background-color: ${color};
+                color: white;
+                border-radius: 50%;
+                width: 32px;
+                height: 32px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-weight: bold;
+                font-size: 14px;
+                border: 3px solid white;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            ">
+                ${number}
+            </div>
+        `,
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
+        popupAnchor: [0, -16],
+    });
+};
 
 const formatDateTime = (dateString) => {
     if (!dateString) return "N/A";
@@ -110,8 +139,53 @@ function MapUpdater({ center, zoom }) {
     return null;
 }
 
+// Componente para ajustar el mapa a los bounds
+function MapBoundsUpdater({ bounds }) {
+    const map = useMap();
+    useEffect(() => {
+        if (bounds && bounds.length > 0) {
+            map.fitBounds(bounds, { padding: [50, 50] });
+        }
+    }, [bounds, map]);
+    return null;
+}
+
+// Componente para mostrar la ruta del vendedor
+function VendorRoute({ visits, color = "#3b82f6" }) {
+    if (!visits || visits.length < 2) return null;
+
+    const positions = visits.map(v => [v.latitude, v.longitude]);
+
+    return (
+        <>
+            {/* Línea principal de la ruta */}
+            <Polyline
+                positions={positions}
+                color={color}
+                weight={3}
+                opacity={0.7}
+            />
+            
+            {/* Flechas direccionales */}
+            <Polyline
+                positions={positions}
+                color={color}
+                weight={3}
+                opacity={0.7}
+                dashArray="10, 15"
+            />
+        </>
+    );
+}
+
 // Componente para los marcadores
-function MapMarkers({ groupedVisits, selectedVendor, hoveredStore, onMarkerClick }) {
+function MapMarkers({ groupedVisits, selectedVendor, hoveredStore, onMarkerClick, showRoute }) {
+    // Generar colores para diferentes vendedores
+    const vendorColors = {
+        default: "#3b82f6",
+        colors: ["#ef4444", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#14b8a6"]
+    };
+
     return (
         <>
             {groupedVisits.map((group, idx) => {
@@ -122,37 +196,61 @@ function MapMarkers({ groupedVisits, selectedVendor, hoveredStore, onMarkerClick
 
                 const isHovered = hoveredStore === group.id;
 
+                // Si hay una ruta activada y es del vendedor seleccionado, mostrar número
+                const showSequence = showRoute && selectedVendor !== "all" && group.sequenceNumber;
+                const vendorColor = vendorColors.colors[idx % vendorColors.colors.length];
+
                 return (
                     <div key={group.id}>
                         {hasIn && (
                             <Marker
                                 position={[group.in.latitude, group.in.longitude]}
-                                icon={checkInIcon}
+                                icon={showSequence ? createNumberedIcon(group.sequenceNumber, vendorColor) : checkInIcon}
                                 eventHandlers={{
                                     click: () => onMarkerClick(group),
                                 }}
                             >
-                                <Popup>
+                                <Popup maxWidth={250}>
                                     <Box p={2}>
-                                        <Text fontWeight="bold" color="green.600">
+                                        {showSequence && (
+                                            <Badge colorScheme="blue" mb={2}>
+                                                Parada #{group.sequenceNumber}
+                                            </Badge>
+                                        )}
+                                        <Text fontWeight="bold" color="green.600" mb={2}>
                                             ✓ CHECK IN
                                         </Text>
                                         <Text fontSize="sm" fontWeight="bold">{group.in.storeName}</Text>
                                         <Text fontSize="sm">👤 {group.in.vendorName}</Text>
-                                        <Text fontSize="sm">
+                                        <Text fontSize="sm" mb={2}>
                                             🕐 {formatDateTime(group.in.createdAt)}
                                         </Text>
                                         {group.in.imageUrl && (
-                                            <Text fontSize="xs" color="blue.500">
-                                                <ImageIcon /> Con foto
-                                            </Text>
+                                            <Box
+                                                mt={2}
+                                                borderRadius="md"
+                                                overflow="hidden"
+                                                border="2px solid"
+                                                borderColor="green.300"
+                                            >
+                                                <img
+                                                    src={group.in.imageUrl}
+                                                    alt="Check-In"
+                                                    style={{
+                                                        width: "100%",
+                                                        height: "120px",
+                                                        objectFit: "cover",
+                                                        display: "block"
+                                                    }}
+                                                />
+                                            </Box>
                                         )}
                                     </Box>
                                 </Popup>
                             </Marker>
                         )}
 
-                        {hasOut && (
+                        {hasOut && !showSequence && (
                             <Marker
                                 position={[group.out.latitude, group.out.longitude]}
                                 icon={checkOutIcon}
@@ -175,7 +273,7 @@ function MapMarkers({ groupedVisits, selectedVendor, hoveredStore, onMarkerClick
                             </Marker>
                         )}
 
-                        {hasIn && hasOut && (
+                        {hasIn && hasOut && !showRoute && (
                             <Polyline
                                 positions={[
                                     [group.in.latitude, group.in.longitude],
@@ -204,13 +302,14 @@ export default function VisitLogsMapView() {
     const [showFilters, setShowFilters] = useState(true);
     const [hoveredStore, setHoveredStore] = useState(null);
     const [selectedStore, setSelectedStore] = useState(null);
+    const [showVendorRoute, setShowVendorRoute] = useState(false);
 
     const cardBg = useColorModeValue("white", "gray.700");
     const borderColor = useColorModeValue("gray.200", "gray.600");
     const statBg = useColorModeValue("blue.50", "blue.900");
     const hoverBg = useColorModeValue("gray.50", "gray.600");
 
-    // Agrupar visitas - nueva lógica
+    // Agrupar visitas
     const groupedVisits = useMemo(() => {
         if (!visitLogs || visitLogs.length === 0) return [];
 
@@ -282,6 +381,46 @@ export default function VisitLogsMapView() {
         });
     }, [groupedVisits, selectedVendor, searchTerm]);
 
+    // Calcular la ruta del vendedor seleccionado
+    const vendorRouteData = useMemo(() => {
+        if (selectedVendor === "all" || !showVendorRoute) return null;
+
+        // Obtener todas las visitas del vendedor ordenadas cronológicamente
+        const vendorVisits = filteredGroups
+            .filter(g => g.in) // Solo las que tienen check-in
+            .map(g => ({
+                ...g.in,
+                storeName: g.storeName,
+                groupId: g.id
+            }))
+            .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+        if (vendorVisits.length < 2) return null;
+
+        return {
+            visits: vendorVisits,
+            bounds: vendorVisits.map(v => [v.latitude, v.longitude])
+        };
+    }, [selectedVendor, filteredGroups, showVendorRoute]);
+
+    // Agregar números de secuencia a los grupos cuando se muestra la ruta
+    const groupsWithSequence = useMemo(() => {
+        if (!vendorRouteData) return filteredGroups;
+
+        return filteredGroups.map(group => {
+            if (!group.in) return group;
+            
+            const sequenceIndex = vendorRouteData.visits.findIndex(
+                v => v.groupId === group.id
+            );
+            
+            return {
+                ...group,
+                sequenceNumber: sequenceIndex >= 0 ? sequenceIndex + 1 : null
+            };
+        });
+    }, [filteredGroups, vendorRouteData]);
+
     const stats = useMemo(() => {
         const totalVisits = filteredGroups.length;
         const completedVisits = filteredGroups.filter(g => g.in && g.out).length;
@@ -292,7 +431,7 @@ export default function VisitLogsMapView() {
         let visitCount = 0;
         filteredGroups.forEach(g => {
             if (g.in && g.out) {
-                const diff = new Date(g.in.createdAt) - new Date(g.out.createdAt);
+                const diff = new Date(g.out.createdAt) - new Date(g.in.createdAt);
                 totalDuration += diff;
                 visitCount++;
             }
@@ -313,6 +452,15 @@ export default function VisitLogsMapView() {
     const vendors = useMemo(() => {
         return [...new Set(visitLogs?.map(v => v.vendorName) || [])];
     }, [visitLogs]);
+
+    // Activar automáticamente la ruta cuando se selecciona un vendedor
+    useEffect(() => {
+        if (selectedVendor !== "all") {
+            setShowVendorRoute(true);
+        } else {
+            setShowVendorRoute(false);
+        }
+    }, [selectedVendor]);
 
     const handleMarkerClick = (group) => {
         setSelectedStore(group.id);
@@ -458,13 +606,56 @@ export default function VisitLogsMapView() {
                                             </option>
                                         ))}
                                     </Select>
+
+                                    {selectedVendor !== "all" && (
+                                        <HStack
+                                            p={3}
+                                            bg={useColorModeValue("blue.50", "blue.900")}
+                                            borderRadius="md"
+                                            justify="space-between"
+                                        >
+                                            <HStack>
+                                                <RouteIcon />
+                                                <Text fontSize="sm" fontWeight="medium">
+                                                    Mostrar ruta del vendedor
+                                                </Text>
+                                            </HStack>
+                                            <Button
+                                                size="sm"
+                                                colorScheme={showVendorRoute ? "blue" : "gray"}
+                                                onClick={() => setShowVendorRoute(!showVendorRoute)}
+                                            >
+                                                {showVendorRoute ? "Activada" : "Desactivada"}
+                                            </Button>
+                                        </HStack>
+                                    )}
+
+                                    {vendorRouteData && showVendorRoute && (
+                                        <Card bg={useColorModeValue("green.50", "green.900")}>
+                                            <CardBody p={3}>
+                                                <VStack align="stretch" spacing={2}>
+                                                    <Text fontSize="sm" fontWeight="bold">
+                                                        📍 Ruta de {selectedVendor}
+                                                    </Text>
+                                                    <HStack spacing={4} flexWrap="wrap">
+                                                        <Badge colorScheme="blue">
+                                                            {vendorRouteData.visits.length} paradas
+                                                        </Badge>
+                                                        <Text fontSize="xs">
+                                                            Los números en el mapa muestran el orden cronológico
+                                                        </Text>
+                                                    </HStack>
+                                                </VStack>
+                                            </CardBody>
+                                        </Card>
+                                    )}
                                 </VStack>
                             </Collapse>
                         </VStack>
                     </CardBody>
                 </Card>
 
-                {/* Mapa con scroll bloqueado en mobile */}
+                {/* Mapa */}
                 <Card bg={cardBg} borderColor={borderColor}>
                     <CardBody p={0}>
                         <Box
@@ -473,7 +664,6 @@ export default function VisitLogsMapView() {
                             overflow="hidden"
                             position="relative"
                             sx={{
-                                // Bloquear interacción táctil en mobile
                                 '.leaflet-container': {
                                     touchAction: { base: 'pan-y', md: 'auto' }
                                 }
@@ -492,15 +682,25 @@ export default function VisitLogsMapView() {
                                 keyboard={false}
                             >
                                 <TileLayer
-                                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                    url="https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png"
+                                    attribution="&copy; Stadia Maps"
                                 />
-                                <MapUpdater center={mapCenter} zoom={mapZoom} />
+
+                                {vendorRouteData && showVendorRoute ? (
+                                    <>
+                                        <MapBoundsUpdater bounds={vendorRouteData.bounds} />
+                                        <VendorRoute visits={vendorRouteData.visits} />
+                                    </>
+                                ) : (
+                                    <MapUpdater center={mapCenter} zoom={mapZoom} />
+                                )}
+
                                 <MapMarkers
-                                    groupedVisits={filteredGroups}
+                                    groupedVisits={groupsWithSequence}
                                     selectedVendor={selectedVendor}
                                     hoveredStore={hoveredStore}
                                     onMarkerClick={handleMarkerClick}
+                                    showRoute={showVendorRoute && selectedVendor !== "all"}
                                 />
                             </MapContainer>
                         </Box>
@@ -510,14 +710,20 @@ export default function VisitLogsMapView() {
                 {/* Lista de visitas */}
                 <Box w="full">
                     <HStack justify="space-between" mb={4} flexWrap="wrap" gap={2}>
-                        <Heading size={{ base: "sm", md: "md" }}>Detalle de Visitas</Heading>
+                        <Heading size={{ base: "sm", md: "md" }}>
+                            {showVendorRoute && selectedVendor !== "all" ? (
+                                <>Recorrido de {selectedVendor}</>
+                            ) : (
+                                <>Detalle de Visitas</>
+                            )}
+                        </Heading>
                         <Badge colorScheme="blue" fontSize={{ base: "sm", md: "md" }} p={2} borderRadius="md">
                             {filteredGroups.length} resultados
                         </Badge>
                     </HStack>
 
                     <VStack spacing={{ base: 3, md: 4 }} align="stretch" w="full">
-                        {filteredGroups.map((group) => (
+                        {groupsWithSequence.map((group) => (
                             <Card
                                 key={group.id}
                                 bg={cardBg}
@@ -538,9 +744,16 @@ export default function VisitLogsMapView() {
                                 <CardBody p={{ base: 3, md: 4 }}>
                                     <VStack align="stretch" spacing={3}>
                                         <HStack justify="space-between" flexWrap="wrap" gap={2}>
-                                            <Heading size={{ base: "xs", md: "sm" }} isTruncated maxW={{ base: "200px", md: "none" }}>
-                                                <MapPinIcon /> {group.storeName}
-                                            </Heading>
+                                            <HStack>
+                                                {group.sequenceNumber && (
+                                                    <Badge colorScheme="blue" fontSize="md">
+                                                        #{group.sequenceNumber}
+                                                    </Badge>
+                                                )}
+                                                <Heading size={{ base: "xs", md: "sm" }} isTruncated maxW={{ base: "200px", md: "none" }}>
+                                                    <MapPinIcon /> {group.storeName}
+                                                </Heading>
+                                            </HStack>
                                             {group.in && group.out && (
                                                 <Badge colorScheme="green" fontSize={{ base: "xs", md: "sm" }}>Completo</Badge>
                                             )}
@@ -617,7 +830,7 @@ export default function VisitLogsMapView() {
                                                         ⏱️ Duración:
                                                     </Text>
                                                     <Badge colorScheme="blue" fontSize={{ base: "sm", md: "md" }} p={2}>
-                                                        {calculateDuration(group.out.createdAt, group.in.createdAt)}
+                                                        {calculateDuration(group.in.createdAt, group.out.createdAt)}
                                                     </Badge>
                                                 </HStack>
                                             </>
