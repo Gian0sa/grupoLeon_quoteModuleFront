@@ -165,7 +165,7 @@ function VendorRoute({ visits, color = "#3b82f6" }) {
                 weight={3}
                 opacity={0.7}
             />
-            
+
             {/* Flechas direccionales */}
             <Polyline
                 positions={positions}
@@ -409,11 +409,11 @@ export default function VisitLogsMapView() {
 
         return filteredGroups.map(group => {
             if (!group.in) return group;
-            
+
             const sequenceIndex = vendorRouteData.visits.findIndex(
                 v => v.groupId === group.id
             );
-            
+
             return {
                 ...group,
                 sequenceNumber: sequenceIndex >= 0 ? sequenceIndex + 1 : null
@@ -682,8 +682,8 @@ export default function VisitLogsMapView() {
                                 keyboard={false}
                             >
                                 <TileLayer
-                                    url="https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png"
-                                    attribution="&copy; Stadia Maps"
+                                    url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+                                    attribution="&copy; OpenStreetMap &copy; CARTO"
                                 />
 
                                 {vendorRouteData && showVendorRoute ? (
