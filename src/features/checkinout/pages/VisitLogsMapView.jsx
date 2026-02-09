@@ -35,7 +35,6 @@ import L from "leaflet";
 import { useVisitLogs } from "../hooks/queries/visitLogQueries";
 import { BackButton } from "../../../components/BackButton";
 
-// Icons (usando Unicode symbols)
 const SearchIcon = () => <span>🔍</span>;
 const MapPinIcon = () => <span>📍</span>;
 const ClockIcon = () => <span>🕐</span>;
@@ -46,7 +45,6 @@ const FilterIcon = () => <span>🔽</span>;
 const ImageIcon = () => <span>🖼️</span>;
 const RouteIcon = () => <span>🛣️</span>;
 
-// Fix para los iconos de Leaflet
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
     iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
@@ -54,7 +52,6 @@ L.Icon.Default.mergeOptions({
     shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
 });
 
-// Iconos personalizados
 const checkInIcon = new L.Icon({
     iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png",
     shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
@@ -73,7 +70,6 @@ const checkOutIcon = new L.Icon({
     shadowSize: [41, 41],
 });
 
-// Icono para números de secuencia
 const createNumberedIcon = (number, color = "#2563eb") => {
     return L.divIcon({
         className: 'custom-numbered-icon',
@@ -113,6 +109,16 @@ const formatDateTime = (dateString) => {
     });
 };
 
+const formatDate = (dateString) => {
+    if (!dateString) return "N/A";
+    const date = new Date(dateString);
+    return date.toLocaleDateString("es-PE", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+    });
+};
+
 const formatTime = (dateString) => {
     if (!dateString) return "N/A";
     const date = new Date(dateString);
@@ -130,7 +136,48 @@ const calculateDuration = (checkIn, checkOut) => {
     return `${hours}h ${minutes}m`;
 };
 
-// Componente para actualizar el centro del mapa
+const getToday = () => {
+    const today = new Date();
+    const localDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
+    return localDate;
+};
+
+const getYesterday = () => {
+    const today = new Date();
+    const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1, 0, 0, 0, 0);
+    return yesterday;
+};
+
+const getLastWeek = () => {
+    const today = new Date();
+    const lastWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 7, 0, 0, 0, 0);
+    return lastWeek;
+};
+
+const getLastMonth = () => {
+    const today = new Date();
+    const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate(), 0, 0, 0, 0);
+    return lastMonth;
+};
+
+const isSameDay = (date1, date2) => {
+    return date1.getFullYear() === date2.getFullYear() &&
+        date1.getMonth() === date2.getMonth() &&
+        date1.getDate() === date2.getDate();
+};
+
+const formatDateForInput = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+const normalizeToLocalMidnight = (dateString) => {
+    const date = new Date(dateString);
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+};
+
 function MapUpdater({ center, zoom }) {
     const map = useMap();
     useEffect(() => {
@@ -139,7 +186,6 @@ function MapUpdater({ center, zoom }) {
     return null;
 }
 
-// Componente para ajustar el mapa a los bounds
 function MapBoundsUpdater({ bounds }) {
     const map = useMap();
     useEffect(() => {
@@ -150,7 +196,6 @@ function MapBoundsUpdater({ bounds }) {
     return null;
 }
 
-// Componente para mostrar la ruta del vendedor
 function VendorRoute({ visits, color = "#3b82f6" }) {
     if (!visits || visits.length < 2) return null;
 
@@ -178,9 +223,7 @@ function VendorRoute({ visits, color = "#3b82f6" }) {
     );
 }
 
-// Componente para los marcadores
 function MapMarkers({ groupedVisits, selectedVendor, hoveredStore, onMarkerClick, showRoute }) {
-    // Generar colores para diferentes vendedores
     const vendorColors = {
         default: "#3b82f6",
         colors: ["#ef4444", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#14b8a6"]
@@ -294,6 +337,7 @@ function MapMarkers({ groupedVisits, selectedVendor, hoveredStore, onMarkerClick
 
 export default function VisitLogsMapView() {
     const { data: visitLogs, isLoading, error } = useVisitLogs();
+    
     const [selectedVendor, setSelectedVendor] = useState("all");
     const [mapCenter, setMapCenter] = useState([-12.0464, -77.0428]);
     const [mapZoom, setMapZoom] = useState(13);
@@ -303,13 +347,51 @@ export default function VisitLogsMapView() {
     const [hoveredStore, setHoveredStore] = useState(null);
     const [selectedStore, setSelectedStore] = useState(null);
     const [showVendorRoute, setShowVendorRoute] = useState(false);
+    
+    const [datePreset, setDatePreset] = useState("all");
+    const [dateFrom, setDateFrom] = useState("");
+    const [dateTo, setDateTo] = useState("");
+    const [statusFilter, setStatusFilter] = useState("all");
 
     const cardBg = useColorModeValue("white", "gray.700");
     const borderColor = useColorModeValue("gray.200", "gray.600");
     const statBg = useColorModeValue("blue.50", "blue.900");
     const hoverBg = useColorModeValue("gray.50", "gray.600");
 
-    // Agrupar visitas
+    const handleDatePresetChange = (preset) => {
+        setDatePreset(preset);
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+        
+        switch (preset) {
+            case "today":
+                setDateFrom(formatDateForInput(getToday()));
+                setDateTo(formatDateForInput(getToday()));
+                break;
+            case "yesterday":
+                const yesterday = getYesterday();
+                setDateFrom(formatDateForInput(yesterday));
+                setDateTo(formatDateForInput(yesterday));
+                break;
+            case "last7days":
+                setDateFrom(formatDateForInput(getLastWeek()));
+                setDateTo(formatDateForInput(getToday()));
+                break;
+            case "last30days":
+                setDateFrom(formatDateForInput(getLastMonth()));
+                setDateTo(formatDateForInput(getToday()));
+                break;
+            case "all":
+                setDateFrom("");
+                setDateTo("");
+                break;
+            case "custom":
+                break;
+            default:
+                break;
+        }
+    };
+
     const groupedVisits = useMemo(() => {
         if (!visitLogs || visitLogs.length === 0) return [];
 
@@ -377,17 +459,41 @@ export default function VisitLogsMapView() {
                 group.storeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 group.vendorName.toLowerCase().includes(searchTerm.toLowerCase());
 
-            return vendorMatch && searchMatch;
-        });
-    }, [groupedVisits, selectedVendor, searchTerm]);
+            let dateMatch = true;
+            if (dateFrom || dateTo) {
+                const visitDate = normalizeToLocalMidnight(group.in?.createdAt || group.out?.createdAt);
 
-    // Calcular la ruta del vendedor seleccionado
+                if (dateFrom) {
+                    const fromDate = normalizeToLocalMidnight(dateFrom + "T00:00:00");
+                    if (visitDate < fromDate) dateMatch = false;
+                }
+
+                if (dateTo) {
+                    const toDate = normalizeToLocalMidnight(dateTo + "T23:59:59");
+                    if (visitDate > toDate) dateMatch = false;
+                }
+            }
+
+            let statusMatch = true;
+            if (statusFilter !== "all") {
+                if (statusFilter === "completed") {
+                    statusMatch = group.in && group.out;
+                } else if (statusFilter === "pending") {
+                    statusMatch = group.in && !group.out;
+                } else if (statusFilter === "orphan") {
+                    statusMatch = !group.in && group.out;
+                }
+            }
+
+            return vendorMatch && searchMatch && dateMatch && statusMatch;
+        });
+    }, [groupedVisits, selectedVendor, searchTerm, dateFrom, dateTo, statusFilter]);
+
     const vendorRouteData = useMemo(() => {
         if (selectedVendor === "all" || !showVendorRoute) return null;
 
-        // Obtener todas las visitas del vendedor ordenadas cronológicamente
         const vendorVisits = filteredGroups
-            .filter(g => g.in) // Solo las que tienen check-in
+            .filter(g => g.in)
             .map(g => ({
                 ...g.in,
                 storeName: g.storeName,
@@ -403,7 +509,6 @@ export default function VisitLogsMapView() {
         };
     }, [selectedVendor, filteredGroups, showVendorRoute]);
 
-    // Agregar números de secuencia a los grupos cuando se muestra la ruta
     const groupsWithSequence = useMemo(() => {
         if (!vendorRouteData) return filteredGroups;
 
@@ -420,6 +525,28 @@ export default function VisitLogsMapView() {
             };
         });
     }, [filteredGroups, vendorRouteData]);
+
+    const groupedByDay = useMemo(() => {
+        const grouped = {};
+        
+        groupsWithSequence.forEach(group => {
+            const visitDateTime = new Date(group.in?.createdAt || group.out?.createdAt);
+            const localDate = new Date(visitDateTime.getFullYear(), visitDateTime.getMonth(), visitDateTime.getDate());
+            const dateKey = formatDate(localDate);
+            
+            if (!grouped[dateKey]) {
+                grouped[dateKey] = {
+                    date: dateKey,
+                    fullDate: localDate,
+                    visits: []
+                };
+            }
+            
+            grouped[dateKey].visits.push(group);
+        });
+
+        return Object.values(grouped).sort((a, b) => b.fullDate - a.fullDate);
+    }, [groupsWithSequence]);
 
     const stats = useMemo(() => {
         const totalVisits = filteredGroups.length;
@@ -453,7 +580,6 @@ export default function VisitLogsMapView() {
         return [...new Set(visitLogs?.map(v => v.vendorName) || [])];
     }, [visitLogs]);
 
-    // Activar automáticamente la ruta cuando se selecciona un vendedor
     useEffect(() => {
         if (selectedVendor !== "all") {
             setShowVendorRoute(true);
@@ -478,6 +604,16 @@ export default function VisitLogsMapView() {
             setMapCenter([location.latitude, location.longitude]);
             setMapZoom(16);
         }
+    };
+
+    const clearFilters = () => {
+        setSelectedVendor("all");
+        setSearchTerm("");
+        setDatePreset("all");
+        setDateFrom("");
+        setDateTo("");
+        setStatusFilter("all");
+        setShowVendorRoute(false);
     };
 
     if (isLoading) {
@@ -572,16 +708,28 @@ export default function VisitLogsMapView() {
                                 <Heading size={{ base: "xs", md: "sm" }}>
                                     <FilterIcon /> Filtros
                                 </Heading>
-                                <IconButton
-                                    size="sm"
-                                    icon={showFilters ? <ChevronUpIcon /> : <ChevronDownIcon />}
-                                    onClick={() => setShowFilters(!showFilters)}
-                                    variant="ghost"
-                                />
+                                <HStack>
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        colorScheme="red"
+                                        onClick={clearFilters}
+                                        fontSize={{ base: "xs", md: "sm" }}
+                                    >
+                                        Limpiar
+                                    </Button>
+                                    <IconButton
+                                        size="sm"
+                                        icon={showFilters ? <ChevronUpIcon /> : <ChevronDownIcon />}
+                                        onClick={() => setShowFilters(!showFilters)}
+                                        variant="ghost"
+                                    />
+                                </HStack>
                             </Flex>
 
                             <Collapse in={showFilters}>
-                                <VStack spacing={3} align="stretch">
+                                <VStack spacing={4} align="stretch">
+                                    {/* Filtro de búsqueda */}
                                     <InputGroup>
                                         <InputLeftElement pointerEvents="none">
                                             <SearchIcon />
@@ -594,19 +742,143 @@ export default function VisitLogsMapView() {
                                         />
                                     </InputGroup>
 
-                                    <Select
-                                        value={selectedVendor}
-                                        onChange={(e) => setSelectedVendor(e.target.value)}
-                                        fontSize={{ base: "sm", md: "md" }}
-                                    >
-                                        <option value="all">👥 Todos los vendedores</option>
-                                        {vendors.map((vendor) => (
-                                            <option key={vendor} value={vendor}>
-                                                {vendor}
-                                            </option>
-                                        ))}
-                                    </Select>
+                                    {/* Filtros en grid responsivo */}
+                                    <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+                                        {/* Filtro de vendedor */}
+                                        <Box>
+                                            <Text fontSize="sm" fontWeight="medium" mb={2}>
+                                                👥 Vendedor
+                                            </Text>
+                                            <Select
+                                                value={selectedVendor}
+                                                onChange={(e) => setSelectedVendor(e.target.value)}
+                                                fontSize={{ base: "sm", md: "md" }}
+                                            >
+                                                <option value="all">Todos los vendedores</option>
+                                                {vendors.map((vendor) => (
+                                                    <option key={vendor} value={vendor}>
+                                                        {vendor}
+                                                    </option>
+                                                ))}
+                                            </Select>
+                                        </Box>
 
+                                        {/* Filtro de estado */}
+                                        <Box>
+                                            <Text fontSize="sm" fontWeight="medium" mb={2}>
+                                                📊 Estado
+                                            </Text>
+                                            <Select
+                                                value={statusFilter}
+                                                onChange={(e) => setStatusFilter(e.target.value)}
+                                                fontSize={{ base: "sm", md: "md" }}
+                                            >
+                                                <option value="all">Todas las visitas</option>
+                                                <option value="completed">✅ Completas</option>
+                                                <option value="pending">⏳ Pendientes</option>
+                                            </Select>
+                                        </Box>
+                                    </SimpleGrid>
+
+                                    <Divider />
+
+                                    {/* Filtros de fecha */}
+                                    <Box>
+                                        <Text fontSize="sm" fontWeight="bold" mb={3}>
+                                            📅 Filtrar por Fecha
+                                        </Text>
+                                        
+                                        {/* Presets de fecha */}
+                                        <ButtonGroup size="sm" isAttached variant="outline" mb={3} flexWrap="wrap">
+                                            <Button
+                                                colorScheme={datePreset === "all" ? "blue" : "gray"}
+                                                onClick={() => handleDatePresetChange("all")}
+                                            >
+                                                Todas
+                                            </Button>
+                                            <Button
+                                                colorScheme={datePreset === "today" ? "blue" : "gray"}
+                                                onClick={() => handleDatePresetChange("today")}
+                                            >
+                                                Hoy
+                                            </Button>
+                                            <Button
+                                                colorScheme={datePreset === "yesterday" ? "blue" : "gray"}
+                                                onClick={() => handleDatePresetChange("yesterday")}
+                                            >
+                                                Ayer
+                                            </Button>
+                                            <Button
+                                                colorScheme={datePreset === "last7days" ? "blue" : "gray"}
+                                                onClick={() => handleDatePresetChange("last7days")}
+                                            >
+                                                Últimos 7 días
+                                            </Button>
+                                            <Button
+                                                colorScheme={datePreset === "last30days" ? "blue" : "gray"}
+                                                onClick={() => handleDatePresetChange("last30days")}
+                                            >
+                                                Último mes
+                                            </Button>
+                                            <Button
+                                                colorScheme={datePreset === "custom" ? "blue" : "gray"}
+                                                onClick={() => setDatePreset("custom")}
+                                            >
+                                                Personalizado
+                                            </Button>
+                                        </ButtonGroup>
+
+                                        {/* Rango de fechas personalizado */}
+                                        {datePreset === "custom" && (
+                                            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+                                                <Box>
+                                                    <Text fontSize="xs" mb={1}>Desde:</Text>
+                                                    <Input
+                                                        type="date"
+                                                        value={dateFrom}
+                                                        onChange={(e) => setDateFrom(e.target.value)}
+                                                        size="sm"
+                                                    />
+                                                </Box>
+                                                <Box>
+                                                    <Text fontSize="xs" mb={1}>Hasta:</Text>
+                                                    <Input
+                                                        type="date"
+                                                        value={dateTo}
+                                                        onChange={(e) => setDateTo(e.target.value)}
+                                                        size="sm"
+                                                    />
+                                                </Box>
+                                            </SimpleGrid>
+                                        )}
+
+                                        {/* Mostrar rango activo */}
+                                        {(dateFrom || dateTo) && (
+                                            <Box
+                                                mt={2}
+                                                p={3}
+                                                bg={useColorModeValue("purple.100", "purple.800")}
+                                                borderRadius="md"
+                                                borderWidth="1px"
+                                                borderColor={useColorModeValue("purple.300", "purple.600")}
+                                            >
+                                                <HStack spacing={2} justify="center" flexWrap="wrap">
+                                                    <Text fontSize="xs" fontWeight="bold" color={useColorModeValue("purple.700", "purple.200")}>
+                                                        📆 Período:
+                                                    </Text>
+                                                    <Badge colorScheme="purple" fontSize="xs">
+                                                        {dateFrom || "..."}
+                                                    </Badge>
+                                                    <Text fontSize="xs" fontWeight="bold">→</Text>
+                                                    <Badge colorScheme="purple" fontSize="xs">
+                                                        {dateTo || "..."}
+                                                    </Badge>
+                                                </HStack>
+                                            </Box>
+                                        )}
+                                    </Box>
+
+                                    {/* Control de ruta del vendedor */}
                                     {selectedVendor !== "all" && (
                                         <HStack
                                             p={3}
@@ -630,6 +902,7 @@ export default function VisitLogsMapView() {
                                         </HStack>
                                     )}
 
+                                    {/* Info de la ruta */}
                                     {vendorRouteData && showVendorRoute && (
                                         <Card bg={useColorModeValue("green.50", "green.900")}>
                                             <CardBody p={3}>
@@ -673,12 +946,12 @@ export default function VisitLogsMapView() {
                                 center={mapCenter}
                                 zoom={mapZoom}
                                 style={{ height: "100%", width: "100%" }}
-                                scrollWheelZoom={false}
-                                dragging={false}
-                                touchZoom={false}
-                                doubleClickZoom={false}
-                                zoomControl={false}
-                                boxZoom={false}
+                                scrollWheelZoom={true}
+                                dragging={true}
+                                touchZoom={true}
+                                doubleClickZoom={true}
+                                zoomControl={true}
+                                boxZoom={true}
                                 keyboard={false}
                             >
                                 <TileLayer
@@ -707,7 +980,7 @@ export default function VisitLogsMapView() {
                     </CardBody>
                 </Card>
 
-                {/* Lista de visitas */}
+                {/* Lista de visitas agrupadas por día */}
                 <Box w="full">
                     <HStack justify="space-between" mb={4} flexWrap="wrap" gap={2}>
                         <Heading size={{ base: "sm", md: "md" }}>
@@ -718,127 +991,170 @@ export default function VisitLogsMapView() {
                             )}
                         </Heading>
                         <Badge colorScheme="blue" fontSize={{ base: "sm", md: "md" }} p={2} borderRadius="md">
-                            {filteredGroups.length} resultados
+                            {filteredGroups.length} resultado{filteredGroups.length !== 1 ? 's' : ''}
                         </Badge>
                     </HStack>
 
-                    <VStack spacing={{ base: 3, md: 4 }} align="stretch" w="full">
-                        {groupsWithSequence.map((group) => (
-                            <Card
-                                key={group.id}
-                                bg={cardBg}
-                                borderColor={selectedStore === group.id ? "blue.500" : borderColor}
-                                borderWidth={selectedStore === group.id ? "2px" : "1px"}
-                                cursor="pointer"
-                                transition="all 0.2s"
-                                _hover={{
-                                    bg: hoverBg,
-                                    transform: { base: "none", md: "translateY(-2px)" },
-                                    shadow: "md"
-                                }}
-                                onClick={() => handleCardClick(group)}
-                                onMouseEnter={() => setHoveredStore(group.id)}
-                                onMouseLeave={() => setHoveredStore(null)}
-                                w="full"
-                            >
-                                <CardBody p={{ base: 3, md: 4 }}>
-                                    <VStack align="stretch" spacing={3}>
-                                        <HStack justify="space-between" flexWrap="wrap" gap={2}>
-                                            <HStack>
-                                                {group.sequenceNumber && (
-                                                    <Badge colorScheme="blue" fontSize="md">
-                                                        #{group.sequenceNumber}
-                                                    </Badge>
-                                                )}
-                                                <Heading size={{ base: "xs", md: "sm" }} isTruncated maxW={{ base: "200px", md: "none" }}>
-                                                    <MapPinIcon /> {group.storeName}
-                                                </Heading>
-                                            </HStack>
-                                            {group.in && group.out && (
-                                                <Badge colorScheme="green" fontSize={{ base: "xs", md: "sm" }}>Completo</Badge>
-                                            )}
-                                            {group.in && !group.out && (
-                                                <Badge colorScheme="orange" fontSize={{ base: "xs", md: "sm" }}>Pendiente</Badge>
-                                            )}
-                                            {!group.in && group.out && (
-                                                <Badge colorScheme="red" fontSize={{ base: "xs", md: "sm" }}>Sin Check-In</Badge>
-                                            )}
-                                        </HStack>
-
-                                        {group.in && (
-                                            <Box
-                                                p={{ base: 2, md: 3 }}
-                                                bg={useColorModeValue("green.50", "green.900")}
-                                                borderRadius="md"
-                                            >
-                                                <HStack justify="space-between" mb={1} flexWrap="wrap" gap={1}>
-                                                    <Badge colorScheme="green" fontSize={{ base: "xs", md: "sm" }}>✓ CHECK IN</Badge>
-                                                    <Text fontSize={{ base: "xs", md: "sm" }} fontWeight="bold">
-                                                        <ClockIcon /> {formatTime(group.in.createdAt)}
-                                                    </Text>
-                                                </HStack>
-                                                <Text fontSize="xs" color="gray.600" noOfLines={1}>
-                                                    <CalendarIcon /> {formatDateTime(group.in.createdAt)}
-                                                </Text>
-                                                <Text fontSize="xs" mt={1} isTruncated>👤 {group.in.vendorName}</Text>
-                                                {group.in.imageUrl && (
-                                                    <HStack mt={2} flexWrap="wrap" gap={2}>
-                                                        <Badge colorScheme="blue" fontSize="xs">
-                                                            <ImageIcon /> Con foto
-                                                        </Badge>
-                                                        <Text
-                                                            fontSize="xs"
-                                                            color="blue.500"
-                                                            cursor="pointer"
-                                                            textDecoration="underline"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                window.open(group.in.imageUrl, '_blank');
-                                                            }}
-                                                        >
-                                                            Ver imagen
-                                                        </Text>
-                                                    </HStack>
-                                                )}
-                                            </Box>
-                                        )}
-
-                                        {group.out && (
-                                            <Box
-                                                p={{ base: 2, md: 3 }}
-                                                bg={useColorModeValue("red.50", "red.900")}
-                                                borderRadius="md"
-                                            >
-                                                <HStack justify="space-between" mb={1} flexWrap="wrap" gap={1}>
-                                                    <Badge colorScheme="red" fontSize={{ base: "xs", md: "sm" }}>✗ CHECK OUT</Badge>
-                                                    <Text fontSize={{ base: "xs", md: "sm" }} fontWeight="bold">
-                                                        <ClockIcon /> {formatTime(group.out.createdAt)}
-                                                    </Text>
-                                                </HStack>
-                                                <Text fontSize="xs" color="gray.600" noOfLines={1}>
-                                                    <CalendarIcon /> {formatDateTime(group.out.createdAt)}
-                                                </Text>
-                                                <Text fontSize="xs" mt={1} isTruncated>👤 {group.out.vendorName}</Text>
-                                            </Box>
-                                        )}
-
-                                        {group.in && group.out && (
-                                            <>
-                                                <Divider />
-                                                <HStack justify="center" flexWrap="wrap" gap={2}>
-                                                    <Text fontSize={{ base: "xs", md: "sm" }} fontWeight="bold">
-                                                        ⏱️ Duración:
-                                                    </Text>
-                                                    <Badge colorScheme="blue" fontSize={{ base: "sm", md: "md" }} p={2}>
-                                                        {calculateDuration(group.in.createdAt, group.out.createdAt)}
-                                                    </Badge>
-                                                </HStack>
-                                            </>
-                                        )}
-                                    </VStack>
+                    {/* Visitas agrupadas por día */}
+                    <VStack spacing={{ base: 4, md: 5 }} align="stretch" w="full">
+                        {groupedByDay.length === 0 ? (
+                            <Card bg={cardBg} borderColor={borderColor}>
+                                <CardBody p={8} textAlign="center">
+                                    <Text fontSize="lg" color="gray.500">
+                                        📭 No se encontraron visitas con los filtros seleccionados
+                                    </Text>
+                                    <Button
+                                        mt={4}
+                                        colorScheme="blue"
+                                        size="sm"
+                                        onClick={clearFilters}
+                                    >
+                                        Limpiar filtros
+                                    </Button>
                                 </CardBody>
                             </Card>
-                        ))}
+                        ) : (
+                            groupedByDay.map((dayGroup) => (
+                                <Box key={dayGroup.date} w="full">
+                                    {/* Encabezado de día */}
+                                    <HStack
+                                        mb={3}
+                                        p={2}
+                                        bg={useColorModeValue("purple.50", "purple.900")}
+                                        borderRadius="md"
+                                        spacing={3}
+                                    >
+                                        <CalendarIcon />
+                                        <Text fontWeight="bold" fontSize={{ base: "sm", md: "md" }}>
+                                            {dayGroup.date}
+                                        </Text>
+                                        <Badge colorScheme="purple" fontSize="xs">
+                                            {dayGroup.visits.length} visita{dayGroup.visits.length !== 1 ? 's' : ''}
+                                        </Badge>
+                                    </HStack>
+
+                                    {/* Visitas del día */}
+                                    <VStack spacing={{ base: 3, md: 4 }} align="stretch" w="full" pl={{ base: 0, md: 4 }}>
+                                        {dayGroup.visits.map((group) => (
+                                            <Card
+                                                key={group.id}
+                                                bg={cardBg}
+                                                borderColor={selectedStore === group.id ? "blue.500" : borderColor}
+                                                borderWidth={selectedStore === group.id ? "2px" : "1px"}
+                                                cursor="pointer"
+                                                transition="all 0.2s"
+                                                _hover={{
+                                                    bg: hoverBg,
+                                                    transform: { base: "none", md: "translateY(-2px)" },
+                                                    shadow: "md"
+                                                }}
+                                                onClick={() => handleCardClick(group)}
+                                                onMouseEnter={() => setHoveredStore(group.id)}
+                                                onMouseLeave={() => setHoveredStore(null)}
+                                                w="full"
+                                            >
+                                                <CardBody p={{ base: 3, md: 4 }}>
+                                                    <VStack align="stretch" spacing={3}>
+                                                        <HStack justify="space-between" flexWrap="wrap" gap={2}>
+                                                            <HStack>
+                                                                {group.sequenceNumber && (
+                                                                    <Badge colorScheme="blue" fontSize="md">
+                                                                        #{group.sequenceNumber}
+                                                                    </Badge>
+                                                                )}
+                                                                <Heading size={{ base: "xs", md: "sm" }} isTruncated maxW={{ base: "200px", md: "none" }}>
+                                                                    <MapPinIcon /> {group.storeName}
+                                                                </Heading>
+                                                            </HStack>
+                                                            {group.in && group.out && (
+                                                                <Badge colorScheme="green" fontSize={{ base: "xs", md: "sm" }}>Completo</Badge>
+                                                            )}
+                                                            {group.in && !group.out && (
+                                                                <Badge colorScheme="orange" fontSize={{ base: "xs", md: "sm" }}>Pendiente</Badge>
+                                                            )}
+                                                            {!group.in && group.out && (
+                                                                <Badge colorScheme="red" fontSize={{ base: "xs", md: "sm" }}>Sin Check-In</Badge>
+                                                            )}
+                                                        </HStack>
+
+                                                        {group.in && (
+                                                            <Box
+                                                                p={{ base: 2, md: 3 }}
+                                                                bg={useColorModeValue("green.50", "green.900")}
+                                                                borderRadius="md"
+                                                            >
+                                                                <HStack justify="space-between" mb={1} flexWrap="wrap" gap={1}>
+                                                                    <Badge colorScheme="green" fontSize={{ base: "xs", md: "sm" }}>✓ CHECK IN</Badge>
+                                                                    <Text fontSize={{ base: "xs", md: "sm" }} fontWeight="bold">
+                                                                        <ClockIcon /> {formatTime(group.in.createdAt)}
+                                                                    </Text>
+                                                                </HStack>
+                                                                <Text fontSize="xs" color="gray.600" noOfLines={1}>
+                                                                    <CalendarIcon /> {formatDateTime(group.in.createdAt)}
+                                                                </Text>
+                                                                <Text fontSize="xs" mt={1} isTruncated>👤 {group.in.vendorName}</Text>
+                                                                {group.in.imageUrl && (
+                                                                    <HStack mt={2} flexWrap="wrap" gap={2}>
+                                                                        <Badge colorScheme="blue" fontSize="xs">
+                                                                            <ImageIcon /> Con foto
+                                                                        </Badge>
+                                                                        <Text
+                                                                            fontSize="xs"
+                                                                            color="blue.500"
+                                                                            cursor="pointer"
+                                                                            textDecoration="underline"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                window.open(group.in.imageUrl, '_blank');
+                                                                            }}
+                                                                        >
+                                                                            Ver imagen
+                                                                        </Text>
+                                                                    </HStack>
+                                                                )}
+                                                            </Box>
+                                                        )}
+
+                                                        {group.out && (
+                                                            <Box
+                                                                p={{ base: 2, md: 3 }}
+                                                                bg={useColorModeValue("red.50", "red.900")}
+                                                                borderRadius="md"
+                                                            >
+                                                                <HStack justify="space-between" mb={1} flexWrap="wrap" gap={1}>
+                                                                    <Badge colorScheme="red" fontSize={{ base: "xs", md: "sm" }}>✗ CHECK OUT</Badge>
+                                                                    <Text fontSize={{ base: "xs", md: "sm" }} fontWeight="bold">
+                                                                        <ClockIcon /> {formatTime(group.out.createdAt)}
+                                                                    </Text>
+                                                                </HStack>
+                                                                <Text fontSize="xs" color="gray.600" noOfLines={1}>
+                                                                    <CalendarIcon /> {formatDateTime(group.out.createdAt)}
+                                                                </Text>
+                                                                <Text fontSize="xs" mt={1} isTruncated>👤 {group.out.vendorName}</Text>
+                                                            </Box>
+                                                        )}
+
+                                                        {group.in && group.out && (
+                                                            <>
+                                                                <Divider />
+                                                                <HStack justify="center" flexWrap="wrap" gap={2}>
+                                                                    <Text fontSize={{ base: "xs", md: "sm" }} fontWeight="bold">
+                                                                        ⏱️ Duración:
+                                                                    </Text>
+                                                                    <Badge colorScheme="blue" fontSize={{ base: "sm", md: "md" }} p={2}>
+                                                                        {calculateDuration(group.in.createdAt, group.out.createdAt)}
+                                                                    </Badge>
+                                                                </HStack>
+                                                            </>
+                                                        )}
+                                                    </VStack>
+                                                </CardBody>
+                                            </Card>
+                                        ))}
+                                    </VStack>
+                                </Box>
+                            ))
+                        )}
                     </VStack>
                 </Box>
             </VStack>
