@@ -144,8 +144,9 @@ export default function VisitLogPage() {
     const [image, setImage] = useState(null);
     const [imagePreview, setImagePreview] = useState(null);
     const [isProcessingImage, setIsProcessingImage] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const { mutate: createVisit, isLoading: isCreatingVisit } = useCreateVisitLog();
+    const { mutate: createVisit, isLoading: isCreatingVisit, isPending } = useCreateVisitLog();
 
     // Extraer la visita activa del response
     const activeVisit = activeVisitData?.visit || null;
@@ -261,6 +262,7 @@ export default function VisitLogPage() {
 
     const handleSubmit = async (type) => {
         console.log("=== INICIANDO CHECK", type, "===");
+        setIsSubmitting(true);
 
         try {
             // 🔥 VALIDACIÓN CRÍTICA: Verificar estado de check-in según tipo
@@ -356,14 +358,13 @@ export default function VisitLogPage() {
                         isClosable: true,
                     });
 
-                    // Limpiar formulario solo si es Check-Out
                     if (type === "OUT") {
                         setSelectedClient(null);
                     }
                     setImage(null);
                     setImagePreview(null);
 
-                    // 🔥 IMPORTANTE: Refrescar el estado de visita activa
+                    setIsSubmitting(false);
                     refetchActiveVisit();
                 },
                 onError: (error) => {
@@ -391,6 +392,7 @@ export default function VisitLogPage() {
                         duration: 5000,
                         isClosable: true,
                     });
+                    setIsSubmitting(false);
                 }
             });
 
@@ -432,6 +434,7 @@ export default function VisitLogPage() {
                 duration: 5000,
                 isClosable: true,
             });
+            setIsSubmitting(false);
         }
     };
 
@@ -821,7 +824,8 @@ export default function VisitLogPage() {
                                 fontSize="md"
                                 fontWeight="600"
                                 onClick={() => handleSubmit("IN")}
-                                isLoading={isCreatingVisit}
+                                isLoading={isCreatingVisit || isSubmitting}
+                                isDisabled={isSubmitting || isPending}
                                 loadingText="Registrando..."
                                 boxShadow="md"
                                 _hover={{ transform: "translateY(-2px)", boxShadow: "lg" }}
@@ -861,7 +865,8 @@ export default function VisitLogPage() {
                                 fontSize="md"
                                 fontWeight="600"
                                 onClick={() => handleSubmit("OUT")}
-                                isLoading={isCreatingVisit}
+                                isLoading={isCreatingVisit || isSubmitting}
+                                isDisabled={isSubmitting || isPending}
                                 loadingText="Registrando..."
                                 boxShadow="md"
                                 _hover={{ transform: "translateY(-2px)", boxShadow: "lg" }}
@@ -870,7 +875,7 @@ export default function VisitLogPage() {
                                 Check Out
                             </Button>
                         )}
-                        
+
 
                     </VStack>
 
