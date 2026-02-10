@@ -48,57 +48,110 @@ export function InvoiceHistoryTab({ invoices = [] }) {
     enabled: !!selectedItemCode,
   });
 
-  // Agrupar productos
   const productSummary = useMemo(() => {
     try {
-      // Validar que invoices exista y sea un array
       if (!invoices || !Array.isArray(invoices) || invoices.length === 0) {
         console.log("No hay invoices válidas");
         return [];
       }
 
-      const productMap = new Map();
+      // Detectar el formato de datos
+      const first = invoices[0];
+      const isSimplifiedFormat = first.hasOwnProperty('productCode') && 
+                                 first.hasOwnProperty('productName') &&
+                                 !first.hasOwnProperty('invoice') &&
+                                 !first.hasOwnProperty('items');
 
-      invoices.forEach((inv) => {
-        // Validar que la factura tenga items
-        if (!inv || !inv.items || !Array.isArray(inv.items)) {
-          return;
-        }
+      console.log("Formato simplificado detectado:", isSimplifiedFormat);
 
-        inv.items.forEach((item) => {
-          // Validar que el item tenga las propiedades necesarias
+      if (isSimplifiedFormat) {
+        // NUEVO FORMATO: Productos directamente
+        const productMap = new Map();
+
+        invoices.forEach((item) => {
+          // Validar que tenga las propiedades mínimas
           if (!item || !item.productCode || !item.productName) {
             return;
           }
 
           const code = item.productCode;
-          const invDate = inv.invoice?.date ? new Date(inv.invoice.date) : new Date();
 
           if (!productMap.has(code)) {
             productMap.set(code, {
               productCode: code,
               productName: item.productName,
-              totalQuantity: item.quantity || 0,
-              lastPrice: item.unitPrice || 0,
-              lastPurchaseDate: inv.invoice?.date || new Date().toISOString(),
-              purchaseCount: 1,
+              totalQuantity: item.quantity || item.totalQuantity || 0,
+              lastPrice: item.lastSalePrice || item.unitPrice || 0,
+              lastPurchaseDate: item.lastPurchaseDate || new Date().toISOString(),
+              purchaseCount: item.invoiceCount || 1,
             });
           } else {
+            // Si hay duplicados, sumar
             const existing = productMap.get(code);
-            existing.totalQuantity += item.quantity || 0;
-            existing.purchaseCount += 1;
+            existing.totalQuantity += (item.quantity || item.totalQuantity || 0);
+            existing.purchaseCount += (item.invoiceCount || 1);
 
-            if (invDate > new Date(existing.lastPurchaseDate)) {
-              existing.lastPurchaseDate = inv.invoice?.date || existing.lastPurchaseDate;
-              existing.lastPrice = item.unitPrice || existing.lastPrice;
+            // Actualizar si es más reciente
+            if (item.lastPurchaseDate && 
+                new Date(item.lastPurchaseDate) > new Date(existing.lastPurchaseDate)) {
+              existing.lastPurchaseDate = item.lastPurchaseDate;
+              existing.lastPrice = item.lastSalePrice || item.unitPrice || existing.lastPrice;
             }
           }
         });
-      });
 
-      return Array.from(productMap.values()).sort(
-        (a, b) => new Date(b.lastPurchaseDate) - new Date(a.lastPurchaseDate)
-      );
+        const result = Array.from(productMap.values()).sort(
+          (a, b) => new Date(b.lastPurchaseDate) - new Date(a.lastPurchaseDate)
+        );
+
+        console.log("Productos procesados (formato simplificado):", result);
+        return result;
+
+      } else {
+        // FORMATO ANTIGUO: Con facturas e items
+        const productMap = new Map();
+
+        invoices.forEach((inv) => {
+          // Validar que la factura tenga items
+          if (!inv || !inv.items || !Array.isArray(inv.items)) {
+            return;
+          }
+
+          inv.items.forEach((item) => {
+            // Validar que el item tenga las propiedades necesarias
+            if (!item || !item.productCode || !item.productName) {
+              return;
+            }
+
+            const code = item.productCode;
+            const invDate = inv.invoice?.date ? new Date(inv.invoice.date) : new Date();
+
+            if (!productMap.has(code)) {
+              productMap.set(code, {
+                productCode: code,
+                productName: item.productName,
+                totalQuantity: item.quantity || 0,
+                lastPrice: item.unitPrice || 0,
+                lastPurchaseDate: inv.invoice?.date || new Date().toISOString(),
+                purchaseCount: 1,
+              });
+            } else {
+              const existing = productMap.get(code);
+              existing.totalQuantity += item.quantity || 0;
+              existing.purchaseCount += 1;
+
+              if (invDate > new Date(existing.lastPurchaseDate)) {
+                existing.lastPurchaseDate = inv.invoice?.date || existing.lastPurchaseDate;
+                existing.lastPrice = item.unitPrice || existing.lastPrice;
+              }
+            }
+          });
+        });
+
+        return Array.from(productMap.values()).sort(
+          (a, b) => new Date(b.lastPurchaseDate) - new Date(a.lastPurchaseDate)
+        );
+      }
     } catch (error) {
       console.error("Error procesando invoices:", error);
       return [];
@@ -118,6 +171,7 @@ export function InvoiceHistoryTab({ invoices = [] }) {
   }, [productSummary, searchTerm]);
 
   const getDaysSinceLastPurchase = (dateString) => {
+    if (!dateString) return 0;
     const purchaseDate = new Date(dateString);
     const now = new Date();
     const diffTime = Math.abs(now - purchaseDate);
@@ -126,10 +180,13 @@ export function InvoiceHistoryTab({ invoices = [] }) {
   };
 
   const isOlderThan30Days = (dateString) => {
+    if (!dateString) return false;
     return getDaysSinceLastPurchase(dateString) > 30;
   };
 
   const formatDate = (dateString) => {
+    if (!dateString) return "Sin fecha";
+    
     const date = new Date(dateString);
     const now = new Date();
     const diffTime = Math.abs(now - date);
@@ -163,8 +220,8 @@ export function InvoiceHistoryTab({ invoices = [] }) {
 
   return (
     <VStack spacing={4} align="stretch">
-      {/* Barra de búsqueda y estadísticas - solo mostrar si hay invoices */}
-      {invoices && invoices.length > 0 && (
+      {/* Barra de búsqueda y estadísticas - solo mostrar si hay productos */}
+      {productSummary.length > 0 && (
         <Box>
           <InputGroup size={isMobile ? "md" : "lg"}>
             <InputLeftElement pointerEvents="none">
@@ -405,10 +462,10 @@ export function InvoiceHistoryTab({ invoices = [] }) {
           <Icon as={FiPackage} boxSize={12} color="gray.300" mb={3} />
           <Text color="gray.600" fontWeight="medium" mb={1}>
             {!invoices || invoices.length === 0 
-              ? "No hay facturas en el historial" 
+              ? "No hay productos en el historial" 
               : searchTerm 
                 ? "No se encontraron productos" 
-                : "No hay productos en el historial"}
+                : "No hay productos para mostrar"}
           </Text>
           {searchTerm && invoices && invoices.length > 0 && (
             <Text color="gray.500" fontSize="sm">
