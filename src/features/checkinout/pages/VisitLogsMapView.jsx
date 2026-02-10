@@ -293,41 +293,7 @@ function MapMarkers({ groupedVisits, selectedVendor, hoveredStore, onMarkerClick
                             </Marker>
                         )}
 
-                        {hasOut && !showSequence && (
-                            <Marker
-                                position={[group.out.latitude, group.out.longitude]}
-                                icon={checkOutIcon}
-                                eventHandlers={{
-                                    click: () => onMarkerClick(group),
-                                }}
-                            >
-                                <Popup>
-                                    <Box p={2}>
-                                        <Text fontWeight="bold" color="red.600">
-                                            ✗ CHECK OUT
-                                        </Text>
-                                        <Text fontSize="sm" fontWeight="bold">{group.out.storeName}</Text>
-                                        <Text fontSize="sm">👤 {group.out.vendorName}</Text>
-                                        <Text fontSize="sm">
-                                            🕐 {formatDateTime(group.out.createdAt)}
-                                        </Text>
-                                    </Box>
-                                </Popup>
-                            </Marker>
-                        )}
-
-                        {hasIn && hasOut && !showRoute && (
-                            <Polyline
-                                positions={[
-                                    [group.in.latitude, group.in.longitude],
-                                    [group.out.latitude, group.out.longitude],
-                                ]}
-                                color={isHovered ? "#3182ce" : "#4299e1"}
-                                weight={isHovered ? 4 : 2}
-                                opacity={isHovered ? 0.9 : 0.6}
-                                dashArray="5, 10"
-                            />
-                        )}
+                        {/* Check-out markers are hidden - only showing check-in markers */}
                     </div>
                 );
             })}
