@@ -353,10 +353,18 @@ export default function VisitLogsMapView() {
     const [dateTo, setDateTo] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
 
+    // ✅ ALL HOOKS MUST BE CALLED AT THE TOP LEVEL - BEFORE ANY CONDITIONS OR EARLY RETURNS
     const cardBg = useColorModeValue("white", "gray.700");
     const borderColor = useColorModeValue("gray.200", "gray.600");
     const statBg = useColorModeValue("blue.50", "blue.900");
     const hoverBg = useColorModeValue("gray.50", "gray.600");
+    const purpleBg = useColorModeValue("purple.100", "purple.800");
+    const purpleBorder = useColorModeValue("purple.300", "purple.600");
+    const purpleText = useColorModeValue("purple.700", "purple.200");
+    const blueBg = useColorModeValue("blue.50", "blue.900");
+    const greenBg = useColorModeValue("green.50", "green.900");
+    const redBg = useColorModeValue("red.50", "red.900");
+    const purpleHeaderBg = useColorModeValue("purple.50", "purple.900");
 
     const handleDatePresetChange = (preset) => {
         setDatePreset(preset);
@@ -659,48 +667,7 @@ export default function VisitLogsMapView() {
                         Mapa de Visitas
                     </Heading>
                 </Flex>
-
-                {/* Estadísticas */}
-                <SimpleGrid columns={{ base: 2, md: 2, lg: 4 }} spacing={{ base: 2, md: 4 }} w="full">
-                    <Card bg={statBg} borderColor={borderColor}>
-                        <CardBody p={{ base: 3, md: 4 }}>
-                            <Stat>
-                                <StatLabel fontSize={{ base: "xs", md: "sm" }}>Total Visitas</StatLabel>
-                                <StatNumber fontSize={{ base: "xl", md: "2xl" }}>{stats.totalVisits}</StatNumber>
-                                <StatHelpText fontSize={{ base: "xs", md: "sm" }}>Registradas</StatHelpText>
-                            </Stat>
-                        </CardBody>
-                    </Card>
-                    <Card bg={statBg} borderColor={borderColor}>
-                        <CardBody p={{ base: 3, md: 4 }}>
-                            <Stat>
-                                <StatLabel fontSize={{ base: "xs", md: "sm" }}>Completadas</StatLabel>
-                                <StatNumber fontSize={{ base: "xl", md: "2xl" }}>{stats.completedVisits}</StatNumber>
-                                <StatHelpText fontSize={{ base: "xs", md: "sm" }}>Con Check-In/Out</StatHelpText>
-                            </Stat>
-                        </CardBody>
-                    </Card>
-                    <Card bg={statBg} borderColor={borderColor}>
-                        <CardBody p={{ base: 3, md: 4 }}>
-                            <Stat>
-                                <StatLabel fontSize={{ base: "xs", md: "sm" }}>Pendientes</StatLabel>
-                                <StatNumber fontSize={{ base: "xl", md: "2xl" }}>{stats.pendingCheckOut}</StatNumber>
-                                <StatHelpText fontSize={{ base: "xs", md: "sm" }}>Sin Check-Out</StatHelpText>
-                            </Stat>
-                        </CardBody>
-                    </Card>
-                    <Card bg={statBg} borderColor={borderColor}>
-                        <CardBody p={{ base: 3, md: 4 }}>
-                            <Stat>
-                                <StatLabel fontSize={{ base: "xs", md: "sm" }}>Duración Promedio</StatLabel>
-                                <StatNumber fontSize={{ base: "md", md: "lg" }}>{stats.avgDuration}</StatNumber>
-                                <StatHelpText fontSize={{ base: "xs", md: "sm" }}>Por visita</StatHelpText>
-                            </Stat>
-                        </CardBody>
-                    </Card>
-                </SimpleGrid>
-
-                {/* Filtros */}
+                 {/* Filtros */}
                 <Card bg={cardBg} borderColor={borderColor}>
                     <CardBody p={{ base: 3, md: 4 }}>
                         <VStack align="stretch" spacing={4}>
@@ -729,18 +696,6 @@ export default function VisitLogsMapView() {
 
                             <Collapse in={showFilters}>
                                 <VStack spacing={4} align="stretch">
-                                    {/* Filtro de búsqueda */}
-                                    <InputGroup>
-                                        <InputLeftElement pointerEvents="none">
-                                            <SearchIcon />
-                                        </InputLeftElement>
-                                        <Input
-                                            placeholder="Buscar tienda o vendedor..."
-                                            value={searchTerm}
-                                            onChange={(e) => setSearchTerm(e.target.value)}
-                                            fontSize={{ base: "sm", md: "md" }}
-                                        />
-                                    </InputGroup>
 
                                     {/* Filtros en grid responsivo */}
                                     <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
@@ -857,13 +812,13 @@ export default function VisitLogsMapView() {
                                             <Box
                                                 mt={2}
                                                 p={3}
-                                                bg={useColorModeValue("purple.100", "purple.800")}
+                                                bg={purpleBg}
                                                 borderRadius="md"
                                                 borderWidth="1px"
-                                                borderColor={useColorModeValue("purple.300", "purple.600")}
+                                                borderColor={purpleBorder}
                                             >
                                                 <HStack spacing={2} justify="center" flexWrap="wrap">
-                                                    <Text fontSize="xs" fontWeight="bold" color={useColorModeValue("purple.700", "purple.200")}>
+                                                    <Text fontSize="xs" fontWeight="bold" color={purpleText}>
                                                         📆 Período:
                                                     </Text>
                                                     <Badge colorScheme="purple" fontSize="xs">
@@ -882,7 +837,7 @@ export default function VisitLogsMapView() {
                                     {selectedVendor !== "all" && (
                                         <HStack
                                             p={3}
-                                            bg={useColorModeValue("blue.50", "blue.900")}
+                                            bg={blueBg}
                                             borderRadius="md"
                                             justify="space-between"
                                         >
@@ -904,7 +859,7 @@ export default function VisitLogsMapView() {
 
                                     {/* Info de la ruta */}
                                     {vendorRouteData && showVendorRoute && (
-                                        <Card bg={useColorModeValue("green.50", "green.900")}>
+                                        <Card bg={greenBg}>
                                             <CardBody p={3}>
                                                 <VStack align="stretch" spacing={2}>
                                                     <Text fontSize="sm" fontWeight="bold">
@@ -927,6 +882,46 @@ export default function VisitLogsMapView() {
                         </VStack>
                     </CardBody>
                 </Card>
+
+                {/* Estadísticas */}
+                <SimpleGrid columns={{ base: 2, md: 2, lg: 4 }} spacing={{ base: 2, md: 4 }} w="full">
+                    <Card bg={statBg} borderColor={borderColor}>
+                        <CardBody p={{ base: 3, md: 4 }}>
+                            <Stat>
+                                <StatLabel fontSize={{ base: "xs", md: "sm" }}>Total Visitas</StatLabel>
+                                <StatNumber fontSize={{ base: "xl", md: "2xl" }}>{stats.totalVisits}</StatNumber>
+                                <StatHelpText fontSize={{ base: "xs", md: "sm" }}>Registradas</StatHelpText>
+                            </Stat>
+                        </CardBody>
+                    </Card>
+                    <Card bg={statBg} borderColor={borderColor}>
+                        <CardBody p={{ base: 3, md: 4 }}>
+                            <Stat>
+                                <StatLabel fontSize={{ base: "xs", md: "sm" }}>Completadas</StatLabel>
+                                <StatNumber fontSize={{ base: "xl", md: "2xl" }}>{stats.completedVisits}</StatNumber>
+                                <StatHelpText fontSize={{ base: "xs", md: "sm" }}>Con Check-In/Out</StatHelpText>
+                            </Stat>
+                        </CardBody>
+                    </Card>
+                    <Card bg={statBg} borderColor={borderColor}>
+                        <CardBody p={{ base: 3, md: 4 }}>
+                            <Stat>
+                                <StatLabel fontSize={{ base: "xs", md: "sm" }}>Pendientes</StatLabel>
+                                <StatNumber fontSize={{ base: "xl", md: "2xl" }}>{stats.pendingCheckOut}</StatNumber>
+                                <StatHelpText fontSize={{ base: "xs", md: "sm" }}>Sin Check-Out</StatHelpText>
+                            </Stat>
+                        </CardBody>
+                    </Card>
+                    <Card bg={statBg} borderColor={borderColor}>
+                        <CardBody p={{ base: 3, md: 4 }}>
+                            <Stat>
+                                <StatLabel fontSize={{ base: "xs", md: "sm" }}>Duración Promedio</StatLabel>
+                                <StatNumber fontSize={{ base: "md", md: "lg" }}>{stats.avgDuration}</StatNumber>
+                                <StatHelpText fontSize={{ base: "xs", md: "sm" }}>Por visita</StatHelpText>
+                            </Stat>
+                        </CardBody>
+                    </Card>
+                </SimpleGrid>
 
                 {/* Mapa */}
                 <Card bg={cardBg} borderColor={borderColor}>
@@ -1020,7 +1015,7 @@ export default function VisitLogsMapView() {
                                     <HStack
                                         mb={3}
                                         p={2}
-                                        bg={useColorModeValue("purple.50", "purple.900")}
+                                        bg={purpleHeaderBg}
                                         borderRadius="md"
                                         spacing={3}
                                     >
@@ -1080,7 +1075,7 @@ export default function VisitLogsMapView() {
                                                         {group.in && (
                                                             <Box
                                                                 p={{ base: 2, md: 3 }}
-                                                                bg={useColorModeValue("green.50", "green.900")}
+                                                                bg={greenBg}
                                                                 borderRadius="md"
                                                             >
                                                                 <HStack justify="space-between" mb={1} flexWrap="wrap" gap={1}>
@@ -1118,7 +1113,7 @@ export default function VisitLogsMapView() {
                                                         {group.out && (
                                                             <Box
                                                                 p={{ base: 2, md: 3 }}
-                                                                bg={useColorModeValue("red.50", "red.900")}
+                                                                bg={redBg}
                                                                 borderRadius="md"
                                                             >
                                                                 <HStack justify="space-between" mb={1} flexWrap="wrap" gap={1}>
