@@ -227,8 +227,7 @@ export default function VisitLogPage() {
                 type: file.type
             });
 
-            // Comprimir imagen
-            const compressedFile = await compressImage(file, 1); // Máximo 1MB
+            const compressedFile = await compressImage(file, 1); 
 
             console.log("Archivo comprimido:", {
                 name: compressedFile.name,
@@ -316,13 +315,8 @@ export default function VisitLogPage() {
                 return;
             }
 
-            console.log("✅ Validaciones pasadas");
-
-            // Obtener ubicación
             const location = await getLocation();
-            console.log("✅ Ubicación obtenida:", location);
 
-            // Preparar FormData
             const formData = new FormData();
             formData.append("type", type);
             formData.append("vendorName", username);
@@ -332,11 +326,8 @@ export default function VisitLogPage() {
 
             if (type === "IN" && image) {
                 formData.append("image", image);
-                console.log("✅ Imagen agregada al FormData");
             }
 
-            // Log del FormData
-            console.log("📦 FormData preparado:");
             for (let pair of formData.entries()) {
                 if (pair[0] === 'image') {
                     console.log(`${pair[0]}: [File: ${pair[1].name}, ${(pair[1].size / 1024).toFixed(2)}KB]`);
@@ -345,11 +336,8 @@ export default function VisitLogPage() {
                 }
             }
 
-            console.log("📤 Enviando request...");
-
             createVisit(formData, {
-                onSuccess: (data) => {
-                    console.log("✅ SUCCESS:", data);
+                onSuccess: async (data) => {
                     toast({
                         title: "¡Registro exitoso!",
                         description: `Check ${type} registrado correctamente`,
@@ -358,14 +346,23 @@ export default function VisitLogPage() {
                         isClosable: true,
                     });
 
+                    await refetchActiveVisit();
+
                     if (type === "OUT") {
                         setSelectedClient(null);
+                        setImage(null);
+                        setImagePreview(null);
+                        setInputValue("");
+                        setSearchTerm("");
+                        setIsSearchingByCode(true);
                     }
-                    setImage(null);
-                    setImagePreview(null);
+                    
+                    if (type === "IN") {
+                        setImage(null);
+                        setImagePreview(null);
+                    }
 
                     setIsSubmitting(false);
-                    refetchActiveVisit();
                 },
                 onError: (error) => {
                     console.error("❌ ERROR:", error);
