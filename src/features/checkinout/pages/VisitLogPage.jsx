@@ -9,122 +9,7 @@ import { useClientQueriesByName } from "../../clients/hooks/queries/clientQuerie
 import { adaptClientFromApi } from "../../clients/adapters/clientAdapter";
 import { useActiveVisitByVendor } from "../../checkinout/hooks/queries/visitLogQueries";
 import { useNavigate } from "react-router-dom";
-
-// Función para comprimir imagen
-const compressImage = (file, maxSizeMB = 1) => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = (event) => {
-            const img = new Image();
-            img.src = event.target.result;
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                let width = img.width;
-                let height = img.height;
-
-                // Reducir dimensiones si es muy grande
-                const MAX_WIDTH = 1920;
-                const MAX_HEIGHT = 1920;
-
-                if (width > height) {
-                    if (width > MAX_WIDTH) {
-                        height *= MAX_WIDTH / width;
-                        width = MAX_WIDTH;
-                    }
-                } else {
-                    if (height > MAX_HEIGHT) {
-                        width *= MAX_HEIGHT / height;
-                        height = MAX_HEIGHT;
-                    }
-                }
-
-                canvas.width = width;
-                canvas.height = height;
-
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, width, height);
-
-                // Comprimir con calidad variable hasta lograr el tamaño deseado
-                let quality = 0.8;
-                const compress = () => {
-                    canvas.toBlob(
-                        (blob) => {
-                            if (blob) {
-                                const sizeMB = blob.size / 1024 / 1024;
-                                console.log(`Imagen comprimida: ${sizeMB.toFixed(2)}MB con calidad ${quality}`);
-
-                                if (sizeMB > maxSizeMB && quality > 0.1) {
-                                    quality -= 0.1;
-                                    compress();
-                                } else {
-                                    const compressedFile = new File([blob], file.name, {
-                                        type: 'image/jpeg',
-                                        lastModified: Date.now()
-                                    });
-                                    resolve(compressedFile);
-                                }
-                            } else {
-                                reject(new Error('Error al comprimir imagen'));
-                            }
-                        },
-                        'image/jpeg',
-                        quality
-                    );
-                };
-
-                compress();
-            };
-            img.onerror = () => reject(new Error('Error al cargar imagen'));
-        };
-        reader.onerror = () => reject(new Error('Error al leer archivo'));
-    });
-};
-
-// Utilidad para obtener ubicación con mejor manejo de errores
-const getLocation = () => {
-    return new Promise((resolve, reject) => {
-        if (!navigator.geolocation) {
-            reject(new Error("GEOLOCATION_NOT_SUPPORTED"));
-            return;
-        }
-
-        console.log("Solicitando ubicación...");
-
-        navigator.geolocation.getCurrentPosition(
-            (pos) => {
-                console.log("Ubicación obtenida:", pos.coords);
-                resolve({
-                    latitude: pos.coords.latitude,
-                    longitude: pos.coords.longitude,
-                });
-            },
-            (err) => {
-                console.error("Error de geolocalización:", err);
-                let errorMessage = "ERROR_DESCONOCIDO";
-
-                switch (err.code) {
-                    case err.PERMISSION_DENIED:
-                        errorMessage = "PERMISSION_DENIED";
-                        break;
-                    case err.POSITION_UNAVAILABLE:
-                        errorMessage = "POSITION_UNAVAILABLE";
-                        break;
-                    case err.TIMEOUT:
-                        errorMessage = "TIMEOUT";
-                        break;
-                }
-
-                reject(new Error(errorMessage));
-            },
-            {
-                enableHighAccuracy: true,
-                timeout: 10000,
-                maximumAge: 0
-            }
-        );
-    });
-};
+import { compressImage, getLocation } from "../utils/deviceUtils";
 
 export default function VisitLogPage() {
     const { salesEmployeeCode, username } = useAuthStore();
@@ -148,19 +33,14 @@ export default function VisitLogPage() {
 
     const { mutate: createVisit, isLoading: isCreatingVisit, isPending } = useCreateVisitLog();
 
-    // Extraer la visita activa del response
     const activeVisit = activeVisitData?.visit || null;
     const hasActiveCheckIn = activeVisitData?.active || false;
 
-    // 🔥 EFECTO: Auto-rellenar cliente cuando hay check-in activo
     useEffect(() => {
         if (hasActiveCheckIn && activeVisit && !selectedClient) {
-            console.log("📍 Check-In activo detectado, auto-rellenando cliente:", activeVisit.storeName);
-
-            // Crear objeto de cliente simulado con los datos de la visita activa
             const clientFromActiveVisit = {
                 firstName: activeVisit.storeName,
-                id: "AUTO", // No tenemos el código del cliente en la respuesta
+                id: "AUTO",
                 address: `Lat: ${activeVisit.latitude}, Lon: ${activeVisit.longitude}`,
             };
 
@@ -168,7 +48,6 @@ export default function VisitLogPage() {
         }
     }, [hasActiveCheckIn, activeVisit, selectedClient]);
 
-    // Client search hooks
     const {
         data: dataByCode,
         isLoading: isLoadingByCode,
@@ -204,8 +83,6 @@ export default function VisitLogPage() {
         setSelectedClient(client);
         setInputValue("");
         setSearchTerm("");
-
-        console.log("Cliente seleccionado:", client);
     };
 
     const handleClearClient = () => {
@@ -221,23 +98,10 @@ export default function VisitLogPage() {
         setIsProcessingImage(true);
 
         try {
-            console.log("Archivo original:", {
-                name: file.name,
-                size: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
-                type: file.type
-            });
-
             const compressedFile = await compressImage(file, 1); 
-
-            console.log("Archivo comprimido:", {
-                name: compressedFile.name,
-                size: `${(compressedFile.size / 1024 / 1024).toFixed(2)}MB`,
-                type: compressedFile.type
-            });
 
             setImage(compressedFile);
 
-            // Crear preview
             const reader = new FileReader();
             reader.onloadend = () => {
                 setImagePreview(reader.result);
@@ -246,9 +110,7 @@ export default function VisitLogPage() {
             reader.readAsDataURL(compressedFile);
 
         } catch (error) {
-            console.error("Error procesando imagen:", error);
             setIsProcessingImage(false);
-
             toast({
                 title: "Error al procesar imagen",
                 description: error.message || "Intenta con otra foto",
@@ -260,13 +122,10 @@ export default function VisitLogPage() {
     };
 
     const handleSubmit = async (type) => {
-        console.log("=== INICIANDO CHECK", type, "===");
         setIsSubmitting(true);
 
         try {
-            // 🔥 VALIDACIÓN CRÍTICA: Verificar estado de check-in según tipo
             if (type === "IN" && hasActiveCheckIn) {
-                console.log("❌ Ya existe un Check-In activo");
                 toast({
                     title: "Check-In ya registrado",
                     description: `Tienes un Check-In activo en "${activeVisit.storeName}" desde ${new Date(activeVisit.createdAt).toLocaleTimeString()}. Debes hacer Check-Out primero.`,
@@ -278,7 +137,6 @@ export default function VisitLogPage() {
             }
 
             if (type === "OUT" && !hasActiveCheckIn) {
-                console.log("❌ No hay Check-In activo para cerrar");
                 toast({
                     title: "Sin Check-In activo",
                     description: "No tienes un Check-In abierto. Debes hacer Check-In primero.",
@@ -289,9 +147,7 @@ export default function VisitLogPage() {
                 return;
             }
 
-            // Validación: Imagen solo para Check-In
             if (type === "IN" && !image) {
-                console.log("❌ Falta imagen para Check-In");
                 toast({
                     title: "Imagen requerida",
                     description: "Debes subir una imagen para el Check-In",
@@ -302,9 +158,7 @@ export default function VisitLogPage() {
                 return;
             }
 
-            // Validación: Cliente seleccionado
             if (!selectedClient) {
-                console.log("❌ Falta seleccionar cliente");
                 toast({
                     title: "Cliente requerido",
                     description: "Debes buscar y seleccionar un cliente",
@@ -326,14 +180,6 @@ export default function VisitLogPage() {
 
             if (type === "IN" && image) {
                 formData.append("image", image);
-            }
-
-            for (let pair of formData.entries()) {
-                if (pair[0] === 'image') {
-                    console.log(`${pair[0]}: [File: ${pair[1].name}, ${(pair[1].size / 1024).toFixed(2)}KB]`);
-                } else {
-                    console.log(`${pair[0]}: ${pair[1]}`);
-                }
             }
 
             createVisit(formData, {
@@ -365,13 +211,9 @@ export default function VisitLogPage() {
                     setIsSubmitting(false);
                 },
                 onError: (error) => {
-                    console.error("❌ ERROR:", error);
-                    console.error("Error completo:", JSON.stringify(error, null, 2));
-
                     let errorMessage = "Error desconocido";
 
                     if (error.response) {
-                        console.error("Response data:", error.response.data);
                         console.error("Response status:", error.response.status);
                         errorMessage = error.response.data?.message || `Error ${error.response.status}`;
                     } else if (error.request) {
@@ -394,12 +236,10 @@ export default function VisitLogPage() {
             });
 
         } catch (error) {
-            console.error("❌ ERROR GENERAL:", error);
 
             let errorTitle = "Error";
             let errorDescription = error.message || "Error desconocido";
 
-            // Manejar errores específicos de geolocalización
             const locationErrors = {
                 "GEOLOCATION_NOT_SUPPORTED": {
                     title: "Geolocalización no disponible",

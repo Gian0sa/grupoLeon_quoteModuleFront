@@ -314,7 +314,7 @@ export default function VisitLogsMapView() {
     const [selectedStore, setSelectedStore] = useState(null);
     const [showVendorRoute, setShowVendorRoute] = useState(false);
     
-    const [datePreset, setDatePreset] = useState("all");
+    const [datePreset, setDatePreset] = useState("today");
     const [dateFrom, setDateFrom] = useState("");
     const [dateTo, setDateTo] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
@@ -712,16 +712,16 @@ export default function VisitLogsMapView() {
                                         {/* Presets de fecha */}
                                         <ButtonGroup size="sm" isAttached variant="outline" mb={3} flexWrap="wrap">
                                             <Button
-                                                colorScheme={datePreset === "all" ? "blue" : "gray"}
-                                                onClick={() => handleDatePresetChange("all")}
-                                            >
-                                                Todas
-                                            </Button>
-                                            <Button
                                                 colorScheme={datePreset === "today" ? "blue" : "gray"}
                                                 onClick={() => handleDatePresetChange("today")}
                                             >
                                                 Hoy
+                                            </Button>
+                                            <Button
+                                                colorScheme={datePreset === "all" ? "blue" : "gray"}
+                                                onClick={() => handleDatePresetChange("all")}
+                                            >
+                                                Todas
                                             </Button>
                                             <Button
                                                 colorScheme={datePreset === "yesterday" ? "blue" : "gray"}
