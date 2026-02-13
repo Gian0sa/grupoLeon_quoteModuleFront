@@ -203,7 +203,6 @@ function VendorRoute({ visits, color = "#3b82f6" }) {
 
     return (
         <>
-            {/* Línea principal de la ruta */}
             <Polyline
                 positions={positions}
                 color={color}
@@ -211,7 +210,6 @@ function VendorRoute({ visits, color = "#3b82f6" }) {
                 opacity={0.7}
             />
 
-            {/* Flechas direccionales */}
             <Polyline
                 positions={positions}
                 color={color}
@@ -292,8 +290,6 @@ function MapMarkers({ groupedVisits, selectedVendor, hoveredStore, onMarkerClick
                                 </Popup>
                             </Marker>
                         )}
-
-                        {/* Check-out markers are hidden - only showing check-in markers */}
                     </div>
                 );
             })}
@@ -303,7 +299,7 @@ function MapMarkers({ groupedVisits, selectedVendor, hoveredStore, onMarkerClick
 
 export default function VisitLogsMapView() {
     const { data: visitLogs, isLoading, error } = useVisitLogs();
-    
+
     const [selectedVendor, setSelectedVendor] = useState("all");
     const [mapCenter, setMapCenter] = useState([-12.0464, -77.0428]);
     const [mapZoom, setMapZoom] = useState(13);
@@ -313,13 +309,15 @@ export default function VisitLogsMapView() {
     const [hoveredStore, setHoveredStore] = useState(null);
     const [selectedStore, setSelectedStore] = useState(null);
     const [showVendorRoute, setShowVendorRoute] = useState(false);
-    
+
+    const today = formatDateForInput(getToday());
+
     const [datePreset, setDatePreset] = useState("today");
-    const [dateFrom, setDateFrom] = useState("");
-    const [dateTo, setDateTo] = useState("");
+    const [dateFrom, setDateFrom] = useState(today);
+    const [dateTo, setDateTo] = useState(today);
+
     const [statusFilter, setStatusFilter] = useState("all");
 
-    // ✅ ALL HOOKS MUST BE CALLED AT THE TOP LEVEL - BEFORE ANY CONDITIONS OR EARLY RETURNS
     const cardBg = useColorModeValue("white", "gray.700");
     const borderColor = useColorModeValue("gray.200", "gray.600");
     const statBg = useColorModeValue("blue.50", "blue.900");
@@ -336,7 +334,7 @@ export default function VisitLogsMapView() {
         setDatePreset(preset);
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-        
+
         switch (preset) {
             case "today":
                 setDateFrom(formatDateForInput(getToday()));
@@ -502,12 +500,12 @@ export default function VisitLogsMapView() {
 
     const groupedByDay = useMemo(() => {
         const grouped = {};
-        
+
         groupsWithSequence.forEach(group => {
             const visitDateTime = new Date(group.in?.createdAt || group.out?.createdAt);
             const localDate = new Date(visitDateTime.getFullYear(), visitDateTime.getMonth(), visitDateTime.getDate());
             const dateKey = formatDate(localDate);
-            
+
             if (!grouped[dateKey]) {
                 grouped[dateKey] = {
                     date: dateKey,
@@ -515,7 +513,7 @@ export default function VisitLogsMapView() {
                     visits: []
                 };
             }
-            
+
             grouped[dateKey].visits.push(group);
         });
 
@@ -633,7 +631,7 @@ export default function VisitLogsMapView() {
                         Mapa de Visitas
                     </Heading>
                 </Flex>
-                 {/* Filtros */}
+                {/* Filtros */}
                 <Card bg={cardBg} borderColor={borderColor}>
                     <CardBody p={{ base: 3, md: 4 }}>
                         <VStack align="stretch" spacing={4}>
@@ -708,7 +706,7 @@ export default function VisitLogsMapView() {
                                         <Text fontSize="sm" fontWeight="bold" mb={3}>
                                             📅 Filtrar por Fecha
                                         </Text>
-                                        
+
                                         {/* Presets de fecha */}
                                         <ButtonGroup size="sm" isAttached variant="outline" mb={3} flexWrap="wrap">
                                             <Button

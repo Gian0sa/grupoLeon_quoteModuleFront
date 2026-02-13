@@ -1,6 +1,5 @@
 import { axiosInstance } from "../../../shared/lib/axiosInstance";
 
-// Crear Check IN / OUT
 export const createVisitLog = async (data) => {
   try {
     const debugObj = {};
@@ -22,7 +21,6 @@ export const createVisitLog = async (data) => {
   }
 };
 
-// Obtener todos los registros
 export const getAllVisitLogs = async () => {
   try {
     const response = await axiosInstance.get(
@@ -35,7 +33,6 @@ export const getAllVisitLogs = async () => {
   }
 };
 
-// Obtener registro por ID
 export const getVisitLogById = async (id) => {
   try {
     const response = await axiosInstance.get(
@@ -58,13 +55,24 @@ export const getActiveVisitByVendor = async (vendorName) => {
 
     return response.data;
   } catch (error) {
-    // 404 significa que NO hay visita activa (esto es normal, no un error)
     if (error.response?.status === 404) {
       return null;
     }
 
-    // Otros errores sí son problemas reales
     console.error("Error al obtener visita activa:", error);
     throw error;
+  }
+};
+
+export const getMyVisitLogs = async () => {
+  try {
+    const response = await axiosInstance.get(
+      `/reportModule/my-visits`
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error("Error al obtener mis VisitLogs:", error);
+    return { total: 0, visits: [] };
   }
 };

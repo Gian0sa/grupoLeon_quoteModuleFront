@@ -3,9 +3,9 @@ import {
   getAllVisitLogs,
   getVisitLogById,
   getActiveVisitByVendor,
+  getMyVisitLogs,
 } from "../../services/visitLogService";
 
-// Obtener todos los registros de visitas
 export const useVisitLogs = () => {
   return useQuery({
     queryKey: ["visitLogs"],
@@ -13,7 +13,6 @@ export const useVisitLogs = () => {
   });
 };
 
-// Obtener registro por ID
 export const useVisitLogById = (id) => {
   return useQuery({
     queryKey: ["visitLog", id],
@@ -23,9 +22,15 @@ export const useVisitLogById = (id) => {
 };
 
 export const useActiveVisitByVendor = (vendorName) => {
-  console.log(vendorName);
   return useQuery({
     queryKey: ["activeVisit", vendorName],
     queryFn: () => getActiveVisitByVendor(vendorName),
+  });
+};
+
+export const useMyVisitLogs = () => {
+  return useQuery({
+    queryKey: ["myVisitLogs"],
+    queryFn: getMyVisitLogs,
   });
 };

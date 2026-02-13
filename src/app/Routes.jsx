@@ -27,6 +27,7 @@ import ClienteBusquedaPage from "../features/clients/pages/ClienteBusquedaPage.j
 import ImportacionesPage from "../features/imports/pages/ImportacionesPage.jsx";
 import VisitLogPage from "../features/checkinout/pages/VisitLogPage.jsx";
 import VisitLogsMapView from "../features/checkinout/pages/VisitLogsMapView.jsx";
+import MyVisitsPage from "../features/checkinout/pages/MyVisitsPage.jsx";
 
 const AppRoutes = () => {
   return (
@@ -225,6 +226,14 @@ const AppRoutes = () => {
         element={
           <PrivateRoute>
             <VisitLogsMapView/>
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/myVisits"
+        element={
+          <PrivateRoute>
+            <MyVisitsPage/>
           </PrivateRoute>
         }
       />

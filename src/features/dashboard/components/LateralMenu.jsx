@@ -102,7 +102,7 @@ export function LateralMenu() {
       label: 'Lista de precios',
       icon: MdPriceChange,
       path: '/productsPriceList',
-      access: 'GET:/price-list'
+      access: 'GET:/receivable'
     },
     {
       label: 'Catálogo de productos',
@@ -126,6 +126,12 @@ export function LateralMenu() {
       label: 'Mapa de visitas',
       icon: MdMap,
       path: '/visitMap',
+      access: 'GET:/visit-logs'
+    },
+    {
+      label: 'Mis visitas',
+      icon: MdMap,
+      path: '/myVisits',
       access: 'GET:/visit-logs'
     }
   ];
