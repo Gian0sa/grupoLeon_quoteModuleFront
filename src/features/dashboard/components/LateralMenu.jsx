@@ -132,7 +132,7 @@ export function LateralMenu() {
       label: 'Mis visitas',
       icon: MdMap,
       path: '/myVisits',
-      access: 'GET:/visit-logs'
+      access: 'POST:/visit-logs'
     }
   ];
 
