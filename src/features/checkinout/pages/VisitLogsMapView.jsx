@@ -61,15 +61,6 @@ const checkInIcon = new L.Icon({
     shadowSize: [41, 41],
 });
 
-const checkOutIcon = new L.Icon({
-    iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png",
-    shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
-    popupAnchor: [1, -34],
-    shadowSize: [41, 41],
-});
-
 const createNumberedIcon = (number, color = "#2563eb") => {
     return L.divIcon({
         className: 'custom-numbered-icon',
@@ -160,12 +151,6 @@ const getLastMonth = () => {
     return lastMonth;
 };
 
-const isSameDay = (date1, date2) => {
-    return date1.getFullYear() === date2.getFullYear() &&
-        date1.getMonth() === date2.getMonth() &&
-        date1.getDate() === date2.getDate();
-};
-
 const formatDateForInput = (date) => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -237,7 +222,6 @@ function MapMarkers({ groupedVisits, selectedVendor, hoveredStore, onMarkerClick
 
                 const isHovered = hoveredStore === group.id;
 
-                // Si hay una ruta activada y es del vendedor seleccionado, mostrar número
                 const showSequence = showRoute && selectedVendor !== "all" && group.sequenceNumber;
                 const vendorColor = vendorColors.colors[idx % vendorColors.colors.length];
 
@@ -261,7 +245,7 @@ function MapMarkers({ groupedVisits, selectedVendor, hoveredStore, onMarkerClick
                                         <Text fontWeight="bold" color="green.600" mb={2}>
                                             ✓ CHECK IN
                                         </Text>
-                                        <Text fontSize="sm" fontWeight="bold">{group.in.storeName}</Text>
+                                        <Text fontSize="sm" fontWeight="bold">{group.storeName}</Text>
                                         <Text fontSize="sm">👤 {group.in.vendorName}</Text>
                                         <Text fontSize="sm" mb={2}>
                                             🕐 {formatDateTime(group.in.createdAt)}
@@ -298,7 +282,8 @@ function MapMarkers({ groupedVisits, selectedVendor, hoveredStore, onMarkerClick
 }
 
 export default function VisitLogsMapView() {
-    const { data: visitLogs, isLoading, error } = useVisitLogs();
+    const { data, isLoading, error } = useVisitLogs();
+    const visitLogs = data?.visits || [];
 
     const [selectedVendor, setSelectedVendor] = useState("all");
     const [mapCenter, setMapCenter] = useState([-12.0464, -77.0428]);
@@ -329,6 +314,10 @@ export default function VisitLogsMapView() {
     const greenBg = useColorModeValue("green.50", "green.900");
     const redBg = useColorModeValue("red.50", "red.900");
     const purpleHeaderBg = useColorModeValue("purple.50", "purple.900");
+
+    const groupedVisits = useMemo(() => {
+        return visitLogs;
+    }, [visitLogs]);
 
     const handleDatePresetChange = (preset) => {
         setDatePreset(preset);
@@ -363,64 +352,6 @@ export default function VisitLogsMapView() {
                 break;
         }
     };
-
-    const groupedVisits = useMemo(() => {
-        if (!visitLogs || visitLogs.length === 0) return [];
-
-        const sorted = [...visitLogs].sort((a, b) =>
-            new Date(a.createdAt) - new Date(b.createdAt)
-        );
-
-        const groups = [];
-        const processed = new Set();
-
-        sorted.forEach((visit) => {
-            if (processed.has(visit.id)) return;
-
-            if (visit.type === "IN") {
-                const matchingOut = sorted.find(v =>
-                    !processed.has(v.id) &&
-                    v.type === "OUT" &&
-                    v.storeName === visit.storeName &&
-                    v.vendorName === visit.vendorName &&
-                    new Date(v.createdAt) > new Date(visit.createdAt) &&
-                    Math.abs(new Date(v.createdAt) - new Date(visit.createdAt)) < 24 * 60 * 60 * 1000
-                );
-
-                groups.push({
-                    id: `group-${visit.id}`,
-                    storeName: visit.storeName,
-                    vendorName: visit.vendorName,
-                    in: visit,
-                    out: matchingOut || null,
-                });
-
-                processed.add(visit.id);
-                if (matchingOut) processed.add(matchingOut.id);
-            } else if (visit.type === "OUT") {
-                const hasMatchingIn = sorted.some(v =>
-                    v.type === "IN" &&
-                    v.storeName === visit.storeName &&
-                    v.vendorName === visit.vendorName &&
-                    new Date(v.createdAt) < new Date(visit.createdAt) &&
-                    Math.abs(new Date(visit.createdAt) - new Date(v.createdAt)) < 24 * 60 * 60 * 1000
-                );
-
-                if (!hasMatchingIn) {
-                    groups.push({
-                        id: `group-${visit.id}`,
-                        storeName: visit.storeName,
-                        vendorName: visit.vendorName,
-                        in: null,
-                        out: visit,
-                    });
-                    processed.add(visit.id);
-                }
-            }
-        });
-
-        return groups;
-    }, [visitLogs]);
 
     const filteredGroups = useMemo(() => {
         return groupedVisits.filter(group => {
@@ -521,10 +452,10 @@ export default function VisitLogsMapView() {
     }, [groupsWithSequence]);
 
     const stats = useMemo(() => {
-        const totalVisits = filteredGroups.length;
         const completedVisits = filteredGroups.filter(g => g.in && g.out).length;
         const pendingCheckOut = filteredGroups.filter(g => g.in && !g.out).length;
         const orphanCheckOut = filteredGroups.filter(g => !g.in && g.out).length;
+        const totalVisits = completedVisits + pendingCheckOut + orphanCheckOut;
 
         let totalDuration = 0;
         let visitCount = 0;
@@ -549,7 +480,7 @@ export default function VisitLogsMapView() {
     }, [filteredGroups]);
 
     const vendors = useMemo(() => {
-        return [...new Set(visitLogs?.map(v => v.vendorName) || [])];
+        return [...new Set(visitLogs?.map(v => v.vendorName).filter(Boolean))];
     }, [visitLogs]);
 
     useEffect(() => {
@@ -1051,7 +982,7 @@ export default function VisitLogsMapView() {
                                                                 <Text fontSize="xs" color="gray.600" noOfLines={1}>
                                                                     <CalendarIcon /> {formatDateTime(group.in.createdAt)}
                                                                 </Text>
-                                                                <Text fontSize="xs" mt={1} isTruncated>👤 {group.in.vendorName}</Text>
+                                                                <Text fontSize="xs" mt={1} isTruncated>👤 {group.vendorName}</Text>
                                                                 {group.in.imageUrl && (
                                                                     <HStack mt={2} flexWrap="wrap" gap={2}>
                                                                         <Badge colorScheme="blue" fontSize="xs">
