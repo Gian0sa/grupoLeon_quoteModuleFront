@@ -55,6 +55,19 @@ const isToday = (date) => {
   );
 };
 
+const isYesterday = (date) => {
+  const today = new Date();
+  const checkDate = new Date(date);
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  return (
+    checkDate.getDate() === yesterday.getDate() &&
+    checkDate.getMonth() === yesterday.getMonth() &&
+    checkDate.getFullYear() === yesterday.getFullYear()
+  );
+};
+
+
 const isThisWeek = (date) => {
   const today = new Date();
   const checkDate = new Date(date);
@@ -96,17 +109,27 @@ export default function MyVisitsPage() {
       switch (filterType) {
         case "today":
           return isToday(visit.createdAt);
+        case "yesterday":
+          return isYesterday(visit.createdAt);
         case "week":
           return isThisWeek(visit.createdAt);
         case "month":
           return isThisMonth(visit.createdAt);
         case "custom":
-          if (!customStartDate) return true;
-          const start = new Date(customStartDate);
-          start.setHours(0, 0, 0, 0);
-          const end = customEndDate ? new Date(customEndDate) : new Date();
+        if (!customStartDate) return true;
+
+        const [startYear, startMonth, startDay] = customStartDate.split("-").map(Number);
+        const start = new Date(startYear, startMonth - 1, startDay, 0, 0, 0, 0);
+
+        let end;
+        if (customEndDate) {
+          const [endYear, endMonth, endDay] = customEndDate.split("-").map(Number);
+          end = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
+        } else {
+          end = new Date();
           end.setHours(23, 59, 59, 999);
-          return visitDate >= start && visitDate <= end;
+        }
+        return visitDate >= start && visitDate <= end;
         default:
           return true;
       }
@@ -207,6 +230,17 @@ export default function MyVisitsPage() {
                   variant={filterType === "today" ? "solid" : "outline"}
                 >
                   Hoy
+                </Button>
+                <Button
+                  onClick={() => {
+                    setFilterType("yesterday");
+                    setCustomStartDate("");
+                    setCustomEndDate("");
+                  }}
+                  colorScheme={filterType === "yesterday" ? "green" : "gray"}
+                  variant={filterType === "yesterday" ? "solid" : "outline"}
+                >
+                  Ayer
                 </Button>
                 <Button
                   onClick={() => {
