@@ -13,7 +13,7 @@ import { FiPackage } from "react-icons/fi";
 export function ProductPriceListCard({ product, tipoPrecio }) {
   const { isOpen, onOpen, onClose } = useDisclosure();
 
-  const { SIGLA, ITEM_CODE, PRECIO_LISTA, PRECIO_DESCUENTO, DESCUENTO_PCT, STOCK_DISPONIBLE, PRECIO_CONTADO, PRECIO_CREDITO } = product;
+  const { SIGLA, ITEM_CODE, PRECIO_LISTA, PRECIO_DESCUENTO, DESCUENTO_PCT, STOCK_DISPONIBLE, PRECIO_CONTADO, PRECIO_CREDITO , ROTACION } = product;
 
   const hasDiscount = DESCUENTO_PCT > 0;
   const finalPrice = hasDiscount ? PRECIO_DESCUENTO : PRECIO_LISTA;

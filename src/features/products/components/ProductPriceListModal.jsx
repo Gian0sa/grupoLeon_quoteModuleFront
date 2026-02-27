@@ -25,7 +25,8 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
     PRECIO_LISTA,
     DESCUENTO_PCT,
     PRECIO_DESCUENTO,
-    STOCK_DISPONIBLE
+    STOCK_DISPONIBLE,
+    ROTACION
   } = product;
 
   const hasDiscount = DESCUENTO_PCT > 0;
@@ -37,14 +38,31 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
       maximumFractionDigits: decimals
     }) ?? "0";
 
+  const getRotacionColor = (rotacion) => {
+    switch (rotacion) {
+      case "A":
+        return { bg: "green.800", color: "white" }; // Verde oscuro
+      case "B":
+        return { bg: "green.400", color: "white" }; // Verde claro
+      case "C":
+        return { bg: "orange.400", color: "white" }; // Naranja
+      case "D":
+        return { bg: "red.600", color: "white" }; // Rojo
+      case "N":
+        return { bg: "gray.700", color: "white" }; // Gris oscuro
+      default:
+        return { bg: "gray.400", color: "white" };
+    }
+  };
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="lg" isCentered>
       <ModalOverlay />
       <ModalContent>
-        <ModalHeader 
-          fontWeight="bold" 
-          fontSize="lg" 
-          color="gray.800" 
+        <ModalHeader
+          fontWeight="bold"
+          fontSize="lg"
+          color="gray.800"
           lineHeight="1.2"
           pb={2}
           width="95%"
@@ -54,9 +72,35 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
         <ModalCloseButton />
         <ModalBody pb={6}>
           <VStack align="stretch" spacing={4}>
-            
+
             {/* Información del producto */}
             <VStack spacing={0} align="stretch">
+
+              {/* Rotacion */}
+              {ROTACION && (
+                <HStack align="center">
+                  <Text
+                    fontSize="md"
+                    color="green.600"
+                    fontWeight="medium"
+                    minW="80px"
+                  >
+                    Clasif:
+                  </Text>
+
+                  <Badge
+                    bg={getRotacionColor(ROTACION).bg}
+                    color={getRotacionColor(ROTACION).color}
+                    fontSize="sm"
+                    px={4}
+                    py={1}
+                    borderRadius="full"
+                    fontWeight="bold"
+                  >
+                    {ROTACION}
+                  </Badge>
+                </HStack>
+              )}
 
               {/* Sigla */}
               {SIGLA && (
