@@ -1,5 +1,10 @@
 import { useMutation } from "@tanstack/react-query";
-import { loginUser, registerUser, logoutUser , updatePasswordProfile } from "../../services/auhtService";
+import {
+  loginUser,
+  registerUser,
+  logoutUser,
+  updatePasswordProfile,
+} from "../../services/auhtService";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../stores/useAuthStore";
 import { useToast } from "@chakra-ui/react";
@@ -9,8 +14,10 @@ export function useAuthMutations() {
   const navigate = useNavigate();
   const toast = useToast();
 
+  // 🔹 LOGIN
   const loginMutation = useMutation({
     mutationFn: loginUser,
+
     onSuccess: (res) => {
       login({
         userId: res.userId,
@@ -18,11 +25,44 @@ export function useAuthMutations() {
         salesEmployeeCode: res.salesEmployeeCode,
         endpoints: res.endpoints,
       });
+
       navigate("/dashboard");
+    },
+
+    onError: (error) => {
+      const status = error?.response?.status;
+      const message =
+        error?.response?.data?.message || "Error al iniciar sesión";
+
+      if (status === 400) {
+        toast({
+          title: "Verificación fallida",
+          description: "No se pudo validar que eres humano.",
+          status: "error",
+        });
+      } else if (status === 429) {
+        toast({
+          title: "Demasiados intentos",
+          description: "Espera unos minutos antes de intentar nuevamente.",
+          status: "warning",
+        });
+      } else if (status === 403) {
+        toast({
+          title: "Cuenta inactiva",
+          description: message,
+          status: "error",
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: message,
+          status: "error",
+        });
+      }
     },
   });
 
-
+  // 🔹 REGISTER
   const registerMutation = useMutation({
     mutationFn: registerUser,
     onSuccess: () => {
@@ -37,48 +77,41 @@ export function useAuthMutations() {
       navigate("/dashboard");
     },
     onError: (error) => {
-      const message = error?.response?.data?.message || "Error al registrar";
+      const message =
+        error?.response?.data?.message || "Error al registrar";
 
-      // aquí puedes inspeccionar el mensaje y lanzar errores específicos
       if (message.includes("email")) {
         toast({
           title: "Correo en uso",
           description: "Este correo ya está registrado.",
           status: "error",
-          duration: 5000,
-          isClosable: true,
-          position: "top",
         });
       } else if (message.includes("username")) {
         toast({
           title: "Nombre en uso",
           description: "Este nombre ya está registrado.",
           status: "error",
-          duration: 5000,
-          isClosable: true,
-          position: "top",
         });
       } else {
         toast({
           title: "Error",
           description: message,
           status: "error",
-          duration: 5000,
-          isClosable: true,
-          position: "top",
         });
       }
     },
   });
 
+  // 🔹 LOGOUT
   const logoutMutation = useMutation({
     mutationFn: logoutUser,
     onSuccess: () => {
       logout();
       navigate("/");
-    }
+    },
   });
 
+  // 🔹 UPDATE PASSWORD
   const updatePasswordProfileMutation = useMutation({
     mutationFn: updatePasswordProfile,
     onSuccess: () => {
@@ -86,20 +119,16 @@ export function useAuthMutations() {
         title: "Contraseña actualizada",
         description: "La contraseña se actualizó correctamente.",
         status: "success",
-        duration: 5000,
-        isClosable: true,
-        position: "top",
       });
       navigate("/dashboard");
     },
     onError: (error) => {
       toast({
         title: "Error al actualizar",
-        description: error?.response?.data?.message || "Ocurrió un error al guardar los cambios.",
+        description:
+          error?.response?.data?.message ||
+          "Ocurrió un error al guardar los cambios.",
         status: "error",
-        duration: 5000,
-        isClosable: true,
-        position: "top",
       });
     },
   });
@@ -108,6 +137,6 @@ export function useAuthMutations() {
     login: loginMutation,
     register: registerMutation,
     logout: logoutMutation,
-    updatePasswordProfile: updatePasswordProfileMutation
+    updatePasswordProfile: updatePasswordProfileMutation,
   };
 }

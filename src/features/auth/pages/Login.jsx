@@ -17,13 +17,13 @@ import {
   IconButton,
 } from "@chakra-ui/react";
 import { ViewIcon, ViewOffIcon } from "@chakra-ui/icons";
-import ReCAPTCHA from "react-google-recaptcha";
+import { Turnstile } from "@marsidev/react-turnstile";
 import { useForm } from "react-hook-form";
 import { useAuthMutations } from "../hooks/mutations/authMutations";
 import styles from "./Login.module.css";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../stores/useAuthStore";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 export function Login() {
   const {
@@ -31,16 +31,18 @@ export function Login() {
     register,
     formState: { errors },
   } = useForm();
+
   const [showPassword, setShowPassword] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState(null);
+  const [captchaError, setCaptchaError] = useState(false);
+  const [captchaKey, setCaptchaKey] = useState(0); // ✅ fix: key separada
 
   const toast = useToast();
-  const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
-
-  const recaptchaRef = useRef(null);
-  const [captchaError, setCaptchaError] = useState(false);
+  const siteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY;
 
   const navigate = useNavigate();
   const token = useAuthStore((state) => state.token);
+  const { login } = useAuthMutations(); // ✅ fix: hooks antes del return condicional
 
   useEffect(() => {
     if (token) {
@@ -56,41 +58,45 @@ export function Login() {
     );
   }
 
-  const { login } = useAuthMutations();
+  const resetCaptcha = () => {
+    setCaptchaKey((prev) => prev + 1);
+    setCaptchaToken(null);
+  };
 
   const onSubmit = (data) => {
-    const token = recaptchaRef.current?.getValue();
-
-    if (!token) {
+    if (!captchaToken) {
       setCaptchaError(true);
       return;
     }
 
-    login.mutate({ ...data, recaptchaToken: token }, {
-      onError: (error) => {
-        const message =
-          error?.response?.data?.message || "Error al iniciar sesión";
-        toast({
-          title: "Inicio de sesión fallido",
-          description: message,
-          status: "error",
-          duration: 5000,
-          isClosable: true,
-          position: "top",
-        });
-        recaptchaRef.current?.reset();
-      },
-    });
+    login.mutate(
+      { ...data, captchaToken },
+      {
+        onError: (error) => {
+          const message =
+            error?.response?.data?.message || "Error al iniciar sesión";
+
+          toast({
+            title: "Inicio de sesión fallido",
+            description: message,
+            status: "error",
+            duration: 5000,
+            isClosable: true,
+            position: "top",
+          });
+
+          resetCaptcha(); // ✅ fix: reset real del widget
+        },
+      }
+    );
   };
 
   return (
     <Flex direction="column" h="100vh" w="full" bg="bg">
-      {/* Parte superior */}
       <Box flex="1" w="full">
         <div className={styles.ImageLogin}></div>
       </Box>
 
-      {/* Formulario */}
       <Flex
         as="form"
         onSubmit={handleSubmit(onSubmit)}
@@ -110,22 +116,15 @@ export function Login() {
           maxW="md"
         >
           <VStack spacing={4} align="stretch">
-            <Heading
-              as="h1"
-              textAlign="center"
-              color="text"
-              className={styles.containerlogo}
-            >
+            <Heading textAlign="center" color="text">
               ¡Hola de nuevo!
-              <Box as="span" display="block" fontSize="md" fontWeight="normal" color="text">
+              <Box as="span" display="block" fontSize="md" fontWeight="normal">
                 Accede a tu cuenta
               </Box>
             </Heading>
 
-            {/* Email */}
             <FormControl isInvalid={errors.email}>
               <Input
-                type="text"
                 placeholder="Correo electrónico"
                 {...register("email", {
                   required: "El correo es obligatorio",
@@ -138,7 +137,6 @@ export function Login() {
               <FormErrorMessage>{errors.email?.message}</FormErrorMessage>
             </FormControl>
 
-            {/* Password */}
             <FormControl isInvalid={errors.password}>
               <InputGroup>
                 <Input
@@ -151,7 +149,7 @@ export function Login() {
                 />
                 <InputRightElement>
                   <IconButton
-                    aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                    aria-label="toggle password"
                     icon={showPassword ? <ViewOffIcon /> : <ViewIcon />}
                     size="sm"
                     variant="ghost"
@@ -162,60 +160,51 @@ export function Login() {
               <FormErrorMessage>{errors.password?.message}</FormErrorMessage>
             </FormControl>
 
-            {/* Recordarme y olvidaste */}
-            <Flex justify="space-between" align="center" w="full" fontSize="sm">
-              <Checkbox
-                colorScheme="purple"
-                {...register("rememberMe")}
-                sx={{
-                  ".chakra-checkbox__label": {
-                    fontSize: "10px",
-                    color: "text",
-                  },
-                }}
-              >
-                Recordarme
-              </Checkbox>
-
-              <Link color="accent" href="/forgot-password" fontWeight="medium">
+            <Flex justify="space-between" align="center" fontSize="sm">
+              <Checkbox {...register("rememberMe")}>Recordarme</Checkbox>
+              <Link color="accent" href="/forgot-password">
                 ¿Olvidaste tu contraseña?
               </Link>
             </Flex>
 
-            {/* ReCaptcha */}
-            <ReCAPTCHA
-              ref={recaptchaRef}
-              sitekey={siteKey}
-              onChange={() => setCaptchaError(false)}
+            <Turnstile
+              key={captchaKey} // ✅ fix: solo cambia cuando resetCaptcha() es llamado
+              siteKey={siteKey}
+              onSuccess={(token) => {
+                setCaptchaToken(token);
+                setCaptchaError(false);
+              }}
+              onError={() => {
+                setCaptchaError(true);
+                resetCaptcha();
+              }}
+              onExpire={() => {
+                resetCaptcha();
+              }}
             />
+
             {captchaError && (
               <Box color="red.500" fontSize="sm">
                 Por favor, verifica que no eres un robot.
               </Box>
             )}
 
-            {/* Botón */}
             <Button
               bg="accent"
               color="white"
-              _hover={{ bg: "accent" }}
               type="submit"
-              width="full"
               isLoading={login.isPending}
-              loadingText="Ingresando..."
-              className={styles.btnInicioSesion}
             >
               Iniciar sesión
             </Button>
           </VStack>
 
-          {/* Footer */}
-          <Box flex="1" w="full" mt={4}>
+          <Box mt={4}>
             <div className={styles.PoweredBy}>
               Desarrollado por:&nbsp;
               <img
-                src={"/assets/icons/logo-guruverso-g.png"}
-                alt="Logo Guruverso"
+                src="/assets/icons/logo-guruverso-g.png"
+                alt="Logo"
                 className={styles.LogoImg}
               />
             </div>
