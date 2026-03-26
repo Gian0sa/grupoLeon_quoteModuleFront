@@ -1,22 +1,22 @@
 import { axiosInstance } from "../../../shared/lib/axiosInstance";
 
 export const createVisitLog = async (data) => {
-  try {
-    const debugObj = {};
-    for (const [key, value] of data.entries()) {
+  const debugObj = {};
+  for (const [key, value] of data.entries()) {
     debugObj[key] = value instanceof File ? value.name : value;
-    }
+  }
 
-    console.log(debugObj);
+  console.log("📥 Datos a enviar:", debugObj);
+  const startTime = Date.now();
 
-
-    const response = await axiosInstance.post(
-      `/reportModule/visit-logs`,
-      data
-    );
+  try {
+    const response = await axiosInstance.post(`/reportModule/visit-logs`, data);
+    const endTime = Date.now();
+    console.log(`✅ Check-in completado en ${endTime - startTime} ms`, response.data);
     return response.data;
   } catch (error) {
-    console.error("Error al crear VisitLog:", error);
+    const endTime = Date.now();
+    console.error(`❌ Error al crear VisitLog (duró ${endTime - startTime} ms):`, error);
     throw error;
   }
 };

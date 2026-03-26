@@ -9,9 +9,20 @@ export const useCreateVisitLog = () => {
   const navigate = useNavigate();
 
   return useMutation({
-    mutationFn: (formData) => createVisitLog(formData),
+    mutationFn: (formData) => {
+      const debugObj = {};
+      for (const [key, value] of formData.entries()) {
+        debugObj[key] = value instanceof File ? value.name : value;
+      }
+      console.log("🚀 Iniciando check-in con formData:", debugObj);
+      console.time("CheckInDuration"); // Medir tiempo de petición
+      return createVisitLog(formData);
+    },
 
     onSuccess: (response, variables) => {
+      console.timeEnd("CheckInDuration"); // Termina medición
+      console.log("🎉 Check-in exitoso:", { response, variables });
+
       queryClient.invalidateQueries(["visitLogs"]);
 
       const type = variables.get("type");
@@ -35,7 +46,10 @@ export const useCreateVisitLog = () => {
       }
     },
 
-    onError: (error) => {
+    onError: (error, variables) => {
+      console.timeEnd("CheckInDuration");
+      console.error("⚠️ Error al registrar check-in:", { error, variables });
+
       toast({
         title: "Error al registrar visita",
         description:
