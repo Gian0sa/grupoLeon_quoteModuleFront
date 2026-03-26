@@ -22,7 +22,7 @@ const LOCATION_ERRORS = {
     },
 };
 
-export function useVisitSubmit({ username, hasActiveCheckIn, activeVisit, selectedClient, image }) {
+export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVisit, selectedClient, image }) {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const { mutate: createVisit, isLoading: isCreatingVisit, isPending } = useCreateVisitLog();
     const toast = useToast();
@@ -86,9 +86,29 @@ export function useVisitSubmit({ username, hasActiveCheckIn, activeVisit, select
             const location = await getLocation();
 
             const formData = new FormData();
+            console.log("selectedClient", selectedClient);
             formData.append("type", type);
             formData.append("vendorName", username);
+            formData.append("vendorCode", userCode);
             formData.append("storeName", selectedClient.firstName);
+            // Caso SAP
+            if (selectedClient.type === "SAP") {
+                formData.append("sapCode", selectedClient.sapCode);
+            }
+            // Caso cliente nuevo
+            if (selectedClient.type === "NEW") {
+                formData.append(
+                    "newClientData",
+                    JSON.stringify({
+                        fullName: selectedClient.firstName,
+                        personType: selectedClient.personType,
+                        documentType: selectedClient.documentType,
+                        documentNumber: selectedClient.documentNumber,
+                        phone: selectedClient.phone,
+                        email: selectedClient.email,
+                    })
+                );
+            }
             formData.append("latitude", location.latitude);
             formData.append("longitude", location.longitude);
 

@@ -44,6 +44,7 @@ function ClientSearchResults({
     dataByCode,
     dataByName,
     onSelectClient,
+    onCreateNewClient,
 }) {
     if (isSearching) {
         return (
@@ -77,9 +78,20 @@ function ClientSearchResults({
                 borderLeft="4px solid"
                 borderColor="yellow.500"
             >
-                <Text color="yellow.800" fontSize="sm">
+                <Text color="yellow.800" fontSize="sm" mb={2}>
                     No se encontró ningún cliente
                 </Text>
+
+                <Button
+                    mt={3}
+                    colorScheme="blue"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onCreateNewClient();
+                    }}
+                >
+                    Crear cliente nuevo
+                </Button>
             </Box>
         );
     }
@@ -150,6 +162,8 @@ function ClientSearchResults({
 }
 
 function SelectedClient({ client, hasActiveCheckIn, onClear }) {
+    const isNewClient = client.type === "NEW";
+
     return (
         <Box
             p={4}
@@ -173,20 +187,46 @@ function SelectedClient({ client, hasActiveCheckIn, onClear }) {
                     Cambiar
                 </Button>
             )}
-            <Badge colorScheme="green" mb={2}>
-                {hasActiveCheckIn ? "Check-In Activo" : "Seleccionado"}
+
+            <Badge colorScheme={isNewClient ? "blue" : "green"} mb={2}>
+                {hasActiveCheckIn
+                    ? "Check-In Activo"
+                    : isNewClient
+                    ? "Cliente Nuevo"
+                    : "Seleccionado"}
             </Badge>
+
             <Text fontWeight="700" fontSize="lg" color="green.800" mb={2}>
                 {client.firstName}
             </Text>
-            {client.id !== "AUTO" && (
+
+            {/* SOLO SAP */}
+            {!isNewClient && client.id !== "AUTO" && (
                 <Text fontSize="sm" color="gray.700" mb={1}>
                     <strong>Código:</strong> {client.id}
                 </Text>
             )}
-            <Text fontSize="sm" color="gray.700">
-                <strong>Dirección:</strong> {client.address}
-            </Text>
+
+            {/* SOLO SAP */}
+            {!isNewClient && (
+                <Text fontSize="sm" color="gray.700">
+                    <strong>Dirección:</strong> {client.address}
+                </Text>
+            )}
+
+            {/* SOLO NUEVO */}
+            {isNewClient && (
+                <>
+                    <Text fontSize="sm" color="gray.700">
+                        <strong>Documento:</strong> {client.documentNumber}
+                    </Text>
+
+                    <Text fontSize="sm" color="gray.700">
+                        <strong>Tipo:</strong>{" "}
+                        {client.isBusiness ? "Empresa" : "Persona"}
+                    </Text>
+                </>
+            )}
         </Box>
     );
 }
@@ -205,6 +245,7 @@ export function ClientSearchCard({
     selectedClient,
     hasActiveCheckIn,
     onSelectClient,
+    onCreateNewClient,
     onClearClient,
 }) {
     return (
@@ -233,6 +274,7 @@ export function ClientSearchCard({
                         dataByCode={dataByCode}
                         dataByName={dataByName}
                         onSelectClient={onSelectClient}
+                        onCreateNewClient={onCreateNewClient}
                     />
                 </>
             ) : (

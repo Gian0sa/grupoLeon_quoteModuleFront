@@ -15,9 +15,13 @@ import { useClientSearch } from "../hooks/useClientSearch";
 import { useImageUpload } from "../hooks/useImageUpload";
 import { useVisitSubmit } from "../hooks/useVisitSubmit";
 
+import { useDisclosure } from "@chakra-ui/react";
+import { NewClientModal } from "../components/NewClientModal";
+
 export default function VisitLogPage() {
-    const { username } = useAuthStore();
+    const { username , salesEmployeeCode } = useAuthStore();
     const navigate = useNavigate();
+    const { isOpen, onOpen, onClose } = useDisclosure();
 
     const {
         data: activeVisitData,
@@ -42,6 +46,7 @@ export default function VisitLogPage() {
         handleSearch,
         handleKeyPress,
         handleSelectClient,
+        handleCreateNewClient,
         handleClearClient,
         resetSearch,
     } = useClientSearch();
@@ -49,8 +54,10 @@ export default function VisitLogPage() {
     const { image, imagePreview, isProcessingImage, handleImageChange, resetImage } =
         useImageUpload();
 
+        console.log("selectedClient", selectedClient);
     const { submit, isCreatingVisit, isPending, isSubmitting } = useVisitSubmit({
         username,
+        userCode: salesEmployeeCode,
         hasActiveCheckIn,
         activeVisit,
         selectedClient,
@@ -113,6 +120,7 @@ export default function VisitLogPage() {
                         selectedClient={selectedClient}
                         hasActiveCheckIn={hasActiveCheckIn}
                         onSelectClient={handleSelectClient}
+                        onCreateNewClient={onOpen}
                         onClearClient={handleClearClient}
                     />
 
@@ -137,6 +145,14 @@ export default function VisitLogPage() {
                         onNavigateHistory={handleNavigateHistory}
                     />
                 </VStack>
+                <NewClientModal
+                    isOpen={isOpen}
+                    onClose={onClose}
+                    onCreate={(data) => {
+                        handleCreateNewClient(data);
+                        onClose();
+                    }}
+                />
             </Box>
         </Box>
     );

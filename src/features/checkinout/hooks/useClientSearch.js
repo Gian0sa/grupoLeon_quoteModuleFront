@@ -32,7 +32,30 @@ export function useClientSearch() {
 
     const handleSelectClient = (clientData) => {
         const client = adaptClientFromApi(clientData);
-        setSelectedClient(client);
+
+        setSelectedClient({
+            ...client,
+            type: "SAP",
+        });
+
+        setInputValue("");
+        setSearchTerm("");
+    };
+
+    const handleCreateNewClient = (formData) => {
+        setSelectedClient({
+            type: "NEW",
+            id: null,
+            firstName: formData.firstName,
+            address: formData.address,
+
+            personType: formData.personType,
+            documentType: formData.documentType,
+            documentNumber: formData.documentNumber,
+            phone: formData.phone,
+            email: formData.email,
+        });
+
         setInputValue("");
         setSearchTerm("");
     };
@@ -64,6 +87,7 @@ export function useClientSearch() {
         handleSearch,
         handleKeyPress,
         handleSelectClient,
+        handleCreateNewClient,
         handleClearClient,
         resetSearch,
     };
