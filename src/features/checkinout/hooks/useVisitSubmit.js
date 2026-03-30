@@ -22,7 +22,7 @@ const LOCATION_ERRORS = {
     },
 };
 
-export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVisit, selectedClient, image }) {
+export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVisit, selectedClient, image, existingImageData }) {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const { mutate: createVisit, isLoading: isCreatingVisit, isPending } = useCreateVisitLog();
     const toast = useToast();
@@ -53,14 +53,17 @@ export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVis
         }
 
         if (type === "IN" && !image) {
-            toast({
-                title: "Imagen requerida",
-                description: "Debes subir una imagen para el Check-In",
-                status: "warning",
-                duration: 3000,
-                isClosable: true,
-            });
-            return false;
+            const hasValidExisting = existingImageData?.hasImage && existingImageData?.isValid;
+            if (!hasValidExisting) {
+                toast({
+                    title: "Imagen requerida",
+                    description: "Debes subir una imagen para el Check-In",
+                    status: "warning",
+                    duration: 3000,
+                    isClosable: true,
+                });
+                return false;
+            }
         }
 
         if (!selectedClient) {
@@ -114,6 +117,8 @@ export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVis
 
             if (type === "IN" && image) {
                 formData.append("image", image);
+            } else if (type === "IN" && !image && existingImageData?.hasImage && existingImageData?.isValid) {
+                formData.append("existingImageUrl", existingImageData.imageUrl);
             }
 
             createVisit(formData, {

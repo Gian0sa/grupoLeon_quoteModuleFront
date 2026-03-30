@@ -4,6 +4,7 @@ import {
   getVisitLogById,
   getActiveVisitByVendor,
   getMyVisitLogs,
+  getClientImage,
 } from "../../services/visitLogService";
 
 export const useVisitLogs = () => {
@@ -32,5 +33,15 @@ export const useMyVisitLogs = () => {
   return useQuery({
     queryKey: ["myVisitLogs"],
     queryFn: getMyVisitLogs,
+  });
+};
+
+export const useClientImage = (sapCode) => {
+  return useQuery({
+    queryKey: ["clientImage", sapCode],
+    queryFn: () => getClientImage(sapCode),
+    enabled: !!sapCode,
+    staleTime: 1000 * 60 * 5,
+    retry: 1,
   });
 };

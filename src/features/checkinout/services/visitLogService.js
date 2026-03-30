@@ -76,3 +76,40 @@ export const getMyVisitLogs = async () => {
     return { total: 0, visits: [] };
   }
 };
+
+export const getClientImage = async (sapCode) => {
+  console.log("sapCode", sapCode);
+  const startTime = Date.now();
+
+  try {
+    if (!sapCode) {
+      throw new Error("sapCode es requerido");
+    }
+
+    const response = await axiosInstance.get(
+      `/reportModule/last-image/${sapCode}`
+    );
+
+    const endTime = Date.now();
+    console.log(
+      `🖼️ Imagen cliente obtenida en ${endTime - startTime} ms`,
+      response.data
+    );
+
+    return response.data;
+  } catch (error) {
+    const endTime = Date.now();
+
+    console.error(
+      `❌ Error obteniendo imagen del cliente (${endTime - startTime} ms):`,
+      error
+    );
+
+    return {
+      hasImage: false,
+      imageUrl: null,
+      isValid: false,
+      message: "Error obteniendo imagen",
+    };
+  }
+};

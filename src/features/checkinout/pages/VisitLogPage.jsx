@@ -14,12 +14,13 @@ import { VisitActionButtons } from "../components/VisitActionButtons";
 import { useClientSearch } from "../hooks/useClientSearch";
 import { useImageUpload } from "../hooks/useImageUpload";
 import { useVisitSubmit } from "../hooks/useVisitSubmit";
+import { useClientImage } from "../hooks/queries/visitLogQueries";
 
 import { useDisclosure } from "@chakra-ui/react";
 import { NewClientModal } from "../components/NewClientModal";
 
 export default function VisitLogPage() {
-    const { username , salesEmployeeCode } = useAuthStore();
+    const { username, salesEmployeeCode } = useAuthStore();
     const navigate = useNavigate();
     const { isOpen, onOpen, onClose } = useDisclosure();
 
@@ -54,7 +55,12 @@ export default function VisitLogPage() {
     const { image, imagePreview, isProcessingImage, handleImageChange, resetImage } =
         useImageUpload();
 
-        console.log("selectedClient", selectedClient);
+    const {
+        data: clientImageData,
+        isLoading: isLoadingClientImage,
+    } = useClientImage(selectedClient?.id);
+
+    console.log("selectedClient", selectedClient);
     const { submit, isCreatingVisit, isPending, isSubmitting } = useVisitSubmit({
         username,
         userCode: salesEmployeeCode,
@@ -62,14 +68,14 @@ export default function VisitLogPage() {
         activeVisit,
         selectedClient,
         image,
+        existingImageData: clientImageData,
     });
 
-    // Auto-populate client from active visit
     useEffect(() => {
         if (hasActiveCheckIn && activeVisit && !selectedClient) {
             setSelectedClient({
                 firstName: activeVisit.storeName,
-                id: "AUTO",
+                cardCode: activeVisit.sapCode,
                 address: `Lat: ${activeVisit.latitude}, Lon: ${activeVisit.longitude}`,
             });
         }
@@ -130,6 +136,8 @@ export default function VisitLogPage() {
                             imagePreview={imagePreview}
                             isProcessingImage={isProcessingImage}
                             onImageChange={handleImageChange}
+                            existingImageData={clientImageData}   // <-- nuevo
+                            isLoadingExistingImage={isLoadingClientImage} // <-- nuevo
                         />
                     )}
 
