@@ -21,15 +21,39 @@ export const createVisitLog = async (data) => {
   }
 };
 
-export const getAllVisitLogs = async () => {
+export const getAllVisitLogs = async (filters = {}) => {
   try {
+    const params = new URLSearchParams();
+
+    if (filters.vendor && filters.vendor !== "all") {
+      params.append("vendor", filters.vendor);
+    }
+
+    if (filters.status && filters.status !== "all") {
+      params.append("status", filters.status);
+    }
+
+    if (filters.dateFrom) {
+      params.append("from", filters.dateFrom);
+    }
+
+    if (filters.dateTo) {
+      params.append("to", filters.dateTo);
+    }
+
+    if (filters.search) {
+      params.append("search", filters.search);
+    }
+
     const response = await axiosInstance.get(
-      `/reportModule/visit-logs`
+      `/reportModule/visit-logs?${params.toString()}`
     );
+
     return response.data;
+
   } catch (error) {
     console.error("Error al obtener VisitLogs:", error);
-    return [];
+    return { visits: [] };
   }
 };
 

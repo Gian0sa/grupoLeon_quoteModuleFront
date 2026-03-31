@@ -10,32 +10,28 @@ import {
     CardBody,
     useColorModeValue,
     Divider,
-    Select,
-    Grid,
     Button,
     ButtonGroup,
-    Stat,
-    StatLabel,
-    StatNumber,
-    StatHelpText,
-    Icon,
-    Tooltip,
     Input,
-    InputGroup,
-    InputLeftElement,
     Collapse,
     IconButton,
     Flex,
     SimpleGrid,
 } from "@chakra-ui/react";
 import { useState, useEffect, useMemo } from "react";
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, CircleMarker } from "react-leaflet";
+import { MapContainer, TileLayer, Polyline } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-import L from "leaflet";
 import { useVisitLogs } from "../hooks/queries/visitLogQueries";
 import { BackButton } from "../../../components/BackButton";
+import Select from "react-select";
+import { getToday, getYesterday, getLastWeek, getLastMonth, formatDateForInput } from "../utils/datePresets";
+import { formatDateTime, formatDate, formatTime, calculateDuration, normalizeToLocalMidnight } from "../utils/dateUtils";
+import MapMarkers from "../components/MapMarkers";
+import "../map/leafletConfig";
+import { VENDOR_COLOR_PALETTE } from "../constants/colors";
+import { MapUpdater, MapBoundsUpdater } from "../map/utilsMap";
+import Estadisticas from "../components/Estadisticas";
 
-const SearchIcon = () => <span>🔍</span>;
 const MapPinIcon = () => <span>📍</span>;
 const ClockIcon = () => <span>🕐</span>;
 const CalendarIcon = () => <span>📅</span>;
@@ -45,141 +41,45 @@ const FilterIcon = () => <span>🔽</span>;
 const ImageIcon = () => <span>🖼️</span>;
 const RouteIcon = () => <span>🛣️</span>;
 
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-    iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
-    iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
-    shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
-});
+const customSelectStyles = {
+    control: (provided) => ({
+        ...provided,
+        minHeight: "40px",
+        height: "40px",
+    }),
+    valueContainer: (provided) => ({
+        ...provided,
+        height: "40px",
+        padding: "0 8px",
+        display: "flex",
+        alignItems: "center",
+    }),
+    indicatorsContainer: (provided) => ({
+        ...provided,
+        height: "40px",
+    }),
+    singleValue: (provided) => ({
+        ...provided,
+        display: "flex",
+        alignItems: "center",
+        gap: "6px",
+        margin: 0,
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+    }),
 
-const checkInIcon = new L.Icon({
-    iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png",
-    shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
-    popupAnchor: [1, -34],
-    shadowSize: [41, 41],
-});
+    menuList: (provided) => ({
+        ...provided,
+        maxHeight: "160px",
+        overflowY: "auto",
+    }),
 
-const createNumberedIcon = (number, color = "#2563eb") => {
-    return L.divIcon({
-        className: 'custom-numbered-icon',
-        html: `
-            <div style="
-                background-color: ${color};
-                color: white;
-                border-radius: 50%;
-                width: 32px;
-                height: 32px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-weight: bold;
-                font-size: 14px;
-                border: 3px solid white;
-                box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-            ">
-                ${number}
-            </div>
-        `,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
-        popupAnchor: [0, -16],
-    });
+    menu: (provided) => ({
+        ...provided,
+        zIndex: 9999,
+    }),
 };
-
-const formatDateTime = (dateString) => {
-    if (!dateString) return "N/A";
-    const date = new Date(dateString);
-    return date.toLocaleString("es-PE", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-    });
-};
-
-const formatDate = (dateString) => {
-    if (!dateString) return "N/A";
-    const date = new Date(dateString);
-    return date.toLocaleDateString("es-PE", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-    });
-};
-
-const formatTime = (dateString) => {
-    if (!dateString) return "N/A";
-    const date = new Date(dateString);
-    return date.toLocaleTimeString("es-PE", {
-        hour: "2-digit",
-        minute: "2-digit",
-    });
-};
-
-const calculateDuration = (checkIn, checkOut) => {
-    if (!checkIn || !checkOut) return "N/A";
-    const diff = new Date(checkOut) - new Date(checkIn);
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    return `${hours}h ${minutes}m`;
-};
-
-const getToday = () => {
-    const today = new Date();
-    const localDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
-    return localDate;
-};
-
-const getYesterday = () => {
-    const today = new Date();
-    const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1, 0, 0, 0, 0);
-    return yesterday;
-};
-
-const getLastWeek = () => {
-    const today = new Date();
-    const lastWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 7, 0, 0, 0, 0);
-    return lastWeek;
-};
-
-const getLastMonth = () => {
-    const today = new Date();
-    const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate(), 0, 0, 0, 0);
-    return lastMonth;
-};
-
-const formatDateForInput = (date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-};
-
-const normalizeToLocalMidnight = (dateString) => {
-    const date = new Date(dateString);
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
-};
-
-function MapUpdater({ center, zoom }) {
-    const map = useMap();
-    useEffect(() => {
-        map.setView(center, zoom);
-    }, [center, zoom, map]);
-    return null;
-}
-
-function MapBoundsUpdater({ bounds }) {
-    const map = useMap();
-    useEffect(() => {
-        if (bounds && bounds.length > 0) {
-            map.fitBounds(bounds, { padding: [50, 50] });
-        }
-    }, [bounds, map]);
-    return null;
-}
 
 function VendorRoute({ visits, color = "#3b82f6" }) {
     if (!visits || visits.length < 2) return null;
@@ -206,90 +106,13 @@ function VendorRoute({ visits, color = "#3b82f6" }) {
     );
 }
 
-function MapMarkers({ groupedVisits, selectedVendor, hoveredStore, onMarkerClick, showRoute }) {
-    const vendorColors = {
-        default: "#3b82f6",
-        colors: ["#ef4444", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#14b8a6"]
-    };
-
-    return (
-        <>
-            {groupedVisits.map((group, idx) => {
-                const hasIn = group.in &&
-                    (selectedVendor === "all" || group.in.vendorName === selectedVendor);
-                const hasOut = group.out &&
-                    (selectedVendor === "all" || group.out.vendorName === selectedVendor);
-
-                const isHovered = hoveredStore === group.id;
-
-                const showSequence = showRoute && selectedVendor !== "all" && group.sequenceNumber;
-                const vendorColor = vendorColors.colors[idx % vendorColors.colors.length];
-
-                return (
-                    <div key={group.id}>
-                        {hasIn && (
-                            <Marker
-                                position={[group.in.latitude, group.in.longitude]}
-                                icon={showSequence ? createNumberedIcon(group.sequenceNumber, vendorColor) : checkInIcon}
-                                eventHandlers={{
-                                    click: () => onMarkerClick(group),
-                                }}
-                            >
-                                <Popup maxWidth={250}>
-                                    <Box p={2}>
-                                        {showSequence && (
-                                            <Badge colorScheme="blue" mb={2}>
-                                                Parada #{group.sequenceNumber}
-                                            </Badge>
-                                        )}
-                                        <Text fontWeight="bold" color="green.600" mb={2}>
-                                            ✓ CHECK IN
-                                        </Text>
-                                        <Text fontSize="sm" fontWeight="bold">{group.storeName}</Text>
-                                        <Text fontSize="sm">👤 {group.in.vendorName}</Text>
-                                        <Text fontSize="sm" mb={2}>
-                                            🕐 {formatDateTime(group.in.createdAt)}
-                                        </Text>
-                                        {group.in.imageUrl && (
-                                            <Box
-                                                mt={2}
-                                                borderRadius="md"
-                                                overflow="hidden"
-                                                border="2px solid"
-                                                borderColor="green.300"
-                                            >
-                                                <img
-                                                    src={group.in.imageUrl}
-                                                    alt="Check-In"
-                                                    style={{
-                                                        width: "100%",
-                                                        height: "120px",
-                                                        objectFit: "cover",
-                                                        display: "block"
-                                                    }}
-                                                />
-                                            </Box>
-                                        )}
-                                    </Box>
-                                </Popup>
-                            </Marker>
-                        )}
-                    </div>
-                );
-            })}
-        </>
-    );
-}
-
 export default function VisitLogsMapView() {
-    const { data, isLoading, error } = useVisitLogs();
-    const visitLogs = data?.visits || [];
+    
 
     const [selectedVendor, setSelectedVendor] = useState("all");
     const [mapCenter, setMapCenter] = useState([-12.0464, -77.0428]);
     const [mapZoom, setMapZoom] = useState(13);
     const [searchTerm, setSearchTerm] = useState("");
-    const [viewMode, setViewMode] = useState("grid");
     const [showFilters, setShowFilters] = useState(true);
     const [hoveredStore, setHoveredStore] = useState(null);
     const [selectedStore, setSelectedStore] = useState(null);
@@ -314,6 +137,16 @@ export default function VisitLogsMapView() {
     const greenBg = useColorModeValue("green.50", "green.900");
     const redBg = useColorModeValue("red.50", "red.900");
     const purpleHeaderBg = useColorModeValue("purple.50", "purple.900");
+
+    const filters = {
+        vendor: selectedVendor,
+        status: statusFilter,
+        dateFrom,
+        dateTo,
+        search: searchTerm,
+    };
+    const { data, isLoading, error } = useVisitLogs(filters);
+    const visitLogs = data?.visits || [];
 
     const groupedVisits = useMemo(() => {
         return visitLogs;
@@ -354,43 +187,8 @@ export default function VisitLogsMapView() {
     };
 
     const filteredGroups = useMemo(() => {
-        return groupedVisits.filter(group => {
-            const vendorMatch = selectedVendor === "all" ||
-                group.vendorName === selectedVendor;
-
-            const searchMatch = searchTerm === "" ||
-                group.storeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                group.vendorName.toLowerCase().includes(searchTerm.toLowerCase());
-
-            let dateMatch = true;
-            if (dateFrom || dateTo) {
-                const visitDate = normalizeToLocalMidnight(group.in?.createdAt || group.out?.createdAt);
-
-                if (dateFrom) {
-                    const fromDate = normalizeToLocalMidnight(dateFrom + "T00:00:00");
-                    if (visitDate < fromDate) dateMatch = false;
-                }
-
-                if (dateTo) {
-                    const toDate = normalizeToLocalMidnight(dateTo + "T23:59:59");
-                    if (visitDate > toDate) dateMatch = false;
-                }
-            }
-
-            let statusMatch = true;
-            if (statusFilter !== "all") {
-                if (statusFilter === "completed") {
-                    statusMatch = group.in && group.out;
-                } else if (statusFilter === "pending") {
-                    statusMatch = group.in && !group.out;
-                } else if (statusFilter === "orphan") {
-                    statusMatch = !group.in && group.out;
-                }
-            }
-
-            return vendorMatch && searchMatch && dateMatch && statusMatch;
-        });
-    }, [groupedVisits, selectedVendor, searchTerm, dateFrom, dateTo, statusFilter]);
+        return groupedVisits;
+    }, [groupedVisits]);
 
     const vendorRouteData = useMemo(() => {
         if (selectedVendor === "all" || !showVendorRoute) return null;
@@ -482,6 +280,65 @@ export default function VisitLogsMapView() {
     const vendors = useMemo(() => {
         return [...new Set(visitLogs?.map(v => v.vendorName).filter(Boolean))];
     }, [visitLogs]);
+
+    const vendorColorMap = useMemo(() => {
+        const map = {};
+        vendors.forEach((vendor, index) => {
+            map[vendor] = VENDOR_COLOR_PALETTE[index % VENDOR_COLOR_PALETTE.length];
+        });
+        return map;
+    }, [vendors]);
+
+    const vendorOptions = [
+        { value: "all", label: "Todos los vendedores", color: "#999" },
+        ...vendors.map((vendor) => ({
+            value: vendor,
+            label: vendor,
+            color: vendorColorMap[vendor],
+        })),
+    ];
+
+    const customOption = (props) => {
+        const { data, innerRef, innerProps } = props;
+
+        return (
+            <div
+                ref={innerRef}
+                {...innerProps}
+                style={{
+                    display: "flex",
+                    alignItems: "center",
+                    padding: "8px",
+                }}
+            >
+                <div
+                    style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: "50%",
+                        backgroundColor: data.color,
+                        marginRight: 8,
+                    }}
+                />
+                {data.label}
+            </div>
+        );
+    };
+
+    const customSingleValue = ({ data }) => (
+        <div style={{ display: "flex", alignItems: "center" }}>
+            <div
+                style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: "50%",
+                    backgroundColor: data.color,
+                    marginRight: 8,
+                }}
+            />
+            {data.label}
+        </div>
+    );
 
     useEffect(() => {
         if (selectedVendor !== "all") {
@@ -600,17 +457,15 @@ export default function VisitLogsMapView() {
                                                 👥 Vendedor
                                             </Text>
                                             <Select
-                                                value={selectedVendor}
-                                                onChange={(e) => setSelectedVendor(e.target.value)}
-                                                fontSize={{ base: "sm", md: "md" }}
-                                            >
-                                                <option value="all">Todos los vendedores</option>
-                                                {vendors.map((vendor) => (
-                                                    <option key={vendor} value={vendor}>
-                                                        {vendor}
-                                                    </option>
-                                                ))}
-                                            </Select>
+                                                options={vendorOptions}
+                                                value={vendorOptions.find(opt => opt.value === selectedVendor)}
+                                                onChange={(option) => setSelectedVendor(option.value)}
+                                                components={{
+                                                    Option: customOption,
+                                                    SingleValue: customSingleValue,
+                                                }}
+                                                styles={customSelectStyles}
+                                            />
                                         </Box>
 
                                         {/* Filtro de estado */}
@@ -619,14 +474,23 @@ export default function VisitLogsMapView() {
                                                 📊 Estado
                                             </Text>
                                             <Select
-                                                value={statusFilter}
-                                                onChange={(e) => setStatusFilter(e.target.value)}
-                                                fontSize={{ base: "sm", md: "md" }}
-                                            >
-                                                <option value="all">Todas las visitas</option>
-                                                <option value="completed">✅ Completas</option>
-                                                <option value="pending">⏳ Pendientes</option>
-                                            </Select>
+                                                options={[
+                                                    { value: "all", label: "Todas las visitas" },
+                                                    { value: "completed", label: "✅ Completas" },
+                                                    { value: "pending", label: "⏳ Pendientes" },
+                                                ]}
+                                                value={{
+                                                    value: statusFilter,
+                                                    label:
+                                                        statusFilter === "all"
+                                                            ? "Todas las visitas"
+                                                            : statusFilter === "completed"
+                                                                ? "✅ Completas"
+                                                                : "⏳ Pendientes",
+                                                }}
+                                                onChange={(option) => setStatusFilter(option.value)}
+                                                styles={customSelectStyles}
+                                            />
                                         </Box>
                                     </SimpleGrid>
 
@@ -779,44 +643,7 @@ export default function VisitLogsMapView() {
                 </Card>
 
                 {/* Estadísticas */}
-                <SimpleGrid columns={{ base: 2, md: 2, lg: 4 }} spacing={{ base: 2, md: 4 }} w="full">
-                    <Card bg={statBg} borderColor={borderColor}>
-                        <CardBody p={{ base: 3, md: 4 }}>
-                            <Stat>
-                                <StatLabel fontSize={{ base: "xs", md: "sm" }}>Total Visitas</StatLabel>
-                                <StatNumber fontSize={{ base: "xl", md: "2xl" }}>{stats.totalVisits}</StatNumber>
-                                <StatHelpText fontSize={{ base: "xs", md: "sm" }}>Registradas</StatHelpText>
-                            </Stat>
-                        </CardBody>
-                    </Card>
-                    <Card bg={statBg} borderColor={borderColor}>
-                        <CardBody p={{ base: 3, md: 4 }}>
-                            <Stat>
-                                <StatLabel fontSize={{ base: "xs", md: "sm" }}>Completadas</StatLabel>
-                                <StatNumber fontSize={{ base: "xl", md: "2xl" }}>{stats.completedVisits}</StatNumber>
-                                <StatHelpText fontSize={{ base: "xs", md: "sm" }}>Con Check-In/Out</StatHelpText>
-                            </Stat>
-                        </CardBody>
-                    </Card>
-                    <Card bg={statBg} borderColor={borderColor}>
-                        <CardBody p={{ base: 3, md: 4 }}>
-                            <Stat>
-                                <StatLabel fontSize={{ base: "xs", md: "sm" }}>Pendientes</StatLabel>
-                                <StatNumber fontSize={{ base: "xl", md: "2xl" }}>{stats.pendingCheckOut}</StatNumber>
-                                <StatHelpText fontSize={{ base: "xs", md: "sm" }}>Sin Check-Out</StatHelpText>
-                            </Stat>
-                        </CardBody>
-                    </Card>
-                    <Card bg={statBg} borderColor={borderColor}>
-                        <CardBody p={{ base: 3, md: 4 }}>
-                            <Stat>
-                                <StatLabel fontSize={{ base: "xs", md: "sm" }}>Duración Promedio</StatLabel>
-                                <StatNumber fontSize={{ base: "md", md: "lg" }}>{stats.avgDuration}</StatNumber>
-                                <StatHelpText fontSize={{ base: "xs", md: "sm" }}>Por visita</StatHelpText>
-                            </Stat>
-                        </CardBody>
-                    </Card>
-                </SimpleGrid>
+                <Estadisticas stats={stats} statBg={statBg} borderColor={borderColor} />
 
                 {/* Mapa */}
                 <Card bg={cardBg} borderColor={borderColor}>
@@ -852,7 +679,10 @@ export default function VisitLogsMapView() {
                                 {vendorRouteData && showVendorRoute ? (
                                     <>
                                         <MapBoundsUpdater bounds={vendorRouteData.bounds} />
-                                        <VendorRoute visits={vendorRouteData.visits} />
+                                        <VendorRoute
+                                            visits={vendorRouteData.visits}
+                                            color={vendorColorMap[selectedVendor]}
+                                        />
                                     </>
                                 ) : (
                                     <MapUpdater center={mapCenter} zoom={mapZoom} />
@@ -864,6 +694,7 @@ export default function VisitLogsMapView() {
                                     hoveredStore={hoveredStore}
                                     onMarkerClick={handleMarkerClick}
                                     showRoute={showVendorRoute && selectedVendor !== "all"}
+                                    vendorColorMap={vendorColorMap}
                                 />
                             </MapContainer>
                         </Box>

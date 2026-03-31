@@ -7,10 +7,11 @@ import {
   getClientImage,
 } from "../../services/visitLogService";
 
-export const useVisitLogs = () => {
+export const useVisitLogs = (filters) => {
   return useQuery({
-    queryKey: ["visitLogs"],
-    queryFn: getAllVisitLogs,
+    queryKey: ["visitLogs", filters],
+    queryFn: () => getAllVisitLogs(filters),
+    keepPreviousData: true,
   });
 };
 
