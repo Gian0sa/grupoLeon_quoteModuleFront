@@ -1,7 +1,7 @@
 import { Marker, Popup } from "react-leaflet";
 import { Box, Text, Badge } from "@chakra-ui/react";
 import { formatDateTime } from "../utils/dateUtils";
-import { createNumberedIcon, createPinIcon } from "../utils/mapIcons";
+import { createNumberedIcon, createPinIcon } from "../utils/iconsmap";
 
 export default function MapMarkers({ groupedVisits, selectedVendor, hoveredStore, onMarkerClick, showRoute, vendorColorMap }) {
     const vendorColors = {
