@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@chakra-ui/react";
 import { createVisitLog } from "../../services/visitLogService";
+import { addToQueue } from "../../services/visitLogQueue";
 import { useNavigate } from "react-router-dom";
 
 export const useCreateVisitLog = () => {
@@ -15,23 +16,19 @@ export const useCreateVisitLog = () => {
         debugObj[key] = value instanceof File ? value.name : value;
       }
       console.log("🚀 Iniciando check-in con formData:", debugObj);
-      console.time("CheckInDuration"); // Medir tiempo de petición
+      console.time("CheckInDuration");
       return createVisitLog(formData);
     },
 
     onSuccess: (response, variables) => {
-      console.timeEnd("CheckInDuration"); // Termina medición
-      console.log("🎉 Check-in exitoso:", { response, variables });
-
+      console.timeEnd("CheckInDuration");
       queryClient.invalidateQueries(["visitLogs"]);
 
       const type = variables.get("type");
       const storeName = variables.get("storeName");
 
       toast({
-        title: type === "IN"
-          ? "Check-in registrado"
-          : "Check-out registrado",
+        title: type === "IN" ? "Check-in registrado" : "Check-out registrado",
         description: "La visita se registró correctamente.",
         status: "success",
         duration: 4000,
@@ -40,26 +37,40 @@ export const useCreateVisitLog = () => {
       });
 
       if (type === "IN") {
-        navigate(
-          `/clienteBusqueda?storeName=${encodeURIComponent(storeName)}`
-        );
+        navigate(`/clienteBusqueda?storeName=${encodeURIComponent(storeName)}`);
       }
     },
 
-    onError: (error, variables) => {
+    onError: async (error, variables) => {
       console.timeEnd("CheckInDuration");
-      console.error("⚠️ Error al registrar check-in:", { error, variables });
 
-      toast({
-        title: "Error al registrar visita",
-        description:
-          error?.response?.data?.message ||
-          "No se pudo registrar la visita.",
-        status: "error",
-        duration: 4000,
-        isClosable: true,
-        position: "top",
-      });
+      const isNetworkError =
+        !error?.response ||
+        error?.code === "ECONNABORTED" ||
+        error?.message === "Network Error";
+
+      if (isNetworkError) {
+        await addToQueue(variables);
+        toast({
+          title: "Sin conexión",
+          description: "El check-in se guardó localmente y se enviará cuando haya red.",
+          status: "warning",
+          icon: "📦",
+          duration: 5000,
+          isClosable: true,
+          position: "top",
+        });
+      } else {
+        toast({
+          title: "Error al registrar visita",
+          description:
+            error?.response?.data?.message || "No se pudo registrar la visita.",
+          status: "error",
+          duration: 4000,
+          isClosable: true,
+          position: "top",
+        });
+      }
     },
   });
 };
