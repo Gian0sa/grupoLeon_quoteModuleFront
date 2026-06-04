@@ -1,3 +1,8 @@
+allowBuilds:
+  '@swc/core': false
+  core-js: false
+  esbuild: false
+  tesseract.js: false
 onlyBuiltDependencies:
   - '@swc/core'
   - core-js

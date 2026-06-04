@@ -28,6 +28,8 @@ import ImportacionesPage from "../features/imports/pages/ImportacionesPage.jsx";
 import VisitLogPage from "../features/checkinout/pages/VisitLogPage.jsx";
 import VisitLogsMapView from "../features/checkinout/pages/VisitLogsMapView.jsx";
 import MyVisitsPage from "../features/checkinout/pages/MyVisitsPage.jsx";
+import { EntradaPage } from "../features/entrada/pages/EntradaPage.jsx";
+import { AttendanceAdminPage } from "../features/entrada/pages/AttendanceAdminPage.jsx";
 
 const AppRoutes = () => {
   return (
@@ -234,6 +236,22 @@ const AppRoutes = () => {
         element={
           <PrivateRoute>
             <MyVisitsPage/>
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/entrada"
+        element={
+          <PrivateRoute>
+            <EntradaPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/admin/attendance"
+        element={
+          <PrivateRoute>
+            <AttendanceAdminPage />
           </PrivateRoute>
         }
       />

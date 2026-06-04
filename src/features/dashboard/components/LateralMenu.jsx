@@ -36,7 +36,8 @@ import {
   MdHelp,
   MdAssignment,
   MdSupport,
-  MdExitToApp
+  MdExitToApp,
+  MdAccessTime
 } from "react-icons/md";
 
 import { useDisclosure } from '@chakra-ui/react';
@@ -133,6 +134,12 @@ export function LateralMenu() {
       icon: MdMap,
       path: '/myVisits',
       access: 'POST:/visit-logs'
+    },
+    {
+      label: 'Control de asistencia',
+      icon: MdAccessTime,
+      path: '/entrada',
+      access: 'POST:/visit-logs'
     }
   ];
 
@@ -145,7 +152,8 @@ export function LateralMenu() {
   const adminOptions = [
     { label: 'Actualizar usuario', icon: MdPerson, path: '/profileAdmin', access: 'PUT:/profile/admin/:userId' },
     { label: 'Actualizar servicios', icon: MdHelp, path: '#', access: 'PUT:/services/:id' },
-    { label: 'Gestionar Notificaciones', icon: MdAssignment, path: '/notification', access: 'GET:/receivable' } //access: 'POST:/notification' 
+    { label: 'Gestionar Notificaciones', icon: MdAssignment, path: '/notification', access: 'GET:/receivable' },
+    { label: 'Control de Asistencias (Admin)', icon: MdAccessTime, path: '/admin/attendance', access: 'PUT:/profile/admin/:userId' }
   ];
 
   const renderMenuOptions = (options) =>
