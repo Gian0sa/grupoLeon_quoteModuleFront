@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Box, 
   Button, 
@@ -37,6 +38,7 @@ export const EntradaForm = () => {
   
   const username = useAuthStore((state) => state.username);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const navigate = useNavigate();
 
   const bgCard = useColorModeValue('white', 'gray.800');
   const textColor = useColorModeValue('gray.600', 'gray.300');
@@ -80,6 +82,11 @@ export const EntradaForm = () => {
       textAlign="center"
     >
       <VStack spacing={6}>
+        <Box w="full" display="flex" justifyContent="flex-start">
+          <Button onClick={() => navigate(-1)} size="sm" variant="ghost" colorScheme="blue">
+            ← Regresar
+          </Button>
+        </Box>
         <Box>
           <Heading size="lg" mb={2}>Control de Asistencia</Heading>
           <Text color={textColor}>
