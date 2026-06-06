@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { BackButton } from '../../../components/BackButton';
 import { 
   Box, 
   Button, 
@@ -83,9 +84,7 @@ export const EntradaForm = () => {
     >
       <VStack spacing={6}>
         <Box w="full" display="flex" justifyContent="flex-start">
-          <Button onClick={() => navigate(-1)} size="sm" variant="ghost" colorScheme="blue">
-            ← Regresar
-          </Button>
+          <BackButton />
         </Box>
         <Box>
           <Heading size="lg" mb={2}>Control de Asistencia</Heading>
