@@ -6,6 +6,7 @@ import {
   getMyVisitLogs,
   getClientImage,
 } from "../../services/visitLogService";
+import { getActiveVisitState } from "../../services/visitLogQueue";
 
 export const useVisitLogs = (filters) => {
   return useQuery({
@@ -26,7 +27,16 @@ export const useVisitLogById = (id) => {
 export const useActiveVisitByVendor = (vendorName) => {
   return useQuery({
     queryKey: ["activeVisit", vendorName],
-    queryFn: () => getActiveVisitByVendor(vendorName),
+    queryFn: async () => {
+      let serverData = null;
+      try {
+        serverData = await getActiveVisitByVendor(vendorName);
+      } catch (error) {
+        console.warn("Could not fetch active visit from server (offline):", error);
+      }
+      return getActiveVisitState(vendorName, serverData);
+    },
+    networkMode: "always",
   });
 };
 
@@ -34,6 +44,7 @@ export const useMyVisitLogs = () => {
   return useQuery({
     queryKey: ["myVisitLogs"],
     queryFn: getMyVisitLogs,
+    networkMode: "always",
   });
 };
 

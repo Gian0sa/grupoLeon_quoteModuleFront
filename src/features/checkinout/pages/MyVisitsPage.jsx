@@ -21,9 +21,11 @@ import {
   Input,
   ButtonGroup,
 } from "@chakra-ui/react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useMyVisitLogs } from "../hooks/queries/visitLogQueries";
 import { BackButton } from "../../../components/BackButton";
+import { getQueue } from "../services/visitLogQueue";
+import { useAuthStore } from "../../auth/stores/useAuthStore";
 
 const formatDateTime = (dateString) => {
   if (!dateString) return "N/A";
@@ -89,12 +91,36 @@ const isThisMonth = (date) => {
 };
 
 export default function MyVisitsPage() {
+  const { username } = useAuthStore();
   const { data, isLoading, error } = useMyVisitLogs();
+  const [queueItems, setQueueItems] = useState([]);
   const [filterType, setFilterType] = useState("today");
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
 
-  const visits = data?.visits || [];
+  useEffect(() => {
+    getQueue().then(items => {
+      setQueueItems(items || []);
+    });
+  }, [data]);
+
+  const localVisits = useMemo(() => {
+    return queueItems
+      .filter((item) => item.vendorName === username)
+      .map((item) => ({
+        id: `local-${item.id}`,
+        type: item.type,
+        storeName: item.storeName,
+        createdAt: new Date(item._queuedAt).toISOString(),
+        isLocal: true,
+        status: item.status,
+      }));
+  }, [queueItems, username]);
+
+  const visits = useMemo(() => {
+    const serverVisits = data?.visits || [];
+    return [...localVisits, ...serverVisits];
+  }, [data, localVisits]);
 
   const cardBg = useColorModeValue("white", "gray.700");
   const borderColor = useColorModeValue("gray.200", "gray.600");
@@ -357,45 +383,59 @@ export default function MyVisitsPage() {
               </CardBody>
             </Card>
           ) : (
-            grouped.map((group) => (
-              <Card key={group.id} bg={cardBg} borderColor={borderColor}>
-                <CardBody>
-                  <VStack align="stretch" spacing={3}>
-                    <Heading size="sm">{group.storeName}</Heading>
+            grouped.map((group) => {
+              const isLocalGroup = group.in?.isLocal || group.out?.isLocal;
+              return (
+                <Card key={group.id} bg={cardBg} borderColor={isLocalGroup ? "orange.200" : borderColor} border={isLocalGroup ? "1px solid" : undefined}>
+                  <CardBody>
+                    <VStack align="stretch" spacing={3}>
+                      <Flex justify="space-between" align="center">
+                        <Heading size="sm">{group.storeName}</Heading>
+                        {isLocalGroup && (
+                          <Badge colorScheme="orange" variant="solid" fontSize="2xs">
+                            Pendiente de sincronizar
+                          </Badge>
+                        )}
+                      </Flex>
 
-                    <Box>
-                      <Badge colorScheme="green">CHECK IN</Badge>
-                      <Text fontSize="sm">
-                        {formatDateTime(group.in.createdAt)}
-                      </Text>
-                    </Box>
-
-                    {group.out ? (
                       <Box>
-                        <Badge colorScheme="red">CHECK OUT</Badge>
-                        <Text fontSize="sm">
-                          {formatDateTime(group.out.createdAt)}
-                        </Text>
-
-                        <Divider my={2} />
-
-                        <Badge colorScheme="green">
-                          Duración:{" "}
-                          {calculateDuration(
-                            group.in.createdAt,
-                            group.out.createdAt
-                          )}
+                        <Badge colorScheme={group.in?.isLocal ? "yellow" : "green"}>
+                          {group.in?.isLocal ? "CHECK IN (Local)" : "CHECK IN"}
                         </Badge>
+                        <Text fontSize="sm">
+                          {formatDateTime(group.in?.createdAt)}
+                        </Text>
                       </Box>
-                    ) : (
-                      <Badge colorScheme="orange">
-                        Pendiente de Check-Out
-                      </Badge>
-                    )}
-                  </VStack>
-                </CardBody>
-              </Card>
-            ))
+
+                      {group.out ? (
+                        <Box>
+                          <Badge colorScheme={group.out.isLocal ? "yellow" : "red"}>
+                            {group.out.isLocal ? "CHECK OUT (Local)" : "CHECK OUT"}
+                          </Badge>
+                          <Text fontSize="sm">
+                            {formatDateTime(group.out.createdAt)}
+                          </Text>
+
+                          <Divider my={2} />
+
+                          <Badge colorScheme="green">
+                            Duración:{" "}
+                            {calculateDuration(
+                              group.in?.createdAt,
+                              group.out.createdAt
+                            )}
+                          </Badge>
+                        </Box>
+                      ) : (
+                        <Badge colorScheme={group.in?.isLocal ? "yellow" : "orange"}>
+                          {group.in?.isLocal ? "Pendiente de Check-In Servidor" : "Pendiente de Check-Out"}
+                        </Badge>
+                      )}
+                    </VStack>
+                  </CardBody>
+                </Card>
+              );
+            })
           )}
         </VStack>
       </VStack>

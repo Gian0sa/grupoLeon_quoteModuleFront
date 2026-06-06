@@ -6,21 +6,29 @@ export function ActiveVisitAlert({ activeVisit }) {
     return (
         <Box mx={4} mt={4}>
             <Box
-                bg="orange.50"
+                bg={activeVisit.isLocal ? "yellow.50" : "orange.50"}
                 borderLeft="4px solid"
-                borderColor="orange.400"
+                borderColor={activeVisit.isLocal ? "yellow.400" : "orange.400"}
                 p={3}
                 borderRadius="md"
             >
                 <Flex justify="space-between" align="center">
                     <Box flex={1}>
-                        <Text fontSize="sm" color="orange.800" mb={1}>
-                            Tienes un <strong>Check-In activo</strong> en{" "}
-                            <strong>{activeVisit.storeName}</strong>
+                        <Text fontSize="sm" color={activeVisit.isLocal ? "yellow.800" : "orange.800"} mb={1}>
+                            {activeVisit.isLocal ? (
+                                <>
+                                    Tienes un <strong>Check-In local pendiente</strong> en{" "}
+                                    <strong>{activeVisit.storeName}</strong>
+                                </>
+                            ) : (
+                                <>
+                                    Tienes un <strong>Check-In activo</strong> en{" "}
+                                    <strong>{activeVisit.storeName}</strong>
+                                </>
+                            )}
                         </Text>
-                        <Text fontSize="xs" color="orange.700">
-                            Desde {new Date(activeVisit.createdAt).toLocaleTimeString()} • No
-                            olvides marcar tu Check-Out
+                        <Text fontSize="xs" color={activeVisit.isLocal ? "yellow.700" : "orange.700"}>
+                            Desde {new Date(activeVisit.createdAt).toLocaleTimeString()} • {activeVisit.isLocal ? "Pendiente de sincronización automática" : "No olvides marcar tu Check-Out"}
                         </Text>
                     </Box>
                     {activeVisit.imageUrl && (

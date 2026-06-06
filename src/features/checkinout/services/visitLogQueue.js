@@ -52,6 +52,7 @@ export const addToQueue = async (formData) => {
   const storable = await formDataToStorable(formData);
   const id = await db.add(STORE_NAME, {
     ...storable,
+    status: "PENDING",
     _queuedAt: Date.now(),
   });
   console.log("📦 Check-in guardado offline con id:", id);
@@ -71,4 +72,48 @@ export const removeFromQueue = async (id) => {
 export const getQueueCount = async () => {
   const db = await getDB();
   return db.count(STORE_NAME);
+};
+
+export const updateQueueItem = async (id, updates) => {
+  const db = await getDB();
+  const tx = db.transaction(STORE_NAME, "readwrite");
+  const store = tx.objectStore(STORE_NAME);
+  const item = await store.get(id);
+  if (item) {
+    Object.assign(item, updates);
+    await store.put(item);
+  }
+  await tx.done;
+};
+
+export const getActiveVisitState = async (vendorName, serverActiveVisitData) => {
+  let hasActiveCheckIn = serverActiveVisitData?.active || false;
+  let activeVisit = serverActiveVisitData?.visit || null;
+
+  const queue = await getQueue();
+  const vendorQueue = queue
+    .filter((item) => item.vendorName === vendorName)
+    .sort((a, b) => a.id - b.id);
+
+  for (const item of vendorQueue) {
+    if (item.type === "IN") {
+      hasActiveCheckIn = true;
+      activeVisit = {
+        id: `local-${item.id}`,
+        storeName: item.storeName,
+        sapCode: item.sapCode || null,
+        latitude: item.latitude,
+        longitude: item.longitude,
+        createdAt: item._queuedAt || Date.now(),
+        isLocal: true,
+        status: item.status || "PENDING",
+        errorMessage: item.errorMessage || null,
+      };
+    } else if (item.type === "OUT") {
+      hasActiveCheckIn = false;
+      activeVisit = null;
+    }
+  }
+
+  return { active: hasActiveCheckIn, visit: activeVisit };
 };

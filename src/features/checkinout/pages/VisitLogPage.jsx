@@ -10,11 +10,13 @@ import { VendorCard } from "../components/VendorCard";
 import { ClientSearchCard } from "../components/ClientSearchCard";
 import { ImageUploadCard } from "../components/ImageUploadCard";
 import { VisitActionButtons } from "../components/VisitActionButtons";
+import SyncQueueStatus from "../components/SyncQueueStatus";
 
 import { useClientSearch } from "../hooks/useClientSearch";
 import { useImageUpload } from "../hooks/useImageUpload";
 import { useVisitSubmit } from "../hooks/useVisitSubmit";
 import { useClientImage } from "../hooks/queries/visitLogQueries";
+import { useSyncQueue } from "../hooks/useSyncQueue";
 
 import { useDisclosure } from "@chakra-ui/react";
 import { NewClientModal } from "../components/NewClientModal";
@@ -23,6 +25,14 @@ export default function VisitLogPage() {
     const { username, salesEmployeeCode } = useAuthStore();
     const navigate = useNavigate();
     const { isOpen, onOpen, onClose } = useDisclosure();
+
+    const {
+        queueItems,
+        isSyncing,
+        syncPending,
+        retryItem,
+        removeItem,
+    } = useSyncQueue();
 
     const {
         data: activeVisitData,
@@ -100,7 +110,15 @@ export default function VisitLogPage() {
         <Box minH="100vh" bg="gray.50" pb={6}>
             <VisitLogHeader />
 
-            {hasActiveCheckIn && activeVisit && <ActiveVisitAlert activeVisit={activeVisit} />}
+            {/* {hasActiveCheckIn && activeVisit && <ActiveVisitAlert activeVisit={activeVisit} />}
+
+            <SyncQueueStatus
+                queueItems={queueItems}
+                onRetry={retryItem}
+                onDelete={removeItem}
+                isSyncing={isSyncing}
+                onSyncAll={syncPending}
+            /> */}
 
             {isLoadingActiveVisit && (
                 <Flex justify="center" py={4}>

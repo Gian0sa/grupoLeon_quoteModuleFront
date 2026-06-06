@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useToast } from "@chakra-ui/react";
 import { useCreateVisitLog } from "../../checkinout/hooks/mutations/visitLogMutations";
 import { getLocation } from "../utils/deviceUtils";
+import { useNavigate } from "react-router-dom";
+import { addToQueue, getQueueCount } from "../services/visitLogQueue";
 
 const LOCATION_ERRORS = {
     GEOLOCATION_NOT_SUPPORTED: {
@@ -26,6 +28,7 @@ export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVis
     const [isSubmitting, setIsSubmitting] = useState(false);
     const { mutate: createVisit, isLoading: isCreatingVisit, isPending } = useCreateVisitLog();
     const toast = useToast();
+    const navigate = useNavigate();
 
     const validate = (type) => {
         if (type === "IN" && hasActiveCheckIn) {
@@ -94,6 +97,8 @@ export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVis
             formData.append("vendorName", username);
             formData.append("vendorCode", userCode);
             formData.append("storeName", selectedClient.firstName);
+            formData.append("createdAt", new Date().toISOString());
+
             // Caso SAP
             if (selectedClient.type === "SAP") {
                 formData.append("sapCode", selectedClient.sapCode);
@@ -121,38 +126,71 @@ export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVis
                 formData.append("existingImageUrl", existingImageData.imageUrl);
             }
 
+            // Antes de enviar, verificar si hay operaciones pendientes en la cola
+            const queueCount = await getQueueCount();
+            if (queueCount > 0) {
+                const localId = await addToQueue(formData);
+                toast({
+                    title: `Check-${type === "IN" ? "In" : "Out"} guardado localmente`,
+                    description: `Hay otras operaciones pendientes en cola. Se sincronizará automáticamente.`,
+                    status: "warning",
+                    duration: 5000,
+                    isClosable: true,
+                    position: "top",
+                });
+                setIsSubmitting(false);
+                onSuccess?.({ isLocal: true, id: localId }, type);
+                if (type === "IN") {
+                    navigate(`/clienteBusqueda?storeName=${encodeURIComponent(selectedClient.firstName)}`);
+                }
+                return;
+            }
+
             createVisit(formData, {
                 onSuccess: async (data) => {
                     toast({
-                        title: "¡Registro exitoso!",
-                        description: `Check ${type} registrado correctamente`,
+                        title: type === "IN" ? "Check-in registrado" : "Check-out registrado",
+                        description: `Check ${type} registrado correctamente en el servidor.`,
                         status: "success",
                         duration: 3000,
                         isClosable: true,
+                        position: "top",
                     });
                     setIsSubmitting(false);
                     onSuccess?.(data, type);
-                },
-                onError: (error) => {
-                    let errorMessage = "Error desconocido";
-                    if (error.response) {
-                        errorMessage =
-                            error.response.data?.message || `Error ${error.response.status}`;
-                    } else if (error.request) {
-                        errorMessage = "No se recibió respuesta del servidor";
-                    } else {
-                        errorMessage = error.message;
+                    if (type === "IN") {
+                        navigate(`/clienteBusqueda?storeName=${encodeURIComponent(selectedClient.firstName)}`);
                     }
-
-                    toast({
-                        title: "Error al registrar",
-                        description: errorMessage,
-                        status: "error",
-                        duration: 5000,
-                        isClosable: true,
-                    });
-                    setIsSubmitting(false);
-                    onError?.(error);
+                },
+                onError: async (error) => {
+                    try {
+                        const localId = await addToQueue(formData);
+                        toast({
+                            title: `Check-${type === "IN" ? "In" : "Out"} guardado localmente`,
+                            description: `La operación quedó pendiente de sincronización debido a un fallo de red o del servidor.`,
+                            status: "warning",
+                            duration: 5000,
+                            isClosable: true,
+                            position: "top",
+                        });
+                        setIsSubmitting(false);
+                        onSuccess?.({ isLocal: true, id: localId }, type);
+                        if (type === "IN") {
+                            navigate(`/clienteBusqueda?storeName=${encodeURIComponent(selectedClient.firstName)}`);
+                        }
+                    } catch (queueError) {
+                        console.error("Failed to add to queue:", queueError);
+                        toast({
+                            title: "Error al registrar",
+                            description: error?.response?.data?.message || error?.message || "Error al registrar y guardar",
+                            status: "error",
+                            duration: 5000,
+                            isClosable: true,
+                            position: "top",
+                        });
+                        setIsSubmitting(false);
+                        onError?.(error);
+                    }
                 },
             });
         } catch (error) {
