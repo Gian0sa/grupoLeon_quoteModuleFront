@@ -166,6 +166,8 @@ export const useEntrada = () => {
     checkStatus,
     image,
     imagePreview,
+    setImage,
+    setImagePreview,
     isProcessingImage,
     handleImageChange,
     resetImage
