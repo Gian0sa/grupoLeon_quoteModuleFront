@@ -6,15 +6,18 @@ import {
   Badge,
   Text,
   Flex,
-  Button
+  Button,
+  SimpleGrid
 } from '@chakra-ui/react';
 import ProductHeader from './ProductHeader';
 import ProductImage from './ProductImage';
 import ProductSpecsTable from './ProductSpecsTable';
 import ProductApplications from './ProductApplications';
 import ProductRelations from './ProductRelations';
+import { useNavigate } from 'react-router-dom';
 
 export default function ProductCard({ product }) {
+  const navigate = useNavigate();
   
 
   const allRelations = [
@@ -54,7 +57,9 @@ export default function ProductCard({ product }) {
         transition: 'all 0.3s' 
       }}
     >
-      <ProductHeader product={product} />
+      <Box cursor="pointer" onClick={() => navigate(`/catalog/${product.idProducto}`)}>
+        <ProductHeader product={product} />
+      </Box>
 
       <CardBody p={0}>
         <Stack spacing={0}>
@@ -68,6 +73,30 @@ export default function ProductCard({ product }) {
             >
               Filtro
             </Text>
+          </Box>
+          <Box px={4} py={2} fontSize="sm" color="gray.600">
+            <SimpleGrid columns={2} spacing={2}>
+              {product.marca?.nombre && (
+                <Box overflowX="auto" whiteSpace="nowrap">
+                  <Text as="span" fontWeight="bold">Marca:</Text> {product.marca.nombre}
+                </Box>
+              )}
+              {product.fabricante?.nombre && (
+                <Box overflowX="auto" whiteSpace="nowrap">
+                  <Text as="span" fontWeight="bold">Fabricante:</Text> {product.fabricante.nombre}
+                </Box>
+              )}
+              {product.categoria?.nombre && (
+                <Box overflowX="auto" whiteSpace="nowrap">
+                  <Text as="span" fontWeight="bold">Categoría:</Text> {product.categoria.nombre}
+                </Box>
+              )}
+              {product.segmento?.nombre && (
+                <Box overflowX="auto" whiteSpace="nowrap">
+                  <Text as="span" fontWeight="bold">Segmento:</Text> {product.segmento.nombre}
+                </Box>
+              )}
+            </SimpleGrid>
           </Box>
 
           <ProductImage product={product} />
