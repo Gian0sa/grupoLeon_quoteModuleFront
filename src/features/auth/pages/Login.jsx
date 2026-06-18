@@ -194,6 +194,9 @@ export function Login() {
               color="white"
               type="submit"
               isLoading={login.isPending}
+              _hover={{ bg: "accent", opacity: 0.9 }}
+              _active={{ bg: "accent", opacity: 0.8 }}
+              _focus={{ bg: "accent" }}
             >
               Iniciar sesión
             </Button>
