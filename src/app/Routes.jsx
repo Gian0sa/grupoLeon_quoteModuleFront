@@ -21,6 +21,7 @@ import { NotificationPage } from "../features/dashboard/pages/NotificationPage.j
 import { ProductList } from "../features/products/pages/ProductsPriceList.jsx";
 import { FormCatalogPage } from "../features/catalog/pages/FormCatalogPage.jsx";
 import CatalogPage from "../features/catalog/pages/CatalogPage.jsx";
+import ProductDetailPage from "../features/catalog/pages/ProductDetailPage.jsx";
 import OrdersDashboard from "../features/dashboard/pages/OrdersDashboard.jsx";
 import ClienteInfo from "../features/reports/pages/ClienteInfo.jsx";
 import ClienteBusquedaPage from "../features/clients/pages/ClienteBusquedaPage.jsx";
@@ -172,6 +173,14 @@ const AppRoutes = () => {
         element={
           <PrivateRoute>
             <FormCatalogPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/catalog/product/:slug"
+        element={
+          <PrivateRoute>
+            <ProductDetailPage />
           </PrivateRoute>
         }
       />

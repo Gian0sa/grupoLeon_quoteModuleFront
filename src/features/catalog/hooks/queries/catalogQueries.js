@@ -1,41 +1,46 @@
 import { useQuery } from "@tanstack/react-query";
 import {
-  getAllProducts,
-  searchProducts,
-  getProductById,
-  getVehicleModels,
+  getProducts,
+  getFilterMetadata,
+  getProductEquivalents,
+  getProductApplications
 } from "../../services/catalogServices";
 
-// Obtener todos los productos
-export const useProducts = () => {
+export const useProducts = (page, limit, filters) => {
   return useQuery({
-    queryKey: ["products"],
-    queryFn: getAllProducts,
+    queryKey: ["products", page, limit, filters],
+    queryFn: () => getProducts(page, limit, filters),
   });
 };
 
-// Buscar productos
-export const useSearchProducts = (query) => {
+export const useFilterMetadata = () => {
   return useQuery({
-    queryKey: ["productsSearch", query],
-    queryFn: () => searchProducts(query),
-    enabled: !!query,
+    queryKey: ["filterMetadata"],
+    queryFn: getFilterMetadata,
   });
 };
 
-// Obtener producto por ID
-export const useProductById = (id) => {
+export const useProductEquivalents = (slug, page, limit, tipoId, documentoOrigenId, searchCode) => {
   return useQuery({
-    queryKey: ["product", id],
-    queryFn: () => getProductById(id),
-    enabled: !!id,
+    queryKey: ["productEquivalents", slug, page, limit, tipoId, documentoOrigenId, searchCode],
+    queryFn: () => getProductEquivalents(slug, page, limit, tipoId, documentoOrigenId, searchCode),
+    enabled: !!slug,
   });
 };
 
-// Obtener modelos de vehículos
-export const useVehicleModels = () => {
+export const useProductApplications = (slug, page, limit) => {
   return useQuery({
-    queryKey: ["vehicleModels"],
-    queryFn: getVehicleModels,
+    queryKey: ["productApplications", slug, page, limit],
+    queryFn: () => getProductApplications(slug, page, limit),
+    enabled: !!slug,
+  });
+};
+
+// Stub for legacy form page
+export const useProductById = () => {
+  return useQuery({
+    queryKey: ["productByIdStub"],
+    queryFn: () => Promise.reject(new Error("Endpoint getById eliminado")),
+    enabled: false
   });
 };

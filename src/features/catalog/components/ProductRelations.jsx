@@ -11,8 +11,9 @@ export default function ProductRelations({ relations }) {
         <Text fontWeight="bold" fontSize="sm">RELACIONES DE PRODUCTO</Text>
       </Box>
 
-      <Table size="sm" variant="simple">
-        <Tbody>
+      <Box maxHeight="120px" overflowY="auto">
+        <Table size="sm" variant="simple">
+          <Tbody>
           {relations.map((rel, index) => (
             <Tr key={rel.id || index}>
               <Td fontWeight="medium" bg="gray.50">{rel.name}</Td>
@@ -26,6 +27,7 @@ export default function ProductRelations({ relations }) {
           ))}
         </Tbody>
       </Table>
+      </Box>
     </Box>
   );
 }
