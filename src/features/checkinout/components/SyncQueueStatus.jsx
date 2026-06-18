@@ -138,16 +138,6 @@ export default function SyncQueueStatus({ queueItems, onRetry, onDelete, isSynci
                           />
                         </Tooltip>
                       )}
-                      <Tooltip label="Eliminar">
-                        <IconButton
-                          size="xs"
-                          icon={<FiTrash2 />}
-                          colorScheme="red"
-                          variant="ghost"
-                          onClick={() => onDelete(item.id)}
-                          aria-label="Eliminar item"
-                        />
-                      </Tooltip>
                     </HStack>
                   </Flex>
                 </Box>
