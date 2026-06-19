@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { fetchClientByCode, fetchDeliveryPoints , fetchClientByName , fetchClientProductHistory , fetchClientProductHistoryAdmin , fetchPriceListByItemCodes , fetchPurchaseOrdersImportacion , fetchPurchaseOrderDetail} from "../../services/clientService";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { fetchClientByCode, fetchDeliveryPoints , fetchClientByName , fetchClientProductHistory , fetchClientProductHistoryAdmin , fetchPriceListByItemCodes , fetchPurchaseOrdersImportacion , fetchPurchaseOrderDetail, fetchNewClients, updateNewClient} from "../../services/clientService";
 
 export function useClientQueries(code) {
   const { data, isLoading, error } = useQuery({
@@ -141,4 +141,30 @@ export function usePurchaseOrderDetail(docEntry) {
     errorPurchaseOrderDetail: error,
     refetchPurchaseOrderDetail: refetch,
   };
+}
+
+export function useNewClientsQuery() {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ["newClients"],
+    queryFn: fetchNewClients,
+    refetchOnWindowFocus: false,
+  });
+
+  return {
+    dataNewClients: data || [],
+    isLoadingNewClients: isLoading,
+    errorNewClients: error,
+    refetchNewClients: refetch,
+  };
+}
+
+export function useUpdateNewClientMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: updateNewClient,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["newClients"] });
+    },
+  });
 }
