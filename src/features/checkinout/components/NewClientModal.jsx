@@ -61,25 +61,28 @@ export function NewClientModal({ isOpen, onClose, onCreate }) {
         break;
 
       case "documentNumber":
-        if (!value) error = "Campo obligatorio";
-        else if (!/^\d+$/.test(value))
-          error = "Solo números";
-        else if (form.documentType === "DNI" && value.length !== 8)
-          error = "DNI: 8 dígitos";
-        else if (form.documentType === "RUC" && value.length !== 11)
-          error = "RUC: 11 dígitos";
+        if (value && value.toString().trim() !== "") {
+          if (!/^\d+$/.test(value))
+            error = "Solo números";
+          else if (form.documentType === "DNI" && value.toString().length !== 8)
+            error = "DNI: 8 dígitos";
+          else if (form.documentType === "RUC" && value.toString().length !== 11)
+            error = "RUC: 11 dígitos";
+        }
         break;
 
       case "phone":
-        if (!value) error = "Campo obligatorio";
-        else if (!/^9\d{8}$/.test(value))
-          error = "Debe empezar en 9 y tener 9 dígitos";
+        if (value && value.toString().trim() !== "") {
+          if (!/^9\d{8}$/.test(value))
+            error = "Debe empezar en 9 y tener 9 dígitos";
+        }
         break;
 
       case "email":
-        if (!value.trim()) error = "Campo obligatorio";
-        else if (!/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(value))
-          error = "Correo inválido";
+        if (value && value.trim() !== "") {
+          if (!/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(value))
+            error = "Correo inválido";
+        }
         break;
 
       default:
@@ -87,16 +90,25 @@ export function NewClientModal({ isOpen, onClose, onCreate }) {
     }
 
     setErrors((prev) => ({ ...prev, [field]: error }));
+    return error;
   };
 
   const validateAll = () => {
     const newErrors = {};
+    let isValid = true;
 
     Object.keys(form).forEach((field) => {
-      validateField(field, form[field]);
+      const error = validateField(field, form[field]);
+      if (error) {
+        isValid = false;
+        newErrors[field] = error;
+      } else {
+        newErrors[field] = "";
+      }
     });
 
-    return Object.values(errors).every((e) => !e);
+    setErrors(newErrors);
+    return isValid;
   };
 
   const handleSubmit = () => {

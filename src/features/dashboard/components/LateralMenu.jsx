@@ -136,6 +136,12 @@ export function LateralMenu() {
       access: 'POST:/visit-logs'
     },
     {
+      label: 'Clientes nuevos',
+      icon: MdPersonAdd,
+      path: '/newClients',
+      access: 'POST:/visit-logs'
+    },
+    {
       label: 'Control de asistencia',
       icon: MdAccessTime,
       path: '/entrada',
