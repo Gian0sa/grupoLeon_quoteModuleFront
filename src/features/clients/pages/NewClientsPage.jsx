@@ -35,10 +35,12 @@ import {
 import { FiSearch, FiEdit, FiUser, FiMail, FiPhone, FiFileText } from "react-icons/fi";
 import { BackButton } from "../../../components/BackButton";
 import { useNewClientsQuery, useUpdateNewClientMutation } from "../hooks/queries/clientQueries";
+import { useAuthStore } from "../../auth/stores/useAuthStore";
 
 export function NewClientsPage() {
   const toast = useToast();
-  const { dataNewClients, isLoadingNewClients, errorNewClients, refetchNewClients } = useNewClientsQuery();
+  const { salesEmployeeCode, username } = useAuthStore();
+  const { dataNewClients, isLoadingNewClients, errorNewClients, refetchNewClients } = useNewClientsQuery(salesEmployeeCode, username);
   const updateMutation = useUpdateNewClientMutation();
 
   const [searchTerm, setSearchTerm] = useState("");

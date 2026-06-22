@@ -143,10 +143,10 @@ export function usePurchaseOrderDetail(docEntry) {
   };
 }
 
-export function useNewClientsQuery() {
+export function useNewClientsQuery(vendorCode, username) {
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ["newClients"],
-    queryFn: fetchNewClients,
+    queryKey: ["newClients", vendorCode, username],
+    queryFn: () => fetchNewClients({ vendorCode, username }),
     refetchOnWindowFocus: false,
   });
 
