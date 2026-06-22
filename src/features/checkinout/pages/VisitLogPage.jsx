@@ -115,6 +115,7 @@ export default function VisitLogPage() {
             <SyncQueueStatus
                 queueItems={queueItems}
                 onRetry={retryItem}
+                onDelete={removeItem}
                 isSyncing={isSyncing}
                 onSyncAll={syncPending}
             />

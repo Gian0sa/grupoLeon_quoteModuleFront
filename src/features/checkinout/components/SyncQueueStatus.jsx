@@ -14,12 +14,39 @@ import {
   Collapse,
   Spinner,
   IconButton,
-  Tooltip
+  Tooltip,
+  AlertDialog,
+  AlertDialogBody,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogContent,
+  AlertDialogOverlay,
 } from "@chakra-ui/react";
 import { FiRefreshCw, FiTrash2, FiClock, FiAlertTriangle, FiChevronDown, FiChevronUp } from "react-icons/fi";
 
 export default function SyncQueueStatus({ queueItems, onRetry, onDelete, isSyncing, onSyncAll }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [deleteItemId, setDeleteItemId] = useState(null);
+  const [isAlertOpen, setIsAlertOpen] = useState(false);
+  const cancelRef = React.useRef();
+
+  const handleDeleteClick = (id) => {
+    setDeleteItemId(id);
+    setIsAlertOpen(true);
+  };
+
+  const handleConfirmDelete = () => {
+    if (deleteItemId && onDelete) {
+      onDelete(deleteItemId);
+    }
+    setIsAlertOpen(false);
+    setDeleteItemId(null);
+  };
+
+  const handleCancelDelete = () => {
+    setIsAlertOpen(false);
+    setDeleteItemId(null);
+  };
 
   if (!queueItems || queueItems.length === 0) return null;
 
@@ -40,7 +67,8 @@ export default function SyncQueueStatus({ queueItems, onRetry, onDelete, isSynci
   };
 
   return (
-    <Card 
+    <>
+      <Card 
       mx={0} 
       mt={4} 
       border="1px solid" 
@@ -138,6 +166,16 @@ export default function SyncQueueStatus({ queueItems, onRetry, onDelete, isSynci
                           />
                         </Tooltip>
                       )}
+                      <Tooltip label="Eliminar">
+                        <IconButton
+                          size="xs"
+                          icon={<FiTrash2 />}
+                          colorScheme="red"
+                          variant="ghost"
+                          onClick={() => handleDeleteClick(item.id)}
+                          aria-label="Eliminar item"
+                        />
+                      </Tooltip>
                     </HStack>
                   </Flex>
                 </Box>
@@ -147,5 +185,33 @@ export default function SyncQueueStatus({ queueItems, onRetry, onDelete, isSynci
         </VStack>
       </CardBody>
     </Card>
+
+      <AlertDialog
+        isOpen={isAlertOpen}
+        leastDestructiveRef={cancelRef}
+        onClose={handleCancelDelete}
+      >
+        <AlertDialogOverlay>
+          <AlertDialogContent mx={4}>
+            <AlertDialogHeader fontSize="lg" fontWeight="bold">
+              Eliminar registro local
+            </AlertDialogHeader>
+
+            <AlertDialogBody>
+              ¿Está seguro de eliminar este registro local? Esta acción no se puede deshacer y el registro no será enviado al servidor.
+            </AlertDialogBody>
+
+            <AlertDialogFooter>
+              <Button ref={cancelRef} onClick={handleCancelDelete} size="sm">
+                Cancelar
+              </Button>
+              <Button colorScheme="red" onClick={handleConfirmDelete} ml={3} size="sm">
+                Eliminar
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialogOverlay>
+      </AlertDialog>
+    </>
   );
 }
