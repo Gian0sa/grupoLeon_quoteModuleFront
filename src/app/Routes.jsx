@@ -21,6 +21,7 @@ import { NotificationPage } from "../features/dashboard/pages/NotificationPage.j
 import { ProductList } from "../features/products/pages/ProductsPriceList.jsx";
 import { FormCatalogPage } from "../features/catalog/pages/FormCatalogPage.jsx";
 import CatalogPage from "../features/catalog/pages/CatalogPage.jsx";
+import ProductDetailPage from "../features/catalog/pages/ProductDetailPage.jsx";
 import OrdersDashboard from "../features/dashboard/pages/OrdersDashboard.jsx";
 import ClienteInfo from "../features/reports/pages/ClienteInfo.jsx";
 import ClienteBusquedaPage from "../features/clients/pages/ClienteBusquedaPage.jsx";
@@ -30,6 +31,7 @@ import VisitLogsMapView from "../features/checkinout/pages/VisitLogsMapView.jsx"
 import MyVisitsPage from "../features/checkinout/pages/MyVisitsPage.jsx";
 import { EntradaPage } from "../features/entrada/pages/EntradaPage.jsx";
 import { AttendanceAdminPage } from "../features/entrada/pages/AttendanceAdminPage.jsx";
+import { NewClientsPage } from "../features/clients/pages/NewClientsPage.jsx";
 
 const AppRoutes = () => {
   return (
@@ -176,6 +178,14 @@ const AppRoutes = () => {
         }
       />
       <Route
+        path="/catalog/product/:slug"
+        element={
+          <PrivateRoute>
+            <ProductDetailPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
         path="/catalog"
         element={
           <PrivateRoute>
@@ -236,6 +246,14 @@ const AppRoutes = () => {
         element={
           <PrivateRoute>
             <MyVisitsPage/>
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/newClients"
+        element={
+          <PrivateRoute>
+            <NewClientsPage />
           </PrivateRoute>
         }
       />

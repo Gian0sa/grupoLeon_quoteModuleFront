@@ -81,3 +81,15 @@ export const fetchPurchaseOrderDetail = async (docEntry) => {
     const response = await axiosInstance.get(endpoint);
     return response.data;
 };
+
+export const fetchNewClients = async ({ vendorCode, username }) => {
+    const response = await axiosInstance.get(`/reportModule/new-clients`, {
+        params: { vendorCode, username }
+    });
+    return response.data;
+};
+
+export const updateNewClient = async ({ id, ...clientData }) => {
+    const response = await axiosInstance.put(`/reportModule/new-clients/${id}`, clientData);
+    return response.data;
+};

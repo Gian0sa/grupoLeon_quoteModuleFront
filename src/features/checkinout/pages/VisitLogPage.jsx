@@ -110,7 +110,7 @@ export default function VisitLogPage() {
         <Box minH="100vh" bg="gray.50" pb={6}>
             <VisitLogHeader />
 
-            {/* {hasActiveCheckIn && activeVisit && <ActiveVisitAlert activeVisit={activeVisit} />}
+            {hasActiveCheckIn && activeVisit && <ActiveVisitAlert activeVisit={activeVisit} />}
 
             <SyncQueueStatus
                 queueItems={queueItems}
@@ -118,7 +118,7 @@ export default function VisitLogPage() {
                 onDelete={removeItem}
                 isSyncing={isSyncing}
                 onSyncAll={syncPending}
-            /> */}
+            />
 
             {isLoadingActiveVisit && (
                 <Flex justify="center" py={4}>
