@@ -113,7 +113,7 @@ export default function VisitLogPage() {
             {hasActiveCheckIn && activeVisit && <ActiveVisitAlert activeVisit={activeVisit} />}
 
             <SyncQueueStatus
-                queueItems={queueItems}
+                queueItems={queueItems.filter(item => item.status !== "SYNCED")}
                 onRetry={retryItem}
                 onDelete={removeItem}
                 isSyncing={isSyncing}
