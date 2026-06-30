@@ -64,10 +64,10 @@ export function Login() {
   };
 
   const onSubmit = (data) => {
-    // if (!captchaToken) {
-    //   setCaptchaError(true);
-    //   return;
-    // }
+     if (!captchaToken) {
+       setCaptchaError(true);
+       return;
+     }
 
     login.mutate(
       { ...data, captchaToken },
@@ -167,7 +167,7 @@ export function Login() {
               </Link>
             </Flex>
 
-            {/* 
+           
             <Turnstile
               key={captchaKey} // ✅ fix: solo cambia cuando resetCaptcha() es llamado
               siteKey={siteKey}
@@ -183,7 +183,7 @@ export function Login() {
                 resetCaptcha();
               }}
             /> 
-            */}
+           
 
             {captchaError && (
               <Box color="red.500" fontSize="sm">
