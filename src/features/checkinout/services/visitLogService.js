@@ -21,6 +21,21 @@ export const createVisitLog = async (data) => {
   }
 };
 
+export const createBulkVisitLogs = async (data) => {
+  console.log("📥 [Bulk] Datos a enviar en lote");
+  const startTime = Date.now();
+  try {
+    const response = await axiosInstance.post(`/reportModule/visit-logs/bulk`, data);
+    const endTime = Date.now();
+    console.log(`✅ [Bulk] Check-ins completados en ${endTime - startTime} ms`, response.data);
+    return response.data;
+  } catch (error) {
+    const endTime = Date.now();
+    console.error(`❌ [Bulk] Error al crear lote de VisitLogs (duró ${endTime - startTime} ms):`, error);
+    throw error;
+  }
+};
+
 export const getAllVisitLogs = async (filters = {}) => {
   try {
     const params = new URLSearchParams();

@@ -8,7 +8,7 @@ import {
   getQueueCount,
   updateQueueItem,
 } from "../services/visitLogQueue";
-import { createVisitLog } from "../services/visitLogService";
+import { createVisitLog, createBulkVisitLogs } from "../services/visitLogService";
 
 export const useSyncQueue = () => {
   const toast = useToast();
@@ -48,28 +48,72 @@ export const useSyncQueue = () => {
     console.log(`🔄 Sincronizando ${items.length} check-in(s)/out(s) pendientes...`);
     let syncedCount = 0;
 
-    // Orden cronológico por ID
-    const sortedQueue = items.sort((a, b) => a.id - b.id);
-
-    for (const item of sortedQueue) {
-      if (item.status === "SYNCED") {
+    // Purga de items viejos con estado SYNCED (más de 2 días)
+    const TWO_DAYS = 48 * 60 * 60 * 1000;
+    const now = Date.now();
+    for (const item of items) {
+      if (item.status === "SYNCED" && (now - (item._queuedAt || 0)) > TWO_DAYS) {
         await removeFromQueue(item.id);
-        continue;
       }
+    }
 
-      try {
+    // Refrescar lista después de purgar
+    const currentItems = await getQueue();
+    if (currentItems.length === 0) {
+      setPendingCount(0);
+      setQueueItems([]);
+      isSyncingRef.current = false;
+      return;
+    }
+
+    // Orden cronológico por ID
+    const sortedQueue = currentItems.sort((a, b) => a.id - b.id);
+    const batchSize = parseInt(import.meta.env.VITE_SYNC_BATCH_SIZE) || 30;
+
+    for (let i = 0; i < sortedQueue.length; i += batchSize) {
+      const batch = sortedQueue.slice(i, i + batchSize);
+      const batchFormData = new FormData();
+      const logsArray = [];
+
+      for (const item of batch) {
+        if (item.status === "SYNCED") continue;
+
         await updateQueueItem(item.id, { status: "SYNCING" });
-        await refreshQueue();
 
         const { id, _queuedAt, status, errorMessage, ...data } = item;
-        const formData = storableToFormData(data);
 
-        // Envío directo al backend
-        await createVisitLog(formData);
+        // Separar imagen del objeto principal para mandarla como archivo
+        if (data.image && data.image.__type === "File") {
+          const file = new File([data.image.blob], data.image.name, { type: data.image.mime });
+          batchFormData.append(`image_${data.uuid}`, file);
+          delete data.image; 
+        }
 
-        // Sincronizado correctamente -> eliminar de IndexedDB
-        await removeFromQueue(item.id);
-        syncedCount++;
+        logsArray.push(data);
+      }
+
+      if (logsArray.length === 0) continue;
+
+      batchFormData.append("logs", JSON.stringify(logsArray));
+
+      try {
+        // Envío en bloque al backend
+        const response = await createBulkVisitLogs(batchFormData);
+        const { syncedUuids = [], failedUuids = [] } = response;
+
+        for (const item of batch) {
+          if (item.status === "SYNCED") continue;
+          
+          if (syncedUuids.includes(item.uuid)) {
+            await updateQueueItem(item.id, { status: "SYNCED", errorMessage: null });
+            syncedCount++;
+          } else {
+            const failure = failedUuids.find(f => f.uuid === item.uuid);
+            const msg = failure?.reason || "No se pudo sincronizar el registro";
+            await updateQueueItem(item.id, { status: "FAILED", errorMessage: msg });
+            console.error(`❌ Falló la sincronización para item ${item.id}:`, msg);
+          }
+        }
       } catch (err) {
         const isNetworkError =
           !err.response ||
@@ -78,17 +122,21 @@ export const useSyncQueue = () => {
           err.message.includes("timeout") ||
           err.message.includes("Network");
 
-        if (isNetworkError) {
-          await updateQueueItem(item.id, { status: "PENDING", errorMessage: "Error de red / Sin conexión" });
-          console.log(`⚠️ Sincronización en pausa (red) para item ${item.id}`);
-        } else {
-          const msg = err.response?.data?.message || err.message || "Error del servidor";
-          await updateQueueItem(item.id, { status: "FAILED", errorMessage: msg });
-          console.error(`❌ Falló la sincronización para item ${item.id}:`, msg);
+        const msg = err.response?.data?.message || err.message || "Error del servidor";
+
+        for (const item of batch) {
+          if (item.status === "SYNCED") continue;
+
+          if (isNetworkError) {
+            await updateQueueItem(item.id, { status: "PENDING", errorMessage: "Error de red / Sin conexión" });
+            console.log(`⚠️ Sincronización en pausa (red) para item ${item.id}`);
+          } else {
+            await updateQueueItem(item.id, { status: "FAILED", errorMessage: msg });
+            console.error(`❌ Falló la sincronización para item ${item.id}:`, msg);
+          }
         }
 
-        // Detener bucle para mantener el orden cronológico
-        break;
+        if (isNetworkError) break;
       }
     }
 

@@ -98,6 +98,7 @@ export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVis
             formData.append("vendorCode", userCode);
             formData.append("storeName", selectedClient.firstName);
             formData.append("createdAt", new Date().toISOString());
+            formData.append("uuid", crypto.randomUUID());
 
             // Caso SAP
             if (selectedClient.type === "SAP") {

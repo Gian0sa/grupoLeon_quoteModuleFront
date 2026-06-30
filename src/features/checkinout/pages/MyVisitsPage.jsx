@@ -106,7 +106,7 @@ export default function MyVisitsPage() {
 
   const localVisits = useMemo(() => {
     return queueItems
-      .filter((item) => item.vendorName === username)
+      .filter((item) => item.vendorName === username && item.status !== "SYNCED")
       .map((item) => ({
         id: `local-${item.id}`,
         type: item.type,
@@ -114,13 +114,34 @@ export default function MyVisitsPage() {
         createdAt: new Date(item._queuedAt).toISOString(),
         isLocal: true,
         status: item.status,
+        errorMessage: item.errorMessage,
+        uuid: item.uuid,
       }));
   }, [queueItems, username]);
 
+  const serverErrorVisits = useMemo(() => {
+    if (!data?.errorVisits) return [];
+    
+    const localUuids = new Set(localVisits.map(v => v.uuid).filter(Boolean));
+    
+    return data.errorVisits
+      .filter(errorVisit => !localUuids.has(errorVisit.uuid))
+      .map((item) => ({
+        id: `server-error-${item.id}`,
+        type: item.type,
+        storeName: item.storeName || "Sin nombre",
+        createdAt: new Date(item.createdAt).toISOString(),
+        isLocal: false,
+        status: "FAILED",
+        errorMessage: item.errorReason || "Error del servidor",
+        uuid: item.uuid,
+      }));
+  }, [data?.errorVisits, localVisits]);
+
   const visits = useMemo(() => {
     const serverVisits = data?.visits || [];
-    return [...localVisits, ...serverVisits];
-  }, [data, localVisits]);
+    return [...localVisits, ...serverErrorVisits, ...serverVisits];
+  }, [data?.visits, localVisits, serverErrorVisits]);
 
   const cardBg = useColorModeValue("white", "gray.700");
   const borderColor = useColorModeValue("gray.200", "gray.600");
@@ -201,8 +222,9 @@ export default function MyVisitsPage() {
     const total = grouped.length;
     const completed = grouped.filter((g) => g.in && g.out).length;
     const pending = grouped.filter((g) => g.in && !g.out).length;
+    const errors = grouped.filter((g) => g.in?.status === "FAILED" || g.out?.status === "FAILED").length;
 
-    return { total, completed, pending };
+    return { total, completed, pending, errors };
   }, [grouped]);
 
   if (isLoading) {
@@ -338,7 +360,7 @@ export default function MyVisitsPage() {
         </Card>
 
         {/* Estadísticas */}
-        <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
+        <SimpleGrid columns={{ base: 2, md: 4 }} spacing={4}>
           <Card bg={statBg}>
             <CardBody>
               <Stat>
@@ -368,6 +390,22 @@ export default function MyVisitsPage() {
               </Stat>
             </CardBody>
           </Card>
+
+
+          {stats.errors !== 0 ? (
+          <Card bg={useColorModeValue("red.50", "red.900")}>
+            <CardBody>
+              <Stat>
+                <StatLabel>Errores</StatLabel>
+                <StatNumber>{stats.errors}</StatNumber>
+                <StatHelpText>Visitas con error</StatHelpText>
+              </Stat>
+            </CardBody>
+          </Card>
+              ):
+              ''
+          }
+
         </SimpleGrid>
 
         {/* Lista */}
@@ -392,8 +430,8 @@ export default function MyVisitsPage() {
                       <Flex justify="space-between" align="center">
                         <Heading size="sm">{group.storeName}</Heading>
                         {isLocalGroup && (
-                          <Badge colorScheme="orange" variant="solid" fontSize="2xs">
-                            Pendiente de sincronizar
+                          <Badge colorScheme={group.in?.status === "FAILED" || group.out?.status === "FAILED" ? "red" : "orange"} variant="solid" fontSize="2xs">
+                            {group.in?.status === "FAILED" || group.out?.status === "FAILED" ? "Error al sincronizar" : "Pendiente de sincronizar"}
                           </Badge>
                         )}
                       </Flex>
@@ -430,6 +468,22 @@ export default function MyVisitsPage() {
                         <Badge colorScheme={group.in?.isLocal ? "yellow" : "orange"}>
                           {group.in?.isLocal ? "Pendiente de Check-In Servidor" : "Pendiente de Check-Out"}
                         </Badge>
+                      )}
+
+                      {group.in?.errorMessage && (
+                        <Box bg="red.50" p={2} borderRadius="md" border="1px solid" borderColor="red.200">
+                          <Text fontSize="xs" color="red.600" fontWeight="semibold">
+                            Rechazado (IN): {group.in.errorMessage}
+                          </Text>
+                        </Box>
+                      )}
+                      
+                      {group.out?.errorMessage && (
+                        <Box bg="red.50" p={2} borderRadius="md" border="1px solid" borderColor="red.200">
+                          <Text fontSize="xs" color="red.600" fontWeight="semibold">
+                            Rechazado (OUT): {group.out.errorMessage}
+                          </Text>
+                        </Box>
                       )}
                     </VStack>
                   </CardBody>
