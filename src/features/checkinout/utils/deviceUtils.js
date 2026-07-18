@@ -24,9 +24,7 @@ export const compressImage = (file, maxSizeMB = 1) => {
                         width *= MAX_HEIGHT / height;
                         height = MAX_HEIGHT;
                     }
-                }
-
-                canvas.width = width;
+                } canvas.width = width;
                 canvas.height = height;
 
                 const ctx = canvas.getContext('2d');
@@ -35,29 +33,27 @@ export const compressImage = (file, maxSizeMB = 1) => {
                 // Comprimir con calidad variable hasta lograr el tamaño deseado
                 let quality = 0.8;
                 const compress = () => {
-                    canvas.toBlob(
-                        (blob) => {
-                            if (blob) {
-                                const sizeMB = blob.size / 1024 / 1024;
-                                console.log(`Imagen comprimida: ${sizeMB.toFixed(2)}MB con calidad ${quality}`);
+                    canvas.toBlob((blob) => {
+                        if (blob) {
+                            const sizeMB = blob.size / 1024 / 1024;
+                            console.log(`Imagen comprimida: ${
+                                sizeMB.toFixed(2)
+                            }MB con calidad ${quality}`);
 
-                                if (sizeMB > maxSizeMB && quality > 0.1) {
-                                    quality -= 0.1;
-                                    compress();
-                                } else {
-                                    const compressedFile = new File([blob], file.name, {
-                                        type: 'image/jpeg',
-                                        lastModified: Date.now()
-                                    });
-                                    resolve(compressedFile);
-                                }
+                            if (sizeMB > maxSizeMB && quality > 0.1) {
+                                quality -= 0.1;
+                                compress();
                             } else {
-                                reject(new Error('Error al comprimir imagen'));
+                                const compressedFile = new File([blob], file.name, {
+                                    type: 'image/jpeg',
+                                    lastModified: Date.now()
+                                });
+                                resolve(compressedFile);
                             }
-                        },
-                        'image/jpeg',
-                        quality
-                    );
+                        } else {
+                            reject(new Error('Error al comprimir imagen'));
+                        }
+                    }, 'image/jpeg', quality);
                 };
 
                 compress();
@@ -77,37 +73,27 @@ export const getLocation = () => {
 
         console.log("Solicitando ubicación...");
 
-        navigator.geolocation.getCurrentPosition(
-            (pos) => {
-                console.log("Ubicación obtenida:", pos.coords);
-                resolve({
-                    latitude: pos.coords.latitude,
-                    longitude: pos.coords.longitude,
-                });
-            },
-            (err) => {
-                console.error("Error de geolocalización:", err);
-                let errorMessage = "ERROR_DESCONOCIDO";
+        navigator.geolocation.getCurrentPosition((pos) => {
+            console.log("Ubicación obtenida:", pos.coords);
+            resolve({latitude: pos.coords.latitude, longitude: pos.coords.longitude});
+        }, (err) => {
+            console.error("Error de geolocalización:", err);
+            let errorMessage = "ERROR_DESCONOCIDO";
 
-                switch (err.code) {
-                    case err.PERMISSION_DENIED:
-                        errorMessage = "PERMISSION_DENIED";
-                        break;
-                    case err.POSITION_UNAVAILABLE:
-                        errorMessage = "POSITION_UNAVAILABLE";
-                        break;
-                    case err.TIMEOUT:
-                        errorMessage = "TIMEOUT";
-                        break;
-                }
-
-                reject(new Error(errorMessage));
-            },
-            {
-                enableHighAccuracy: true,
-                timeout: 10000,
-                maximumAge: 0
+            switch (err.code) {
+                case err.PERMISSION_DENIED: errorMessage = "PERMISSION_DENIED";
+                    break;
+                case err.POSITION_UNAVAILABLE: errorMessage = "POSITION_UNAVAILABLE";
+                    break;
+                case err.TIMEOUT: errorMessage = "TIMEOUT";
+                    break;
             }
-        );
+
+            reject(new Error(errorMessage));
+        }, {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 10000 
+        });
     });
 };
