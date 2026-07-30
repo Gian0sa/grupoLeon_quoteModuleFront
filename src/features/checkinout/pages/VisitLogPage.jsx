@@ -68,7 +68,9 @@ export default function VisitLogPage() {
     const {
         data: clientImageData,
         isLoading: isLoadingClientImage,
-    } = useClientImage(selectedClient?.id);
+    } = useClientImage(
+        selectedClient?.type === "SAP" ? selectedClient?.sapCode : null
+    );
 
     console.log("selectedClient", selectedClient);
     const { submit, isCreatingVisit, isPending, isSubmitting } = useVisitSubmit({

@@ -1,6 +1,7 @@
 import { Box, Spinner, Center, Alert, AlertIcon, Button } from "@chakra-ui/react";
 import { SearchHeader } from "../components/SearchHeader";
 import { DebtList } from "../components/DebtList";
+import { ReceivableStatusFilter } from "../components/ReceivableStatusFilter";
 import SellerSelectReceivable from "../components/SellerSelectReceivable";
 import { useGetAccountsReceivable } from "../hooks/receivableQueries";
 import { useState, useEffect, useRef } from "react";
@@ -17,6 +18,7 @@ export function ReceivablePage() {
   const [selectedSeller, setSelectedSeller] = useState(null);
   const [selectedInvoices, setSelectedInvoices] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("all"); // 'all' | 'overdue' | 'onTime'
 
   const [lastClient, setLastClient] = useState(null); 
   const [allClients, setAllClients] = useState([]);  
@@ -128,6 +130,23 @@ export function ReceivablePage() {
     [QUERY_KEYS.accountsReceivable, vendedorNombre, cliente.toUpperCase(), clientecode, lastClient]
   ];
 
+  // Cálculo de conteos para tarjetas de filtro
+  const totalCount = allClients.length;
+  const overdueCount = allClients.filter(
+    (c) => (c.overdueDocumentsCount || 0) > 0
+  ).length;
+  const onTimeCount = allClients.filter(
+    (c) => (c.overdueDocumentsCount || 0) === 0
+  ).length;
+
+  // Filtrado reactivo de clientes según botón seleccionado
+  const filteredClients = allClients.filter((debt) => {
+    const overdueDocuments = debt.overdueDocumentsCount || 0;
+    if (statusFilter === "rechazados") return overdueDocuments > 0;
+    if (statusFilter === "activos") return overdueDocuments === 0;
+    return true;
+  });
+
   if (isLoading && allClients.length === 0) {
     return (
       <Box bg="gray.50" minH="100vh">
@@ -178,7 +197,7 @@ export function ReceivablePage() {
         />
 
         {!isSellerProfile && (
-          <Box p={4}>
+          <Box maxW="1200px" mx="auto" p={4} pb={2}>
             <SellerSelectReceivable
               selectedSeller={selectedSeller}
               setSelectedSeller={handleSellerChange}
@@ -189,8 +208,19 @@ export function ReceivablePage() {
         )}
       </Box>
 
-      <Box p={4}>
-        <DebtList debts={allClients} onViewInvoices={handleViewInvoices} onViewDetails={() => {}} />
+      {/* Contadores interactivos de estado */}
+      <Box maxW="1200px" mx="auto" pt={3} px={4}>
+        <ReceivableStatusFilter
+          activeFilter={statusFilter}
+          onFilterChange={setStatusFilter}
+          totalCount={totalCount}
+          overdueCount={overdueCount}
+          onTimeCount={onTimeCount}
+        />
+      </Box>
+
+      <Box maxW="1200px" mx="auto" p={4} pt={2}>
+        <DebtList debts={filteredClients} onViewInvoices={handleViewInvoices} onViewDetails={() => {}} />
 
         {data?.hasMore && (
           <Center mt={4}>

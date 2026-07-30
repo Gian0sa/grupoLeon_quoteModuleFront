@@ -38,7 +38,7 @@ export function SearchHeader({
   };
 
   return (
-    <Box color="white" px={4}>
+    <Box color="white" px={4} maxW="1200px" mx="auto">
       <Flex justifyContent="space-around" align="center" gap={4}>
         <BackButton />
         <Text fontSize="xl" fontWeight="bold">

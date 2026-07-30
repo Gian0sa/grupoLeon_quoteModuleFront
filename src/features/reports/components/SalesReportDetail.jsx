@@ -1,413 +1,338 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import {
   Box,
   Flex,
   Text,
+  VStack,
+  HStack,
   Table,
   Thead,
   Tbody,
   Tr,
   Th,
   Td,
-  useColorModeValue,
-  Button,
-  useBreakpointValue,
-  VStack,
-  HStack,
-  Divider,
-  Badge,
   Circle,
-  Spinner
+  useColorModeValue,
+  Spinner,
+  Badge,
+  useBreakpointValue,
 } from "@chakra-ui/react";
-import { Check, X } from "lucide-react";
-import { getOrderByCode , getDeliveryNoteByCode , getInvoiceByCode } from "../services/reportService";
+import { Check } from "lucide-react";
 import { useGetCompareOrderAndDeliveryNote } from "../hooks/queries/reportQueries";
+import {
+  getOrderByCode,
+  getDeliveryNoteByCode,
+  getInvoiceByCode,
+} from "../services/reportService";
 import {
   generateOrderPDF,
   generateDeliveryPDF,
-  downloadInvoicePDF
+  downloadInvoicePDF,
 } from "../utils/pdfGenerators";
 
-const TrackingPage = ({ orden, data }) => {
-
-  console.log("la orden es :  " , orden)
-
+export default function TrackingPage({ orden, data }) {
   const [loadingOrden, setLoadingOrden] = useState(false);
   const [loadingEntrega, setLoadingEntrega] = useState(false);
   const [loadingFactura, setLoadingFactura] = useState(false);
 
+  // Responsive values
   const bgMain = useColorModeValue("white", "gray.800");
   const bgSection = useColorModeValue("gray.50", "gray.700");
+  const borderColor = useColorModeValue("gray.200", "gray.600");
   const textMuted = useColorModeValue("gray.600", "gray.400");
   const textBase = useColorModeValue("gray.800", "white");
-  const borderColor = useColorModeValue("gray.200", "gray.600");
-  const isMobile = useBreakpointValue({ base: true, md: false }); 
 
-  // Mapear datos de la orden (del prop orden)
+  // Mapear datos de la orden
   const ordenData = {
-    id: orden?.DocEntry,
-    numero: orden?.DocNum,
-    fechaCreacion: orden?.DocDate 
-  ? new Date(orden.DocDate + "T00:00:00").toLocaleDateString("es-ES") 
-  : '',
-    montoUsd: orden?.DocTotalUSD || orden?.DocTotalUSD || 0
+    id: orden?.DocEntry || orden?.orden?.id,
+    numero: orden?.DocNum || orden?.orden?.numero,
+    fechaCreacion: orden?.DocDate
+      ? new Date(orden.DocDate + "T00:00:00").toLocaleDateString("es-ES")
+      : "",
+    montoUsd: orden?.DocTotalUSD || orden?.DocTotalUSD || 0,
   };
 
   const clienteData = {
-    nombre: orden?.CardName || '',
-    codigo: orden?.CardCode || ''
+    nombre: orden?.CardName || "",
+    codigo: orden?.CardCode || "",
   };
 
   // Buscar el primer registro que tenga entrega o factura
-  const seguimientoData = data?.find(item => 
-    item.DELIVERY_DATE !== null || item.INVOICE_DATE !== null
-  ) || {};
-  
-  const entregas = seguimientoData.DELIVERY_DATE ? [{
-    id: seguimientoData.DELIVERY_ENTRY,
-    fecha: new Date(seguimientoData.DELIVERY_DATE).toLocaleDateString('es-ES')
-  }] : [];
+  const seguimientoData =
+    data?.find(
+      (item) => item.DELIVERY_DATE !== null || item.INVOICE_DATE !== null
+    ) || {};
 
-  const facturas = seguimientoData.INVOICE_DATE ? [{
-    id: seguimientoData.INVOICE_ENTRY,
-    fecha: new Date(seguimientoData.INVOICE_DATE).toLocaleDateString('es-ES'),
-    montoUsd: seguimientoData.MONTO_INVOICE || 0
-  }] : [];
+  const entregas = seguimientoData.DELIVERY_DATE
+    ? [
+        {
+          id: seguimientoData.DELIVERY_ENTRY,
+          fecha: new Date(seguimientoData.DELIVERY_DATE).toLocaleDateString(
+            "es-ES"
+          ),
+        },
+      ]
+    : [];
+
+  const facturas = seguimientoData.INVOICE_DATE
+    ? [
+        {
+          id: seguimientoData.INVOICE_ENTRY,
+          fecha: new Date(seguimientoData.INVOICE_DATE).toLocaleDateString(
+            "es-ES"
+          ),
+          montoUsd: seguimientoData.MONTO_INVOICE || 0,
+        },
+      ]
+    : [];
 
   // IDs para los servicios
   const orderId = ordenData.id;
   const entregaId = entregas[0]?.id;
   const facturaId = facturas[0]?.id;
 
-  const { data: comparisonData, isLoading, error } = useGetCompareOrderAndDeliveryNote(
-    orderId, 
-    entregaId, 
-    {
-      enabled: Boolean(orderId)
-    }
-  );
-
-  const handleVerOrden = async () => {
-    if (!orderId) return;
-    setLoadingOrden(true);
-    try {
-      const ordenDetalle = await getOrderByCode(orderId);
-      await generateOrderPDF(ordenDetalle);
-    } catch (error) {
-      console.error("Error al obtener orden:", error);
-    } finally {
-      setLoadingOrden(false);
-    }
-  };
-
-  const handleVerEntrega = async () => {
-    if (!entregaId) return;
-    setLoadingEntrega(true);
-    try {
-      const entregaDetalle = await getDeliveryNoteByCode(entregaId);
-      await generateDeliveryPDF(entregaDetalle);
-    } catch (error) {
-      console.error("Error al obtener entrega:", error);
-    } finally {
-      setLoadingEntrega(false);
-    }
-  };
-
-  const handleVerFactura = async () => {
-    if (!facturaId) return;
-    setLoadingFactura(true);
-    try {
-      const invoiceDetalle = await getInvoiceByCode(facturaId);
-      await downloadInvoicePDF(invoiceDetalle);
-    } catch (error) {
-      console.error("Error al obtener factura:", error);
-    } finally {
-      setLoadingFactura(false);
-    }
-  };
+  const { data: comparisonData, isLoading } =
+    useGetCompareOrderAndDeliveryNote(orderId, entregaId, {
+      enabled: Boolean(orderId),
+    });
 
   // Mapear productos comparados
-  const productosComparados = (comparisonData || []).map(item => ({
+  const productosComparados = (comparisonData || []).map((item) => ({
     codigo: item.ItemCode,
     descripcion: item.Description,
     cantidadOrdenada: item.RequestedQty,
     cantidadEntregada: item.DeliveredQty,
     cantidadPendiente: Math.max(item.RequestedQty - item.DeliveredQty, 0),
-    tieneDiferencia: item.hasDifference
+    tieneDiferencia: item.hasDifference,
   }));
 
   return (
     <Box
       bg={bgMain}
-      borderRadius="lg"
-      boxShadow="xl"
+      borderRadius="xl"
       w="full"
       maxW="2xl"
       mx="auto"
       overflow="hidden"
-      border="1px"
-      borderColor={borderColor}
+      p={{ base: 1, sm: 2, md: 4 }}
     >
-      {/* Main Content */}
-      <Box>
+      <VStack spacing={4} align="stretch" w="full">
         {/* Step 1: Orden de venta */}
-        <Flex mb={6}>
-          {/* Progress Indicator */}
-          <Flex direction="column" align="center" minW="60px">
+        <Flex gap={{ base: 2, sm: 3, md: 4 }} align="stretch" w="full">
+          {/* Progress Indicator Symmetrical */}
+          <Flex direction="column" align="center" minW={{ base: "20px", sm: "28px", md: "40px" }} pt={1}>
             <Circle
-              size="32px"
+              size={{ base: "20px", sm: "24px", md: "32px" }}
               bg="green.500"
               color="white"
-              mb={2}
+              flexShrink={0}
             >
-              <Check size={16} />
+              <Check size={12} />
             </Circle>
-            <Box
-              w="2px"
-              flex={1}
-              bg="green.500"
-              minH="80px"
-            />
+            <Box w="2px" flex={1} bg="green.500" my={1} />
           </Flex>
 
-          {/* Content */}
-          <Box flex={1}>
-            <Box bg={bgSection} borderRadius="md">
-              {/* Pedido Header */}
-              <HStack spacing={3} mb={6}>
-  <VStack align="start" spacing={0}>
-    <Text fontWeight="bold" fontSize="lg" color="green.600">
-      Pedido #{ordenData?.numero || orden?.DocEntry}
-    </Text>
+          {/* Content Box */}
+          <Box flex={1} minW={0} bg={bgSection} p={{ base: 2.5, sm: 3, md: 4 }} borderRadius="xl" border="1px solid" borderColor={borderColor}>
+            {/* Pedido Header */}
+            <VStack align="start" spacing={1} w="full" mb={3}>
+              <Text fontWeight="800" fontSize={{ base: "15px", md: "lg" }} color="green.600">
+                Pedido #{ordenData?.numero || orden?.DocEntry}
+              </Text>
 
-    <HStack>
-      <Text justifyContent="start" alignItems="start">
-        Cliente:
-      </Text>
-      <Text fontSize="sm" fontWeight="bold" color={textMuted}>
-        {clienteData?.nombre
-          ? `${clienteData.nombre} (${clienteData.codigo})`
-          : `${orden?.clienteData.nombre} (${orden?.clienteData.codigo})`}
-      </Text>
-    </HStack>
-
-    <HStack>
-      <Text fontSize="sm" color={textMuted}>
-        Fecha:
-      </Text>
-      <Text fontSize="sm" color={textMuted}>
-        {ordenData?.fechaCreacion || orden?.ordenData.fechaCreacion}
-      </Text>
-    </HStack>
-
-  </VStack>
-</HStack>
-
-
-              {/* Productos Section */}
-              <Box bg={bgSection} borderRadius="md" mb={6}>
-                <Text fontWeight="bold" fontSize="md" mb={3} color="green.600">
-                  Productos
+              <Box w="full">
+                <Text fontSize="11px" fontWeight="700" color="gray.500" textTransform="uppercase">
+                  Cliente:
                 </Text>
+                <Text fontSize={{ base: "12px", sm: "13px", md: "14px" }} fontWeight="700" color="gray.800" lineHeight="1.3">
+                  {clienteData?.nombre
+                    ? `${clienteData.nombre} (${clienteData.codigo})`
+                    : `${orden?.clienteData?.nombre || ''} (${orden?.clienteData?.codigo || ''})`}
+                </Text>
+              </Box>
 
-                {isLoading ? (
-                  <Flex justify="center" align="center" py={10}>
-                    <Spinner size="lg" color="green.500" thickness="4px" />
-                  </Flex>
-                ) : (
-                  <Table variant="simple" size="sm" bg="white" borderRadius="md">
+              <HStack spacing={1} pt={0.5}>
+                <Text fontSize="12px" color={textMuted}>Fecha:</Text>
+                <Text fontSize="12px" fontWeight="600" color="gray.700">
+                  {ordenData?.fechaCreacion || orden?.ordenData?.fechaCreacion}
+                </Text>
+              </HStack>
+            </VStack>
+
+            {/* Productos Section */}
+            <Box mb={4} w="full">
+              <Text fontWeight="800" fontSize="13px" mb={2} color="green.700" textTransform="uppercase" letterSpacing="wide">
+                Productos
+              </Text>
+
+              {isLoading ? (
+                <Flex justify="center" align="center" py={6}>
+                  <Spinner size="md" color="green.500" thickness="3px" />
+                </Flex>
+              ) : (
+                <Box overflowX="auto" w="full" borderRadius="lg" border="1px solid" borderColor="gray.200">
+                  <Table variant="simple" size="sm" bg="white" w="full" layout="fixed">
                     <Thead>
-                      <Tr bg="green.500">
-                        <Th color="white" fontSize="xs" py={2}>NOMBRE DEL PRODUCTO</Th>
-                        <Th color="white" fontSize="xs" py={2} textAlign="center">SOL.</Th>
-                        <Th color="white" fontSize="xs" py={2} textAlign="center">ENT.</Th>
+                      <Tr bg="green.600">
+                        <Th color="white" fontSize="10px" py={2} px={{ base: 2, md: 3 }} w={{ base: "65%", md: "70%" }}>PRODUCTO</Th>
+                        <Th color="white" fontSize="10px" py={2} px={1} textAlign="center" w="17.5%">SOL.</Th>
+                        <Th color="white" fontSize="10px" py={2} px={1} textAlign="center" w="17.5%">ENT.</Th>
                       </Tr>
                     </Thead>
                     <Tbody>
                       {productosComparados.map((prod, idx) => {
                         const esPendiente = prod.cantidadPendiente > 0;
-                        const descripcionCorta =
-                          isMobile && prod.descripcion.length > 30
-                            ? prod.descripcion.slice(0, 30) + "..."
-                            : prod.descripcion;
 
                         return (
                           <Tr
                             key={idx}
-                            bg={esPendiente ? useColorModeValue("green.100", "green.900") : "transparent"}
+                            bg={esPendiente ? useColorModeValue("amber.50", "orange.950") : "transparent"}
+                            borderLeft={esPendiente ? "3px solid" : "none"}
+                            borderLeftColor="orange.400"
                           >
-                            <Td color={textBase}>
-                              <Text noOfLines={1}>
-                                {descripcionCorta}
+                            <Td color={textBase} py={2} px={{ base: 2, md: 3 }}>
+                              <VStack align="start" spacing={1} w="full">
                                 {esPendiente && (
-                                  <Text as="span" ml={1} fontSize="xs" color="orange.400">
-                                    (Pend.)
-                                  </Text>
+                                  <Badge
+                                    bg="orange.500"
+                                    color="white"
+                                    fontSize="9.5px"
+                                    fontWeight="800"
+                                    px={1.5}
+                                    py={0.5}
+                                    borderRadius="md"
+                                    boxShadow="sm"
+                                    flexShrink={0}
+                                    whiteSpace="normal"
+                                  >
+                                    ⚠️ PENDIENTE ({prod.cantidadPendiente} por entregar)
+                                  </Badge>
                                 )}
-                              </Text>
+                                <Text
+                                  fontSize={{ base: "11px", md: "12.5px" }}
+                                  fontWeight="600"
+                                  color="gray.800"
+                                  lineHeight="1.25"
+                                  wordBreak="break-word"
+                                >
+                                  {prod.descripcion}
+                                </Text>
+                              </VStack>
                             </Td>
-                            <Td color={textBase} textAlign="center">{prod.cantidadOrdenada}</Td>
-                            <Td color={textBase} textAlign="center">{prod.cantidadEntregada}</Td>
+                            <Td color={textBase} textAlign="center" fontWeight="700" fontSize="12px" px={1}>
+                              {prod.cantidadOrdenada}
+                            </Td>
+                            <Td
+                              color={esPendiente ? "orange.600" : "green.600"}
+                              textAlign="center"
+                              fontWeight="800"
+                              fontSize="12px"
+                              px={1}
+                            >
+                              {prod.cantidadEntregada}
+                            </Td>
                           </Tr>
                         );
                       })}
                     </Tbody>
                   </Table>
-                )}
-              </Box>
-              
-              <Text fontWeight="bold" fontSize="md" mb={3} color="green.600">
-                Orden de venta
-              </Text>
-              <Box bg="white" p={3} borderRadius="md">
-                <HStack justify="space-between" mb={3}>
-                  <Text fontSize="sm" color={textMuted}>
-                    Monto:
-                  </Text>
-                  <Text fontSize="sm" fontWeight="medium">
-                    {ordenData?.montoUsd.toFixed(2)
-                      ? `$${ordenData?.montoUsd.toFixed(2)}`
-                      : orden?.ordenData.total
-                      ? `$${orden?.ordenData.total.toFixed(2)}`
-                      : "--"}
-                  </Text>
-                </HStack>
-                {/* <Button 
-                  size="sm" 
-                  colorScheme="green" 
-                  variant="solid"
-                  w="50%"
-                  position="relative"
-                  right="0px"
-                  onClick={handleVerOrden}
-                  isLoading={loadingOrden}
-                  isDisabled={!orderId || loadingOrden}
-                >
-                  Ver detalles
-                </Button> */}
-              </Box>
+                </Box>
+              )}
+            </Box>
+
+            {/* Orden de venta monto */}
+            <Box bg="white" p={3} borderRadius="lg" border="1px solid" borderColor="gray.100">
+              <Flex justify="space-between" align="center">
+                <Text fontSize="13px" fontWeight="600" color="gray.600">
+                  Monto total de orden:
+                </Text>
+                <Text fontSize="14px" fontWeight="800" color="gray.800">
+                  {ordenData?.montoUsd
+                    ? `$${Number(ordenData.montoUsd).toFixed(2)} USD`
+                    : orden?.ordenData?.total
+                    ? `$${Number(orden.ordenData.total).toFixed(2)} USD`
+                    : "--"}
+                </Text>
+              </Flex>
             </Box>
           </Box>
         </Flex>
 
-        {/* Step 2: Entrega */}
-        <Flex mb={facturas.length > 0 ? 6 : 0}>
-          {/* Progress Indicator */}
-          <Flex direction="column" align="center" minW="60px">
+        {/* Step 2: Picking / Entrega */}
+        <Flex gap={{ base: 2, sm: 3, md: 4 }} align="stretch" w="full">
+          <Flex direction="column" align="center" minW={{ base: "20px", sm: "28px", md: "40px" }} pt={1}>
             <Circle
-              size="32px"
-              bg={entregas.length > 0 ? "green.500" : "gray.400"}
+              size={{ base: "20px", sm: "24px", md: "32px" }}
+              bg={entregas.length > 0 ? "green.500" : "gray.300"}
               color="white"
-              mb={2}
+              flexShrink={0}
             >
-              {entregas.length > 0 ? <Check size={16} /> : <Circle size="8px" bg="white" />}
+              {entregas.length > 0 ? <Check size={12} /> : <Circle size="6px" bg="white" />}
             </Circle>
-            
-            <Box
-              w="2px"
-              flex={1}
-              bg={facturas.length > 0 ? "green.500" : "gray.400"}
-              minH="80px"
-            />
+            <Box w="2px" flex={1} bg={facturas.length > 0 ? "green.500" : "gray.300"} my={1} />
           </Flex>
 
-          {/* Content */}
-          <Box flex={1}>
-            <Box bg={bgSection} p={4} borderRadius="md">
-              <Text fontWeight="bold" fontSize="md" mb={3} color="green.600">
-                Picking
-              </Text>
-              <Box bg="white" p={3} borderRadius="md">
-                {entregas.length > 0 ? (
-                  entregas.map((e, idx) => (
-                    <Box key={idx}>
-                      <HStack justify="space-between" mb={3}>
-                        <Text fontSize="sm" color={textMuted}>Fecha:</Text>
-                        <Text fontSize="sm" fontWeight="medium">{e.fecha}</Text>
-                      </HStack>
-                      {/* <Button
-                        size="sm" 
-                        colorScheme="green" 
-                        variant="solid"
-                        w="50%"
-                        position="relative"
-                        right="0px"
-                        onClick={handleVerEntrega}
-                        isLoading={loadingEntrega}
-                        isDisabled={!entregaId || loadingEntrega}
-                      >
-                        Ver detalles
-                      </Button> */}
-                    </Box>
-                  ))
-                ) : (
-                  <Text fontSize="sm" color={textMuted} textAlign="center">
-                    No se ha realizado entrega
-                  </Text>
-                )}
-              </Box>
+          <Box flex={1} minW={0} bg={bgSection} p={{ base: 2.5, sm: 3, md: 4 }} borderRadius="xl" border="1px solid" borderColor={borderColor}>
+            <Text fontWeight="800" fontSize="13px" mb={2} color="green.700" textTransform="uppercase" letterSpacing="wide">
+              Picking / Entrega
+            </Text>
+            <Box bg="white" p={3} borderRadius="lg" border="1px solid" borderColor="gray.100">
+              {entregas.length > 0 ? (
+                entregas.map((e, idx) => (
+                  <Flex key={idx} justify="space-between" align="center">
+                    <Text fontSize="13px" color="gray.600">Fecha de entrega:</Text>
+                    <Text fontSize="13px" fontWeight="700" color="gray.800">{e.fecha}</Text>
+                  </Flex>
+                ))
+              ) : (
+                <Text fontSize="12.5px" color="gray.400" textAlign="center">
+                  No se ha realizado entrega
+                </Text>
+              )}
             </Box>
           </Box>
         </Flex>
 
         {/* Step 3: Factura */}
-        <Flex>
-          {/* Progress Indicator */}
-          <Flex direction="column" align="center" minW="60px">
+        <Flex gap={{ base: 2, sm: 3, md: 4 }} align="stretch" w="full">
+          <Flex direction="column" align="center" minW={{ base: "20px", sm: "28px", md: "40px" }} pt={1}>
             <Circle
-              size="32px"
-              bg={facturas.length > 0 ? "green.500" : "gray.400"}
+              size={{ base: "20px", sm: "24px", md: "32px" }}
+              bg={facturas.length > 0 ? "green.500" : "gray.300"}
               color="white"
+              flexShrink={0}
             >
-              {facturas.length > 0 ? <Check size={16} /> : <Circle size="8px" bg="white" />}
+              {facturas.length > 0 ? <Check size={12} /> : <Circle size="6px" bg="white" />}
             </Circle>
           </Flex>
 
-          {/* Content */}
-          <Box flex={1}>
-            <Box bg={bgSection} p={4} borderRadius="md">
-              <Text fontWeight="bold" fontSize="md" mb={3} color="green.600">
-                Factura
-              </Text>
-              <Box bg="white" p={3} borderRadius="md">
-                {facturas.length > 0 ? (
-                  facturas.map((f, idx) => (
-                    <Box key={idx} mb={4}>
-                      <HStack justify="space-between" mb={2}>
-                        <Text fontSize="sm" color={textMuted}>Fecha:</Text>
-                        <Text fontSize="sm" fontWeight="medium">{f.fecha}</Text>
-                      </HStack>
-                      <HStack justify="space-between" mb={3}>
-                        <Text fontSize="sm" color={textMuted}>Monto:</Text>
-                        <Text fontSize="sm" fontWeight="medium">${f.montoUsd.toFixed(2)}</Text>
-                      </HStack>
-                      <Button
-                        size="sm" 
-                        colorScheme="green" 
-                        variant="solid"
-                        w="50%"
-                        position="relative"
-                        right="0px"
-                        onClick={handleVerFactura}
-                        isLoading={loadingFactura}
-                        isDisabled={!facturaId || loadingFactura}
-                      >
-                        Ver detalles
-                      </Button>
-                    </Box>
-                  ))
-                ) : (
-                  <Text fontSize="sm" color={textMuted} textAlign="center">
-                    No se ha realizado factura
-                  </Text>
-                )}
-              </Box>
+          <Box flex={1} minW={0} bg={bgSection} p={{ base: 2.5, sm: 3, md: 4 }} borderRadius="xl" border="1px solid" borderColor={borderColor}>
+            <Text fontWeight="800" fontSize="13px" mb={2} color="green.700" textTransform="uppercase" letterSpacing="wide">
+              Facturación
+            </Text>
+            <Box bg="white" p={3} borderRadius="lg" border="1px solid" borderColor="gray.100">
+              {facturas.length > 0 ? (
+                facturas.map((f, idx) => (
+                  <VStack key={idx} align="stretch" spacing={1.5}>
+                    <Flex justify="space-between" align="center">
+                      <Text fontSize="13px" color="gray.600">Fecha factura:</Text>
+                      <Text fontSize="13px" fontWeight="700" color="gray.800">{f.fecha}</Text>
+                    </Flex>
+                    <Flex justify="space-between" align="center">
+                      <Text fontSize="13px" color="gray.600">Monto facturado:</Text>
+                      <Text fontSize="13px" fontWeight="800" color="green.600">${Number(f.montoUsd).toFixed(2)} USD</Text>
+                    </Flex>
+                  </VStack>
+                ))
+              ) : (
+                <Text fontSize="12.5px" color="gray.400" textAlign="center">
+                  No se ha emitido factura
+                </Text>
+              )}
             </Box>
           </Box>
         </Flex>
-      </Box>
+      </VStack>
     </Box>
   );
-};
-
-export default TrackingPage;
+}

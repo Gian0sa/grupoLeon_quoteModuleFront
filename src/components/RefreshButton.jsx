@@ -61,15 +61,16 @@ export function RefreshButton({
   return (
     <Tooltip hasArrow>
       <IconButton
-        icon={isRefreshing ? <Spinner size="sm" /> : <RepeatIcon />}
-        bg="green.700"
+        icon={isRefreshing ? <Spinner size="sm" color="white" /> : <RepeatIcon boxSize={4} color="white" />}
+        bg={variant === "ghost" ? "transparent" : "green.700"}
         onClick={handleClick}
         variant={variant}
         size={size}
+        borderRadius="full"
         isDisabled={isRefreshing}
-        colorScheme="green"
-        _hover={{ transform: isRefreshing ? "none" : "rotate(180deg)" }}
-        transition="transform 0.2s"
+        colorScheme="whiteAlpha"
+        _hover={{ bg: "whiteAlpha.300", transform: isRefreshing ? "none" : "rotate(180deg)" }}
+        transition="transform 0.2s, background 0.2s"
       />
     </Tooltip>
   );

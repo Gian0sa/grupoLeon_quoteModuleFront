@@ -3,7 +3,7 @@ import { useToast } from "@chakra-ui/react";
 import { useCreateVisitLog } from "../../checkinout/hooks/mutations/visitLogMutations";
 import { getLocation } from "../utils/deviceUtils";
 import { useNavigate } from "react-router-dom";
-import { addToQueue, getQueueCount } from "../services/visitLogQueue";
+import { addToQueue, getQueue } from "../services/visitLogQueue";
 
 const LOCATION_ERRORS = {
     GEOLOCATION_NOT_SUPPORTED: {
@@ -127,9 +127,10 @@ export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVis
                 formData.append("existingImageUrl", existingImageData.imageUrl);
             }
 
-            // Antes de enviar, verificar si hay operaciones pendientes en la cola
-            const queueCount = await getQueueCount();
-            if (queueCount > 0) {
+            // Antes de enviar, verificar si hay operaciones activas (PENDING o SYNCING) en la cola
+            const queue = await getQueue();
+            const activeQueueCount = queue.filter(item => item.status === "PENDING" || item.status === "SYNCING").length;
+            if (activeQueueCount > 0) {
                 const localId = await addToQueue(formData);
                 toast({
                     title: `Check-${type === "IN" ? "In" : "Out"} guardado localmente`,

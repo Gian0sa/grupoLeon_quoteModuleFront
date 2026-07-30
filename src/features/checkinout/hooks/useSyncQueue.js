@@ -4,11 +4,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   getQueue,
   removeFromQueue,
-  storableToFormData,
   getQueueCount,
   updateQueueItem,
 } from "../services/visitLogQueue";
-import { createVisitLog, createBulkVisitLogs } from "../services/visitLogService";
+import { createBulkVisitLogs } from "../services/visitLogService";
 
 export const useSyncQueue = () => {
   const toast = useToast();
@@ -17,10 +16,8 @@ export const useSyncQueue = () => {
   const [queueItems, setQueueItems] = useState([]);
   const [isSyncing, setIsSyncing] = useState(false);
   
-  // Ref para evitar loops e hilos concurrentes estables en useCallback
   const isSyncingRef = useRef(false);
 
-  // Refresca el contador y los items de la cola (sin dependencias para estabilidad)
   const refreshQueue = useCallback(async () => {
     try {
       const count = await getQueueCount();
@@ -33,7 +30,6 @@ export const useSyncQueue = () => {
   }, []);
 
   const syncPending = useCallback(async () => {
-    // Evita ejecuciones concurrentes usando la referencia
     if (isSyncingRef.current) return;
 
     const items = await getQueue();
@@ -57,32 +53,58 @@ export const useSyncQueue = () => {
       }
     }
 
-    // Refrescar lista después de purgar
     const currentItems = await getQueue();
     if (currentItems.length === 0) {
       setPendingCount(0);
       setQueueItems([]);
       isSyncingRef.current = false;
+      setIsSyncing(false);
       return;
     }
 
     // Orden cronológico por ID
     const sortedQueue = currentItems.sort((a, b) => a.id - b.id);
+    const syncedUuidsSet = new Set(
+      sortedQueue.filter((item) => item.status === "SYNCED").map((i) => i.uuid)
+    );
+
+    // Filtrar items listos para enviar respetando dependencias (IN debe sincronizarse antes que OUT)
+    const itemsToProcess = [];
+    for (const item of sortedQueue) {
+      if (item.status === "SYNCED") continue;
+
+      if (item.type === "OUT") {
+        // Buscar el Check-In correspondiente en la cola
+        const matchingIn = sortedQueue.find(
+          (i) => i.type === "IN" && i.storeName === item.storeName && i.id < item.id
+        );
+
+        // Si existe un Check-In local que aún NO ha sido sincronizado ni está en itemsToProcess, postergar el OUT
+        if (matchingIn && matchingIn.status !== "SYNCED" && !itemsToProcess.some((i) => i.id === matchingIn.id)) {
+          console.warn(`⏳ Postergando Check-Out para "${item.storeName}" porque su Check-In aún no se ha sincronizado.`);
+          await updateQueueItem(item.id, { 
+            status: "PENDING", 
+            errorMessage: "Esperando sincronización previa de Check-In" 
+          });
+          continue;
+        }
+      }
+
+      itemsToProcess.push(item);
+    }
+
     const batchSize = parseInt(import.meta.env.VITE_SYNC_BATCH_SIZE) || 30;
 
-    for (let i = 0; i < sortedQueue.length; i += batchSize) {
-      const batch = sortedQueue.slice(i, i + batchSize);
+    for (let i = 0; i < itemsToProcess.length; i += batchSize) {
+      const batch = itemsToProcess.slice(i, i + batchSize);
       const batchFormData = new FormData();
       const logsArray = [];
 
       for (const item of batch) {
-        if (item.status === "SYNCED") continue;
-
         await updateQueueItem(item.id, { status: "SYNCING" });
 
         const { id, _queuedAt, status, errorMessage, ...data } = item;
 
-        // Separar imagen del objeto principal para mandarla como archivo
         if (data.image && data.image.__type === "File") {
           const file = new File([data.image.blob], data.image.name, { type: data.image.mime });
           batchFormData.append(`image_${data.uuid}`, file);
@@ -97,18 +119,15 @@ export const useSyncQueue = () => {
       batchFormData.append("logs", JSON.stringify(logsArray));
 
       try {
-        // Envío en bloque al backend
         const response = await createBulkVisitLogs(batchFormData);
         const { syncedUuids = [], failedUuids = [] } = response;
 
         for (const item of batch) {
-          if (item.status === "SYNCED") continue;
-          
           if (syncedUuids.includes(item.uuid)) {
             await updateQueueItem(item.id, { status: "SYNCED", errorMessage: null });
             syncedCount++;
           } else {
-            const failure = failedUuids.find(f => f.uuid === item.uuid);
+            const failure = failedUuids.find((f) => f.uuid === item.uuid);
             const msg = failure?.reason || "No se pudo sincronizar el registro";
             await updateQueueItem(item.id, { status: "FAILED", errorMessage: msg });
             console.error(`❌ Falló la sincronización para item ${item.id}:`, msg);
@@ -125,14 +144,10 @@ export const useSyncQueue = () => {
         const msg = err.response?.data?.message || err.message || "Error del servidor";
 
         for (const item of batch) {
-          if (item.status === "SYNCED") continue;
-
           if (isNetworkError) {
             await updateQueueItem(item.id, { status: "PENDING", errorMessage: "Error de red / Sin conexión" });
-            console.log(`⚠️ Sincronización en pausa (red) para item ${item.id}`);
           } else {
             await updateQueueItem(item.id, { status: "FAILED", errorMessage: msg });
-            console.error(`❌ Falló la sincronización para item ${item.id}:`, msg);
           }
         }
 
@@ -142,15 +157,14 @@ export const useSyncQueue = () => {
 
     await refreshQueue();
 
-    // Invalidamos caches para actualizar UI
     queryClient.invalidateQueries(["activeVisit"]);
     queryClient.invalidateQueries(["visitLogs"]);
     queryClient.invalidateQueries(["myVisitLogs"]);
 
     if (syncedCount > 0) {
       toast({
-        title: `${syncedCount} operación(es) sincronizada(s)`,
-        description: "Se enviaron los registros de visita pendientes correctamente.",
+        title: `${syncedCount} marca(s) sincronizada(s)`,
+        description: "Se enviaron los registros de visita pendientes correctamente al servidor.",
         status: "success",
         duration: 4000,
         isClosable: true,
@@ -165,7 +179,13 @@ export const useSyncQueue = () => {
   const retryItem = useCallback(async (id) => {
     await updateQueueItem(id, { status: "PENDING", errorMessage: null });
     await refreshQueue();
-    // Ejecutamos sincronización inmediatamente
+    syncPending();
+  }, [refreshQueue, syncPending]);
+
+  const retryGroup = useCallback(async (inId, outId) => {
+    if (inId) await updateQueueItem(inId, { status: "PENDING", errorMessage: null });
+    if (outId) await updateQueueItem(outId, { status: "PENDING", errorMessage: null });
+    await refreshQueue();
     syncPending();
   }, [refreshQueue, syncPending]);
 
@@ -179,13 +199,10 @@ export const useSyncQueue = () => {
 
   useEffect(() => {
     refreshQueue();
-    // Intentar sincronizar al iniciar
     syncPending();
 
-    // Sincronizar cuando el dispositivo recupere conexión
     window.addEventListener("online", syncPending);
 
-    // Intervalo de sincronización de 1 hora (3600000 ms) para optimizar rendimiento/batería
     const interval = setInterval(() => {
       syncPending();
     }, 3600000);
@@ -202,6 +219,7 @@ export const useSyncQueue = () => {
     isSyncing,
     syncPending,
     retryItem,
+    retryGroup,
     removeItem,
     refreshQueue,
   };

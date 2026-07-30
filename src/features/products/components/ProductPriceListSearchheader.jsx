@@ -5,6 +5,7 @@ import {
   Input,
   InputGroup,
   InputLeftElement,
+  InputRightElement,
   Icon,
   VStack,
   Button,
@@ -18,9 +19,10 @@ import {
   Badge,
   Alert,
   AlertIcon,
-  Spinner
+  Spinner,
+  IconButton
 } from "@chakra-ui/react";
-import { FiSearch, FiPackage, FiFilter, FiChevronDown, FiChevronUp } from "react-icons/fi";
+import { FiSearch, FiPackage, FiFilter, FiChevronDown, FiChevronUp, FiX } from "react-icons/fi";
 import { BackButton } from "../../../components/BackButton";
 
 export function ProductPriceListSearchheader({
@@ -51,93 +53,168 @@ export function ProductPriceListSearchheader({
     }
   };
 
- const activeFiltersCount = [marca, tipo, subtipo].filter(Boolean).length + (soloConStock === "Y" ? 1 : 0);
+  const activeFiltersCount = [marca, tipo, subtipo].filter(Boolean).length + (soloConStock === "Y" ? 1 : 0);
 
   return (
     <Box
-      bg="linear-gradient(180deg, rgba(42, 97, 63, 1) 0%, rgba(18, 48, 30, 1) 100%)"
+      bg="linear-gradient(135deg, #14532d 0%, #166534 50%, #15803d 100%)"
+      borderRadius={{ base: "2xl", md: "3xl" }}
       color="white"
-      px={4}
-      py={6}
+      p={{ base: 4, md: 5 }}
+      mb={5}
+      boxShadow="0 12px 35px rgba(20, 83, 45, 0.2)"
+      position="relative"
+      overflow="hidden"
     >
-      <Flex align="center" gap={4} mb={6}>
-        <BackButton />
-        <HStack spacing={2}>
-          <Icon as={FiPackage} boxSize={6} />
-          <Text fontSize="xl" fontWeight="bold">
-            Lista de Productos
-          </Text>
-        </HStack>
-      </Flex>
+      {/* Decoración gráfica sutil */}
+      <Box
+        position="absolute"
+        top="-40px"
+        right="-40px"
+        w="160px"
+        h="160px"
+        borderRadius="full"
+        bg="whiteAlpha.100"
+        pointerEvents="none"
+      />
 
-      <VStack spacing={3} align="stretch">
-        {/* Barra de búsqueda principal */}
+      <VStack spacing={3.5} align="stretch" position="relative" zIndex={2}>
+        {/* Cabecera superior con BackButton y Título */}
+        <Flex align="center" justify="space-between" w="full" gap={2}>
+          <HStack spacing={3}>
+            <BackButton color="white" />
+            <VStack align="start" spacing={0}>
+              <HStack spacing={2}>
+                <Text fontSize={{ base: "16px", sm: "18px", md: "xl" }} fontWeight="800" color="white" letterSpacing="tight">
+                  Lista de Precios de Productos
+                </Text>
+              </HStack>
+              <Text fontSize={{ base: "11px", md: "xs" }} color="whiteAlpha.800" fontWeight="500">
+                Consulta de stock en tiempo real y tarifas vigentes
+              </Text>
+            </VStack>
+          </HStack>
+        </Flex>
+
+        {/* Barra de búsqueda principal de Cristal */}
         <InputGroup size="md">
-          <InputLeftElement pointerEvents="none">
-            <Icon as={FiSearch} color="gray.400" />
+          <InputLeftElement pointerEvents="none" h="42px">
+            <Icon as={FiSearch} color="gray.400" boxSize={4} />
           </InputLeftElement>
           <Input
             value={cardName}
-            placeholder="Buscar por nombre del producto"
+            placeholder="Buscar por código u OEM..."
             bg="white"
-            color="black"
-            borderRadius="full"
+            color="gray.800"
+            borderRadius="2xl"
+            h="42px"
+            fontSize="13px"
+            fontWeight="500"
             _placeholder={{ color: "gray.400" }}
             onChange={(e) => onCardNameChange(e.target.value)}
             onKeyPress={handleKeyPress}
             disabled={isLoading}
+            boxShadow="0 4px 15px rgba(0,0,0,0.05)"
           />
+          {cardName && (
+            <InputRightElement h="42px">
+              <IconButton
+                size="xs"
+                icon={<FiX />}
+                variant="ghost"
+                aria-label="Limpiar búsqueda"
+                onClick={() => onCardNameChange("")}
+              />
+            </InputRightElement>
+          )}
         </InputGroup>
-        <Box w="100%">
-        {/* Botón para expandir filtros */}
-        <Button
-          variant="outline"
-          colorScheme="whiteAlpha"
-          onClick={onToggle}
-          w="100%"
-          rightIcon={<Icon as={isOpen ? FiChevronUp : FiChevronDown} />}
-          size="sm"
-          borderColor="whiteAlpha.300"
-          _hover={{ bg: "whiteAlpha.200" }}
-          color="white"
-          bg="green.600"
-        >
-          Filtrar por: 
-        </Button>
 
-        {/* Error al cargar brandTypeSubtype */}
+        {/* Botón de Colapso de Filtros + Botón de Búsqueda */}
+        <Flex gap={2} align="center" direction={{ base: "column", sm: "row" }}>
+          <Button
+            variant="outline"
+            onClick={onToggle}
+            w="full"
+            rightIcon={<Icon as={isOpen ? FiChevronUp : FiChevronDown} />}
+            h="38px"
+            fontSize="12.5px"
+            fontWeight="700"
+            borderRadius="xl"
+            borderColor="whiteAlpha.400"
+            _hover={{ bg: "whiteAlpha.200" }}
+            color="white"
+            bg="whiteAlpha.100"
+            backdropFilter="blur(8px)"
+            justifyContent="space-between"
+            px={4}
+          >
+            <HStack spacing={2}>
+              <Icon as={FiFilter} boxSize={3.5} />
+              <Text>Filtros avanzados</Text>
+              {activeFiltersCount > 0 && (
+                <Badge colorScheme="green" bg="green.400" color="white" borderRadius="full" px={2} fontSize="10px">
+                  {activeFiltersCount}
+                </Badge>
+              )}
+            </HStack>
+          </Button>
+
+          <Button
+            onClick={onSearch}
+            isLoading={isLoading}
+            loadingText="Buscando..."
+            leftIcon={<Icon as={FiSearch} boxSize={4} />}
+            w={{ base: "full", sm: "auto" }}
+            minW="160px"
+            h="38px"
+            fontSize="13px"
+            fontWeight="800"
+            bg="white"
+            color="green.800"
+            borderRadius="xl"
+            boxShadow="0 4px 15px rgba(0,0,0,0.15)"
+            _hover={{ bg: "green.50", transform: "translateY(-1px)" }}
+            _active={{ bg: "green.100" }}
+          >
+            Buscar Productos
+          </Button>
+        </Flex>
+
+        {/* Mensaje de Error si falla la carga de marcas/tipos */}
         {errorBrandTypeSubtype && (
-          <Alert status="error" borderRadius="md">
-            <AlertIcon />
+          <Alert status="error" borderRadius="xl" bg="red.500" color="white" py={2} px={3} fontSize="12px">
+            <AlertIcon color="white" />
             Error al cargar filtros: {errorBrandTypeSubtype.message || 'Error desconocido'}
           </Alert>
         )}
 
-        {/* Filtros desplegables */}
+        {/* Panel Desplegable de Filtros */}
         <Collapse in={isOpen} animateOpacity>
-          <VStack spacing={2} align="stretch" p={2} bg="green.700" borderRadius="10px">
-            {/* Loading state para filtros */}
+          <VStack spacing={3} align="stretch" p={4} bg="blackAlpha.300" borderRadius="2xl" backdropFilter="blur(10px)" border="1px solid rgba(255,255,255,0.15)" mt={1}>
             {isLoadingBrandTypeSubtype && (
-              <HStack justify="center" p={4}>
+              <HStack justify="center" p={2}>
                 <Spinner size="sm" color="white" />
-                <Text fontSize="sm">Cargando filtros...</Text>
+                <Text fontSize="12px" color="whiteAlpha.800">Cargando filtros...</Text>
               </HStack>
             )}
 
-            {/* Primera fila - Marca y Tipo */}
-            <HStack spacing={3} w="100%">
+            {/* Fila 1 - Marca y Tipo */}
+            <HStack spacing={3} w="full">
               <Select
                 placeholder="Marca"
                 value={marca}
                 onChange={(e) => {
                   setMarca(e.target.value);
-                  setTipo("");     // resetear tipo
-                  setSubtipo("");  // resetear subtipo
+                  setTipo("");
+                  setSubtipo("");
                 }}
                 bg="white"
-                color="black"
-                borderRadius="md"
+                color="gray.800"
+                borderRadius="xl"
                 size="sm"
+                h="36px"
+                fontSize="12.5px"
+                fontWeight="600"
                 isDisabled={isLoadingBrandTypeSubtype || !brandTypeSubtype || brandTypeSubtype.length === 0}
               >
                 {brandTypeSubtype?.map((m) => (
@@ -152,12 +229,15 @@ export function ProductPriceListSearchheader({
                 value={tipo}
                 onChange={(e) => {
                   setTipo(e.target.value);
-                  setSubtipo(""); // resetear subtipo
+                  setSubtipo("");
                 }}
                 bg="white"
-                color="black"
-                borderRadius="md"
+                color="gray.800"
+                borderRadius="xl"
                 size="sm"
+                h="36px"
+                fontSize="12.5px"
+                fontWeight="600"
                 isDisabled={isLoadingBrandTypeSubtype}
               >
                 {(
@@ -167,9 +247,9 @@ export function ProductPriceListSearchheader({
                         new Map(
                           brandTypeSubtype
                             ?.flatMap((m) => m.tipos)
-                            ?.map((t) => [t.value, t]) // usar value como clave
+                            ?.map((t) => [t.value, t])
                         ).values()
-                      ) // deduplicados
+                      )
                 )?.map((t) => (
                   <option key={t.value} value={t.value}>
                     {t.label}
@@ -178,17 +258,19 @@ export function ProductPriceListSearchheader({
               </Select>
             </HStack>
 
-            {/* Segunda fila - Subtipo y Tipo de precio */}
-            <HStack spacing={3} w="100%">
-              {/* Subtipo */}
+            {/* Fila 2 - Subtipo y Tipo de precio */}
+            <HStack spacing={3} w="full">
               <Select
                 placeholder="Subtipo"
                 value={subtipo}
                 onChange={(e) => setSubtipo(e.target.value)}
                 bg="white"
-                color="black"
-                borderRadius="md"
+                color="gray.800"
+                borderRadius="xl"
                 size="sm"
+                h="36px"
+                fontSize="12.5px"
+                fontWeight="600"
                 isDisabled={isLoadingBrandTypeSubtype}
               >
                 {(
@@ -200,7 +282,7 @@ export function ProductPriceListSearchheader({
                         new Map(
                           brandTypeSubtype
                             ?.flatMap((m) => m.tipos.flatMap((t) => t.subtipos))
-                            ?.map((st) => [st.value, st]) // usar value como clave
+                            ?.map((st) => [st.value, st])
                         ).values()
                       )
                 )?.map((st) => (
@@ -210,34 +292,33 @@ export function ProductPriceListSearchheader({
                 ))}
               </Select>
 
-              
-              {/* Tipo de precio */}
-             <Select
-              value={tipoPrecio}
-              onChange={(e) => setTipoPrecio(e.target.value)}
-              bg="white"
-              color="black"
-              borderRadius="md"
-              size="sm"
-            >
-              <option value="FINAL">Precio Final</option>
-              <option value="CONTADO">Precio al contado</option>
-              <option value="CREDITO">Precio al crédito</option>
-            </Select>
-
-
+              <Select
+                value={tipoPrecio}
+                onChange={(e) => setTipoPrecio(e.target.value)}
+                bg="white"
+                color="gray.800"
+                borderRadius="xl"
+                size="sm"
+                h="36px"
+                fontSize="12.5px"
+                fontWeight="600"
+              >
+                <option value="FINAL">Precio Final</option>
+                <option value="CONTADO">Precio al contado</option>
+                <option value="CREDITO">Precio al crédito</option>
+              </Select>
             </HStack>
 
-            {/* Tercera fila - Switch stock y limpiar filtros */}
-            <HStack w="100%" align="center">
-              <FormControl display="flex" alignItems="center" flex="1" h="40px">
-                <FormLabel htmlFor="stock-switch" mb="0" fontSize="sm" display="flex" alignItems="center" gap={2}>
-                  Mostrar disponibles
+            {/* Fila 3 - Switch stock y limpiar filtros */}
+            <Flex justify="space-between" align="center" pt={1}>
+              <FormControl display="flex" alignItems="center" w="auto">
+                <FormLabel htmlFor="stock-switch" mb="0" fontSize="12px" fontWeight="700" color="whiteAlpha.900">
+                  Solo disponibles con stock
                 </FormLabel>
                 <Switch
                   id="stock-switch"
                   colorScheme="green"
-                  size="md"
+                  size="sm"
                   isChecked={soloConStock === "Y"}
                   onChange={(e) => setSoloConStock(e.target.checked ? "Y" : "N")}
                 />
@@ -247,41 +328,22 @@ export function ProductPriceListSearchheader({
                 <Button
                   variant="ghost"
                   colorScheme="whiteAlpha"
-                  size="sm"
+                  size="xs"
+                  fontWeight="700"
                   onClick={() => {
                     setMarca("");
                     setTipo("");
                     setSubtipo("");
-                    setTipoPrecio("");
+                    setTipoPrecio("FINAL");
                     setSoloConStock("N");
                   }}
                 >
-                  Borrar todo
+                  Limpiar filtros
                 </Button>
               )}
-            </HStack>
+            </Flex>
           </VStack>
         </Collapse>
-        </Box>
-
-        {/* Botón de búsqueda */}
-        <Button
-          colorScheme="whiteAlpha"
-          variant="solid"
-          onClick={onSearch}
-          isLoading={isLoading}
-          loadingText="Buscando..."
-          leftIcon={<Icon as={FiSearch} />}
-          borderRadius="full"
-          h={8}
-          size="xs"
-          bg="whiteAlpha.500"
-          _hover={{ bg: "whiteAlpha.300" }}
-          _active={{ bg: "whiteAlpha.400" }}
-          _disabled={{ opacity: 0.6 }}
-        >
-          Buscar Producto/s
-        </Button>
       </VStack>
     </Box>
   );

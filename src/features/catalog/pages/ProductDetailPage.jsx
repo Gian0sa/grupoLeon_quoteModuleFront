@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Container, Box, Flex, Heading, Text, Image, Button,
+  Container, Box, Flex, Heading, Text, Image, Button, HStack,
   Spinner, VStack, Modal, ModalOverlay, ModalContent, ModalBody, ModalCloseButton,
   useDisclosure, Alert, AlertIcon
 } from '@chakra-ui/react';
@@ -19,9 +19,10 @@ export default function ProductDetailPage() {
   const navigate = useNavigate();
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [selectedImage, setSelectedImage] = useState(null);
+  const [searchMode, setSearchMode] = useState('simple');
 
   const { data: productRes, isLoading, error } = useProducts(1, 1, { slug });
-  const { data: tiposRes, isLoading: tiposLoading } = useProductEquivalents(slug, 1, 9, null);
+  const { data: tiposRes, isLoading: tiposLoading } = useProductEquivalents(slug, 1, 9, null, null, null, searchMode);
   const { data: appsRes, isLoading: appsLoading } = useProductApplications(slug, 1, 50);
 
   const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3005';
@@ -57,8 +58,14 @@ export default function ProductDetailPage() {
     );
   }
 
-  const imageUrl = product.multimedia?.[0]?.urlArchivo ? `${apiBaseUrl}/${product.multimedia[0].urlArchivo}` : null;
-  const tipos = tiposRes?.tipos || [];
+  const imageUrl = (() => {
+    const media = product.multimedia?.find(m => m.tipo === 'foto') || product.multimedia?.[0];
+    if (!media) return null;
+    const src = media.url_g || media.url || media.url_m || media.url_p || media.urlArchivo;
+    if (!src) return null;
+    return src.startsWith('http') ? src : `${apiBaseUrl}/${src}`;
+  })();
+  const tipos = tiposRes?.tipos || tiposRes?.data?.tipos || (Array.isArray(tiposRes?.data) ? tiposRes.data : []);
 
   return (
     <Container maxW="container.xl" py={0}>
@@ -73,8 +80,32 @@ export default function ProductDetailPage() {
         <ProductDetailApplications appsRes={appsRes} appsLoading={appsLoading} />
 
         <Box>
-          <Heading size="md" mb={1}>Productos Equivalentes</Heading>
-          <Text fontSize="xs" color="gray.500" mb={4}>Paginación y filtros independientes por cada tipo de producto</Text>
+          <Flex justify="space-between" align={{ base: "start", sm: "center" }} flexDir={{ base: "column", sm: "row" }} gap={3} mb={4}>
+            <Box>
+              <Heading size="md" mb={1}>Productos Equivalentes</Heading>
+              <Text fontSize="xs" color="gray.500">Paginación y filtros independientes por cada tipo de producto</Text>
+            </Box>
+            <HStack spacing={1} bg="gray.100" p={1} borderRadius="lg" border="1px solid" borderColor="gray.200">
+              <Button
+                size="xs"
+                colorScheme={searchMode === 'simple' ? 'green' : 'gray'}
+                variant={searchMode === 'simple' ? 'solid' : 'ghost'}
+                onClick={() => setSearchMode('simple')}
+                borderRadius="md"
+              >
+                Búsqueda Simple
+              </Button>
+              <Button
+                size="xs"
+                colorScheme={searchMode === 'deep' ? 'green' : 'gray'}
+                variant={searchMode === 'deep' ? 'solid' : 'ghost'}
+                onClick={() => setSearchMode('deep')}
+                borderRadius="md"
+              >
+                Búsqueda Profunda
+              </Button>
+            </HStack>
+          </Flex>
 
           {tiposLoading ? (
             <Spinner size="lg" />
@@ -82,8 +113,8 @@ export default function ProductDetailPage() {
             <VStack spacing={8} align="stretch">
               {tipos.map((tipo) => (
                 <ProductDetailEquivalentsSection
-                  key={tipo.idTipo} slug={slug} tipo={tipo}
-                  apiBaseUrl={apiBaseUrl} onNavigate={(s) => navigate(`/catalog/product/${s}`)}
+                  key={tipo.idTipo} slug={slug} tipo={tipo} searchMode={searchMode}
+                  onNavigate={(s) => navigate(`/catalog/product/${s}`)}
                 />
               ))}
             </VStack>

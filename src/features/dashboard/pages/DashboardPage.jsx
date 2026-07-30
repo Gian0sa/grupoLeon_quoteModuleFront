@@ -2,14 +2,12 @@ import {
   Box, 
   Text, 
   Spinner, 
+  Flex,
+  SimpleGrid,
   useColorModeValue
 } from "@chakra-ui/react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { Swiper, SwiperSlide } from "swiper/react";
-import "swiper/css";
-import "swiper/css/pagination";
-import { Pagination } from "swiper/modules";
 
 import styles from "./DashboardPage.module.css";
 import { useAuthStore } from "../../../features/auth/stores/useAuthStore";
@@ -24,6 +22,7 @@ import { DashboardHeader } from "../components/DashboardHeader";
 import { QuickActions } from "../components/QuickActions";
 import { SalesSummary } from "../components/SalesSummary";
 import { SalesStats } from "../components/SalesStats";
+import { SurfaceChartCard } from "../components/SurfaceChartCard";
 import { Notifications } from "../components/Notifications";
 import { DataCard } from "../components/DataCard";
 
@@ -91,14 +90,11 @@ export function DashboardPage() {
     date: format(new Date(), 'yyyy-MM-dd') 
   });
 
-  // ✅ Unificación por rol - MEJORADO
   const isLoading = isVendedor ? vendedorLoading : adminLoading;
   const error = isVendedor ? vendedorError : adminError;
-  
-  // ✅ Extraer datos correctamente
+
   let resumenData = null;
   if (isVendedor && vendedorData) {
-    // Si vendedorData es un array, tomar el primer elemento
     resumenData = Array.isArray(vendedorData) ? vendedorData[0] : vendedorData;
   } else if (isAdmin && adminData) {
     resumenData = Array.isArray(adminData) ? adminData[0] : adminData;
@@ -107,88 +103,82 @@ export function DashboardPage() {
   const today = format(new Date(), "EEEE, d 'de' MMMM 'del' yyyy", { locale: es });
 
   return (
-    <Box w="100vw" minH="100vh" bg={useColorModeValue("brand.bg.light", "brand.bg.dark")}>
-      {/* Header */}
-      <Box 
-        borderRadius="0 0 24px 24px" 
-        color={useColorModeValue("brand.text.light", "brand.text.dark")} 
-        position="relative"
-      >
-        <Box className={styles.headerMain}>
-          <DashboardHeader 
-            today={today} 
-            exchangeRate={exchangeRateData} 
-            isLoadingExchangeRate={loadingExchangeRate} 
-          />
-          <QuickActions />
-        </Box>
+    <Box w="full" minH="100vh" bg={useColorModeValue("gray.50", "gray.900")}>
+      {/* Header Integrado */}
+      <Box className={styles.headerMain} color="white">
+        <DashboardHeader 
+          today={today} 
+          exchangeRate={exchangeRateData} 
+          isLoadingExchangeRate={loadingExchangeRate} 
+        />
+        <QuickActions />
+      </Box>
 
-        {/* Carrusel de métricas */}
-        <Box p={2} pt={1} className={styles.cards}>
-          {/* ✅ DEBUG: Mostrar estado de carga */}
-          {isLoading && (
-            <Box textAlign="center" py={4}>
-              <Spinner color="teal.400" size="lg" />
-              <Text mt={2} color="gray.500">Cargando datos...</Text>
-            </Box>
-          )}
+      {/* Sección Principales Métricas */}
+      <Box maxW="1200px" mx="auto" px={4} py={6}>
+        {isLoading && (
+          <Box textAlign="center" py={8}>
+            <Spinner color="green.500" size="lg" />
+            <Text mt={2} color="gray.500">Cargando datos...</Text>
+          </Box>
+        )}
 
-          {/* ✅ DEBUG: Mostrar errores */}
-          {error && (
-            <Box textAlign="center" py={4}>
-              <Text color="red.500">Error: {error.message}</Text>
-            </Box>
-          )}
+        {error && (
+          <Box textAlign="center" py={8}>
+            <Text color="red.500">Error: {error.message}</Text>
+          </Box>
+        )}
 
-          {/* ✅ DEBUG: Mostrar cuando no hay datos */}
-          {!isLoading && !error && !resumenData && (
-            <Box textAlign="center" py={4}>
-              <Text color="orange.500">No hay datos disponibles</Text>
-            </Box>
-          )}
+        {!isLoading && !error && !resumenData && (
+          <Box textAlign="center" py={8}>
+            <Text color="orange.500">No hay datos disponibles</Text>
+          </Box>
+        )}
 
-          {/* ✅ Mostrar carrusel solo cuando hay datos */}
-          {!isLoading && !error && resumenData && (
-            <Swiper
-              spaceBetween={2}
-              slidesPerView={2.1}
-              pagination={{ clickable: true }}
-              modules={[Pagination]}
-              style={{ paddingBottom: "24px" }}
+        {!isLoading && !error && resumenData && (
+          <>
+            {/* VISTA PC (Grid 3 columnas) */}
+            <SimpleGrid 
+              columns={{ base: 1, md: 3 }} 
+              spacing={6} 
+              display={{ base: "none", md: "grid" }}
             >
-              <SwiperSlide>
+              <SalesSummary data={resumenData} />
+              <SalesStats data={resumenData} />
+              <SurfaceChartCard data={resumenData} />
+            </SimpleGrid>
+
+            {/* VISTA MÓVIL (Carrusel deslizable nativo) */}
+            <Flex
+              display={{ base: "flex", md: "none" }}
+              overflowX="auto"
+              scrollSnapType="x mandatory"
+              gap={4}
+              py={2}
+              sx={{
+                "&::-webkit-scrollbar": { display: "none" },
+                scrollbarWidth: "none",
+                "-ms-overflow-style": "none",
+              }}
+            >
+              <Box flexShrink={0} w="85vw" scrollSnapAlign="center">
                 <SalesSummary data={resumenData} />
-              </SwiperSlide>
-
-              <SwiperSlide>
+              </Box>
+              <Box flexShrink={0} w="85vw" scrollSnapAlign="center">
                 <SalesStats data={resumenData} />
-              </SwiperSlide>
-
-              <SwiperSlide>
-                <Box
-                  bg="gray.100"
-                  border="2px"
-                  borderColor="gray.400"
-                  borderRadius="xl"
-                  h="240px"
-                  display="flex"
-                  justifyContent="center"
-                  alignItems="center"
-                >
-                  <Text color="gray.500" fontSize="sm">
-                    Próximamente más métricas
-                  </Text>
-                </Box>
-              </SwiperSlide>
-            </Swiper>
-          )}
-        </Box>
+              </Box>
+              <Box flexShrink={0} w="85vw" scrollSnapAlign="center">
+                <SurfaceChartCard data={resumenData} />
+              </Box>
+            </Flex>
+          </>
+        )}
       </Box>
 
       {/* Notificaciones */}
-      <Box p={6}>
+      <Box maxW="1200px" mx="auto" px={4} pb={12}>
         {loadingNotifications ? (
-          <Spinner color="teal.400" />
+          <Spinner color="green.500" />
         ) : errorNotifications ? (
           <Text color="red.400">Error al cargar notificaciones</Text>
         ) : (
