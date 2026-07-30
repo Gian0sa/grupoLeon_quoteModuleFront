@@ -8,24 +8,35 @@ import {
   Spinner,
   Card,
   CardBody,
-  Divider,
-  SimpleGrid,
-  Stat,
-  StatLabel,
-  StatNumber,
-  StatHelpText,
   useColorModeValue,
   Flex,
-  Select,
   Button,
   Input,
-  ButtonGroup,
+  Icon,
 } from "@chakra-ui/react";
 import { useMemo, useState, useEffect } from "react";
 import { useMyVisitLogs } from "../hooks/queries/visitLogQueries";
+import { useSyncQueue } from "../hooks/useSyncQueue";
 import { BackButton } from "../../../components/BackButton";
 import { getQueue } from "../services/visitLogQueue";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
+import Estadisticas from "../components/Estadisticas";
+import { 
+  Building2, 
+  LogIn, 
+  LogOut, 
+  Clock, 
+  AlertTriangle, 
+  CheckCircle2, 
+  RefreshCw, 
+  Calendar, 
+  WifiOff,
+  AlertCircle
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+
+const MotionBox = motion(Box);
+const MotionCard = motion(Card);
 
 const formatDateTime = (dateString) => {
   if (!dateString) return "N/A";
@@ -69,7 +80,6 @@ const isYesterday = (date) => {
   );
 };
 
-
 const isThisWeek = (date) => {
   const today = new Date();
   const checkDate = new Date(date);
@@ -93,8 +103,10 @@ const isThisMonth = (date) => {
 export default function MyVisitsPage() {
   const { username } = useAuthStore();
   const { data, isLoading, error } = useMyVisitLogs();
+  const { retryGroup, syncPending, isSyncing } = useSyncQueue();
   const [queueItems, setQueueItems] = useState([]);
   const [filterType, setFilterType] = useState("today");
+  const [statusFilter, setStatusFilter] = useState("all"); // 'all', 'pending', 'errors'
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
 
@@ -102,7 +114,7 @@ export default function MyVisitsPage() {
     getQueue().then(items => {
       setQueueItems(items || []);
     });
-  }, [data]);
+  }, [data, isSyncing]);
 
   const localVisits = useMemo(() => {
     return queueItems
@@ -145,42 +157,44 @@ export default function MyVisitsPage() {
 
   const cardBg = useColorModeValue("white", "gray.700");
   const borderColor = useColorModeValue("gray.200", "gray.600");
-  const statBg = useColorModeValue("green.50", "green.900");
 
   const filteredVisits = useMemo(() => {
-    if (filterType === "all") return visits;
+    let result = visits;
 
-    return visits.filter((visit) => {
-      const visitDate = new Date(visit.createdAt);
+    if (filterType !== "all") {
+      result = result.filter((visit) => {
+        const visitDate = new Date(visit.createdAt);
 
-      switch (filterType) {
-        case "today":
-          return isToday(visit.createdAt);
-        case "yesterday":
-          return isYesterday(visit.createdAt);
-        case "week":
-          return isThisWeek(visit.createdAt);
-        case "month":
-          return isThisMonth(visit.createdAt);
-        case "custom":
-        if (!customStartDate) return true;
+        switch (filterType) {
+          case "today":
+            return isToday(visit.createdAt);
+          case "yesterday":
+            return isYesterday(visit.createdAt);
+          case "week":
+            return isThisWeek(visit.createdAt);
+          case "month":
+            return isThisMonth(visit.createdAt);
+          case "custom":
+            if (!customStartDate) return true;
+            const [startYear, startMonth, startDay] = customStartDate.split("-").map(Number);
+            const start = new Date(startYear, startMonth - 1, startDay, 0, 0, 0, 0);
 
-        const [startYear, startMonth, startDay] = customStartDate.split("-").map(Number);
-        const start = new Date(startYear, startMonth - 1, startDay, 0, 0, 0, 0);
-
-        let end;
-        if (customEndDate) {
-          const [endYear, endMonth, endDay] = customEndDate.split("-").map(Number);
-          end = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
-        } else {
-          end = new Date();
-          end.setHours(23, 59, 59, 999);
+            let end;
+            if (customEndDate) {
+              const [endYear, endMonth, endDay] = customEndDate.split("-").map(Number);
+              end = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
+            } else {
+              end = new Date();
+              end.setHours(23, 59, 59, 999);
+            }
+            return visitDate >= start && visitDate <= end;
+          default:
+            return true;
         }
-        return visitDate >= start && visitDate <= end;
-        default:
-          return true;
-      }
-    });
+      });
+    }
+
+    return result;
   }, [visits, filterType, customStartDate, customEndDate]);
 
   const grouped = useMemo(() => {
@@ -218,276 +232,423 @@ export default function MyVisitsPage() {
     return groups;
   }, [filteredVisits]);
 
+  const finalDisplayedGroups = useMemo(() => {
+    if (statusFilter === "pending") {
+      return grouped.filter((g) => g.in && !g.out);
+    }
+    if (statusFilter === "errors") {
+      return grouped.filter((g) => g.in?.status === "FAILED" || g.out?.status === "FAILED" || g.in?.isLocal || g.out?.isLocal);
+    }
+    return grouped;
+  }, [grouped, statusFilter]);
+
   const stats = useMemo(() => {
     const total = grouped.length;
     const completed = grouped.filter((g) => g.in && g.out).length;
     const pending = grouped.filter((g) => g.in && !g.out).length;
-    const errors = grouped.filter((g) => g.in?.status === "FAILED" || g.out?.status === "FAILED").length;
+    const errors = grouped.filter((g) => g.in?.status === "FAILED" || g.out?.status === "FAILED" || g.in?.isLocal || g.out?.isLocal).length;
 
     return { total, completed, pending, errors };
   }, [grouped]);
 
   if (isLoading) {
     return (
-      <Box textAlign="center" py={10}>
-        <Spinner size="xl" color="green.500" />
-        <Text mt={4}>Cargando tus visitas...</Text>
+      <Box textAlign="center" py={12}>
+        <Spinner size="xl" color="green.500" thickness="4px" />
+        <Text mt={4} fontWeight="semibold" color="gray.600">Cargando tus visitas...</Text>
       </Box>
     );
   }
 
   if (error) {
     return (
-      <Box textAlign="center" py={10}>
-        <Text color="red.500">Error cargando visitas</Text>
+      <Box textAlign="center" py={12}>
+        <Icon as={AlertTriangle} boxSize={10} color="red.500" mb={2} />
+        <Text color="red.500" fontWeight="bold">Error al cargar las visitas</Text>
       </Box>
     );
   }
 
   return (
-    <Box p={{ base: 3, md: 6 }}>
-      <VStack spacing={6} align="stretch">
+    <Box p={{ base: 3, md: 6 }} maxW="1200px" mx="auto">
+      <VStack spacing={5} align="stretch">
+        {/* Header Principal */}
         <Flex
-          bg="green.600"
+          bg="linear-gradient(135deg, #059669 0%, #047857 100%)"
           color="white"
           align="center"
           justify="center"
-          h="50px"
-          borderRadius="lg"
+          h="56px"
+          borderRadius="2xl"
           position="relative"
+          boxShadow="0 8px 20px rgba(5, 150, 105, 0.25)"
+          px={4}
         >
-          <Box position="absolute" left={3}>
+          <Box position="absolute" left={4}>
             <BackButton color="white" />
           </Box>
-          <Heading size="md">Mis Visitas</Heading>
+          <Heading size="md" fontWeight="800" letterSpacing="tight">
+            Mis Visitas
+          </Heading>
         </Flex>
 
-        {/* Filtros */}
-        <Card bg={cardBg} borderColor={borderColor}>
-          <CardBody>
+        {/* ALERTA PRINCIPAL DE ATENCIÓN */}
+        <AnimatePresence>
+          {(stats.pending > 0 || stats.errors > 0) && (
+            <MotionBox
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              bg="linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%)"
+              border="2px solid"
+              borderColor="amber.400"
+              borderRadius="2xl"
+              p={{ base: 3.5, md: 4 }}
+              boxShadow="0 8px 25px rgba(245, 158, 11, 0.15)"
+            >
+              <Flex direction={{ base: "column", sm: "row" }} justify="space-between" align={{ base: "start", sm: "center" }} gap={3}>
+                <HStack spacing={3} align="start">
+                  <Box p={2} borderRadius="xl" bg="amber.500" color="white" flexShrink={0}>
+                    <Icon as={AlertTriangle} boxSize={5} />
+                  </Box>
+                  <VStack align="start" spacing={0}>
+                    <Text fontSize="sm" fontWeight="800" color="amber.900">
+                      ¡Atención requerida en tus registros!
+                    </Text>
+                    <Text fontSize="xs" color="amber.800" fontWeight="medium">
+                      {stats.pending > 0 && `Tienes ${stats.pending} visita(s) sin registrar Check-Out. `}
+                      {stats.errors > 0 && `${stats.errors} marca(s) no se han subido al servidor.`}
+                    </Text>
+                  </VStack>
+                </HStack>
+
+                <HStack spacing={2} w={{ base: "full", sm: "auto" }}>
+                  {stats.errors > 0 && (
+                    <Button
+                      size="xs"
+                      colorScheme="emerald"
+                      bg="emerald.600"
+                      color="white"
+                      borderRadius="full"
+                      px={3}
+                      leftIcon={<Icon as={RefreshCw} />}
+                      isLoading={isSyncing}
+                      onClick={() => syncPending()}
+                      _hover={{ bg: "emerald.700" }}
+                      flex={{ base: 1, sm: "auto" }}
+                    >
+                      Sincronizar Todo
+                    </Button>
+                  )}
+                  {stats.pending > 0 && (
+                    <Button
+                      size="xs"
+                      colorScheme="amber"
+                      bg="amber.600"
+                      color="white"
+                      borderRadius="full"
+                      px={3}
+                      leftIcon={<Icon as={Clock} boxSize={3.5} />}
+                      onClick={() => setStatusFilter(statusFilter === "pending" ? "all" : "pending")}
+                      _hover={{ bg: "amber.700" }}
+                      flex={{ base: 1, sm: "auto" }}
+                    >
+                      {statusFilter === "pending" ? "Ver Todas" : "Ver Pendientes"}
+                    </Button>
+                  )}
+                </HStack>
+              </Flex>
+            </MotionBox>
+          )}
+        </AnimatePresence>
+
+        {/* Filtros por Fecha */}
+        <Card bg={cardBg} borderColor={borderColor} borderRadius="2xl" boxShadow="0 4px 15px rgba(0,0,0,0.03)">
+          <CardBody p={{ base: 3.5, md: 4 }}>
             <VStack spacing={3} align="stretch">
-              <Text fontWeight="bold">Filtrar por fecha</Text>
-              <ButtonGroup isAttached variant="outline" size="sm">
-                <Button
-                  onClick={() => {
-                    setFilterType("today");
-                    setCustomStartDate("");
-                    setCustomEndDate("");
-                  }}
-                  colorScheme={filterType === "today" ? "green" : "gray"}
-                  variant={filterType === "today" ? "solid" : "outline"}
-                >
-                  Hoy
-                </Button>
-                <Button
-                  onClick={() => {
-                    setFilterType("yesterday");
-                    setCustomStartDate("");
-                    setCustomEndDate("");
-                  }}
-                  colorScheme={filterType === "yesterday" ? "green" : "gray"}
-                  variant={filterType === "yesterday" ? "solid" : "outline"}
-                >
-                  Ayer
-                </Button>
-                <Button
-                  onClick={() => {
-                    setFilterType("all");
-                    setCustomStartDate("");
-                    setCustomEndDate("");
-                  }}
-                  colorScheme={filterType === "all" ? "green" : "gray"}
-                  variant={filterType === "all" ? "solid" : "outline"}
-                >
-                  Todas
-                </Button>
-                <Button
-                  onClick={() => {
-                    setFilterType("week");
-                    setCustomStartDate("");
-                    setCustomEndDate("");
-                  }}
-                  colorScheme={filterType === "week" ? "green" : "gray"}
-                  variant={filterType === "week" ? "solid" : "outline"}
-                >
-                  Semana
-                </Button>
+              <Flex justify="space-between" align="center">
+                <HStack spacing={2}>
+                  <Icon as={Calendar} boxSize={4} color="emerald.600" />
+                  <Text fontWeight="700" fontSize="sm" color="gray.700">
+                    Filtrar por fecha
+                  </Text>
+                </HStack>
+                {statusFilter !== "all" && (
+                  <Badge 
+                    colorScheme={statusFilter === "pending" ? "amber" : "red"}
+                    cursor="pointer"
+                    onClick={() => setStatusFilter("all")}
+                    borderRadius="full"
+                    px={2.5}
+                    py={0.5}
+                  >
+                    Filtro Estado: {statusFilter.toUpperCase()} (x)
+                  </Badge>
+                )}
+              </Flex>
 
-                <Button
-                  onClick={() => {
-                    setFilterType("month");
-                    setCustomStartDate("");
-                    setCustomEndDate("");
-                  }}
-                  colorScheme={filterType === "month" ? "green" : "gray"}
-                  variant={filterType === "month" ? "solid" : "outline"}
-                >
-                  Mes
-                </Button>
-
-                <Button
-                  onClick={() => setFilterType("custom")}
-                  colorScheme={filterType === "custom" ? "green" : "gray"}
-                  variant={filterType === "custom" ? "solid" : "outline"}
-                >
-                  Personalizado
-                </Button>
-              </ButtonGroup>
+              <Flex gap={2} wrap="wrap">
+                {[
+                  { id: "today", label: "Hoy" },
+                  { id: "yesterday", label: "Ayer" },
+                  { id: "all", label: "Todas" },
+                  { id: "week", label: "Semana" },
+                  { id: "month", label: "Mes" },
+                  { id: "custom", label: "Personalizado" },
+                ].map((f) => (
+                  <Button
+                    key={f.id}
+                    size="xs"
+                    borderRadius="full"
+                    px={3.5}
+                    py={1.5}
+                    onClick={() => {
+                      setFilterType(f.id);
+                      if (f.id !== "custom") {
+                        setCustomStartDate("");
+                        setCustomEndDate("");
+                      }
+                    }}
+                    colorScheme={filterType === f.id ? "emerald" : "gray"}
+                    bg={filterType === f.id ? "emerald.600" : "gray.100"}
+                    color={filterType === f.id ? "white" : "gray.700"}
+                    fontWeight={filterType === f.id ? "700" : "500"}
+                    _hover={{ bg: filterType === f.id ? "emerald.700" : "gray.200" }}
+                  >
+                    {f.label}
+                  </Button>
+                ))}
+              </Flex>
 
               {filterType === "custom" && (
-                <HStack spacing={2} mt={3}>
+                <HStack spacing={3} mt={2}>
                   <Box flex={1}>
-                    <Text fontSize="sm" mb={1}>Desde:</Text>
+                    <Text fontSize="xs" fontWeight="semibold" mb={1} color="gray.600">Desde:</Text>
                     <Input
                       type="date"
+                      size="sm"
+                      borderRadius="xl"
                       value={customStartDate}
                       onChange={(e) => setCustomStartDate(e.target.value)}
                     />
                   </Box>
                   <Box flex={1}>
-                    <Text fontSize="sm" mb={1}>Hasta:</Text>
+                    <Text fontSize="xs" fontWeight="semibold" mb={1} color="gray.600">Hasta:</Text>
                     <Input
                       type="date"
+                      size="sm"
+                      borderRadius="xl"
                       value={customEndDate}
                       onChange={(e) => setCustomEndDate(e.target.value)}
                     />
                   </Box>
                 </HStack>
               )}
-
             </VStack>
           </CardBody>
         </Card>
 
-        {/* Estadísticas */}
-        <SimpleGrid columns={{ base: 2, md: 4 }} spacing={4}>
-          <Card bg={statBg}>
-            <CardBody>
-              <Stat>
-                <StatLabel>Total</StatLabel>
-                <StatNumber>{stats.total}</StatNumber>
-                <StatHelpText>Visitas registradas</StatHelpText>
-              </Stat>
-            </CardBody>
-          </Card>
+        {/* Tarjetas de Estadísticas */}
+        <Estadisticas stats={stats} />
 
-          <Card bg={statBg}>
-            <CardBody>
-              <Stat>
-                <StatLabel>Completadas</StatLabel>
-                <StatNumber>{stats.completed}</StatNumber>
-                <StatHelpText>Con Check-In/Out</StatHelpText>
-              </Stat>
-            </CardBody>
-          </Card>
-
-          <Card bg={statBg}>
-            <CardBody>
-              <Stat>
-                <StatLabel>Pendientes</StatLabel>
-                <StatNumber>{stats.pending}</StatNumber>
-                <StatHelpText>Sin Check-Out</StatHelpText>
-              </Stat>
-            </CardBody>
-          </Card>
-
-
-          {stats.errors !== 0 ? (
-          <Card bg={useColorModeValue("red.50", "red.900")}>
-            <CardBody>
-              <Stat>
-                <StatLabel>Errores</StatLabel>
-                <StatNumber>{stats.errors}</StatNumber>
-                <StatHelpText>Visitas con error</StatHelpText>
-              </Stat>
-            </CardBody>
-          </Card>
-              ):
-              ''
-          }
-
-        </SimpleGrid>
-
-        {/* Lista */}
-        <VStack spacing={4} align="stretch">
-          {grouped.length === 0 ? (
-            <Card>
-              <CardBody textAlign="center">
-                <Text>
+        {/* Lista de Visitas Rediseñada */}
+        <VStack spacing={3.5} align="stretch" pt={1}>
+          {finalDisplayedGroups.length === 0 ? (
+            <Card borderRadius="2xl" p={6} textAlign="center" bg="gray.50">
+              <CardBody>
+                <Icon as={Building2} boxSize={8} color="gray.400" mb={2} />
+                <Text fontWeight="semibold" color="gray.600">
                   {filterType === "all"
-                    ? "No tienes visitas registradas."
-                    : "No hay visitas para el período seleccionado."}
+                    ? "No tienes visitas registradas en este estado."
+                    : "No hay visitas registradas para el período seleccionado."}
                 </Text>
               </CardBody>
             </Card>
           ) : (
-            grouped.map((group) => {
+            finalDisplayedGroups.map((group) => {
+              const isPendingCheckout = group.in && !group.out;
+              const hasError = group.in?.status === "FAILED" || group.out?.status === "FAILED";
               const isLocalGroup = group.in?.isLocal || group.out?.isLocal;
+
+              let cardBorderColor = borderColor;
+              let cardBgColor = cardBg;
+
+              if (hasError || isLocalGroup) {
+                cardBorderColor = "red.300";
+                cardBgColor = "red.50";
+              } else if (isPendingCheckout) {
+                cardBorderColor = "amber.400";
+                cardBgColor = "amber.50";
+              }
+
               return (
-                <Card key={group.id} bg={cardBg} borderColor={isLocalGroup ? "orange.200" : borderColor} border={isLocalGroup ? "1px solid" : undefined}>
-                  <CardBody>
+                <MotionCard
+                  key={group.id}
+                  whileHover={{ y: -2 }}
+                  transition={{ duration: 0.15 }}
+                  bg={cardBgColor}
+                  borderRadius="2xl"
+                  border="2px solid"
+                  borderColor={cardBorderColor}
+                  boxShadow={
+                    isPendingCheckout 
+                      ? "0 4px 20px rgba(245, 158, 11, 0.12)"
+                      : hasError || isLocalGroup
+                      ? "0 4px 20px rgba(239, 68, 68, 0.12)"
+                      : "0 4px 15px rgba(0,0,0,0.03)"
+                  }
+                  overflow="hidden"
+                >
+                  <CardBody p={{ base: 4, md: 5 }}>
                     <VStack align="stretch" spacing={3}>
-                      <Flex justify="space-between" align="center">
-                        <Heading size="sm">{group.storeName}</Heading>
-                        {isLocalGroup && (
-                          <Badge colorScheme={group.in?.status === "FAILED" || group.out?.status === "FAILED" ? "red" : "orange"} variant="solid" fontSize="2xs">
-                            {group.in?.status === "FAILED" || group.out?.status === "FAILED" ? "Error al sincronizar" : "Pendiente de sincronizar"}
-                          </Badge>
-                        )}
+                      
+                      {/* Encabezado del Cliente / Tienda */}
+                      <Flex justify="space-between" align="center" wrap="wrap" gap={2}>
+                        <HStack spacing={2.5}>
+                          <Box p={2} borderRadius="xl" bg={isPendingCheckout ? "amber.100" : hasError || isLocalGroup ? "red.100" : "emerald.50"} color={isPendingCheckout ? "amber.800" : hasError || isLocalGroup ? "red.800" : "emerald.700"}>
+                            <Icon as={Building2} boxSize={5} />
+                          </Box>
+                          <Heading size="sm" fontWeight="800" color="gray.800">
+                            {group.storeName}
+                          </Heading>
+                        </HStack>
+
+                        {/* Badges y Botón de Reintento */}
+                        <HStack spacing={2}>
+                          {(hasError || isLocalGroup) && (
+                            <Button
+                              size="xs"
+                              colorScheme="red"
+                              bg="red.600"
+                              color="white"
+                              borderRadius="full"
+                              px={3}
+                              leftIcon={<Icon as={RefreshCw} />}
+                              isLoading={isSyncing}
+                              onClick={() => {
+                                const inId = group.in?.id?.startsWith("local-") ? Number(group.in.id.replace("local-", "")) : null;
+                                const outId = group.out?.id?.startsWith("local-") ? Number(group.out.id.replace("local-", "")) : null;
+                                retryGroup(inId, outId);
+                              }}
+                              _hover={{ bg: "red.700" }}
+                            >
+                              Reintentar Sincronización
+                            </Button>
+                          )}
+
+                          {isPendingCheckout && (
+                            <Badge colorScheme="amber" variant="solid" borderRadius="full" px={3} py={1} fontSize="xs" fontWeight="800" display="flex" align="center" gap={1}>
+                              <Icon as={Clock} boxSize={3.5} /> PENDIENTE CHECK-OUT
+                            </Badge>
+                          )}
+
+                          {!isPendingCheckout && !hasError && !isLocalGroup && (
+                            <Badge colorScheme="emerald" variant="subtle" borderRadius="full" px={3} py={1} fontSize="xs" fontWeight="700" display="flex" align="center" gap={1}>
+                              <Icon as={CheckCircle2} boxSize={3.5} /> COMPLETADA
+                            </Badge>
+                          )}
+                        </HStack>
                       </Flex>
 
-                      <Box>
-                        <Badge colorScheme={group.in?.isLocal ? "yellow" : "green"}>
-                          {group.in?.isLocal ? "CHECK IN (Local)" : "CHECK IN"}
-                        </Badge>
-                        <Text fontSize="sm">
-                          {formatDateTime(group.in?.createdAt)}
-                        </Text>
-                      </Box>
-
-                      {group.out ? (
-                        <Box>
-                          <Badge colorScheme={group.out.isLocal ? "yellow" : "red"}>
-                            {group.out.isLocal ? "CHECK OUT (Local)" : "CHECK OUT"}
-                          </Badge>
-                          <Text fontSize="sm">
-                            {formatDateTime(group.out.createdAt)}
-                          </Text>
-
-                          <Divider my={2} />
-
-                          <Badge colorScheme="green">
-                            Duración:{" "}
-                            {calculateDuration(
-                              group.in?.createdAt,
-                              group.out.createdAt
-                            )}
-                          </Badge>
+                      {/* BANNER INTERACTIVO SI FALTA CHECK OUT */}
+                      {isPendingCheckout && (
+                        <Box bg="amber.100" border="1px solid" borderColor="amber.300" p={2.5} borderRadius="xl">
+                          <HStack spacing={2}>
+                            <Icon as={AlertTriangle} boxSize={4} color="amber.800" />
+                            <Text fontSize="xs" color="amber.900" fontWeight="700">
+                              ⚠️ Esta visita no tiene Check-Out registrado. Recuerda marcar tu salida al finalizar.
+                            </Text>
+                          </HStack>
                         </Box>
-                      ) : (
-                        <Badge colorScheme={group.in?.isLocal ? "yellow" : "orange"}>
-                          {group.in?.isLocal ? "Pendiente de Check-In Servidor" : "Pendiente de Check-Out"}
-                        </Badge>
                       )}
 
+                      {/* BANNER SI TIENE ERRORES O ALMACENAMIENTO LOCAL SIN SUBIR */}
+                      {(hasError || isLocalGroup) && (
+                        <Box bg="red.100" border="1px solid" borderColor="red.300" p={2.5} borderRadius="xl">
+                          <HStack spacing={2}>
+                            <Icon as={AlertCircle} boxSize={4} color="red.800" />
+                            <Text fontSize="xs" color="red.900" fontWeight="700">
+                              🔴 Marca almacenada localmente o rechazada por el servidor. Haz clic en "Reintentar Sincronización" o conéctate a internet.
+                            </Text>
+                          </HStack>
+                        </Box>
+                      )}
+
+                      {/* Timestamps de Check-In y Check-Out */}
+                      <Flex direction={{ base: "column", sm: "row" }} justify="space-between" align={{ base: "stretch", sm: "center" }} gap={3} pt={1}>
+                        
+                        {/* Bloque CHECK IN */}
+                        <HStack spacing={3} bg="emerald.50" p={2.5} borderRadius="xl" border="1px solid" borderColor="emerald.200" flex={1}>
+                          <Box p={1.5} borderRadius="lg" bg="emerald.600" color="white">
+                            <Icon as={LogIn} boxSize={4} />
+                          </Box>
+                          <VStack align="start" spacing={0}>
+                            <Text fontSize="10px" fontWeight="800" color="emerald.800" letterSpacing="wider">
+                              CHECK IN {group.in?.isLocal ? "(LOCAL)" : ""}
+                            </Text>
+                            <Text fontSize="xs" fontWeight="700" color="gray.800">
+                              {formatDateTime(group.in?.createdAt)}
+                            </Text>
+                          </VStack>
+                        </HStack>
+
+                        {/* Bloque CHECK OUT */}
+                        <HStack 
+                          spacing={3} 
+                          bg={group.out ? "red.50" : "amber.50"} 
+                          p={2.5} 
+                          borderRadius="xl" 
+                          border="1px solid" 
+                          borderColor={group.out ? "red.200" : "amber.300"} 
+                          flex={1}
+                        >
+                          <Box p={1.5} borderRadius="lg" bg={group.out ? "red.600" : "amber.500"} color="white">
+                            <Icon as={LogOut} boxSize={4} />
+                          </Box>
+                          <VStack align="start" spacing={0}>
+                            <Text fontSize="10px" fontWeight="800" color={group.out ? "red.800" : "amber.900"} letterSpacing="wider">
+                              CHECK OUT {group.out?.isLocal ? "(LOCAL)" : ""}
+                            </Text>
+                            <Text fontSize="xs" fontWeight="700" color="gray.800">
+                              {group.out ? formatDateTime(group.out.createdAt) : "Sin registrar salida"}
+                            </Text>
+                          </VStack>
+                        </HStack>
+
+                      </Flex>
+
+                      {/* Duración */}
+                      {group.out && (
+                        <Flex justify="flex-end" align="center" pt={1}>
+                          <HStack spacing={1.5} bg="gray.100" px={3} py={1} borderRadius="full">
+                            <Icon as={Clock} boxSize={3.5} color="gray.600" />
+                            <Text fontSize="xs" fontWeight="700" color="gray.700">
+                              Duración: {calculateDuration(group.in?.createdAt, group.out.createdAt)}
+                            </Text>
+                          </HStack>
+                        </Flex>
+                      )}
+
+                      {/* Mensajes de Error Detallados */}
                       {group.in?.errorMessage && (
-                        <Box bg="red.50" p={2} borderRadius="md" border="1px solid" borderColor="red.200">
-                          <Text fontSize="xs" color="red.600" fontWeight="semibold">
-                            Rechazado (IN): {group.in.errorMessage}
+                        <Box bg="red.100" p={2} borderRadius="xl" border="1px solid" borderColor="red.300">
+                          <Text fontSize="xs" color="red.800" fontWeight="bold">
+                            Detalle de Rechazo (IN): {group.in.errorMessage}
                           </Text>
                         </Box>
                       )}
                       
                       {group.out?.errorMessage && (
-                        <Box bg="red.50" p={2} borderRadius="md" border="1px solid" borderColor="red.200">
-                          <Text fontSize="xs" color="red.600" fontWeight="semibold">
-                            Rechazado (OUT): {group.out.errorMessage}
+                        <Box bg="red.100" p={2} borderRadius="xl" border="1px solid" borderColor="red.300">
+                          <Text fontSize="xs" color="red.800" fontWeight="bold">
+                            Detalle de Rechazo (OUT): {group.out.errorMessage}
                           </Text>
                         </Box>
                       )}
+
                     </VStack>
                   </CardBody>
-                </Card>
+                </MotionCard>
               );
             })
           )}

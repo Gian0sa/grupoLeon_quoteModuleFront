@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import {
   Box, Flex, HStack, Text, Badge, Select, InputGroup, InputLeftElement, Input, IconButton,
-  SimpleGrid, Image, Button, Spinner
+  SimpleGrid, Button, Spinner, useDisclosure
 } from '@chakra-ui/react';
-import { SearchIcon, CloseIcon } from '@chakra-ui/icons';
-import { useProductEquivalents, useFilterMetadata } from '../hooks/queries/catalogQueries';
+import { SearchIcon, CloseIcon, ViewIcon } from '@chakra-ui/icons';
+import { useProductEquivalents, useFilterMetadata, useTraceEquivalence } from '../hooks/queries/catalogQueries';
+import EquivalenceTraceModal from './EquivalenceTraceModal';
+import Pagination from '../../../components/Pagination';
 
-export default function ProductDetailEquivalentsSection({ slug, tipo, apiBaseUrl, onNavigate }) {
+export default function ProductDetailEquivalentsSection({ slug, tipo, onNavigate, searchMode = 'deep' }) {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(9);
   const [searchCode, setSearchCode] = useState('');
@@ -15,7 +17,8 @@ export default function ProductDetailEquivalentsSection({ slug, tipo, apiBaseUrl
   const { data: eqRes, isLoading } = useProductEquivalents(
     slug, page, limit, tipo.idTipo,
     documentoOrigenId || null,
-    searchCode || null
+    searchCode || null,
+    searchMode
   );
 
   const { data: filterMeta } = useFilterMetadata();
@@ -29,6 +32,20 @@ export default function ProductDetailEquivalentsSection({ slug, tipo, apiBaseUrl
     setSearchCode('');
     setDocumentoOrigenId('');
     setPage(1);
+  };
+
+  const { isOpen, onOpen, onClose } = useDisclosure();
+  const [traceTargetSlug, setTraceTargetSlug] = useState(null);
+  const { data: traceResult, isFetching: traceLoading } = useTraceEquivalence(slug, traceTargetSlug);
+
+  const handleTrace = (targetSlug) => {
+    setTraceTargetSlug(targetSlug);
+    onOpen();
+  };
+
+  const handleCloseTrace = () => {
+    onClose();
+    setTraceTargetSlug(null);
   };
 
   return (
@@ -82,34 +99,78 @@ export default function ProductDetailEquivalentsSection({ slug, tipo, apiBaseUrl
         {isLoading ? (
           <Flex justify="center" py={6}><Spinner /></Flex>
         ) : equivalents.length > 0 ? (
-          <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4}>
+          <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
             {equivalents.map((eq) => {
               const prod = eq.productoB || eq;
-              const imgUrl = prod.multimedia?.[0]?.urlArchivo ? `${apiBaseUrl}/${prod.multimedia[0].urlArchivo}` : null;
+              const tipoEquivNombre = eq.tipoEquivalencia?.nombre;
+              const esPropio = !!prod.esPropio;
+              const estado = prod.estado;
               return (
                 <Box
-                  key={prod.idProducto} borderWidth="1px" borderRadius="lg" overflow="hidden"
-                  _hover={{ shadow: 'md', borderColor: 'green.400', transform: 'translateY(-2px)' }}
-                  transition="all 0.2s" cursor="pointer" onClick={() => onNavigate(prod.slug)}
+                  key={prod.idProducto} borderWidth="1px" borderRadius="lg" p={3}
+                  bg={esPropio ? 'green.50' : 'white'}
+                  _hover={{ shadow: 'md', borderColor: 'green.400' }}
+                  transition="all 0.2s"
                 >
-                  <Box bg="green.700" px={3} py={1}>
-                    <Text color="white" fontWeight="bold" fontSize="sm" isTruncated>
-                      {prod.codigo || prod.codigoLimpio || 'S/C'}
+                  <Flex align="flex-start" justify="space-between" gap={2} mb={2}>
+                    <HStack spacing={1} flexWrap="wrap">
+                      {tipoEquivNombre && <Badge colorScheme="gray" fontSize="9px">{tipoEquivNombre}</Badge>}
+                      <Badge colorScheme={esPropio ? 'green' : 'orange'} fontSize="9px">
+                        {esPropio ? 'Vendemos' : 'Equivalente'}
+                      </Badge>
+                      {estado && (
+                        <Badge colorScheme={estado === 'Activo' ? 'green' : 'red'} fontSize="9px">
+                          {estado}
+                        </Badge>
+                      )}
+                    </HStack>
+                    <Text fontSize="10px" color="gray.500" fontFamily="mono" flexShrink={0}>
+                      ID: {prod.idProducto}
                     </Text>
-                  </Box>
-                  <Flex p={3} gap={3}>
-                    <Box
-                      w="60px" h="60px" bg="gray.50" borderRadius="md" display="flex"
-                      alignItems="center" justifyContent="center" flexShrink={0}
-                    >
-                      {imgUrl ? <Image src={imgUrl} alt={prod.codigo} maxH="55px" objectFit="contain" /> : <Text fontSize="2xl">📦</Text>}
-                    </Box>
-                    <Box flex="1" overflow="hidden">
-                      <Text fontSize="xs" fontWeight="bold" isTruncated>{prod.marca?.nombre || '-'}</Text>
-                      <Text fontSize="xs" color="gray.500" isTruncated>{prod.tipo?.nombre || '-'}</Text>
-                      {eq.tipoEquivalencia && <Badge colorScheme="purple" fontSize="2xs" mt={1}>{eq.tipoEquivalencia.nombre}</Badge>}
-                    </Box>
                   </Flex>
+
+                  <Text fontSize="sm" fontWeight="bold" color="gray.800" mb={2} noOfLines={1}>
+                    {[prod.marca?.nombre, prod.tipo?.nombre, prod.codigo].filter(Boolean).join(' ')}
+                  </Text>
+
+                  <SimpleGrid columns={2} spacing={2} fontSize="11px" pt={2} borderTopWidth="1px">
+                    <Box>
+                      <Text color="gray.500">Código</Text>
+                      <Text fontFamily="mono" fontWeight="bold" color="gray.700">{prod.codigo || '-'}</Text>
+                    </Box>
+                    <Box>
+                      <Text color="gray.500">OEM</Text>
+                      <Text fontFamily="mono" fontWeight="bold" color="gray.700">{prod.oem || '-'}</Text>
+                    </Box>
+                    <Box>
+                      <Text color="gray.500">Marca</Text>
+                      <Text color="gray.700">{prod.marca?.nombre || '-'}</Text>
+                    </Box>
+                    <Box>
+                      <Text color="gray.500">Tipo</Text>
+                      <Text color="gray.700">{prod.tipo?.nombre || '-'}</Text>
+                    </Box>
+                    <Box gridColumn="span 2">
+                      <Text color="gray.500">Origen</Text>
+                      <Text color="gray.700" fontWeight="medium">{prod.documentoOrigen?.nombre || 'N/A'}</Text>
+                    </Box>
+                  </SimpleGrid>
+
+                  <HStack mt={3} pt={2} borderTopWidth="1px" justify="space-between">
+                    <Button
+                      size="xs" bg="green.700" color="white" _hover={{ bg: 'green.600' }}
+                      onClick={() => handleTrace(prod.slug)}
+                    >
+                      ¿Por qué conecta?
+                    </Button>
+                    <Button
+                      size="xs" bg="green.500" color="white" _hover={{ bg: 'green.400' }}
+                      leftIcon={<ViewIcon />}
+                      onClick={() => onNavigate(prod.slug)}
+                    >
+                      Ver Más
+                    </Button>
+                  </HStack>
                 </Box>
               );
             })}
@@ -120,12 +181,19 @@ export default function ProductDetailEquivalentsSection({ slug, tipo, apiBaseUrl
       </Box>
 
       {!isLoading && totalPages > 1 && (
-        <HStack justify="center" py={3} borderTopWidth="1px" spacing={3}>
-          <Button size="xs" onClick={() => setPage(p => Math.max(1, p - 1))} isDisabled={page === 1}>Anterior</Button>
-          <Text fontSize="xs">{page} / {totalPages}</Text>
-          <Button size="xs" onClick={() => setPage(p => Math.min(totalPages, p + 1))} isDisabled={page === totalPages}>Siguiente</Button>
-        </HStack>
+        <Pagination 
+          page={page} 
+          totalPages={totalPages} 
+          onPageChange={setPage} 
+        />
       )}
+
+      <EquivalenceTraceModal
+        isOpen={isOpen}
+        onClose={handleCloseTrace}
+        traceLoading={traceLoading}
+        traceResult={traceResult}
+      />
     </Box>
   );
 }

@@ -1,6 +1,6 @@
 .btnactionsdash {
-  font-size: 10px !important;
-  background-color: white;
+  font-size: 12px !important;
+  backdrop-filter: blur(8px);
 }
 
 .btnsgroup {

@@ -10,12 +10,14 @@ const typeStyles = {
 
 export function Notifications({ data }) {
   return (
-    <Box>
-      <Text fontSize="xl" fontWeight="bold" mb={4}>
-        Notificaciones
-      </Text>
+    <Box mt={2}>
+      <HStack spacing={2} mb={4} align="center">
+        <Icon as={FiBell} boxSize={5} color="green.600" />
+        <Text fontSize="lg" fontWeight="800" color="gray.800" letterSpacing="tight">
+          Notificaciones
+        </Text>
+      </HStack>
 
-      {/* ✅ Sección con altura fija y scroll interno */}
       <Box
         maxH="300px"
         overflowY="auto"
@@ -30,23 +32,24 @@ export function Notifications({ data }) {
                 <Box
                   key={notification.id}
                   p={4}
-                  borderRadius="lg"
+                  borderRadius="2xl"
                   borderLeft="4px solid"
                   borderLeftColor={style.color}
-                  shadow="sm"
-                  bg="card" 
+                  boxShadow="0 4px 15px rgba(0,0,0,0.03)"
+                  bg="white" 
+                  border="1px solid rgba(0,0,0,0.05)"
                 >
                   <HStack justify="space-between" align="flex-start">
-                    <HStack align="flex-start">
-                      <Icon as={style.icon} color={style.color} boxSize={5} />
+                    <HStack align="flex-start" spacing={3}>
+                      <Icon as={style.icon} color={style.color} boxSize={5} mt={0.5} />
                       <VStack align="start" spacing={0}>
-                        <Text fontWeight="semibold" color="text">
+                        <Text fontWeight="semibold" color="gray.800" fontSize="sm">
                           {notification.title}
                         </Text>
-                        <Text fontSize="sm" color="text">
+                        <Text fontSize="sm" color="gray.600">
                           {notification.message}
                         </Text>
-                        <Text fontSize="xs" color="gray.500">
+                        <Text fontSize="xs" color="gray.400" mt={1}>
                           {new Date(notification.createdAt).toLocaleString()}
                         </Text>
                       </VStack>
@@ -56,9 +59,19 @@ export function Notifications({ data }) {
               );
             })
           ) : (
-            <Text fontSize="sm" color="text">
-              No hay notificaciones disponibles
-            </Text>
+            <Box
+              p={6}
+              bg="white"
+              borderRadius="2xl"
+              border="1px border-dashed"
+              borderColor="gray.200"
+              textAlign="center"
+              boxShadow="0 4px 12px rgba(0,0,0,0.02)"
+            >
+              <Text fontSize="sm" color="gray.500" fontWeight="medium">
+                No hay notificaciones disponibles por el momento
+              </Text>
+            </Box>
           )}
         </VStack>
       </Box>

@@ -32,6 +32,7 @@ import MyVisitsPage from "../features/checkinout/pages/MyVisitsPage.jsx";
 import { EntradaPage } from "../features/entrada/pages/EntradaPage.jsx";
 import { AttendanceAdminPage } from "../features/entrada/pages/AttendanceAdminPage.jsx";
 import { NewClientsPage } from "../features/clients/pages/NewClientsPage.jsx";
+import { FAQPage } from "../features/help/pages/FAQPage.jsx";
 
 const AppRoutes = () => {
   return (
@@ -270,6 +271,14 @@ const AppRoutes = () => {
         element={
           <PrivateRoute>
             <AttendanceAdminPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/faq"
+        element={
+          <PrivateRoute>
+            <FAQPage />
           </PrivateRoute>
         }
       />

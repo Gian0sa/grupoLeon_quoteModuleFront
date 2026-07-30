@@ -31,72 +31,88 @@ export function DashboardHeader({ today, exchangeRate, isLoadingExchangeRate, on
   const accent = useColorModeValue("accent", "accent");
 
   return (
-    <Box position="relative">
-      {/* Badge flotante con el tipo de cambio */}
-      <Box
-        position="absolute"
-        top="2"
-        right="2"
-        bg={badgeBg}
-        borderRadius="md"
-        px={3}
-        py={1}
-        boxShadow="sm"
-        minW="80px"
-        display="flex"
-        justifyContent="center"
-        alignItems="center"
-      >
-        {isLoadingExchangeRate ? (
-          <Spinner size="xs" color={accent} />
-        ) : (
-          <Text color={badgeText} fontSize="xs" fontWeight="semibold">
-            USD: {exchangeRate?.collectionRate ?? "N/A"}
-          </Text>
-        )}
-      </Box>
-
-      <Flex justify="space-between" align="center" p={4} py={5} boxShadow="sm" gap={4}>
-        {/* Bloque del saludo */}
-        <Box flex="1" minW="0">
-          <VStack align="start" spacing={0}>
-            <Text fontSize="2xl" fontWeight="bold" color="white" whiteSpace="normal">
-              Hola, {username}.
+    <Box position="relative" maxW="1200px" mx="auto" px={{ base: 4, md: 6 }} pt={{ base: 3, md: 5 }} pb={{ base: 2, md: 4 }}>
+      {/* Barra superior de utilidad: Tipo de Cambio + Acciones */}
+      <Flex justify="space-between" align="center" mb={{ base: 4, md: 5 }}>
+        {/* Badge con el tipo de cambio */}
+        <Box
+          bg="whiteAlpha.200"
+          backdropFilter="blur(12px)"
+          border="1px solid rgba(255,255,255,0.25)"
+          borderRadius="full"
+          px={{ base: 3, sm: 4 }}
+          py={1.5}
+          boxShadow="0 4px 15px rgba(0,0,0,0.12)"
+          display="flex"
+          alignItems="center"
+          gap={2}
+        >
+          <Box w="6px" h="6px" borderRadius="full" bg="green.300" boxShadow="0 0 8px rgba(134, 239, 172, 0.8)" />
+          {isLoadingExchangeRate ? (
+            <Spinner size="xs" color="white" />
+          ) : (
+            <Text color="white" fontSize={{ base: "xs", sm: "sm" }} fontWeight="bold" letterSpacing="wide">
+              USD: {exchangeRate?.collectionRate ?? "N/A"}
             </Text>
-            <Text fontSize="sm" color="white" opacity={0.9}>
-              {today}
-            </Text>
-          </VStack>
+          )}
         </Box>
 
-        {/* Bloque de íconos */}
-        <HStack spacing={2} flexShrink={0}>
-          {/* <IconButton
-            aria-label="Toggle Theme"
-            icon={colorMode === "light" ? <MoonIcon /> : <SunIcon />}
-            onClick={toggleColorMode}
-            variant="ghost"
-            color={accent}
-          /> */}
+        {/* Bloque de íconos de acción unificados en un solo recuadro */}
+        <HStack 
+          bg="rgba(255, 255, 255, 0.14)" 
+          backdropFilter="blur(14px)" 
+          border="1px solid rgba(255, 255, 255, 0.25)" 
+          borderRadius="full" 
+          p={1} 
+          px={1.5}
+          spacing={1}
+          boxShadow="0 4px 15px rgba(0,0,0,0.12)"
+        >
           <RefreshButton
-              queries={[
-                [QUERY_KEYS.quotesSellers, salesEmployeeCode ?? 0, format(new Date(), "MM")],
-                [QUERY_KEYS.quotesSellersAdmin, salesEmployeeCode ?? 0, format(new Date(), "MM")],
-                [QUERY_KEYS.notifications],
-                [QUERY_KEYS.exchangeRate, "USD", format(new Date(), "yyyy-MM-dd")]
-              ]}
-            />
-          {/* Botón de notificaciones */}
+            variant="ghost"
+            size="sm"
+            queries={[
+              [QUERY_KEYS.quotesSellers, salesEmployeeCode ?? 0, format(new Date(), "MM")],
+              [QUERY_KEYS.quotesSellersAdmin, salesEmployeeCode ?? 0, format(new Date(), "MM")],
+              [QUERY_KEYS.notifications],
+              [QUERY_KEYS.exchangeRate, "USD", format(new Date(), "yyyy-MM-dd")]
+            ]}
+          />
+
           <IconButton
-            icon={<BellIcon />}
+            icon={<BellIcon boxSize={4} />}
             variant="ghost"
             aria-label="Notificaciones"
-            color={accent}
+            color="white"
+            borderRadius="full"
+            size="sm"
+            _hover={{ bg: "whiteAlpha.300" }}
             onClick={() => console.log("Notificaciones abiertas")}
           />
+
           <LateralMenu />
         </HStack>
       </Flex>
+
+      {/* Bloque del saludo a ancho completo */}
+      <Box w="full" mb={2}>
+        <VStack align="start" spacing={1}>
+          <Text 
+            fontSize={{ base: "2xl", sm: "3xl", md: "4xl" }} 
+            fontWeight="900" 
+            bgGradient="linear(to-r, white, whiteAlpha.800)"
+            bgClip="text"
+            letterSpacing="tight"
+            lineHeight="1.15"
+            style={{ WebkitTextFillColor: "transparent" }}
+          >
+            Hola, {username}.
+          </Text>
+          <Text fontSize={{ base: "xs", sm: "sm" }} color="whiteAlpha.800" fontWeight="normal" letterSpacing="wide">
+            {today}
+          </Text>
+        </VStack>
+      </Box>
     </Box>
   );
 }

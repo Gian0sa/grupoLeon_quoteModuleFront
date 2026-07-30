@@ -10,7 +10,7 @@ export default function ProductSpecsTable({ product }) {
       <Box bg="green.600" color="white" px={4} py={1}>
         <Text fontWeight="bold" fontSize="sm">MEDIDAS</Text>
       </Box>
-      <Box maxHeight="100px" overflowY="auto">
+      <Box maxH="200px" overflowY="auto" pb={1}>
         <Table size="sm" variant="simple">
           <Tbody>
           {product.weight && (

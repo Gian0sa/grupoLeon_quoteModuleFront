@@ -3,7 +3,8 @@ import {
   getProducts,
   getFilterMetadata,
   getProductEquivalents,
-  getProductApplications
+  getProductApplications,
+  getTraceEquivalence
 } from "../../services/catalogServices";
 
 export const useProducts = (page, limit, filters) => {
@@ -20,10 +21,10 @@ export const useFilterMetadata = () => {
   });
 };
 
-export const useProductEquivalents = (slug, page, limit, tipoId, documentoOrigenId, searchCode) => {
+export const useProductEquivalents = (slug, page, limit, tipoId, documentoOrigenId, searchCode, mode = 'deep') => {
   return useQuery({
-    queryKey: ["productEquivalents", slug, page, limit, tipoId, documentoOrigenId, searchCode],
-    queryFn: () => getProductEquivalents(slug, page, limit, tipoId, documentoOrigenId, searchCode),
+    queryKey: ["productEquivalents", slug, page, limit, tipoId, documentoOrigenId, searchCode, mode],
+    queryFn: () => getProductEquivalents(slug, page, limit, tipoId, documentoOrigenId, searchCode, mode),
     enabled: !!slug,
   });
 };
@@ -33,6 +34,14 @@ export const useProductApplications = (slug, page, limit) => {
     queryKey: ["productApplications", slug, page, limit],
     queryFn: () => getProductApplications(slug, page, limit),
     enabled: !!slug,
+  });
+};
+
+export const useTraceEquivalence = (slugA, slugB) => {
+  return useQuery({
+    queryKey: ["traceEquivalence", slugA, slugB],
+    queryFn: () => getTraceEquivalence(slugA, slugB),
+    enabled: !!slugA && !!slugB,
   });
 };
 

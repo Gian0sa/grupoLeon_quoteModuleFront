@@ -5,27 +5,30 @@ import {
   VStack,
   Badge,
   useDisclosure,
-  Icon
+  Icon,
+  Flex
 } from "@chakra-ui/react";
 import { ProductPriceListModal } from "./ProductPriceListModal";
-import { FiPackage } from "react-icons/fi";
+import { FiPackage, FiChevronRight } from "react-icons/fi";
+import { motion } from "framer-motion";
+
+const MotionBox = motion(Box);
 
 export function ProductPriceListCard({ product, tipoPrecio }) {
   const { isOpen, onOpen, onClose } = useDisclosure();
 
-  const { SIGLA, ITEM_CODE, PRECIO_LISTA, PRECIO_DESCUENTO, DESCUENTO_PCT, STOCK_DISPONIBLE, PRECIO_CONTADO, PRECIO_CREDITO , ROTACION } = product;
+  const { SIGLA, ITEM_CODE, PRECIO_LISTA, PRECIO_DESCUENTO, DESCUENTO_PCT, STOCK_DISPONIBLE, PRECIO_CONTADO, PRECIO_CREDITO } = product;
 
   const hasDiscount = DESCUENTO_PCT > 0;
   const finalPrice = hasDiscount ? PRECIO_DESCUENTO : PRECIO_LISTA;
 
   const priceColorMap = {
-    CONTADO: { bg: "blue.100", color: "blue.800", label: "Precio al contado" },
-    CREDITO: { bg: "red.100", color: "red.800", label: "Precio a credito" },
-    FINAL: { bg: "green.100", color: "green.800", label: "Precio final" },
+    CONTADO: { bg: "blue.50", color: "blue.700", borderColor: "blue.200", label: "Precio contado" },
+    CREDITO: { bg: "red.50", color: "red.700", borderColor: "red.200", label: "Precio crédito" },
+    FINAL: { bg: "green.50", color: "green.700", borderColor: "green.200", label: "Precio final" },
   };
 
-  const { bg, color, label } = priceColorMap[tipoPrecio] || priceColorMap.FINAL;
-
+  const { bg, color, borderColor } = priceColorMap[tipoPrecio] || priceColorMap.FINAL;
 
   const formatNumber = (num, decimals = 2) =>
     num?.toLocaleString("es-PE", {
@@ -46,81 +49,85 @@ export function ProductPriceListCard({ product, tipoPrecio }) {
   };
 
   const selectedPrice = getPriceByType();
+  const isAvailable = Number(STOCK_DISPONIBLE || 0) > 0;
 
   return (
     <>
-      <Box
+      <MotionBox
+        whileHover={{ y: -2, boxShadow: "0 8px 25px rgba(0, 0, 0, 0.06)" }}
+        whileTap={{ scale: 0.99 }}
         bg="white"
-        borderRadius="md"
-        shadow="sm"
-        borderWidth="1px"
-        p={1}
-        mb={0}
+        borderRadius="2xl"
+        border="1.5px solid"
+        borderColor="gray.100"
+        p={{ base: 3, sm: 4 }}
+        mb={2}
         cursor="pointer"
-        _hover={{ shadow: "md", borderColor: "green.400" }}
-        transition="all 0.2s"
         onClick={onOpen}
+        transition="all 0.2s"
+        position="relative"
+        overflow="hidden"
       >
-        <HStack justify="space-between" align="center">
-          <HStack justify="space-between" align="center" width="100%">
-            {/* IZQUIERDA */}
-            <VStack align="start" spacing={0} flex="1">
-              <Text fontWeight="500" color="gray.800" fontSize="sm" noOfLines={1}>
-                {SIGLA}
-              </Text>
-
-              {/* ITEM CODE destacado */}
-              <Text fontSize="xs" color="gray.500" fontWeight="bold">
-                {ITEM_CODE}
-              </Text>
-            </VStack>
-
-            {/* DERECHA */}
-            <HStack spacing={1} align="center">
-              ...
-            </HStack>
-          </HStack>
-
-
-          <HStack spacing={1} align="center">
-            <Text
-              fontSize="sm"
-              color={color}
-              bg={bg}
-              py={1}
-              px={3}
-              borderRadius="full"
-              width="100px"
-              fontWeight="bold"
-              display="flex"
-              justifyContent="center"
-            >
-              {`$ ${formatNumber(selectedPrice)}`}
+        <Flex direction={{ base: "column", sm: "row" }} justify="space-between" align={{ base: "stretch", sm: "center" }} gap={3}>
+          {/* IZQUIERDA: Nombre + Código */}
+          <VStack align="start" spacing={1} flex="1" minW={0}>
+            <Text fontWeight="800" color="gray.800" fontSize={{ base: "13px", md: "14px" }} lineHeight="1.3" noOfLines={2}>
+              {SIGLA || "Producto sin descripción"}
             </Text>
 
+            <HStack spacing={2}>
+              <Badge bg="gray.100" color="gray.700" px={2} py={0.5} borderRadius="md" fontSize="11px" fontWeight="700" fontFamily="mono">
+                #{ITEM_CODE}
+              </Badge>
+              {hasDiscount && (
+                <Badge colorScheme="orange" fontSize="10px" fontWeight="800">
+                  -{DESCUENTO_PCT}% DESC
+                </Badge>
+              )}
+            </HStack>
+          </VStack>
 
-            {/* Stock */}
-            <Badge
-              bg={STOCK_DISPONIBLE === 0 ? "#ff4c4cfa" : "#157f3d"}
-              color="white"
-              width="100px"
-              alignItems="center"
-              fontSize="xs"
-              px={1}
-              py={1}
-              borderRadius="full"
-              fontWeight="bold"
-              display="flex"
-              justifyContent="center"
-              textTransform="none"
+          {/* DERECHA: Precio + Stock Badge */}
+          <HStack spacing={3} justify={{ base: "space-between", sm: "flex-end" }} align="center" flexShrink={0}>
+            {/* Precio */}
+            <Box
+              bg={bg}
+              color={color}
+              border="1px solid"
+              borderColor={borderColor}
+              py={1.5}
+              px={3.5}
+              borderRadius="xl"
+              fontWeight="800"
+              fontSize={{ base: "13px", md: "14px" }}
+              textAlign="center"
+              boxShadow="sm"
             >
-              <Icon as={FiPackage} boxSize={4} color="white" mr={1} />
-              {formatNumber(STOCK_DISPONIBLE, 0)} unid.
+              $ {formatNumber(selectedPrice)}
+            </Box>
+
+            {/* Stock Badge */}
+            <Badge
+              bg={isAvailable ? "green.600" : "red.500"}
+              color="white"
+              fontSize="11px"
+              px={3}
+              py={1.5}
+              borderRadius="xl"
+              fontWeight="800"
+              display="flex"
+              alignItems="center"
+              gap={1.5}
+              boxShadow="sm"
+            >
+              <Icon as={FiPackage} boxSize={3.5} />
+              <Text>{formatNumber(STOCK_DISPONIBLE, 0)} UNID.</Text>
             </Badge>
 
+            <Icon as={FiChevronRight} color="gray.400" boxSize={5} display={{ base: "none", sm: "block" }} />
           </HStack>
-        </HStack>
-      </Box>
+        </Flex>
+      </MotionBox>
 
       <ProductPriceListModal product={product} isOpen={isOpen} onClose={onClose} />
     </>
