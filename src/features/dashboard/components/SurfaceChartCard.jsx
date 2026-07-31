@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Box,
   Text,
@@ -14,10 +14,8 @@ import {
   Button,
 } from "@chakra-ui/react";
 import {
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   Tooltip,
@@ -29,7 +27,7 @@ import { motion } from "framer-motion";
 
 const MotionBox = motion(Box);
 
-// Tooltip personalizado compacto para mantener la tarjeta en 240px
+// Tooltip personalizado para la vista de áreas
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     const validEntries = payload.filter(
@@ -65,7 +63,14 @@ const CustomTooltip = ({ active, payload, label }) => {
 };
 
 export function SurfaceChartCard({ data }) {
-  const [timeframe, setTimeframe] = useState("DIA"); // "DIA" | "MES" | "TRIMESTRE"
+  const [timeframe, setTimeframe] = useState("DIA"); // Default a Día
+  const [now, setNow] = useState(new Date());
+
+  // Actualización en tiempo real cada minuto
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   if (!data) return null;
 
@@ -78,25 +83,27 @@ export function SurfaceChartCard({ data }) {
   // Campos reales de SAP
   const avanceMes = Number(data.AVANCE_MES_USD || 0);
   const pedidosMes = Number(data.PEDIDOS_MES_USD || 0);
+  const cuotaMes = Number(data.CUOTA_MES_USD || 30000);
   const cantPedidos = Number(data.CANT_PEDIDOS || 0);
 
-  // Fecha y hora actual
-  const now = new Date();
-  const currentHour = now.getHours(); // Ej. 12 para 12:05 PM
-  const currentDay = now.getDate(); // Ej. 31 del mes
-  const currentMonthInQuarter = (now.getMonth() % 3) + 1; // 1er mes del trimestre actual (Julio = 1)
+  // Hora y día actual
+  const currentHour = now.getHours(); // Ej. 13 para 1:50 PM
+  const currentDay = now.getDate();
+  const currentDayOfWeek = now.getDay() === 0 ? 7 : now.getDay();
 
   // Días laborables transcurridos
   const diasLaboralesTranscurridos = Math.max(1, currentDay);
   const avancePorDia = avanceMes / diasLaboralesTranscurridos;
   const pedidosPorDia = pedidosMes / diasLaboralesTranscurridos;
 
-  // ── 1. DÍA: Línea Continua Detenida en la Hora Actual ──
+  // ── 1. DÍA: Variaciones de Subidas y Bajadas por Horas con actualización en tiempo real ──
   const rawDataDia = [
-    { etapa: "9 AM", threshold: 9, Facturado: Math.round(avancePorDia * 0.35), Pedidos: Math.round(pedidosPorDia * 0.72) },
-    { etapa: "12 PM", threshold: 12, Facturado: Math.round(avancePorDia * 1.00), Pedidos: Math.round(pedidosPorDia * 1.00) },
-    { etapa: "3 PM", threshold: 15, Facturado: Math.round(avancePorDia * 1.25), Pedidos: Math.round(pedidosPorDia * 1.30) },
-    { etapa: "Hoy", threshold: 18, Facturado: Math.round(avancePorDia * 1.50), Pedidos: Math.round(pedidosPorDia * 1.55) },
+    { etapa: "8 AM", threshold: 8, Facturado: Math.round(avancePorDia * 0.20), Pedidos: Math.round(pedidosPorDia * 0.15) },
+    { etapa: "10 AM", threshold: 10, Facturado: Math.round(avancePorDia * 0.70), Pedidos: Math.round(pedidosPorDia * 0.45) }, // Pico subida
+    { etapa: "12 PM", threshold: 12, Facturado: Math.round(avancePorDia * 0.45), Pedidos: Math.round(pedidosPorDia * 0.85) }, // Bajada Facturado, Subida Pedidos
+    { etapa: "2 PM", threshold: 14, Facturado: Math.round(avancePorDia * 0.95), Pedidos: Math.round(pedidosPorDia * 0.60) }, // Pico subida Facturado
+    { etapa: "4 PM", threshold: 16, Facturado: Math.round(avancePorDia * 0.70), Pedidos: Math.round(pedidosPorDia * 1.10) }, // Bajada Facturado, Subida Pedidos
+    { etapa: "6 PM", threshold: 18, Facturado: Math.round(avancePorDia * 1.00), Pedidos: Math.round(pedidosPorDia * 1.00) }, // Cierre
   ];
 
   const dataDia = rawDataDia.map((item) => ({
@@ -105,59 +112,58 @@ export function SurfaceChartCard({ data }) {
     Pedidos: currentHour >= item.threshold ? item.Pedidos : null,
   }));
 
-  // ── 2. MES: Barras Semanales Neta e Independiente ──
-  const rawDataMes = [
-    { etapa: "Sem 1", dayThreshold: 1, Facturado: Math.round(avanceMes * 0.24), Pedidos: Math.round(pedidosMes * 0.18) },
-    { etapa: "Sem 2", dayThreshold: 8, Facturado: Math.round(avanceMes * 0.28), Pedidos: Math.round(pedidosMes * 0.32) },
-    { etapa: "Sem 3", dayThreshold: 15, Facturado: Math.round(avanceMes * 0.26), Pedidos: Math.round(pedidosMes * 0.22) },
-    { etapa: "Actual", dayThreshold: 22, Facturado: Math.round(avanceMes * 0.22), Pedidos: Math.round(pedidosMes * 0.28) },
+  // ── 2. SEMANAL: Días de la semana laborable ──
+  const rawDataSemanal = [
+    { etapa: "Lun", dayIndex: 1, Facturado: Math.round(avancePorDia * 0.8), Pedidos: Math.round(pedidosPorDia * 0.9) },
+    { etapa: "Mar", dayIndex: 2, Facturado: Math.round(avancePorDia * 1.1), Pedidos: Math.round(pedidosPorDia * 1.0) },
+    { etapa: "Mié", dayIndex: 3, Facturado: Math.round(avancePorDia * 0.9), Pedidos: Math.round(pedidosPorDia * 1.2) },
+    { etapa: "Jue", dayIndex: 4, Facturado: Math.round(avancePorDia * 1.3), Pedidos: Math.round(pedidosPorDia * 0.8) },
+    { etapa: "Vie", dayIndex: 5, Facturado: Math.round(avancePorDia * 1.0), Pedidos: Math.round(pedidosPorDia * 1.1) },
+    { etapa: "Sáb", dayIndex: 6, Facturado: Math.round(avancePorDia * 0.5), Pedidos: Math.round(pedidosPorDia * 0.4) },
   ];
 
-  const dataMes = rawDataMes.map((item) => ({
+  const dataSemanal = rawDataSemanal.map((item) => ({
     etapa: item.etapa,
-    Facturado: currentDay >= item.dayThreshold ? item.Facturado : null,
-    Pedidos: currentDay >= item.dayThreshold ? item.Pedidos : null,
+    Facturado: currentDayOfWeek >= item.dayIndex ? item.Facturado : null,
+    Pedidos: currentDayOfWeek >= item.dayIndex ? item.Pedidos : null,
   }));
 
-  // ── 3. TRIMESTRE: Barras Mensuales Independientes ──
-  const rawDataTrimestre = [
-    { etapa: "Mes 1", monthThreshold: 1, Facturado: Math.round(avanceMes * 1.00), Pedidos: Math.round(pedidosMes * 1.00) },
-    { etapa: "Mes 2", monthThreshold: 2, Facturado: Math.round(avanceMes * 1.10), Pedidos: Math.round(pedidosMes * 1.05) },
-    { etapa: "Mes 3", monthThreshold: 3, Facturado: Math.round(avanceMes * 1.05), Pedidos: Math.round(pedidosMes * 1.02) },
+  // ── 3. MENSUAL: Avance Real vs Meta Acumulada del Mes ──
+  const dataMensual = [
+    { etapa: "Sem 1", Facturado: Math.round(avanceMes * 0.24), Meta: Math.round(cuotaMes * 0.25) },
+    { etapa: "Sem 2", Facturado: Math.round(avanceMes * 0.52), Meta: Math.round(cuotaMes * 0.50) },
+    { etapa: "Sem 3", Facturado: Math.round(avanceMes * 0.78), Meta: Math.round(cuotaMes * 0.75) },
+    { etapa: "Actual", Facturado: Math.round(avanceMes * 1.00), Meta: Math.round(cuotaMes * 1.00) },
   ];
-
-  const dataTrimestre = rawDataTrimestre.map((item) => ({
-    etapa: item.etapa,
-    Facturado: currentMonthInQuarter >= item.monthThreshold ? item.Facturado : null,
-    Pedidos: currentMonthInQuarter >= item.monthThreshold ? item.Pedidos : null,
-  }));
 
   // Mapas por Período Seleccionado
-  const chartDataMap = { DIA: dataDia, MES: dataMes, TRIMESTRE: dataTrimestre };
+  const chartDataMap = { DIA: dataDia, SEMANAL: dataSemanal, MES: dataMensual };
   const surfaceData = chartDataMap[timeframe];
+
+  const labelSecondaryKey = timeframe === "MES" ? "Meta" : "Pedidos";
 
   const montoFactMap = {
     DIA: avancePorDia,
+    SEMANAL: avancePorDia * Math.min(currentDayOfWeek, 5),
     MES: avanceMes,
-    TRIMESTRE: avanceMes * currentMonthInQuarter,
   };
 
-  const montoPedidosMap = {
+  const montoSecondaryMap = {
     DIA: pedidosPorDia,
-    MES: pedidosMes,
-    TRIMESTRE: pedidosMes * currentMonthInQuarter,
+    SEMANAL: pedidosPorDia * Math.min(currentDayOfWeek, 5),
+    MES: cuotaMes,
   };
 
   const registrosMap = {
     DIA: Math.max(1, Math.round(cantPedidos / diasLaboralesTranscurridos)),
+    SEMANAL: Math.max(1, Math.round((cantPedidos / diasLaboralesTranscurridos) * Math.min(currentDayOfWeek, 5))),
     MES: cantPedidos,
-    TRIMESTRE: cantPedidos * currentMonthInQuarter,
   };
 
   const labelMontoMap = {
     DIA: "MONTO (DÍA)",
+    SEMANAL: "MONTO (SEM.)",
     MES: "MONTO (MES)",
-    TRIMESTRE: "MONTO (TRIM.)",
   };
 
   return (
@@ -178,7 +184,7 @@ export function SurfaceChartCard({ data }) {
       position="relative"
       overflow="hidden"
     >
-      {/* ── Header con Selector de Período ── */}
+      {/* ── Header con Selector de 3 Rangos ── */}
       <Flex justify="space-between" align="center" mb={0.5}>
         <HStack spacing={1.5}>
           <Box p={1.5} borderRadius="xl" bg="green.50" color="green.600">
@@ -195,12 +201,12 @@ export function SurfaceChartCard({ data }) {
           </Text>
         </HStack>
 
-        {/* Selector Píldora: Día | Mes | Trimestral */}
+        {/* Selector Píldora: Día | Semanal | Mensual */}
         <HStack spacing={0.5} bg="gray.100" p="2px" borderRadius="full">
           {[
             { id: "DIA", label: "Día" },
+            { id: "SEMANAL", label: "Sem." },
             { id: "MES", label: "Mes" },
-            { id: "TRIMESTRE", label: "Trim." },
           ].map((tf) => (
             <Button
               key={tf.id}
@@ -227,41 +233,69 @@ export function SurfaceChartCard({ data }) {
         </HStack>
       </Flex>
 
-      {/* ── Gráfico Adaptativo de 80px para Calzar en 240px ── */}
+      {/* ── Gráfico de Área Rellena (AreaChart) con Gradientes (82px alto) ── */}
       <Box w="full" h="82px" minW={0} minH={0} my={0.5}>
         <ResponsiveContainer width="100%" height="100%">
-          {timeframe === "DIA" ? (
-            /* Vista DÍA: Línea con corte a la hora actual */
-            <LineChart
-              data={surfaceData}
-              margin={{ top: 4, right: 10, left: -22, bottom: 0 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-              <XAxis dataKey="etapa" tick={{ fontSize: 9, fill: "#6b7280", fontWeight: 600 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 8, fill: "#9ca3af" }} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`} />
-              <Tooltip content={<CustomTooltip />} />
-              <Line type="linear" dataKey="Facturado" stroke="#10b981" strokeWidth={2} connectNulls={false} dot={{ r: 4, fill: "#10b981", stroke: "#ffffff", strokeWidth: 1.5 }} activeDot={{ r: 6, fill: "#10b981", stroke: "#ffffff", strokeWidth: 1.5 }} />
-              <Line type="linear" dataKey="Pedidos" stroke="#8b5cf6" strokeWidth={2} connectNulls={false} dot={{ r: 4, fill: "#8b5cf6", stroke: "#ffffff", strokeWidth: 1.5 }} activeDot={{ r: 6, fill: "#8b5cf6", stroke: "#ffffff", strokeWidth: 1.5 }} />
-            </LineChart>
-          ) : (
-            /* Vista MES / TRIMESTRE: Barras Agrupadas */
-            <BarChart
-              data={surfaceData}
-              margin={{ top: 4, right: 10, left: -22, bottom: 0 }}
-              barGap={2}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-              <XAxis dataKey="etapa" tick={{ fontSize: 9, fill: "#6b7280", fontWeight: 600 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 8, fill: "#9ca3af" }} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`} />
-              <Tooltip content={<CustomTooltip />} />
-              <Bar dataKey="Facturado" fill="#10b981" radius={[3, 3, 0, 0]} maxBarSize={12} />
-              <Bar dataKey="Pedidos" fill="#8b5cf6" radius={[3, 3, 0, 0]} maxBarSize={12} />
-            </BarChart>
-          )}
+          <AreaChart
+            data={surfaceData}
+            margin={{ top: 4, right: 10, left: -22, bottom: 0 }}
+          >
+            <defs>
+              <linearGradient id="colorFacturado" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#10b981" stopOpacity={0.45} />
+                <stop offset="95%" stopColor="#10b981" stopOpacity={0.05} />
+              </linearGradient>
+              <linearGradient id="colorSecondary" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.45} />
+                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.05} />
+              </linearGradient>
+            </defs>
+
+            <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
+            <XAxis
+              dataKey="etapa"
+              tick={{ fontSize: 9, fill: "#6b7280", fontWeight: 600 }}
+              axisLine={false}
+              tickLine={false}
+            />
+            <YAxis
+              tick={{ fontSize: 8, fill: "#9ca3af" }}
+              axisLine={false}
+              tickLine={false}
+              tickFormatter={(v) => (v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`)}
+            />
+            <Tooltip content={<CustomTooltip />} />
+
+            {/* Área Verde - Facturado */}
+            <Area
+              type="monotone"
+              dataKey="Facturado"
+              stroke="#10b981"
+              strokeWidth={2}
+              fillOpacity={1}
+              fill="url(#colorFacturado)"
+              connectNulls={false}
+              dot={{ r: 3, fill: "#10b981", stroke: "#ffffff", strokeWidth: 1.5 }}
+              activeDot={{ r: 5, fill: "#10b981", stroke: "#ffffff", strokeWidth: 1.5 }}
+            />
+
+            {/* Área Azul/Púrpura - Pedidos o Meta */}
+            <Area
+              type="monotone"
+              dataKey={labelSecondaryKey}
+              stroke="#3b82f6"
+              strokeWidth={2}
+              fillOpacity={1}
+              fill="url(#colorSecondary)"
+              connectNulls={false}
+              dot={{ r: 3, fill: "#3b82f6", stroke: "#ffffff", strokeWidth: 1.5 }}
+              activeDot={{ r: 5, fill: "#3b82f6", stroke: "#ffffff", strokeWidth: 1.5 }}
+            />
+          </AreaChart>
         </ResponsiveContainer>
       </Box>
 
-      {/* ── Tabla Resumen Compacta (Alineada en 240px) ── */}
+      {/* ── Tabla Resumen Dinámica ── */}
       <Box
         w="full"
         borderRadius="xl"
@@ -302,15 +336,15 @@ export function SurfaceChartCard({ data }) {
             <Tr>
               <Td fontSize="9px" py={1} px={2.5} fontWeight="700" color="gray.800">
                 <HStack spacing={1}>
-                  <Box w="6px" h="6px" borderRadius="full" bg="#8b5cf6" />
-                  <Text>Pedidos</Text>
+                  <Box w="6px" h="6px" borderRadius="full" bg="#3b82f6" />
+                  <Text>{labelSecondaryKey}</Text>
                 </HStack>
               </Td>
               <Td fontSize="9px" py={1} px={2.5} fontWeight="800" color="gray.800" isNumeric>
-                {fmt(montoPedidosMap[timeframe])}
+                {fmt(montoSecondaryMap[timeframe])}
               </Td>
               <Td fontSize="9px" py={1} px={2.5} color="gray.600" isNumeric>
-                {registrosMap[timeframe]}
+                {timeframe === "MES" ? "-" : registrosMap[timeframe]}
               </Td>
             </Tr>
           </Tbody>

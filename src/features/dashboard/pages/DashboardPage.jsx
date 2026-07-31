@@ -7,6 +7,7 @@ import {
   SimpleGrid,
   HStack,
   IconButton,
+  Skeleton,
   useColorModeValue
 } from "@chakra-ui/react";
 import { ChevronLeftIcon, ChevronRightIcon } from "@chakra-ui/icons";
@@ -72,7 +73,7 @@ export function DashboardPage() {
   const monthFrom = todayDate.getMonth() + 1;
   const monthTo = todayDate.getMonth() + 1;
 
-  // ✅ Queries V3 actualizadas
+  // ✅ Queries V3 actualizadas con caché persistente
   const {
     data: vendedorData, 
     isLoading: vendedorLoading, 
@@ -100,12 +101,6 @@ export function DashboardPage() {
     }, 
     { enabled: isAdmin }
   );
-
-  // ✅ DEBUG: Ver qué datos llegan
-  console.log("vendedorData completo:", vendedorData);
-  console.log("adminData completo:", adminData);
-  console.log("isVendedor:", isVendedor);
-  console.log("isAdmin:", isAdmin);
 
   const isLoading = isVendedor ? vendedorLoading : adminLoading;
   const error = isVendedor ? vendedorError : adminError;
@@ -145,14 +140,16 @@ export function DashboardPage() {
 
       {/* Sección Principales Métricas */}
       <Box maxW="1200px" mx="auto" px={4} py={6}>
-        {isLoading && (
-          <Box textAlign="center" py={8}>
-            <Spinner color="green.500" size="lg" />
-            <Text mt={2} color="gray.500">Cargando datos...</Text>
-          </Box>
+        {/* Si está cargando por primera vez sin datos en caché, mostrar Skeletons para evitar colapsos de layout */}
+        {isLoading && !resumenData && (
+          <SimpleGrid columns={{ base: 1, md: 3 }} spacing={6} w="full">
+            <Skeleton h="240px" borderRadius="3xl" startColor="gray.100" endColor="gray.200" />
+            <Skeleton h="240px" borderRadius="3xl" startColor="gray.100" endColor="gray.200" />
+            <Skeleton h="240px" borderRadius="3xl" startColor="gray.100" endColor="gray.200" />
+          </SimpleGrid>
         )}
 
-        {error && (
+        {error && !resumenData && (
           <Box textAlign="center" py={8}>
             <Text color="red.500">Error: {error.message}</Text>
           </Box>
@@ -164,7 +161,8 @@ export function DashboardPage() {
           </Box>
         )}
 
-        {!isLoading && !error && resumenData && (
+        {/* Si hay datos (bien frescos o desde caché local instantánea) renderizar inmediatamente */}
+        {resumenData && (
           <>
             {/* VISTA PC (Grid 3 columnas) */}
             <SimpleGrid 
@@ -204,54 +202,61 @@ export function DashboardPage() {
                 </Box>
               </Flex>
 
-              {/* Botones de Flecha y Puntos Indicadores de Navegación */}
-              <Flex align="center" justify="space-between" mt={3} px={2}>
-                <IconButton
-                  icon={<ChevronLeftIcon boxSize={7} />}
-                  aria-label="Anterior tarjeta"
-                  size="sm"
-                  variant="ghost"
-                  colorScheme="green"
-                  borderRadius="full"
-                  isDisabled={activeCardIndex === 0}
-                  onClick={handlePrev}
-                  _hover={{ bg: "green.50" }}
-                />
+              {/* Flechas de navegación para móvil */}
+              <IconButton
+                aria-label="Anterior"
+                icon={<ChevronLeftIcon w={6} h={6} />}
+                position="absolute"
+                left={-2}
+                top="50%"
+                transform="translateY(-50%)"
+                zIndex={2}
+                size="sm"
+                borderRadius="full"
+                bg="whiteAlpha.900"
+                boxShadow="md"
+                onClick={handlePrev}
+                isDisabled={activeCardIndex === 0}
+                opacity={activeCardIndex === 0 ? 0.3 : 1}
+              />
+              <IconButton
+                aria-label="Siguiente"
+                icon={<ChevronRightIcon w={6} h={6} />}
+                position="absolute"
+                right={-2}
+                top="50%"
+                transform="translateY(-50%)"
+                zIndex={2}
+                size="sm"
+                borderRadius="full"
+                bg="whiteAlpha.900"
+                boxShadow="md"
+                onClick={handleNext}
+                isDisabled={activeCardIndex === 2}
+                opacity={activeCardIndex === 2 ? 0.3 : 1}
+              />
 
-                {/* Puntos Indicadores (Dots) */}
-                <HStack spacing={2.5}>
-                  {[0, 1, 2].map((idx) => (
-                    <Box
-                      key={idx}
-                      w={activeCardIndex === idx ? "22px" : "8px"}
-                      h="8px"
-                      borderRadius="full"
-                      bg={activeCardIndex === idx ? "green.600" : "gray.300"}
-                      cursor="pointer"
-                      transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
-                      onClick={() => scrollToCard(idx)}
-                    />
-                  ))}
-                </HStack>
-
-                <IconButton
-                  icon={<ChevronRightIcon boxSize={7} />}
-                  aria-label="Siguiente tarjeta"
-                  size="sm"
-                  variant="ghost"
-                  colorScheme="green"
-                  borderRadius="full"
-                  isDisabled={activeCardIndex === 2}
-                  onClick={handleNext}
-                  _hover={{ bg: "green.50" }}
-                />
-              </Flex>
+              {/* Dots indicadores de tarjeta activa */}
+              <HStack justify="center" spacing={2} mt={3}>
+                {[0, 1, 2].map((idx) => (
+                  <Box
+                    key={idx}
+                    w={activeCardIndex === idx ? "20px" : "8px"}
+                    h="8px"
+                    borderRadius="full"
+                    bg={activeCardIndex === idx ? "green.600" : "gray.300"}
+                    transition="all 0.3s"
+                    cursor="pointer"
+                    onClick={() => scrollToCard(idx)}
+                  />
+                ))}
+              </HStack>
             </Box>
-
-            {/* PANEL COMERCIAL: Semáforo de Crédito + Top Productos */}
-            <DashboardCommercialPanel />
           </>
         )}
+
+        {/* Paneles Informativos Inferiores */}
+        <DashboardCommercialPanel />
       </Box>
     </Box>
   );
