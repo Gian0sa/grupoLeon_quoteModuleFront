@@ -12,7 +12,6 @@ import {
   Heading,
   Icon,
   Collapse,
-  Spinner,
   IconButton,
   Tooltip,
   AlertDialog,
@@ -166,16 +165,19 @@ export default function SyncQueueStatus({ queueItems, onRetry, onDelete, isSynci
                           />
                         </Tooltip>
                       )}
-                      <Tooltip label="Eliminar">
-                        <IconButton
-                          size="xs"
-                          icon={<FiTrash2 />}
-                          colorScheme="red"
-                          variant="ghost"
-                          onClick={() => handleDeleteClick(item.id)}
-                          aria-label="Eliminar item"
-                        />
-                      </Tooltip>
+                      {/* Check-In items cannot be deleted to prevent state corruption */}
+                      {item.type !== "IN" && (
+                        <Tooltip label="Eliminar">
+                          <IconButton
+                            size="xs"
+                            icon={<FiTrash2 />}
+                            colorScheme="red"
+                            variant="ghost"
+                            onClick={() => handleDeleteClick(item.id)}
+                            aria-label="Eliminar item"
+                          />
+                        </Tooltip>
+                      )}
                     </HStack>
                   </Flex>
                 </Box>

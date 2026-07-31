@@ -1,5 +1,5 @@
 import { VStack, Button, Flex, Spinner, Icon, Text, Box, HStack, useColorModeValue } from "@chakra-ui/react";
-import { FiMapPin, FiLogIn, FiLogOut, FiClock } from "react-icons/fi";
+import { FiMapPin, FiLogIn, FiLogOut } from "react-icons/fi";
 
 export function VisitActionButtons({
     hasActiveCheckIn,
@@ -10,7 +10,6 @@ export function VisitActionButtons({
     activeVisit,
     onCheckIn,
     onCheckOut,
-    onNavigateHistory,
 }) {
     const cardBg = useColorModeValue("white", "gray.800");
 
@@ -65,26 +64,6 @@ export function VisitActionButtons({
                         leftIcon={<Icon as={FiLogIn} boxSize={5} />}
                     >
                         Registrar Check In
-                    </Button>
-                )}
-
-                {hasActiveCheckIn && (
-                    <Button
-                        variant="outline"
-                        colorScheme="green"
-                        borderColor="green.600"
-                        color="green.700"
-                        width="100%"
-                        size="lg"
-                        height="50px"
-                        borderRadius="xl"
-                        fontSize="sm"
-                        fontWeight="700"
-                        onClick={onNavigateHistory}
-                        leftIcon={<Icon as={FiClock} boxSize={4} />}
-                        _hover={{ bg: "green.50" }}
-                    >
-                        Volver al Historial del Cliente
                     </Button>
                 )}
 

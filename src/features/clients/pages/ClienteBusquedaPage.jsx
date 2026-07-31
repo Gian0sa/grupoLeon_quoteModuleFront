@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
     Container, VStack, Flex, Box, Heading, Input, Button, Text, TabPanel,
     Divider, Spinner, Alert, AlertIcon, AlertTitle, AlertDescription
@@ -14,25 +14,28 @@ import { InvoiceHistoryTab } from "../components/tabs/InvoiceHistoryTab";
 import { StockPricesTab } from "../components/tabs/StockPricesTab";
 import { ImportationsTab } from "../components/tabs/ImportationsTab";
 import { useSearchParams } from "react-router-dom";
-import { useEffect } from "react";
-
 
 const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 
 export default function ClienteBusquedaPage() {
-    const [searchParams, setSearchParams] = useSearchParams();
+    const [searchParams] = useSearchParams();
     const storeNameFromUrl = searchParams.get("storeName");
+    const clientCodeFromUrl = searchParams.get("clientCode") || searchParams.get("sapCode") || searchParams.get("cardCode");
+    const returnToFromUrl = searchParams.get("returnTo") || "/visitLog";
+
     const [search, setSearch] = useState("");
     const [clientQuery, setClientQuery] = useState("");
     const [isLockedFromUrl, setIsLockedFromUrl] = useState(false);
 
     useEffect(() => {
-        if (storeNameFromUrl) {
-            setSearch(storeNameFromUrl);
-            setClientQuery(storeNameFromUrl);
+        const initialSearch = storeNameFromUrl || clientCodeFromUrl;
+        const initialQuery = clientCodeFromUrl || storeNameFromUrl;
+        if (initialSearch) {
+            setSearch(initialSearch);
+            setClientQuery(initialQuery);
             setIsLockedFromUrl(true);
         }
-    }, [storeNameFromUrl]);
+    }, [storeNameFromUrl, clientCodeFromUrl]);
 
     const {
         dataProductHistory,
@@ -164,7 +167,7 @@ export default function ClienteBusquedaPage() {
                 boxShadow="xl"
                 w="100%"
             >
-                {/* HEADER */}
+                {/* HEADER CON BOTÓN ATRÁS RETORNANDO A /visitLog */}
                 <Flex
                     bg="#126C36"
                     color="white"
@@ -178,7 +181,7 @@ export default function ClienteBusquedaPage() {
                     boxShadow="0 4px 15px rgba(18, 108, 54, 0.25)"
                 >
                     <Box position="absolute" left={3}>
-                        <BackButton color="white" />
+                        <BackButton color="white" to={returnToFromUrl} />
                     </Box>
 
                     <Heading
