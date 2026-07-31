@@ -186,27 +186,25 @@ export function ReceivablePage() {
 
   return (
     <Box bg="gray.50" minH="100vh">
-      <Box className={styles.heading}>
-        <SearchHeader
-          title="Cuentas por cobrar"
-          placeholder="Buscar nombre de cliente"
-          searchValue={searchValue}
-          onSearch={handleClientSearch}
-          onSearchInputChange={handleSearchInputChange}
-          refreshQueries={refreshQueries}
-        />
+      <SearchHeader
+        title="Cuentas por cobrar"
+        placeholder="Buscar nombre de cliente"
+        searchValue={searchValue}
+        onSearch={handleClientSearch}
+        onSearchInputChange={handleSearchInputChange}
+        refreshQueries={refreshQueries}
+      />
 
-        {!isSellerProfile && (
-          <Box maxW="1200px" mx="auto" p={4} pb={2}>
-            <SellerSelectReceivable
-              selectedSeller={selectedSeller}
-              setSelectedSeller={handleSellerChange}
-              setValue={() => {}}
-              error={null}
-            />
-          </Box>
-        )}
-      </Box>
+      {!isSellerProfile && (
+        <Box maxW="1200px" mx="auto" px={4} pb={2}>
+          <SellerSelectReceivable
+            selectedSeller={selectedSeller}
+            setSelectedSeller={handleSellerChange}
+            setValue={() => {}}
+            error={null}
+          />
+        </Box>
+      )}
 
       {/* Contadores interactivos de estado */}
       <Box maxW="1200px" mx="auto" pt={3} px={4}>

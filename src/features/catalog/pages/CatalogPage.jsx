@@ -12,7 +12,8 @@ import { BackButton } from '../../../components/BackButton';
 import ProductCardSkeleton from "../components/skeletons/ProductCardSkeleton";
 import ProductDetailEquivalentsSection from "../components/ProductDetailEquivalentsSection";
 import Pagination from "../../../components/Pagination";
-import { Package, Plus, Sparkles } from "lucide-react";
+import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
+import { Package, Plus } from "lucide-react";
 
 // Adaptador para transformar el nuevo modelo de base de datos al formato esperado por los componentes UI
 const adaptProductToOldFormat = (apiBaseUrl, p) => {
@@ -148,48 +149,18 @@ export default function CatalogPage() {
   const totalCount = response?.meta?.total ?? products.length;
 
   return (
-    <Box maxW="1200px" mx="auto" w="full" fontFamily="'InterVariable', sans-serif" pb="120px">
+    <Box w="full" minH="100vh" bg="gray.50" pb="120px">
       
-      {/* === HEADER CON MESH GRADIENT === */}
-      <Box
-        bg="linear-gradient(135deg, #14532d 0%, #166534 50%, #15803d 100%)"
-        borderRadius={{ base: "2xl", md: "3xl" }}
-        color="white"
-        p={{ base: 4, md: 5 }}
-        mb={5}
-        boxShadow="0 12px 35px rgba(20, 83, 45, 0.2)"
-        position="relative"
-        overflow="hidden"
+      {/* === HEADER PRINCIPAL UNIFICADO === */}
+      {/* === HEADER PRINCIPAL UNIFICADO CON BUSCADOR === */}
+      <TopHeaderBanner
+        title="Catálogo de Productos"
+        subtitle="Exploración de ítems, cruces y equivalencias"
+        showBack={true}
+        mb={6}
       >
-        {/* Decoración gráfica sutil */}
-        <Box
-          position="absolute"
-          top="-40px"
-          right="-40px"
-          w="160px"
-          h="160px"
-          borderRadius="full"
-          bg="whiteAlpha.100"
-          pointerEvents="none"
-        />
-
-        <VStack spacing={3} align="stretch" position="relative" zIndex={2}>
-          {/* Fila superior: BackButton + Título + Nuevo producto */}
-          <Flex align="center" justify="space-between" w="full" gap={2}>
-            <HStack spacing={3}>
-              <BackButton color="white" />
-              <VStack align="start" spacing={0}>
-                <HStack spacing={2}>
-                  <Text fontSize={{ base: "16px", sm: "18px", md: "xl" }} fontWeight="800" color="white" letterSpacing="tight">
-                    Catálogo de Productos
-                  </Text>
-                </HStack>
-                <Text fontSize={{ base: "11px", md: "xs" }} color="whiteAlpha.800" fontWeight="500">
-                  Exploración de ítems, cruces y equivalencias
-                </Text>
-              </VStack>
-            </HStack>
-
+        <VStack spacing={4} align="stretch">
+          <Flex justify="flex-end" w="full">
             <Link to="/catalog/create">
               <Button
                 leftIcon={<Plus size={16} />}
@@ -208,19 +179,20 @@ export default function CatalogPage() {
               </Button>
             </Link>
           </Flex>
+
+          {/* Barra de búsqueda y filtros integrada */}
+          <CatalogSearchBar 
+            filters={filters}
+            onSearch={handleSearch} 
+            onClear={handleClear}
+            isLoading={isLoading} 
+          />
         </VStack>
-      </Box>
+      </TopHeaderBanner>
 
       {/* === CONTENIDO PRINCIPAL === */}
-      <VStack spacing={5} align="stretch" px={{ base: 2, md: 4 }}>
-        
-        {/* Barra de búsqueda y filtros */}
-        <CatalogSearchBar 
-          filters={filters}
-          onSearch={handleSearch} 
-          onClear={handleClear}
-          isLoading={isLoading} 
-        />
+      <Box maxW="1200px" mx="auto" px={{ base: 3, md: 6 }}>
+        <VStack spacing={5} align="stretch">
 
         {/* Contador de resultados */}
         <Flex justify="space-between" align="center" py={1}>
@@ -308,6 +280,7 @@ export default function CatalogPage() {
           </VStack>
         )}
       </VStack>
+      </Box>
     </Box>
   );
 }

@@ -24,7 +24,7 @@ export default function ProductRelations({ relations }) {
                   <Td fontWeight="700" color="gray.700" py={2} fontSize="11.5px">
                     {rel.name || "-"}
                   </Td>
-                  <Td py={2} fontSize="11.5px" color="gray.600" fontFamily="mono">
+                  <Td py={2} fontSize="11.5px" color="gray.600" fontWeight="600">
                     {rel.code || "-"}
                   </Td>
                   <Td py={2} textAlign="right">

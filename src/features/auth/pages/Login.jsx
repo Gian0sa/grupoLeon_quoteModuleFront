@@ -115,6 +115,7 @@ export function Login() {
           left="0"
           right="0"
           h="40vh"
+          bgColor="#0f4a25"
           bgImage="url('/assets/frame-2-bg.png')"
           bgSize="cover"
           bgPosition="center"
@@ -332,6 +333,7 @@ export function Login() {
         flex="1"
         display={{ base: "none", md: "flex" }}
         position="relative"
+        bgColor="#0f4a25"
         bgImage="url('/assets/frame-2-bg.png')"
         bgSize="cover"
         bgPosition="center"

@@ -159,110 +159,70 @@ export const EntradaForm = () => {
     };
 
     return (
-        <Box bg={bgCard}
-            p={8}
-            borderRadius="xl"
-            boxShadow="xl"
-            maxW="md"
+        <Box
+            bg={bgCard}
+            p={{ base: 6, md: 8 }}
+            borderRadius="2xl"
+            boxShadow="0 10px 35px rgba(0, 0, 0, 0.07)"
+            border="1px solid"
+            borderColor="gray.100"
+            maxW="460px"
             w="full"
-            textAlign="center">
-            <VStack spacing={6}>
-                <Box w="full" display="flex" justifyContent="flex-start">
-                    <Flex bg="green.700" color="white" align="center" justify="center" w="100%"
-                        minH={
-                            {
-                                base: "44px",
-                                md: "56px"
-                            }
-                        }
-                        px={
-                            {
-                                base: 2,
-                                md: 4
-                            }
-                        }
-                        borderRadius={
-                            {
-                                base: "md",
-                                md: "xl"
-                            }
-                        }
-                        position="relative">
-                        <Box position="absolute"
-                            left={2}>
-                            <BackButton color="white"/>
-                        </Box>
+            textAlign="center"
+        >
+            <VStack spacing={5}>
+                {/* User Greeting Header */}
+                <Box py={1}>
+                    <Text fontSize="xs" fontWeight="600" color="gray.400" textTransform="uppercase" letterSpacing="wider">
+                        Vendedor Registrado
+                    </Text>
+                    <Heading size="md" color="gray.800" fontWeight="bold" mt={1}>
+                        Bienvenido, {username || 'Vendedor'}
+                    </Heading>
+                </Box>
 
-                        <Heading textAlign="center"
-                            fontSize={
-                                {
-                                    base: "md",
-                                    sm: "lg",
-                                    md: "xl"
-                                }
-                            }
-                            noOfLines={1}>
-                            Control de Asistencia
+                <Divider borderColor="gray.100" />
+
+                {/* Clock Display */}
+                <Box py={2}>
+                    <HStack justify="center" align="center" color="green.600" mb={1} spacing={2}>
+                        <Icon as={FiClock} boxSize={7} color="green.600" />
+                        <Heading size="2xl" fontWeight="800" color="green.800" letterSpacing="tight" sx={{ fontVariantNumeric: "tabular-nums" }}>
+                            {formatTime(currentTime)}
                         </Heading>
-                    </Flex>
-                </Box>
-                <Box>
-                    <Heading size="lg"
-                        mb={2}></Heading>
-                    <Text color={textColor}>
-                        Bienvenido, {
-                        username || 'Vendedor'
-                    } </Text>
-                </Box>
-
-                <Divider/>
-
-                <Box>
-                    <HStack justify="center" align="center" color="blue.500"
-                        mb={2}>
-                        <Icon as={FiClock}
-                            boxSize={8}/>
-                        <Heading size="2xl" fontWeight="bold">
-                            {
-                            formatTime(currentTime)
-                        } </Heading>
                     </HStack>
-                    <Text color={textColor}
-                        textTransform="capitalize">
-                        {
-                        formatDate(currentTime)
-                    } </Text>
+                    <Text color="gray.500" fontSize="sm" fontWeight="500" textTransform="capitalize">
+                        {formatDate(currentTime)}
+                    </Text>
                 </Box>
 
-                {
-                !hasMarkedToday ? (
+                {!hasMarkedToday ? (
                     <>
-                        <Box w="full"
-                            bg={
-                                useColorModeValue('gray.50', 'gray.700')
-                            }
-                            p={3}
-                            borderRadius="md">
-                            <HStack justify="center"
-                                spacing={2}
-                                color={
-                                    location ? "green.500" : "orange.500"
-                            }>
-                                <Icon as={MdLocationOn}/> {
-                                isLoading && !location ? (
-                                    <Spinner size="sm"/>
+                        {/* GPS Location Status Box */}
+                        <Box
+                            w="full"
+                            bg={location ? "green.50" : "orange.50"}
+                            py={2.5}
+                            px={4}
+                            borderRadius="xl"
+                            border="1px solid"
+                            borderColor={location ? "green.200" : "orange.200"}
+                        >
+                            <HStack justify="center" spacing={2} color={location ? "green.700" : "orange.700"}>
+                                <Icon as={MdLocationOn} boxSize={4} />
+                                {isLoading && !location ? (
+                                    <Spinner size="xs" color="orange.600" />
                                 ) : (
-                                    <Text fontSize="sm" fontWeight="medium">
-                                        {
-                                        location ? "Ubicación detectada" : "Obteniendo ubicación..."
-                                    } </Text>
-                                )
-                            } </HStack>
+                                    <Text fontSize="xs" fontWeight="700">
+                                        {location ? "Ubicación GPS Detectada" : "Obteniendo ubicación..."}
+                                    </Text>
+                                )}
+                            </HStack>
                         </Box>
 
                         {/* Video stream feed */}
                         {isCameraActive && (
-                            <Box w="full" borderRadius="md" overflow="hidden" border="2px solid" borderColor="blue.300" bg="black">
+                            <Box w="full" borderRadius="xl" overflow="hidden" border="2px solid" borderColor="green.500" bg="black" boxShadow="lg">
                                 <video
                                     ref={videoRef}
                                     autoPlay
@@ -279,72 +239,162 @@ export const EntradaForm = () => {
 
                         {/* Preview de la Selfie */}
                         {imagePreview && !isCameraActive && (
-                            <Box mb={1}
+                            <Box
+                                mb={1}
                                 w="full"
-                                borderRadius="md"
+                                borderRadius="xl"
                                 overflow="hidden"
                                 border="2px solid"
-                                borderColor="green.200">
-                                <img src={imagePreview}
+                                borderColor="green.400"
+                                boxShadow="0 4px 14px rgba(34, 197, 94, 0.15)"
+                            >
+                                <img
+                                    src={imagePreview}
                                     alt="Selfie Preview"
-                                    style={
-                                        {
-                                            width: "100%",
-                                            height: "200px",
-                                            objectFit: "cover"
-                                        }
-                                    }/>
+                                    style={{
+                                        width: "100%",
+                                        height: "200px",
+                                        objectFit: "cover"
+                                    }}
+                                />
                             </Box>
                         )}
 
-                        {/* Botón para interactuar con la Cámara */}
+                        {/* Botón para interactuar con la Cámara (Slate style) */}
                         <Box w="full">
                             {isCameraActive ? (
-                                <HStack spacing={4}>
-                                    <Button colorScheme="blue" flex={1} onClick={capturePhoto} leftIcon={<FiCamera/>} size="lg">
+                                <HStack spacing={3}>
+                                    <Button
+                                        bg="linear-gradient(135deg, #14532d 0%, #166534 50%, #15803d 100%)"
+                                        color="white"
+                                        flex={1}
+                                        onClick={capturePhoto}
+                                        leftIcon={<FiCamera />}
+                                        h="48px"
+                                        borderRadius="xl"
+                                        fontSize="sm"
+                                        fontWeight="bold"
+                                        _hover={{ bg: "#0d4226" }}
+                                    >
                                         Capturar Foto
                                     </Button>
-                                    <Button variant="outline" colorScheme="gray" onClick={() => stopCamera()} flex={1} size="lg">
+                                    <Button
+                                        variant="outline"
+                                        colorScheme="gray"
+                                        onClick={() => stopCamera()}
+                                        flex={1}
+                                        h="48px"
+                                        borderRadius="xl"
+                                        fontSize="sm"
+                                        fontWeight="bold"
+                                    >
                                         Cancelar
                                     </Button>
                                 </HStack>
                             ) : (
-                                <Button onClick={startCamera} variant="outline" colorScheme="blue" width="100%" cursor="pointer"
-                                    leftIcon={<FiCamera/>}
-                                    size="lg"
+                                <Button
+                                    onClick={startCamera}
+                                    bg="gray.50"
+                                    color="gray.700"
+                                    border="1.5px dashed"
+                                    borderColor="gray.300"
+                                    width="100%"
+                                    h="52px"
+                                    borderRadius="xl"
+                                    fontSize="sm"
+                                    fontWeight="700"
+                                    cursor="pointer"
+                                    leftIcon={
+                                        <Flex
+                                            w="30px"
+                                            h="30px"
+                                            borderRadius="lg"
+                                            bg="white"
+                                            align="center"
+                                            justify="center"
+                                            border="1px solid"
+                                            borderColor="gray.200"
+                                            boxShadow="0 2px 5px rgba(0,0,0,0.05)"
+                                        >
+                                            <Icon as={FiCamera} color="gray.600" boxSize={4} />
+                                        </Flex>
+                                    }
+                                    _hover={{
+                                        bg: "gray.100",
+                                        borderColor: "green.500",
+                                        color: "green.800",
+                                        transform: "translateY(-1px)",
+                                    }}
+                                    transition="all 0.2s"
                                     isLoading={isProcessingImage}
-                                    loadingText="Procesando foto...">
-                                    {image ? "Tomar nueva selfie" : "Tomar Selfie"}
+                                    loadingText="Procesando foto..."
+                                >
+                                    {image ? "Tomar nueva selfie" : "Tomar Selfie de Verificación"}
                                 </Button>
                             )}
                         </Box>
 
-                        <Button w="full" colorScheme="green" size="lg"
-                            leftIcon={<MdLogin/>}
+                        {/* Botón Principal: Marcar Ingreso */}
+                        <Button
+                            w="full"
+                            bg="linear-gradient(135deg, #14532d 0%, #166534 50%, #15803d 100%)"
+                            color="white"
+                            size="lg"
+                            h="56px"
+                            borderRadius="2xl"
+                            fontSize="md"
+                            fontWeight="800"
+                            letterSpacing="wide"
+                            boxShadow="0 8px 25px rgba(22, 101, 52, 0.35)"
+                            leftIcon={<MdLogin size={22} />}
                             onClick={handleMarcarIngreso}
                             isLoading={isLoading}
                             loadingText="Registrando..."
-                            isDisabled={
-                                !location || !image || isCameraActive
-                        }>
+                            isDisabled={!location || !image || isCameraActive}
+                            _hover={{
+                                bg: "#0d4226",
+                                transform: "translateY(-2px)",
+                                boxShadow: "0 12px 30px rgba(22, 101, 52, 0.45)",
+                            }}
+                            _active={{ transform: "translateY(0)" }}
+                            _disabled={{
+                                opacity: 1,
+                                cursor: "pointer",
+                                bg: "linear-gradient(135deg, #14532d 0%, #166534 50%, #15803d 100%)",
+                                color: "white",
+                                boxShadow: "0 8px 25px rgba(22, 101, 52, 0.35)",
+                                _hover: { bg: "#0d4226" }
+                            }}
+                            transition="all 0.2s"
+                        >
                             Marcar Ingreso
                         </Button>
                     </>
                 ) : (
-                    <Alert status="success" variant="subtle" flexDirection="column" alignItems="center" justifyContent="center" textAlign="center" height="180px" borderRadius="md">
-                        <AlertIcon boxSize="40px"
-                            mr={0}/>
-                        <AlertTitle mt={4}
-                            mb={1}
-                            fontSize="lg">
-                            ¡Ingreso Registrado!
+                    <Alert
+                        status="success"
+                        variant="subtle"
+                        flexDirection="column"
+                        alignItems="center"
+                        justifyContent="center"
+                        textAlign="center"
+                        py={6}
+                        px={4}
+                        borderRadius="2xl"
+                        bg="green.50"
+                        border="1px solid"
+                        borderColor="green.200"
+                    >
+                        <AlertIcon boxSize="36px" color="green.600" mr={0} />
+                        <AlertTitle mt={3} mb={1} fontSize="md" fontWeight="bold" color="green.900">
+                            ¡Ingreso Registrado Exitosamente!
                         </AlertTitle>
-                        <AlertDescription maxWidth="sm">
-                            Ya has marcado tu asistencia por el día de hoy con tu selfie. ¡Que tengas un excelente día de trabajo!
+                        <AlertDescription maxWidth="sm" fontSize="xs" color="green.800">
+                            Ya has marcado tu asistencia el día de hoy. ¡Que tengas una excelente jornada laboral!
                         </AlertDescription>
                     </Alert>
-                )
-            } </VStack>
+                )}
+            </VStack>
         </Box>
     );
 };

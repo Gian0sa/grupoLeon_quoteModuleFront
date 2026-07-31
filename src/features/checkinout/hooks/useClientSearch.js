@@ -2,11 +2,43 @@ import { useState } from "react";
 import { useClientQueries, useClientQueriesByName } from "../../clients/hooks/queries/clientQueries";
 import { adaptClientFromApi } from "../../clients/adapters/clientAdapter";
 
+export function parseSearchToInitialData(inputString) {
+    const trimmed = (inputString || "").trim();
+    if (!trimmed) return null;
+
+    const isDigitsOnly = /^\d+$/.test(trimmed);
+    if (isDigitsOnly) {
+        if (trimmed.length === 11) {
+            return {
+                personType: "JURIDICO",
+                documentType: "RUC",
+                documentNumber: trimmed,
+                fullName: "",
+            };
+        } else {
+            return {
+                personType: "NATURAL",
+                documentType: "DNI",
+                documentNumber: trimmed,
+                fullName: "",
+            };
+        }
+    } else {
+        return {
+            personType: "NATURAL",
+            documentType: "DNI",
+            documentNumber: "",
+            fullName: trimmed,
+        };
+    }
+}
+
 export function useClientSearch() {
     const [inputValue, setInputValue] = useState("");
     const [searchTerm, setSearchTerm] = useState("");
     const [isSearchingByCode, setIsSearchingByCode] = useState(true);
     const [selectedClient, setSelectedClient] = useState(null);
+    const [initialClientData, setInitialClientData] = useState(null);
 
     const { data: dataByCode, isLoading: isLoadingByCode, error: errorByCode } =
         useClientQueries(isSearchingByCode ? searchTerm : null);
@@ -84,6 +116,8 @@ export function useClientSearch() {
         dataByName,
         isSearching,
         searchError,
+        initialClientData,
+        setInitialClientData,
         handleSearch,
         handleKeyPress,
         handleSelectClient,

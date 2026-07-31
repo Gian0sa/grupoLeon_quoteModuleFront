@@ -114,7 +114,7 @@ export default function OrdersList({ detalle = [], onVerSeguimiento }) {
                 <Box p={1.5} borderRadius="lg" bg={`${themeColor}15`}>
                   <Tag size={16} color={themeColor} strokeWidth={2.5} />
                 </Box>
-                <Text fontSize={{ base: "md", md: "lg" }} fontWeight="800" color="gray.800">
+                <Text textStyle="cardTitle" color="gray.800">
                   #{numeroOrden}
                 </Text>
               </HStack>
@@ -141,11 +141,11 @@ export default function OrdersList({ detalle = [], onVerSeguimiento }) {
 
             {/* DETALLES DEL CLIENTE Y FECHA */}
             <VStack align="stretch" spacing={2} mb={4}>
-              <HStack spacing={2.5} align="flex-start">
+              <HStack spacing={2.5} align="flex-start" minW={0}>
                 <Box color="gray.400" mt={0.5} flexShrink={0}>
                   <Building2 size={16} />
                 </Box>
-                <Text fontSize="14px" fontWeight="700" color="gray.700" lineHeight="1.3" noOfLines={2}>
+                <Text textStyle="cardTitle" color="gray.700">
                   {cliente}
                 </Text>
               </HStack>

@@ -127,6 +127,12 @@ export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVis
                 formData.append("existingImageUrl", existingImageData.imageUrl);
             }
 
+            const redirectToHistory = () => {
+                const clientCodeParam = selectedClient?.sapCode || selectedClient?.cardCode || selectedClient?.clientCode || "";
+                const storeNameParam = selectedClient?.firstName || selectedClient?.storeName || "";
+                navigate(`/clienteBusqueda?storeName=${encodeURIComponent(storeNameParam)}&clientCode=${encodeURIComponent(clientCodeParam)}&returnTo=/visitLog`);
+            };
+
             // Antes de enviar, verificar si hay operaciones activas (PENDING o SYNCING) en la cola
             const queue = await getQueue();
             const activeQueueCount = queue.filter(item => item.status === "PENDING" || item.status === "SYNCING").length;
@@ -143,7 +149,7 @@ export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVis
                 setIsSubmitting(false);
                 onSuccess?.({ isLocal: true, id: localId }, type);
                 if (type === "IN") {
-                    navigate(`/clienteBusqueda?storeName=${encodeURIComponent(selectedClient.firstName)}`);
+                    redirectToHistory();
                 }
                 return;
             }
@@ -152,7 +158,9 @@ export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVis
                 onSuccess: async (data) => {
                     toast({
                         title: type === "IN" ? "Check-in registrado" : "Check-out registrado",
-                        description: `Check ${type} registrado correctamente en el servidor.`,
+                        description: type === "IN" 
+                            ? "Check-In registrado. Redirigiendo a Historial de Cliente..."
+                            : "Check-Out registrado correctamente.",
                         status: "success",
                         duration: 3000,
                         isClosable: true,
@@ -161,7 +169,7 @@ export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVis
                     setIsSubmitting(false);
                     onSuccess?.(data, type);
                     if (type === "IN") {
-                        navigate(`/clienteBusqueda?storeName=${encodeURIComponent(selectedClient.firstName)}`);
+                        redirectToHistory();
                     }
                 },
                 onError: async (error) => {
@@ -178,7 +186,7 @@ export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVis
                         setIsSubmitting(false);
                         onSuccess?.({ isLocal: true, id: localId }, type);
                         if (type === "IN") {
-                            navigate(`/clienteBusqueda?storeName=${encodeURIComponent(selectedClient.firstName)}`);
+                            redirectToHistory();
                         }
                     } catch (queueError) {
                         console.error("Failed to add to queue:", queueError);

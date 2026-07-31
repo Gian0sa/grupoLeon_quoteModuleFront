@@ -59,13 +59,15 @@ export function RefreshButton({
   };
 
   return (
-    <Tooltip hasArrow>
+    <Tooltip hasArrow label="Actualizar datos">
       <IconButton
-        icon={isRefreshing ? <Spinner size="sm" color="white" /> : <RepeatIcon boxSize={4} color="white" />}
+        icon={isRefreshing ? <Spinner size="md" color="white" /> : <RepeatIcon boxSize={{ base: 5, md: 6 }} color="white" />}
         bg={variant === "ghost" ? "transparent" : "green.700"}
         onClick={handleClick}
         variant={variant}
         size={size}
+        w={{ base: "42px", md: "48px" }}
+        h={{ base: "42px", md: "48px" }}
         borderRadius="full"
         isDisabled={isRefreshing}
         colorScheme="whiteAlpha"

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
     Container, VStack, Flex, Box, Heading, Input, Button, Text, TabPanel,
     Divider, Spinner, Alert, AlertIcon, AlertTitle, AlertDescription
@@ -14,25 +14,28 @@ import { InvoiceHistoryTab } from "../components/tabs/InvoiceHistoryTab";
 import { StockPricesTab } from "../components/tabs/StockPricesTab";
 import { ImportationsTab } from "../components/tabs/ImportationsTab";
 import { useSearchParams } from "react-router-dom";
-import { useEffect } from "react";
-
 
 const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 
 export default function ClienteBusquedaPage() {
-    const [searchParams, setSearchParams] = useSearchParams();
+    const [searchParams] = useSearchParams();
     const storeNameFromUrl = searchParams.get("storeName");
+    const clientCodeFromUrl = searchParams.get("clientCode") || searchParams.get("sapCode") || searchParams.get("cardCode");
+    const returnToFromUrl = searchParams.get("returnTo") || "/visitLog";
+
     const [search, setSearch] = useState("");
     const [clientQuery, setClientQuery] = useState("");
     const [isLockedFromUrl, setIsLockedFromUrl] = useState(false);
 
     useEffect(() => {
-        if (storeNameFromUrl) {
-            setSearch(storeNameFromUrl);
-            setClientQuery(storeNameFromUrl);
+        const initialSearch = storeNameFromUrl || clientCodeFromUrl;
+        const initialQuery = clientCodeFromUrl || storeNameFromUrl;
+        if (initialSearch) {
+            setSearch(initialSearch);
+            setClientQuery(initialQuery);
             setIsLockedFromUrl(true);
         }
-    }, [storeNameFromUrl]);
+    }, [storeNameFromUrl, clientCodeFromUrl]);
 
     const {
         dataProductHistory,
@@ -164,62 +167,73 @@ export default function ClienteBusquedaPage() {
                 boxShadow="xl"
                 w="100%"
             >
-                {/* HEADER */}
+                {/* HEADER CON BOTÓN ATRÁS RETORNANDO A /visitLog */}
                 <Flex
-                    bg="green.700"
+                    bg="#126C36"
                     color="white"
                     align="center"
                     justify="center"
                     w="100%"
-                    minH={{ base: "44px", md: "56px" }}
-                    px={{ base: 2, md: 4 }}
-                    borderRadius={{ base: "md", md: "xl" }}
+                    minH={{ base: "48px", md: "56px" }}
+                    px={{ base: 3, md: 4 }}
+                    borderRadius={{ base: "xl", md: "2xl" }}
                     position="relative"
+                    boxShadow="0 4px 15px rgba(18, 108, 54, 0.25)"
                 >
-                    <Box position="absolute" left={2}>
-                        <BackButton color="white" />
+                    <Box position="absolute" left={3}>
+                        <BackButton color="white" to={returnToFromUrl} />
                     </Box>
 
                     <Heading
                         textAlign="center"
                         fontSize={{ base: "md", sm: "lg", md: "xl" }}
+                        fontWeight="800"
                         noOfLines={1}
                     >
-                        Búsqueda de cliente
+                        Búsqueda e Historial de Cliente
                     </Heading>
                 </Flex>
 
                 {/* SEARCH */}
                 <Flex
                     bg="white"
-                    p={{ base: 2, md: 4 }}
-                    borderRadius={{ base: "lg", md: "full" }}
+                    p={{ base: 3, md: 4 }}
+                    borderRadius="2xl"
                     w="100%"
-                    gap={2}
+                    gap={3}
                     direction={{ base: "column", md: "row" }}
+                    boxShadow="0 4px 15px rgba(0,0,0,0.04)"
+                    border="1px solid"
+                    borderColor="gray.100"
                 >
                     <Input
-                        placeholder="Nombre, apellido o código"
+                        placeholder="Nombre, apellido o código del cliente..."
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         onKeyPress={handleKeyPress}
+                        h="46px"
+                        borderRadius="xl"
                         fontSize={{ base: "sm", md: "md" }}
-                        isReadOnly={isLockedFromUrl}
-                        isDisabled={isLockedFromUrl}
-                        bg={isLockedFromUrl ? "gray.100" : "white"}
-                        cursor={isLockedFromUrl ? "not-allowed" : "text"}
+                        bg="gray.50"
+                        border="1px solid"
+                        borderColor="gray.200"
+                        _focus={{ bg: "white", borderColor: "green.600" }}
                     />
 
                     <Button
-                        bg="green.600"
+                        bg="linear-gradient(135deg, #14532d 0%, #166534 50%, #15803d 100%)"
                         color="white"
                         px={{ base: 4, md: 8 }}
-                        borderRadius="md"
+                        h="46px"
+                        borderRadius="xl"
+                        fontWeight="700"
                         onClick={handleSearch}
                         isLoading={isLoadingProductHistory}
-                        isDisabled={!search.trim() || isLockedFromUrl}
+                        isDisabled={!search.trim()}
                         w={{ base: "100%", md: "auto" }}
                         fontSize={{ base: "sm", md: "md" }}
+                        boxShadow="0 4px 14px rgba(22, 101, 52, 0.25)"
+                        _hover={{ bg: "#0d4226" }}
                     >
                         Buscar cliente
                     </Button>

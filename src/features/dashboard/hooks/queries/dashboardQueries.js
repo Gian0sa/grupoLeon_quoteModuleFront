@@ -22,6 +22,28 @@ import {
   getNotificationById,
 } from "../../services/notificationService";
 
+const STORAGE_KEY_SUMMARY = "antigravity_dashboard_summary_cache";
+
+// Utility para guardar y leer cache local instantáneo
+const saveSummaryCache = (data) => {
+  try {
+    if (data) {
+      localStorage.setItem(STORAGE_KEY_SUMMARY, JSON.stringify(data));
+    }
+  } catch (e) {
+    console.error("Error saving summary cache:", e);
+  }
+};
+
+const getSummaryCache = () => {
+  try {
+    const cached = localStorage.getItem(STORAGE_KEY_SUMMARY);
+    return cached ? JSON.parse(cached) : undefined;
+  } catch (e) {
+    return undefined;
+  }
+};
+
 // ✅ Hook para Top Products
 export const useTopProducts = () => {
   return useQuery({
@@ -30,6 +52,7 @@ export const useTopProducts = () => {
       const data = await getTopProducts();
       return adaptTopProducts(data);
     },
+    staleTime: 10 * 60 * 1000,
   });
 };
 
@@ -41,6 +64,7 @@ export const usePromotions = () => {
       const data = await getPromotions();
       return adaptPromotions(data);
     },
+    staleTime: 10 * 60 * 1000,
   });
 };
 
@@ -52,6 +76,7 @@ export const useHistory = () => {
       const data = await getHistory();
       return adaptHistory(data);
     },
+    staleTime: 10 * 60 * 1000,
   });
 };
 
@@ -59,8 +84,15 @@ export const useHistory = () => {
 export const useQuotesSellers = ({ slpCode, yearFrom, monthFrom, monthTo, skip = 0, pageSize = 20 }) => {
   return useQuery({
     queryKey: ['quotesSellers', slpCode, yearFrom, monthFrom, monthTo, skip, pageSize],
-    queryFn: () => getQuotesSellers({ slpCode, yearFrom, monthFrom, monthTo, skip, pageSize }),
+    queryFn: async () => {
+      const res = await getQuotesSellers({ slpCode, yearFrom, monthFrom, monthTo, skip, pageSize });
+      saveSummaryCache(res);
+      return res;
+    },
     enabled: slpCode != null && yearFrom != null && monthFrom != null && monthTo != null,
+    staleTime: 10 * 60 * 1000, // 10 minutos fresco
+    gcTime: 60 * 60 * 1000, // 1 hora en memoria
+    placeholderData: () => getSummaryCache(),
   });
 };
 
@@ -68,8 +100,15 @@ export const useQuotesSellers = ({ slpCode, yearFrom, monthFrom, monthTo, skip =
 export const useQuotesSellersAdmin = ({ slpCode, yearFrom, monthFrom, monthTo }) => {
   return useQuery({
     queryKey: ['quotesSellersAdmin', slpCode, yearFrom, monthFrom, monthTo],
-    queryFn: () => getQuotesSellersAdmin({ slpCode, yearFrom, monthFrom, monthTo }),
+    queryFn: async () => {
+      const res = await getQuotesSellersAdmin({ slpCode, yearFrom, monthFrom, monthTo });
+      saveSummaryCache(res);
+      return res;
+    },
     enabled: slpCode != null && yearFrom != null && monthFrom != null && monthTo != null,
+    staleTime: 10 * 60 * 1000, // 10 minutos fresco
+    gcTime: 60 * 60 * 1000, // 1 hora en memoria
+    placeholderData: () => getSummaryCache(),
   });
 };
 
@@ -78,6 +117,7 @@ export const useNotifications = () => {
   return useQuery({
     queryKey: ["notifications"],
     queryFn: getNotifications,
+    staleTime: 5 * 60 * 1000,
   });
 };
 
@@ -86,7 +126,8 @@ export const useNotificationById = (id) => {
   return useQuery({
     queryKey: ["notification", id],
     queryFn: () => getNotificationById(id),
-    enabled: !!id, // solo si hay id
+    enabled: !!id,
+    staleTime: 5 * 60 * 1000,
   });
 };
 
@@ -96,45 +137,44 @@ export const useExchangeRate = ({ currency, date }) => {
         queryKey: ['exchangeRate', currency, date],
         queryFn: () => getExchangeRate({ currency, date }),
         enabled: !!currency && !!date,
+        staleTime: 30 * 60 * 1000, // Tipo de cambio fresco 30 min
     });
 };
 
-export const useDashboardMotives = ({ yearFrom, monthFrom, monthTo, slpCode }) => {
-  console.log(`useDashboardMotives llamado con: yearFrom=${yearFrom}, monthFrom=${monthFrom}, monthTo=${monthTo}, sellerCode=${slpCode}`);
+// ✅ Motivos de anulación
+export const useDashboardMotives = () => {
   return useQuery({
-    queryKey: ['dashboardMotives', yearFrom, monthFrom, monthTo, slpCode],
-    queryFn: () => getDashboardMotives({ yearFrom, monthFrom, monthTo, slpCode }),
-    enabled: !!yearFrom && !!monthFrom && !!monthTo,
+    queryKey: ['dashboardMotives'],
+    queryFn: getDashboardMotives,
+    staleTime: 10 * 60 * 1000,
   });
 };
 
-export const useOrdersCancelated = ({ yearFrom, monthFrom, monthTo, slpCode }) => {
-  console.log(`useOrdersCancelated llamado con: yearFrom=${yearFrom}, monthFrom=${monthFrom}, monthTo=${monthTo}, slpCode=${slpCode}`);
-  
+// ✅ Pedidos cancelados
+export const useOrdersCancelated = () => {
   return useQuery({
-    queryKey: ['ordersCancelated', yearFrom, monthFrom, monthTo, slpCode],
-    queryFn: () => getOrdersCancelated({ yearFrom, monthFrom, monthTo, slpCode }),
-    enabled: !!yearFrom && !!monthFrom && !!monthTo,
+    queryKey: ['ordersCancelated'],
+    queryFn: getOrdersCancelated,
+    staleTime: 10 * 60 * 1000,
   });
 };
 
-export const useTopCanceled = ({ yearFrom, monthFrom, monthTo, slpCode }) => {
-  console.log(`useTopCanceled llamado con: yearFrom=${yearFrom}, monthFrom=${monthFrom}, monthTo=${monthTo}, slpCode=${slpCode}`);
-  
+// ✅ Top productos cancelados
+export const useTopCanceledProducts = () => {
   return useQuery({
-    queryKey: ['topCanceled', yearFrom, monthFrom, monthTo, slpCode],
-    queryFn: () => getTopCanceledProducts({ yearFrom, monthFrom, monthTo, slpCode }),
-    enabled: !!yearFrom && !!monthFrom && !!monthTo,
+    queryKey: ['topCanceledProducts'],
+    queryFn: getTopCanceledProducts,
+    staleTime: 10 * 60 * 1000,
   });
 };
+export const useTopCanceled = useTopCanceledProducts;
 
-
-export const useTopSelled = ({ yearFrom, monthFrom, monthTo, slpCode }) => {
-  console.log(`useTopSelled llamado con: yearFrom=${yearFrom}, monthFrom=${monthFrom}, monthTo=${monthTo}, slpCode=${slpCode}`);
-  
+// ✅ Top productos vendidos
+export const useTopSelledProducts = () => {
   return useQuery({
-    queryKey: ['topSelled', yearFrom, monthFrom, monthTo, slpCode],
-    queryFn: () => getTopSelledProducts({ yearFrom, monthFrom, monthTo, slpCode }),
-    enabled: !!yearFrom && !!monthFrom && !!monthTo,
+    queryKey: ['topSelledProducts'],
+    queryFn: getTopSelledProducts,
+    staleTime: 10 * 60 * 1000,
   });
 };
+export const useTopSelled = useTopSelledProducts;

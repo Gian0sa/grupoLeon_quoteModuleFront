@@ -11,11 +11,11 @@ export default function ProductHeader({ product }) {
       borderTopRadius="xl"
     >
       <HStack justify="space-between" align="center">
-        <HStack spacing={2}>
-          <Box p={1} borderRadius="md" bg="whiteAlpha.200">
+        <HStack spacing={2} minW={0}>
+          <Box p={1} borderRadius="md" bg="whiteAlpha.200" flexShrink={0}>
             <Tag size={16} color="white" />
           </Box>
-          <Text fontSize={{ base: "md", md: "lg" }} fontWeight="800" letterSpacing="tight">
+          <Text textStyle="cardTitle" letterSpacing="tight">
             {product.itemCode || product.id}
           </Text>
         </HStack>

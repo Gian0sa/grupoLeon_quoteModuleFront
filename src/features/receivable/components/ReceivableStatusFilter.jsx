@@ -11,9 +11,9 @@ export function ReceivableStatusFilter({ activeFilter, onFilterChange, totalCoun
       label: "Todos",
       count: totalCount,
       icon: Layers,
-      activeBg: "linear-gradient(135deg, #1e4620 0%, #153417 100%)",
+      activeBg: "linear-gradient(135deg, #14532d 0%, #166534 50%, #15803d 100%)",
       activeColor: "white",
-      borderColor: "#2e6532",
+      borderColor: "transparent",
       badgeBg: "rgba(255, 255, 255, 0.25)",
       badgeColor: "white",
       iconColor: "#86efac"
@@ -25,7 +25,7 @@ export function ReceivableStatusFilter({ activeFilter, onFilterChange, totalCoun
       icon: CheckCircle2,
       activeBg: "linear-gradient(135deg, #059669 0%, #047857 100%)",
       activeColor: "white",
-      borderColor: "#10b981",
+      borderColor: "transparent",
       badgeBg: "rgba(255, 255, 255, 0.25)",
       badgeColor: "white",
       iconColor: "#a7f3d0"
@@ -37,7 +37,7 @@ export function ReceivableStatusFilter({ activeFilter, onFilterChange, totalCoun
       icon: AlertCircle,
       activeBg: "linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)",
       activeColor: "white",
-      borderColor: "#ef4444",
+      borderColor: "transparent",
       badgeBg: "rgba(255, 255, 255, 0.25)",
       badgeColor: "white",
       iconColor: "#fca5a5"
@@ -64,18 +64,22 @@ export function ReceivableStatusFilter({ activeFilter, onFilterChange, totalCoun
             whileTap={{ scale: 0.97 }}
             flex={{ base: "1 1 0px", md: "0 0 auto" }}
             minW="0"
-            py={{ base: 2, md: 3 }}
-            px={{ base: 1.5, sm: 2.5, md: 6 }}
+            py={{ base: 2, md: 2.5 }}
+            px={{ base: 3, sm: 4, md: 6 }}
             borderRadius="full"
-            bg={isActive ? f.activeBg : "white"}
-            color={isActive ? f.activeColor : "gray.700"}
-            border="1.5px solid"
-            borderColor={isActive ? f.borderColor : "gray.200"}
+            bg={isActive ? f.activeBg : "green.50"}
+            color={isActive ? f.activeColor : "green.800"}
+            border={isActive ? "none" : "1px solid"}
+            borderColor={isActive ? "transparent" : "green.200"}
             boxShadow={
               isActive 
-                ? "0 4px 16px rgba(0, 0, 0, 0.15)" 
-                : "0 2px 8px rgba(0, 0, 0, 0.04)"
+                ? "0 4px 14px rgba(22, 101, 52, 0.25)" 
+                : "none"
             }
+            _hover={{
+              bg: isActive ? f.activeBg : "green.100",
+              transform: "translateY(-1px)",
+            }}
             cursor="pointer"
             onClick={() => onFilterChange(f.id)}
             transition={{ duration: 0.15 }}

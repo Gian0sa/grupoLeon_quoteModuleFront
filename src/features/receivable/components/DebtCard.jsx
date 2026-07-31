@@ -57,7 +57,7 @@ export function DebtCard({ debt, onViewInvoices }) {
       <CardBody p={4}>
         <Flex direction="column" gap={3}>
           {/* Nombre del cliente */}
-          <Text fontSize="lg" fontWeight="bold" color={`${statusColor}.600`}>
+          <Text textStyle="cardTitle" color={`${statusColor}.600`}>
             {debt.nombre}
           </Text>
 

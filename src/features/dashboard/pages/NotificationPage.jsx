@@ -75,7 +75,7 @@ export function NotificationPage() {
   };
 
   return (
-    <Box maxW="1000px" fontFamily="'InterVariable', sans-serif" pb="100px">
+    <Box maxW="1000px" pb="100px">
       {/* Cabecera */}
       <Box size="lg" mb={6} fontWeight="bold" className={styles.heading}>
         <div className={styles.topHeader}>

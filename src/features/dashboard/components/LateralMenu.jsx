@@ -45,6 +45,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../auth/stores/useAuthStore';
 import { useHasAccess } from '../../../shared/utils/permissions';
 import { useAuthMutations } from '../../auth/hooks/mutations/authMutations';
+import { HEADER_MAIN_BG } from '../../../components/TopHeaderBanner';
 
 export function LateralMenu() {
   const { isOpen, onOpen, onClose } = useDisclosure();
@@ -100,18 +101,19 @@ export function LateralMenu() {
           justifyContent="flex-start"
           leftIcon={
             <Flex
-              w="32px"
-              h="32px"
+              w="34px"
+              h="34px"
               align="center"
               justify="center"
-              borderRadius="lg"
+              borderRadius="xl"
               bg={`${accentColor}.50`}
               flexShrink={0}
+              transition="all 0.2s ease"
             >
               <Icon as={icon} color={`${accentColor}.600`} boxSize={4} />
             </Flex>
           }
-          rightIcon={<Icon as={MdChevronRight} color="gray.300" boxSize={4} />}
+          rightIcon={<Icon as={MdChevronRight} color="gray.400" boxSize={4} />}
           onClick={() => {
             if (external) {
               window.open(path, '_blank');
@@ -121,21 +123,37 @@ export function LateralMenu() {
             onClose();
           }}
           _hover={{
-            bg: `${accentColor}.50`,
+            bg: HEADER_MAIN_BG,
+            color: "white",
+            boxShadow: "0 6px 18px rgba(18, 108, 54, 0.35)",
             transform: "translateX(4px)",
-            '& > span:first-of-type > div': { bg: `${accentColor}.100` },
+            '& > span:first-of-type > div': { bg: "white" },
+            '& > span:first-of-type > div > svg': { color: "#126C36" },
+            '& > svg': { color: "white" },
           }}
-          _active={{ bg: `${accentColor}.100` }}
+          _active={{
+            bg: "#0e572b",
+            color: "white",
+          }}
           transition="all 0.2s ease"
-          fontWeight="600"
-          fontSize="13.5px"
-          h="44px"
+          h="46px"
           color="gray.700"
           w="full"
           borderRadius="xl"
           px={2}
         >
-          {label}
+          <Text
+            as="span"
+            fontWeight="500"
+            fontSize="14px"
+            whiteSpace="nowrap"
+            overflow="hidden"
+            textOverflow="ellipsis"
+            flex="1"
+            textAlign="left"
+          >
+            {label}
+          </Text>
         </Button>
       ));
 
@@ -161,9 +179,11 @@ export function LateralMenu() {
     <>
       <IconButton
         ref={btnRef}
-        icon={<HamburgerIcon color="white" />}
+        icon={<HamburgerIcon boxSize={{ base: 5, md: 6 }} color="white" />}
         variant="ghost"
         borderRadius="full"
+        w={{ base: "42px", md: "48px" }}
+        h={{ base: "42px", md: "48px" }}
         _hover={{ bg: "whiteAlpha.300" }}
         onClick={onOpen}
         aria-label="Abrir menú"
@@ -186,7 +206,8 @@ export function LateralMenu() {
           {/* Header con perfil integrado */}
           <DrawerHeader p={0}>
             <Box
-              bg="linear-gradient(145deg, #14532d 0%, #166534 50%, #15803d 100%)"
+              bg="#126C36"
+              boxShadow="0 10px 30px rgba(18, 108, 54, 0.4)"
               px={5}
               pt={5}
               pb={6}
@@ -194,15 +215,40 @@ export function LateralMenu() {
               overflow="hidden"
               borderBottomRadius="3xl"
             >
-              {/* Decoración sutil */}
+              {/* Capa de Imagen de Fondo de Marca */}
+              <Box
+                position="absolute"
+                top={0}
+                left={0}
+                right={0}
+                bottom={0}
+                bgImage="url('/assets/header-brand-bg.png')"
+                bgPosition="center center"
+                bgSize="cover"
+                bgRepeat="no-repeat"
+                opacity={0.40}
+                pointerEvents="none"
+                _after={{
+                  content: "''",
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  background: "linear-gradient(180deg, rgba(18, 108, 54, 0.15) 0%, rgba(11, 74, 36, 0.55) 100%)",
+                }}
+              />
+              {/* Decoración círculo "bolita" del costado en #278847 */}
               <Box
                 position="absolute"
                 top="-30px"
                 right="-30px"
-                w="120px"
-                h="120px"
+                w="130px"
+                h="130px"
                 borderRadius="full"
-                bg="whiteAlpha.100"
+                bg="#278847"
+                opacity={0.75}
+                pointerEvents="none"
               />
               <Box
                 position="absolute"
@@ -211,7 +257,9 @@ export function LateralMenu() {
                 w="70px"
                 h="70px"
                 borderRadius="full"
-                bg="whiteAlpha.50"
+                bg="#278847"
+                opacity={0.35}
+                pointerEvents="none"
               />
 
               {/* Botón cerrar */}

@@ -25,6 +25,8 @@ import {
 import { FiSearch, FiPackage, FiFilter, FiChevronDown, FiChevronUp, FiX } from "react-icons/fi";
 import { BackButton } from "../../../components/BackButton";
 
+import { TopHeaderBanner, HEADER_GLASS_PANEL_PROPS } from "../../../components/TopHeaderBanner";
+
 export function ProductPriceListSearchheader({
   brandTypeSubtype,
   cardName,
@@ -56,129 +58,101 @@ export function ProductPriceListSearchheader({
   const activeFiltersCount = [marca, tipo, subtipo].filter(Boolean).length + (soloConStock === "Y" ? 1 : 0);
 
   return (
-    <Box
-      bg="linear-gradient(135deg, #14532d 0%, #166534 50%, #15803d 100%)"
-      borderRadius={{ base: "2xl", md: "3xl" }}
-      color="white"
-      p={{ base: 4, md: 5 }}
-      mb={5}
-      boxShadow="0 12px 35px rgba(20, 83, 45, 0.2)"
-      position="relative"
-      overflow="hidden"
+    <TopHeaderBanner
+      title="Lista de Precios de Productos"
+      subtitle="Consulta de stock en tiempo real y tarifas vigentes"
+      showBack={true}
+      mb={6}
     >
-      {/* Decoración gráfica sutil */}
-      <Box
-        position="absolute"
-        top="-40px"
-        right="-40px"
-        w="160px"
-        h="160px"
-        borderRadius="full"
-        bg="whiteAlpha.100"
-        pointerEvents="none"
-      />
-
       <VStack spacing={3.5} align="stretch" position="relative" zIndex={2}>
-        {/* Cabecera superior con BackButton y Título */}
-        <Flex align="center" justify="space-between" w="full" gap={2}>
-          <HStack spacing={3}>
-            <BackButton color="white" />
-            <VStack align="start" spacing={0}>
-              <HStack spacing={2}>
-                <Text fontSize={{ base: "16px", sm: "18px", md: "xl" }} fontWeight="800" color="white" letterSpacing="tight">
-                  Lista de Precios de Productos
-                </Text>
-              </HStack>
-              <Text fontSize={{ base: "11px", md: "xs" }} color="whiteAlpha.800" fontWeight="500">
-                Consulta de stock en tiempo real y tarifas vigentes
-              </Text>
-            </VStack>
-          </HStack>
-        </Flex>
 
-        {/* Barra de búsqueda principal de Cristal */}
-        <InputGroup size="md">
-          <InputLeftElement pointerEvents="none" h="42px">
-            <Icon as={FiSearch} color="gray.400" boxSize={4} />
-          </InputLeftElement>
-          <Input
-            value={cardName}
-            placeholder="Buscar por código u OEM..."
-            bg="white"
-            color="gray.800"
-            borderRadius="2xl"
-            h="42px"
-            fontSize="13px"
-            fontWeight="500"
-            _placeholder={{ color: "gray.400" }}
-            onChange={(e) => onCardNameChange(e.target.value)}
-            onKeyPress={handleKeyPress}
-            disabled={isLoading}
-            boxShadow="0 4px 15px rgba(0,0,0,0.05)"
-          />
-          {cardName && (
-            <InputRightElement h="42px">
-              <IconButton
-                size="xs"
-                icon={<FiX />}
-                variant="ghost"
-                aria-label="Limpiar búsqueda"
-                onClick={() => onCardNameChange("")}
+        {/* Panel de vidrio: integra la búsqueda + filtros al header en 1 sola fila compacta en PC */}
+        <Box p={2.5} {...HEADER_GLASS_PANEL_PROPS}>
+          <Flex direction={{ base: "column", md: "row" }} gap={2} align="center">
+            {/* Barra de búsqueda principal */}
+            <InputGroup size="md" flex="1">
+              <InputLeftElement pointerEvents="none" h="40px">
+                <Icon as={FiSearch} color="gray.400" boxSize={4} />
+              </InputLeftElement>
+              <Input
+                value={cardName}
+                placeholder="Buscar por código u OEM..."
+                bg="white"
+                color="gray.800"
+                borderRadius="full"
+                h="40px"
+                fontSize="13px"
+                fontWeight="500"
+                _placeholder={{ color: "gray.400" }}
+                onChange={(e) => onCardNameChange(e.target.value)}
+                onKeyPress={handleKeyPress}
+                disabled={isLoading}
+                boxShadow="0 4px 15px rgba(0,0,0,0.05)"
               />
-            </InputRightElement>
-          )}
-        </InputGroup>
-
-        {/* Botón de Colapso de Filtros + Botón de Búsqueda */}
-        <Flex gap={2} align="center" direction={{ base: "column", sm: "row" }}>
-          <Button
-            variant="outline"
-            onClick={onToggle}
-            w="full"
-            rightIcon={<Icon as={isOpen ? FiChevronUp : FiChevronDown} />}
-            h="38px"
-            fontSize="12.5px"
-            fontWeight="700"
-            borderRadius="xl"
-            borderColor="whiteAlpha.400"
-            _hover={{ bg: "whiteAlpha.200" }}
-            color="white"
-            bg="whiteAlpha.100"
-            backdropFilter="blur(8px)"
-            justifyContent="space-between"
-            px={4}
-          >
-            <HStack spacing={2}>
-              <Icon as={FiFilter} boxSize={3.5} />
-              <Text>Filtros avanzados</Text>
-              {activeFiltersCount > 0 && (
-                <Badge colorScheme="green" bg="green.400" color="white" borderRadius="full" px={2} fontSize="10px">
-                  {activeFiltersCount}
-                </Badge>
+              {cardName && (
+                <InputRightElement h="40px">
+                  <IconButton
+                    size="xs"
+                    icon={<FiX />}
+                    variant="ghost"
+                    aria-label="Limpiar búsqueda"
+                    onClick={() => onCardNameChange("")}
+                  />
+                </InputRightElement>
               )}
-            </HStack>
-          </Button>
+            </InputGroup>
 
-          <Button
-            onClick={onSearch}
-            isLoading={isLoading}
-            loadingText="Buscando..."
-            leftIcon={<Icon as={FiSearch} boxSize={4} />}
-            w={{ base: "full", sm: "auto" }}
-            minW="160px"
-            h="38px"
-            fontSize="13px"
-            fontWeight="800"
-            bg="white"
-            color="green.800"
-            borderRadius="xl"
-            boxShadow="0 4px 15px rgba(0,0,0,0.15)"
-            _hover={{ bg: "green.50", transform: "translateY(-1px)" }}
-            _active={{ bg: "green.100" }}
-          >
-            Buscar Productos
-          </Button>
-        </Flex>
+            {/* Botón de Colapso de Filtros + Botón de Búsqueda */}
+            <Flex gap={2} align="center" w={{ base: "full", md: "auto" }}>
+              <Button
+                variant="outline"
+                onClick={onToggle}
+                w={{ base: "full", md: "auto" }}
+                rightIcon={<Icon as={isOpen ? FiChevronUp : FiChevronDown} />}
+                h="40px"
+                fontSize="12.5px"
+                fontWeight="700"
+                borderRadius="full"
+                borderColor="whiteAlpha.400"
+                _hover={{ bg: "whiteAlpha.200" }}
+                color="white"
+                bg="whiteAlpha.100"
+                backdropFilter="blur(8px)"
+                px={4}
+              >
+                <HStack spacing={2}>
+                  <Icon as={FiFilter} boxSize={3.5} />
+                  <Text whiteSpace="nowrap">Filtros</Text>
+                  {activeFiltersCount > 0 && (
+                    <Badge colorScheme="green" bg="green.400" color="white" borderRadius="full" px={2} fontSize="10px">
+                      {activeFiltersCount}
+                    </Badge>
+                  )}
+                </HStack>
+              </Button>
+
+              <Button
+                onClick={onSearch}
+                isLoading={isLoading}
+                loadingText="Buscando..."
+                leftIcon={<Icon as={FiSearch} boxSize={4} />}
+                w={{ base: "full", md: "auto" }}
+                px={5}
+                h="40px"
+                fontSize="12.5px"
+                fontWeight="700"
+                colorScheme="green"
+                bg="white"
+                color="green.800"
+                borderRadius="full"
+                boxShadow="0 4px 15px rgba(0,0,0,0.15)"
+                _hover={{ bg: "gray.100", transform: "translateY(-1px)" }}
+              >
+                Buscar
+              </Button>
+            </Flex>
+          </Flex>
+        </Box>
 
         {/* Mensaje de Error si falla la carga de marcas/tipos */}
         {errorBrandTypeSubtype && (
@@ -345,6 +319,6 @@ export function ProductPriceListSearchheader({
           </VStack>
         </Collapse>
       </VStack>
-    </Box>
+    </TopHeaderBanner>
   );
 }
