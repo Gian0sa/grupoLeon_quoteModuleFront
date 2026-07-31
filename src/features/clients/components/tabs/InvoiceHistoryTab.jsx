@@ -453,25 +453,40 @@ export function InvoiceHistoryTab({ invoices = [] }) {
       {filteredProducts.length === 0 && (
         <Box 
           textAlign="center" 
-          py={12} 
+          py={10} 
+          px={6}
           bg="white"
-          borderRadius="xl"
+          borderRadius="2xl"
           border="1px solid"
           borderColor="gray.200"
+          boxShadow="0 4px 15px rgba(0,0,0,0.02)"
         >
-          <Icon as={FiPackage} boxSize={12} color="gray.300" mb={3} />
-          <Text color="gray.600" fontWeight="medium" mb={1}>
+          <Flex justify="center" mb={3}>
+            <Flex
+              w="56px"
+              h="56px"
+              borderRadius="2xl"
+              bg="gray.50"
+              align="center"
+              justify="center"
+              border="1px solid"
+              borderColor="gray.200"
+            >
+              <Icon as={FiPackage} boxSize={7} color="gray.400" />
+            </Flex>
+          </Flex>
+          <Text color="gray.800" fontWeight="800" fontSize="md" mb={1}>
             {!invoices || invoices.length === 0 
-              ? "No hay productos en el historial" 
+              ? "Sin Historial de Compras en SAP" 
               : searchTerm 
                 ? "No se encontraron productos" 
-                : "No hay productos para mostrar"}
+                : "Sin productos para mostrar"}
           </Text>
-          {searchTerm && invoices && invoices.length > 0 && (
-            <Text color="gray.500" fontSize="sm">
-              Intenta con otro término de búsqueda
-            </Text>
-          )}
+          <Text color="gray.500" fontSize="xs" maxW="400px" mx="auto">
+            {!invoices || invoices.length === 0
+              ? "Este cliente no registra compras ni facturas anteriores en el sistema. Puedes proceder con la toma de pedido o cotización directamente."
+              : "Intenta con otro término o código de búsqueda."}
+          </Text>
         </Box>
       )}
 

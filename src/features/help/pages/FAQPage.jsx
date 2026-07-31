@@ -37,7 +37,7 @@ import {
   MessageCircle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { BackButton } from "../../../components/BackButton";
+import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
 
 const MotionBox = motion(Box);
 const MotionFlex = motion(Flex);
@@ -622,56 +622,12 @@ export function FAQPage() {
   return (
     <Box bg="gray.50" minH="100vh" pb="100px">
       {/* ── Header ── */}
-      <Box
-        bg="linear-gradient(135deg, #14532d 0%, #166534 40%, #15803d 100%)"
-        pt={4}
-        pb={8}
-        px={{ base: 4, md: 6 }}
-        position="relative"
-        overflow="hidden"
-        _after={{
-          content: '""',
-          position: "absolute",
-          bottom: "-20px",
-          left: "0",
-          right: "0",
-          height: "40px",
-          bg: "gray.50",
-          borderTopRadius: "3xl",
-        }}
-      >
-        <Flex maxW="900px" mx="auto" align="center" justify="space-between" mb={5}>
-          <BackButton color="white" />
-          <HStack spacing={2}>
-            <Box color="white">
-              <HelpCircle size={22} />
-            </Box>
-            <Text color="white" fontWeight="800" fontSize={{ base: "md", md: "lg" }}>
-              Centro de Ayuda
-            </Text>
-          </HStack>
-          <Box w="40px" />
-        </Flex>
-
-        <VStack maxW="900px" mx="auto" spacing={3}>
-          <Text color="whiteAlpha.900" fontSize={{ base: "sm", md: "md" }} textAlign="center" fontWeight="500">
-            Guías paso a paso para usar todas las funciones
-          </Text>
-          <Badge
-            bg="whiteAlpha.200"
-            color="white"
-            borderRadius="full"
-            px={3}
-            py={1}
-            fontSize="11px"
-            fontWeight="700"
-            backdropFilter="blur(8px)"
-            border="1px solid rgba(255,255,255,0.15)"
-          >
-            📖 {totalQuestions} guías disponibles
-          </Badge>
-        </VStack>
-      </Box>
+      <TopHeaderBanner
+        title="Centro de Ayuda"
+        subtitle={`Guías paso a paso para usar todas las funciones (${totalQuestions} guías disponibles)`}
+        showBack={true}
+        mb={6}
+      />
 
       {/* ── Contenido Principal ── */}
       <Box maxW="900px" mx="auto" px={{ base: 4, md: 6 }} mt={-2} position="relative" zIndex={2}>

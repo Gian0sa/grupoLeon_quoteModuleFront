@@ -20,6 +20,7 @@ import { useSyncQueue } from "../hooks/useSyncQueue";
 import { BackButton } from "../../../components/BackButton";
 import { getQueue } from "../services/visitLogQueue";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
+import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
 import Estadisticas from "../components/Estadisticas";
 import { 
   Building2, 
@@ -260,39 +261,17 @@ export default function MyVisitsPage() {
     );
   }
 
-  if (error) {
-    return (
-      <Box textAlign="center" py={12}>
-        <Icon as={AlertTriangle} boxSize={10} color="red.500" mb={2} />
-        <Text color="red.500" fontWeight="bold">Error al cargar las visitas</Text>
-      </Box>
-    );
-  }
-
   return (
-    <Box p={{ base: 3, md: 6 }} maxW="1200px" mx="auto">
-      <VStack spacing={5} align="stretch">
-        {/* Header Principal */}
-        <Flex
-          bg="linear-gradient(135deg, #059669 0%, #047857 100%)"
-          color="white"
-          align="center"
-          justify="center"
-          h="56px"
-          borderRadius="2xl"
-          position="relative"
-          boxShadow="0 8px 20px rgba(5, 150, 105, 0.25)"
-          px={4}
-        >
-          <Box position="absolute" left={4}>
-            <BackButton color="white" />
-          </Box>
-          <Heading size="md" fontWeight="800" letterSpacing="tight">
-            Mis Visitas
-          </Heading>
-        </Flex>
+    <Box w="full" minH="100vh" bg="gray.50" pb="120px">
+      <TopHeaderBanner
+        title="Mis Visitas"
+        subtitle="Historial de check-in, check-out y seguimiento de campo"
+        showBack={true}
+        mb={6}
+      />
 
-        {/* ALERTA PRINCIPAL DE ATENCIÓN */}
+      <Box maxW="1200px" mx="auto" px={{ base: 3, md: 6 }}>
+        <VStack spacing={5} align="stretch">
         <AnimatePresence>
           {(stats.pending > 0 || stats.errors > 0) && (
             <MotionBox
@@ -301,21 +280,21 @@ export default function MyVisitsPage() {
               exit={{ opacity: 0, y: -10 }}
               bg="linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%)"
               border="2px solid"
-              borderColor="amber.400"
+              borderColor="#f59e0b"
               borderRadius="2xl"
               p={{ base: 3.5, md: 4 }}
               boxShadow="0 8px 25px rgba(245, 158, 11, 0.15)"
             >
               <Flex direction={{ base: "column", sm: "row" }} justify="space-between" align={{ base: "start", sm: "center" }} gap={3}>
                 <HStack spacing={3} align="start">
-                  <Box p={2} borderRadius="xl" bg="amber.500" color="white" flexShrink={0}>
+                  <Box p={2.5} borderRadius="xl" bg="#d97706" color="white" flexShrink={0}>
                     <Icon as={AlertTriangle} boxSize={5} />
                   </Box>
                   <VStack align="start" spacing={0}>
-                    <Text fontSize="sm" fontWeight="800" color="amber.900">
+                    <Text fontSize="sm" fontWeight="800" color="#78350f">
                       ¡Atención requerida en tus registros!
                     </Text>
-                    <Text fontSize="xs" color="amber.800" fontWeight="medium">
+                    <Text fontSize="xs" color="#92400e" fontWeight="600">
                       {stats.pending > 0 && `Tienes ${stats.pending} visita(s) sin registrar Check-Out. `}
                       {stats.errors > 0 && `${stats.errors} marca(s) no se han subido al servidor.`}
                     </Text>
@@ -325,16 +304,19 @@ export default function MyVisitsPage() {
                 <HStack spacing={2} w={{ base: "full", sm: "auto" }}>
                   {stats.errors > 0 && (
                     <Button
-                      size="xs"
-                      colorScheme="emerald"
-                      bg="emerald.600"
+                      size="sm"
+                      bg="linear-gradient(135deg, #14532d 0%, #166534 50%, #15803d 100%)"
                       color="white"
                       borderRadius="full"
-                      px={3}
-                      leftIcon={<Icon as={RefreshCw} />}
+                      px={4}
+                      h="34px"
+                      fontSize="xs"
+                      fontWeight="700"
+                      boxShadow="0 4px 12px rgba(22, 101, 52, 0.3)"
+                      leftIcon={<Icon as={RefreshCw} boxSize={3.5} />}
                       isLoading={isSyncing}
                       onClick={() => syncPending()}
-                      _hover={{ bg: "emerald.700" }}
+                      _hover={{ bg: "#0d4226" }}
                       flex={{ base: 1, sm: "auto" }}
                     >
                       Sincronizar Todo
@@ -342,15 +324,18 @@ export default function MyVisitsPage() {
                   )}
                   {stats.pending > 0 && (
                     <Button
-                      size="xs"
-                      colorScheme="amber"
-                      bg="amber.600"
+                      size="sm"
+                      bg="#d97706"
                       color="white"
                       borderRadius="full"
-                      px={3}
+                      px={4}
+                      h="34px"
+                      fontSize="xs"
+                      fontWeight="700"
+                      boxShadow="0 4px 12px rgba(217, 119, 6, 0.3)"
                       leftIcon={<Icon as={Clock} boxSize={3.5} />}
                       onClick={() => setStatusFilter(statusFilter === "pending" ? "all" : "pending")}
-                      _hover={{ bg: "amber.700" }}
+                      _hover={{ bg: "#b45309" }}
                       flex={{ base: 1, sm: "auto" }}
                     >
                       {statusFilter === "pending" ? "Ver Todas" : "Ver Pendientes"}
@@ -368,8 +353,8 @@ export default function MyVisitsPage() {
             <VStack spacing={3} align="stretch">
               <Flex justify="space-between" align="center">
                 <HStack spacing={2}>
-                  <Icon as={Calendar} boxSize={4} color="emerald.600" />
-                  <Text fontWeight="700" fontSize="sm" color="gray.700">
+                  <Icon as={Calendar} boxSize={4} color="green.700" />
+                  <Text fontWeight="700" fontSize="sm" color="gray.800">
                     Filtrar por fecha
                   </Text>
                 </HStack>
@@ -395,29 +380,45 @@ export default function MyVisitsPage() {
                   { id: "week", label: "Semana" },
                   { id: "month", label: "Mes" },
                   { id: "custom", label: "Personalizado" },
-                ].map((f) => (
-                  <Button
-                    key={f.id}
-                    size="xs"
-                    borderRadius="full"
-                    px={3.5}
-                    py={1.5}
-                    onClick={() => {
-                      setFilterType(f.id);
-                      if (f.id !== "custom") {
-                        setCustomStartDate("");
-                        setCustomEndDate("");
+                ].map((f) => {
+                  const isActive = filterType === f.id;
+                  return (
+                    <Button
+                      key={f.id}
+                      size="sm"
+                      borderRadius="full"
+                      px={4}
+                      h="34px"
+                      fontSize="xs"
+                      fontWeight={isActive ? "700" : "600"}
+                      onClick={() => {
+                        setFilterType(f.id);
+                        if (f.id !== "custom") {
+                          setCustomStartDate("");
+                          setCustomEndDate("");
+                        }
+                      }}
+                      bg={
+                        isActive
+                          ? "linear-gradient(135deg, #14532d 0%, #166534 50%, #15803d 100%)"
+                          : "green.50"
                       }
-                    }}
-                    colorScheme={filterType === f.id ? "emerald" : "gray"}
-                    bg={filterType === f.id ? "emerald.600" : "gray.100"}
-                    color={filterType === f.id ? "white" : "gray.700"}
-                    fontWeight={filterType === f.id ? "700" : "500"}
-                    _hover={{ bg: filterType === f.id ? "emerald.700" : "gray.200" }}
-                  >
-                    {f.label}
-                  </Button>
-                ))}
+                      color={isActive ? "white" : "green.800"}
+                      border={isActive ? "none" : "1px solid"}
+                      borderColor={isActive ? "transparent" : "green.200"}
+                      boxShadow={isActive ? "0 4px 12px rgba(22, 101, 52, 0.25)" : "none"}
+                      _hover={{
+                        bg: isActive
+                          ? "linear-gradient(135deg, #14532d 0%, #166534 50%, #15803d 100%)"
+                          : "green.100",
+                        transform: "translateY(-1px)",
+                      }}
+                      transition="all 0.2s"
+                    >
+                      {f.label}
+                    </Button>
+                  );
+                })}
               </Flex>
 
               {filterType === "custom" && (
@@ -654,6 +655,7 @@ export default function MyVisitsPage() {
           )}
         </VStack>
       </VStack>
+      </Box>
     </Box>
   );
 }

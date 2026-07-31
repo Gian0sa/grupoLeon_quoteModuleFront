@@ -70,13 +70,13 @@ export function ProductPriceListCard({ product, tipoPrecio }) {
       >
         <Flex direction={{ base: "column", sm: "row" }} justify="space-between" align={{ base: "stretch", sm: "center" }} gap={3}>
           {/* IZQUIERDA: Nombre + Código */}
-          <VStack align="start" spacing={1} flex="1" minW={0}>
-            <Text fontWeight="800" color="gray.800" fontSize={{ base: "13px", md: "14px" }} lineHeight="1.3" noOfLines={2}>
+          <VStack align="start" spacing={1} flex="1" minW={0} overflow="hidden">
+            <Text textStyle="cardTitle" color="gray.800" lineHeight="1.2" w="full">
               {SIGLA || "Producto sin descripción"}
             </Text>
 
             <HStack spacing={2}>
-              <Badge bg="gray.100" color="gray.700" px={2} py={0.5} borderRadius="md" fontSize="11px" fontWeight="700" fontFamily="mono">
+              <Badge bg="gray.100" color="gray.700" px={2} py={0.5} borderRadius="md" fontSize="11px" fontWeight="700">
                 #{ITEM_CODE}
               </Badge>
               {hasDiscount && (

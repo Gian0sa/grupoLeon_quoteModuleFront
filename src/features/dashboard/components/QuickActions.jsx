@@ -7,20 +7,41 @@ const MotionBox = motion(Box);
 
 export function QuickActions() {
   const navigate = useNavigate();
-  const iconSize = useBreakpointValue({ base: 16, sm: 18, md: 22 });
+  const iconSize = useBreakpointValue({ base: 15, sm: 17, md: 20 });
 
   const actions = [
-    { label: "Lista de Precios", icon: Tag, path: "/productsPriceList", color: "#86efac" },
-    { label: "Mis Pedidos", icon: ShoppingBag, path: "/reports", color: "#93c5fd" },
-    { label: "Cuentas por Cobrar", icon: CreditCard, path: "/receivable", color: "#fca5a5" },
-  ]; 
+    {
+      labelDesktop: "Lista de Precios",
+      labelMobile: "Lista Precios",
+      icon: Tag,
+      path: "/productsPriceList",
+      color: "#4ade80",
+      bgGlow: "rgba(74, 222, 128, 0.22)",
+    },
+    {
+      labelDesktop: "Mis Pedidos",
+      labelMobile: "Mis Pedidos",
+      icon: ShoppingBag,
+      path: "/reports",
+      color: "#60a5fa",
+      bgGlow: "rgba(96, 165, 250, 0.22)",
+    },
+    {
+      labelDesktop: "Cuentas por Cobrar",
+      labelMobile: "Cobranzas",
+      icon: CreditCard,
+      path: "/receivable",
+      color: "#f87171",
+      bgGlow: "rgba(248, 113, 113, 0.22)",
+    },
+  ];
 
   return (
     <Flex 
-      px={{ base: 3, sm: 4, md: 6 }} 
+      px={{ base: 2.5, sm: 4, md: 6 }} 
       pt={2}
       pb={3} 
-      gap={{ base: 2, sm: 3, md: 5 }} 
+      gap={{ base: 2, sm: 3, md: 4 }} 
       w="full" 
       maxW="1200px" 
       mx="auto" 
@@ -32,18 +53,18 @@ export function QuickActions() {
         return (
           <MotionBox
             key={action.path}
-            whileHover={{ scale: 1.03, y: -2 }}
-            whileTap={{ scale: 0.97 }}
+            whileHover={{ scale: 1.04, y: -2 }}
+            whileTap={{ scale: 0.96 }}
             onClick={() => navigate(action.path)}
-            bg="rgba(255, 255, 255, 0.14)"
+            bg="rgba(255, 255, 255, 0.16)"
             backdropFilter="blur(16px)"
-            border="1.5px solid rgba(255, 255, 255, 0.28)"
+            border="1.5px solid rgba(255, 255, 255, 0.3)"
             color="white"
             flex={{ base: "1 1 0px", md: "0 1 240px" }}
             minW="0"
             py={{ base: 2, md: 3 }}
-            px={{ base: 2, sm: 3, md: 6 }}
-            h={{ base: "40px", md: "46px" }}
+            px={{ base: 2, sm: 3.5, md: 6 }}
+            h={{ base: "44px", sm: "46px", md: "48px" }}
             borderRadius="full"
             cursor="pointer"
             boxShadow="0 4px 20px rgba(0,0,0,0.18)"
@@ -51,21 +72,35 @@ export function QuickActions() {
             display="flex"
             alignItems="center"
             justifyContent="center"
-            _hover={{ bg: "rgba(255, 255, 255, 0.25)", borderColor: "rgba(255, 255, 255, 0.5)" }}
+            _hover={{ bg: "rgba(255, 255, 255, 0.28)", borderColor: "rgba(255, 255, 255, 0.5)" }}
           >
-            <Flex align="center" justify="center" gap={{ base: 1.5, sm: 2, md: 3 }}>
-              <Box flexShrink={0} display="flex" alignItems="center" justifyContent="center">
-                <IconComp size={iconSize || 18} color={action.color} strokeWidth={2.2} />
-              </Box>
+            <Flex align="center" justify="center" gap={{ base: 1.5, sm: 2, md: 3 }} w="full">
+              <Flex
+                w={{ base: "26px", md: "32px" }}
+                h={{ base: "26px", md: "32px" }}
+                borderRadius="full"
+                bg={action.bgGlow}
+                align="center"
+                justify="center"
+                flexShrink={0}
+              >
+                <IconComp size={iconSize || 15} color={action.color} strokeWidth={2.4} />
+              </Flex>
               <Text 
-                fontWeight="700"
-                fontSize={{ base: "10.5px", sm: "12px", md: "14px" }}
+                fontWeight="800"
+                fontSize={{ base: "11px", sm: "12.5px", md: "14px" }}
                 whiteSpace="nowrap"
                 textAlign="center"
                 lineHeight="1"
                 letterSpacing="tight"
+                color="white"
               >
-                {action.label}
+                <Box as="span" display={{ base: "inline", sm: "none" }}>
+                  {action.labelMobile}
+                </Box>
+                <Box as="span" display={{ base: "none", sm: "inline" }}>
+                  {action.labelDesktop}
+                </Box>
               </Text>
             </Flex>
           </MotionBox>

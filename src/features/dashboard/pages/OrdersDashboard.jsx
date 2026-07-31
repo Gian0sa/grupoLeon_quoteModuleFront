@@ -151,7 +151,6 @@ const { data: adminData, isLoading: adminLoading, error: adminError } =
       minH="100vh"
       py={4}
       px={{ base: 3, md: 4, lg: 6 }}
-      fontFamily="'InterVariable', sans-serif"
     >
       <Container maxW="container.2xl">
         <VStack spacing={4} align="stretch">

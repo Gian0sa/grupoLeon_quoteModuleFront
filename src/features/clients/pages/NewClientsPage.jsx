@@ -36,6 +36,7 @@ import { FiSearch, FiEdit, FiUser, FiMail, FiPhone, FiFileText } from "react-ico
 import { BackButton } from "../../../components/BackButton";
 import { useNewClientsQuery, useUpdateNewClientMutation } from "../hooks/queries/clientQueries";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
+import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
 
 export function NewClientsPage() {
   const toast = useToast();
@@ -215,28 +216,16 @@ export function NewClientsPage() {
   };
 
   return (
-    <Container maxW="container.xl" py={{ base: 3, md: 8 }} px={{ base: 2, sm: 3, md: 6 }}>
-      <VStack spacing={6} align="stretch">
-        {/* HEADER */}
-        <Flex
-          bg="green.600"
-          color="white"
-          align="center"
-          justify="center"
-          w="100%"
-          minH={{ base: "44px", md: "56px" }}
-          px={{ base: 2, md: 4 }}
-          borderRadius="lg"
-          position="relative"
-          boxShadow="md"
-        >
-          <Box position="absolute" left={2}>
-            <BackButton color="white" />
-          </Box>
-          <Heading textAlign="center" fontSize={{ base: "md", sm: "lg", md: "xl" }} fontWeight="600">
-            Clientes Nuevos Registrados
-          </Heading>
-        </Flex>
+    <Box w="full" minH="100vh" bg="gray.50" pb="120px">
+      <TopHeaderBanner
+        title="Clientes Nuevos Registrados"
+        subtitle="Monitoreo y actualización de datos de nuevos clientes"
+        showBack={true}
+        mb={6}
+      />
+
+      <Box maxW="1200px" mx="auto" px={{ base: 3, md: 6 }}>
+        <VStack spacing={6} align="stretch">
 
         {/* SEARCH BAR */}
         <Card border="1px solid" borderColor="gray.100" boxShadow="sm">
@@ -369,6 +358,7 @@ export function NewClientsPage() {
           </>
         )}
       </VStack>
+      </Box>
 
       {/* EDIT MODAL */}
       <Modal isOpen={isEditOpen} onClose={() => setIsEditOpen(false)}>
@@ -442,6 +432,6 @@ export function NewClientsPage() {
           </ModalFooter>
         </ModalContent>
       </Modal>
-    </Container>
+    </Box>
   );
 }

@@ -13,9 +13,9 @@ import {
   FormErrorMessage,
   VStack,
 } from "@chakra-ui/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-export function NewClientModal({ isOpen, onClose, onCreate }) {
+export function NewClientModal({ isOpen, onClose, onCreate, initialData }) {
   const [form, setForm] = useState({
     fullName: "",
     personType: "NATURAL",
@@ -24,6 +24,20 @@ export function NewClientModal({ isOpen, onClose, onCreate }) {
     phone: "",
     email: "",
   });
+
+  useEffect(() => {
+    if (isOpen) {
+      setForm({
+        fullName: initialData?.fullName || "",
+        personType: initialData?.personType || "NATURAL",
+        documentType: initialData?.documentType || (initialData?.personType === "JURIDICO" ? "RUC" : "DNI"),
+        documentNumber: initialData?.documentNumber || "",
+        phone: initialData?.phone || "",
+        email: initialData?.email || "",
+      });
+      setErrors({});
+    }
+  }, [isOpen, initialData]);
 
   const [errors, setErrors] = useState({});
 

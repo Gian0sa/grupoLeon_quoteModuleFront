@@ -108,7 +108,7 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
                   <Text fontSize="md" color="green.600" fontWeight="medium" minW="80px">
                     Sigla:
                   </Text>
-                  <Text fontSize="md" color="gray.700" fontFamily="mono">
+                  <Text fontSize="md" color="gray.700" fontWeight="600">
                     {SIGLA}
                   </Text>
                 </HStack>
@@ -119,7 +119,7 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
                   <Text fontSize="md" color="green.600" fontWeight="medium" minW="80px">
                     Codigo:
                   </Text>
-                  <Text fontSize="md" color="gray.700" fontFamily="mono">
+                  <Text fontSize="md" color="gray.700" fontWeight="600">
                     {ITEM_CODE}
                   </Text>
                 </HStack>

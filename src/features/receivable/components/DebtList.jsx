@@ -1,4 +1,4 @@
-import { VStack, Text, Center } from "@chakra-ui/react";
+import { SimpleGrid, Text, Center } from "@chakra-ui/react";
 import { DebtCard } from "./DebtCard";
 
 export function DebtList({ debts, onViewInvoices, onViewDetails }) {
@@ -13,7 +13,7 @@ export function DebtList({ debts, onViewInvoices, onViewDetails }) {
   }
 
   return (
-    <VStack spacing={1} align="stretch">
+    <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} w="full">
       {debts.map((debt, index) => {
         // Montos
         const saldoPEN = debt.pendingAmount?.PEN || 0;
@@ -76,6 +76,6 @@ export function DebtList({ debts, onViewInvoices, onViewDetails }) {
           />
         );
       })}
-    </VStack>
+    </SimpleGrid>
   );
 }

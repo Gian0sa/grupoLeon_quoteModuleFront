@@ -1,5 +1,4 @@
-import { Flex, Box, Heading } from "@chakra-ui/react";
-import { BackButton } from "../../../components/BackButton";
+import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
 import { useState, useRef } from "react";
 
 export function VisitLogHeader() {
@@ -8,7 +7,6 @@ export function VisitLogHeader() {
 
     const handleTitleClick = () => {
         const now = Date.now();
-        // Si pasa más de 2 segundos entre clics, reiniciamos el contador
         if (now - lastClickTimeRef.current > 2000) {
             setClickCount(1);
         } else {
@@ -16,7 +14,6 @@ export function VisitLogHeader() {
             setClickCount(nextCount);
             if (nextCount >= 5) {
                 setClickCount(0);
-                // Cargar e inicializar eruda desde CDN si no existe
                 if (window.eruda) {
                     window.eruda.show();
                 } else {
@@ -34,32 +31,11 @@ export function VisitLogHeader() {
     };
 
     return (
-        <Flex
-            bg="green.600"
-            color="white"
-            align="center"
-            justify="center"
-            w="100%"
-            h="56px"
-            px={4}
-            position="sticky"
-            top={0}
-            zIndex={10}
-            boxShadow="sm"
-        >
-            <Box position="absolute" left={4}>
-                <BackButton color="white" />
-            </Box>
-            <Heading 
-                textAlign="center" 
-                fontSize="lg" 
-                fontWeight="600"
-                onClick={handleTitleClick}
-                cursor="pointer"
-                userSelect="none"
-            >
-                Registro de Visita
-            </Heading>
-        </Flex>
+        <TopHeaderBanner
+            title="Registro de Visita"
+            subtitle="Control de entradas, salidas y ubicación del vendedor"
+            showBack={true}
+            mb={6}
+        />
     );
 }

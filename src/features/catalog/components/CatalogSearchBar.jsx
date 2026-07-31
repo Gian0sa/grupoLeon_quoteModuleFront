@@ -30,7 +30,6 @@ export default function CatalogSearchBar({ filters, onSearch, onClear, isLoading
   const { data: filterMeta } = useFilterMetadata();
 
   const bgColor = useColorModeValue('white', 'gray.800');
-  const borderColor = useColorModeValue('gray.100', 'gray.700');
 
   useEffect(() => {
     setLocalFilters(filters);
@@ -135,13 +134,16 @@ export default function CatalogSearchBar({ filters, onSearch, onClear, isLoading
   };
 
   return (
+    // Fondo blanco sólido (necesario para la legibilidad de las etiquetas gris oscuro internas),
+    // pero con borde y sombra en el mismo tono verde del header para que se sienta "acoplada" a él
+    // en vez de una tarjeta genérica flotando encima.
     <Box
       bg={bgColor}
       p={{ base: 4, md: 5 }}
       borderRadius="2xl"
-      borderWidth="1.5px"
-      borderColor={borderColor}
-      boxShadow="0 4px 20px rgba(0, 0, 0, 0.04)"
+      borderWidth="1px"
+      borderColor="whiteAlpha.500"
+      boxShadow="0 8px 24px rgba(6, 28, 16, 0.18)"
     >
       {/* Grid simplificado: Código/OEM (2 col), Marca (1 col), Tipo (1 col) */}
       <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} spacing={{ base: 3, md: 4 }} mb={4}>

@@ -49,6 +49,25 @@ const semanticTokens = {
   },
 };
 
-const theme = extendTheme({ config, styles, semanticTokens });
+const fonts = {
+  heading: `'Inter', 'InterVariable', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`,
+  body: `'Inter', 'InterVariable', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`,
+};
+
+// Estilo unificado para títulos/nombres en cards y listas (producto, cliente, número de orden, etc.)
+// No incluye color: varios usos necesitan color dinámico (p. ej. según estado) pasado aparte.
+const textStyles = {
+  cardTitle: {
+    fontWeight: "medium",
+    fontSize: "sm",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    textAlign: "left",
+    flex: "1",
+  },
+};
+
+const theme = extendTheme({ config, styles, fonts, semanticTokens, textStyles });
 
 export default theme;

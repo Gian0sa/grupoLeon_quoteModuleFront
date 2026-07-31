@@ -1,33 +1,64 @@
+import { useState, useRef } from "react";
 import { 
   Box, 
   Text, 
   Spinner, 
   Flex,
   SimpleGrid,
+  HStack,
+  IconButton,
   useColorModeValue
 } from "@chakra-ui/react";
+import { ChevronLeftIcon, ChevronRightIcon } from "@chakra-ui/icons";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 
-import styles from "./DashboardPage.module.css";
 import { useAuthStore } from "../../../features/auth/stores/useAuthStore";
-import { 
-  useQuotesSellers, 
-  useQuotesSellersAdmin, 
-  useNotifications, 
-  useExchangeRate 
+import {
+  useQuotesSellers,
+  useQuotesSellersAdmin,
 } from "../hooks/queries/dashboardQueries";
+import { QUERY_KEYS } from "../../../shared/utils/queryKeys";
 
-import { DashboardHeader } from "../components/DashboardHeader";
+import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
 import { QuickActions } from "../components/QuickActions";
 import { SalesSummary } from "../components/SalesSummary";
 import { SalesStats } from "../components/SalesStats";
 import { SurfaceChartCard } from "../components/SurfaceChartCard";
-import { Notifications } from "../components/Notifications";
+import { DashboardCommercialPanel } from "../components/DashboardCommercialPanel";
 import { DataCard } from "../components/DataCard";
 
 export function DashboardPage() {
-  const { salesEmployeeCode } = useAuthStore();
+  const { salesEmployeeCode, username } = useAuthStore();
+  const carouselRef = useRef(null);
+  const [activeCardIndex, setActiveCardIndex] = useState(0);
+
+  const handleScroll = () => {
+    if (!carouselRef.current) return;
+    const scrollLeft = carouselRef.current.scrollLeft;
+    const width = carouselRef.current.clientWidth;
+    const index = Math.round(scrollLeft / (width * 0.85));
+    setActiveCardIndex(Math.min(Math.max(index, 0), 2));
+  };
+
+  const scrollToCard = (index) => {
+    if (!carouselRef.current) return;
+    const width = carouselRef.current.clientWidth;
+    const cardWidth = width * 0.85 + 16;
+    carouselRef.current.scrollTo({
+      left: index * cardWidth,
+      behavior: "smooth",
+    });
+    setActiveCardIndex(index);
+  };
+
+  const handlePrev = () => {
+    scrollToCard(Math.max(activeCardIndex - 1, 0));
+  };
+
+  const handleNext = () => {
+    scrollToCard(Math.min(activeCardIndex + 1, 2));
+  };
 
   // Roles
   const isVendedor = salesEmployeeCode && salesEmployeeCode > 0;
@@ -76,20 +107,6 @@ export function DashboardPage() {
   console.log("isVendedor:", isVendedor);
   console.log("isAdmin:", isAdmin);
 
-  const { 
-    data: notifications, 
-    isLoading: loadingNotifications, 
-    error: errorNotifications 
-  } = useNotifications();
-
-  const { 
-    data: exchangeRateData,
-    isLoading: loadingExchangeRate 
-  } = useExchangeRate({ 
-    currency: 'USD', 
-    date: format(new Date(), 'yyyy-MM-dd') 
-  });
-
   const isLoading = isVendedor ? vendedorLoading : adminLoading;
   const error = isVendedor ? vendedorError : adminError;
 
@@ -101,18 +118,30 @@ export function DashboardPage() {
   }
 
   const today = format(new Date(), "EEEE, d 'de' MMMM 'del' yyyy", { locale: es });
+  const todayIso = format(new Date(), "yyyy-MM-dd");
+  const currentMonth = format(new Date(), "MM");
+
+  const refreshQueries = [
+    [QUERY_KEYS.quotesSellers, salesEmployeeCode ?? 0, currentMonth],
+    [QUERY_KEYS.quotesSellersAdmin, salesEmployeeCode ?? 0, currentMonth],
+    [QUERY_KEYS.notifications],
+    [QUERY_KEYS.exchangeRate, "USD", todayIso],
+  ];
 
   return (
     <Box w="full" minH="100vh" bg={useColorModeValue("gray.50", "gray.900")}>
       {/* Header Integrado */}
-      <Box className={styles.headerMain} color="white">
-        <DashboardHeader 
-          today={today} 
-          exchangeRate={exchangeRateData} 
-          isLoadingExchangeRate={loadingExchangeRate} 
-        />
+      <TopHeaderBanner
+        title={`Hola, ${username}.`}
+        subtitle={today}
+        showBack={false}
+        showExchangeRate={true}
+        refreshQueries={refreshQueries}
+        pb={{ base: 5, md: 7 }}
+        mb={0}
+      >
         <QuickActions />
-      </Box>
+      </TopHeaderBanner>
 
       {/* Sección Principales Métricas */}
       <Box maxW="1200px" mx="auto" px={4} py={6}>
@@ -148,41 +177,80 @@ export function DashboardPage() {
               <SurfaceChartCard data={resumenData} />
             </SimpleGrid>
 
-            {/* VISTA MÓVIL (Carrusel deslizable nativo) */}
-            <Flex
-              display={{ base: "flex", md: "none" }}
-              overflowX="auto"
-              scrollSnapType="x mandatory"
-              gap={4}
-              py={2}
-              sx={{
-                "&::-webkit-scrollbar": { display: "none" },
-                scrollbarWidth: "none",
-                "-ms-overflow-style": "none",
-              }}
-            >
-              <Box flexShrink={0} w="85vw" scrollSnapAlign="center">
-                <SalesSummary data={resumenData} />
-              </Box>
-              <Box flexShrink={0} w="85vw" scrollSnapAlign="center">
-                <SalesStats data={resumenData} />
-              </Box>
-              <Box flexShrink={0} w="85vw" scrollSnapAlign="center">
-                <SurfaceChartCard data={resumenData} />
-              </Box>
-            </Flex>
-          </>
-        )}
-      </Box>
+            {/* VISTA MÓVIL (Carrusel deslizable asistido con flechas y dots) */}
+            <Box display={{ base: "block", md: "none" }} position="relative" w="full">
+              <Flex
+                ref={carouselRef}
+                onScroll={handleScroll}
+                overflowX="auto"
+                scrollSnapType="x mandatory"
+                gap={4}
+                py={2}
+                px={1}
+                sx={{
+                  "&::-webkit-scrollbar": { display: "none" },
+                  scrollbarWidth: "none",
+                  "-ms-overflow-style": "none",
+                }}
+              >
+                <Box flexShrink={0} w="85vw" scrollSnapAlign="center">
+                  <SalesSummary data={resumenData} />
+                </Box>
+                <Box flexShrink={0} w="85vw" scrollSnapAlign="center">
+                  <SalesStats data={resumenData} />
+                </Box>
+                <Box flexShrink={0} w="85vw" scrollSnapAlign="center">
+                  <SurfaceChartCard data={resumenData} />
+                </Box>
+              </Flex>
 
-      {/* Notificaciones */}
-      <Box maxW="1200px" mx="auto" px={4} pb={12}>
-        {loadingNotifications ? (
-          <Spinner color="green.500" />
-        ) : errorNotifications ? (
-          <Text color="red.400">Error al cargar notificaciones</Text>
-        ) : (
-          <Notifications data={notifications} />
+              {/* Botones de Flecha y Puntos Indicadores de Navegación */}
+              <Flex align="center" justify="space-between" mt={3} px={2}>
+                <IconButton
+                  icon={<ChevronLeftIcon boxSize={7} />}
+                  aria-label="Anterior tarjeta"
+                  size="sm"
+                  variant="ghost"
+                  colorScheme="green"
+                  borderRadius="full"
+                  isDisabled={activeCardIndex === 0}
+                  onClick={handlePrev}
+                  _hover={{ bg: "green.50" }}
+                />
+
+                {/* Puntos Indicadores (Dots) */}
+                <HStack spacing={2.5}>
+                  {[0, 1, 2].map((idx) => (
+                    <Box
+                      key={idx}
+                      w={activeCardIndex === idx ? "22px" : "8px"}
+                      h="8px"
+                      borderRadius="full"
+                      bg={activeCardIndex === idx ? "green.600" : "gray.300"}
+                      cursor="pointer"
+                      transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+                      onClick={() => scrollToCard(idx)}
+                    />
+                  ))}
+                </HStack>
+
+                <IconButton
+                  icon={<ChevronRightIcon boxSize={7} />}
+                  aria-label="Siguiente tarjeta"
+                  size="sm"
+                  variant="ghost"
+                  colorScheme="green"
+                  borderRadius="full"
+                  isDisabled={activeCardIndex === 2}
+                  onClick={handleNext}
+                  _hover={{ bg: "green.50" }}
+                />
+              </Flex>
+            </Box>
+
+            {/* PANEL COMERCIAL: Semáforo de Crédito + Top Productos */}
+            <DashboardCommercialPanel />
+          </>
         )}
       </Box>
     </Box>
