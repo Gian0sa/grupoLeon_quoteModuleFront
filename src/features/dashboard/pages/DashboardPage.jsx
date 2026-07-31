@@ -2,7 +2,6 @@ import { useState, useRef } from "react";
 import { 
   Box, 
   Text, 
-  Spinner, 
   Flex,
   SimpleGrid,
   HStack,
@@ -27,7 +26,6 @@ import { SalesSummary } from "../components/SalesSummary";
 import { SalesStats } from "../components/SalesStats";
 import { SurfaceChartCard } from "../components/SurfaceChartCard";
 import { DashboardCommercialPanel } from "../components/DashboardCommercialPanel";
-import { DataCard } from "../components/DataCard";
 
 export function DashboardPage() {
   const { salesEmployeeCode, username } = useAuthStore();
@@ -73,7 +71,7 @@ export function DashboardPage() {
   const monthFrom = todayDate.getMonth() + 1;
   const monthTo = todayDate.getMonth() + 1;
 
-  // ✅ Queries V3 actualizadas con caché persistente
+  // ✅ Queries V3 enviando siempre consulta directa y fresca por usuario
   const {
     data: vendedorData, 
     isLoading: vendedorLoading, 
@@ -114,11 +112,13 @@ export function DashboardPage() {
 
   const today = format(new Date(), "EEEE, d 'de' MMMM 'del' yyyy", { locale: es });
   const todayIso = format(new Date(), "yyyy-MM-dd");
-  const currentMonth = format(new Date(), "MM");
 
+  // Prefijos alineados con las queryKey reales de useQuotesSellers/useQuotesSellersAdmin
+  // (['quotesSellers', slpCode, yearFrom, monthFrom, monthTo, skip, pageSize]), para que
+  // invalidateQueries({exact:false}) sí encuentre y refetchee la query activa.
   const refreshQueries = [
-    [QUERY_KEYS.quotesSellers, salesEmployeeCode ?? 0, currentMonth],
-    [QUERY_KEYS.quotesSellersAdmin, salesEmployeeCode ?? 0, currentMonth],
+    [QUERY_KEYS.quotesSellers, querySlpCode, yearFrom, monthFrom, monthTo],
+    [QUERY_KEYS.quotesSellersAdmin, querySlpCode, yearFrom, monthFrom, monthTo],
     [QUERY_KEYS.notifications],
     [QUERY_KEYS.exchangeRate, "USD", todayIso],
   ];
@@ -140,8 +140,8 @@ export function DashboardPage() {
 
       {/* Sección Principales Métricas */}
       <Box maxW="1200px" mx="auto" px={4} py={6}>
-        {/* Si está cargando por primera vez sin datos en caché, mostrar Skeletons para evitar colapsos de layout */}
-        {isLoading && !resumenData && (
+        {/* Durante la carga directa de datos del usuario, mostrar Skeletons limpios */}
+        {isLoading && (
           <SimpleGrid columns={{ base: 1, md: 3 }} spacing={6} w="full">
             <Skeleton h="240px" borderRadius="3xl" startColor="gray.100" endColor="gray.200" />
             <Skeleton h="240px" borderRadius="3xl" startColor="gray.100" endColor="gray.200" />
@@ -149,20 +149,20 @@ export function DashboardPage() {
           </SimpleGrid>
         )}
 
-        {error && !resumenData && (
+        {error && !isLoading && (
           <Box textAlign="center" py={8}>
-            <Text color="red.500">Error: {error.message}</Text>
+            <Text color="red.500">Error al consultar datos: {error.message}</Text>
           </Box>
         )}
 
         {!isLoading && !error && !resumenData && (
           <Box textAlign="center" py={8}>
-            <Text color="orange.500">No hay datos disponibles</Text>
+            <Text color="orange.500">No hay datos disponibles para este usuario</Text>
           </Box>
         )}
 
-        {/* Si hay datos (bien frescos o desde caché local instantánea) renderizar inmediatamente */}
-        {resumenData && (
+        {/* Cuando los datos frescos del usuario actual estén disponibles */}
+        {!isLoading && resumenData && (
           <>
             {/* VISTA PC (Grid 3 columnas) */}
             <SimpleGrid 
