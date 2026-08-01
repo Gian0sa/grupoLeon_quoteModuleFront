@@ -117,7 +117,7 @@ export function SalesSummary({ data }) {
           <HStack spacing={1}>
             <Icon as={Target} boxSize={3.5} color="gray.400" />
             <Text fontSize="xs" color="gray.500" fontWeight="semibold">
-              Meta: ${cuota}
+              {Number(data.CUOTA_MES_USD || 0) > 0 ? `Meta: $${cuota}` : "Meta SAP: Sin asignar ($0.00)"}
             </Text>
           </HStack>
           <Text fontSize="xs" fontWeight="900" color={progressValue >= 70 ? "emerald.600" : "orange.600"}>

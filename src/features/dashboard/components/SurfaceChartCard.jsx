@@ -3,6 +3,7 @@ import {
   Box,
   Text,
   HStack,
+  VStack,
   Icon,
   Flex,
   Table,
@@ -83,8 +84,9 @@ export function SurfaceChartCard({ data }) {
   // Campos reales de SAP
   const avanceMes = Number(data.AVANCE_MES_USD || 0);
   const pedidosMes = Number(data.PEDIDOS_MES_USD || 0);
-  const cuotaMes = Number(data.CUOTA_MES_USD || 30000);
+  const cuotaMes = Number(data.CUOTA_MES_USD || 0);
   const cantPedidos = Number(data.CANT_PEDIDOS || 0);
+  const nombreVendedor = data.VENDEDOR && data.VENDEDOR !== "Sin datos" ? data.VENDEDOR : null;
 
   // Hora y día actual
   const currentHour = now.getHours(); // Ej. 13 para 1:50 PM
@@ -190,15 +192,22 @@ export function SurfaceChartCard({ data }) {
           <Box p={1.5} borderRadius="xl" bg="green.50" color="green.600">
             <Icon as={TrendingUp} boxSize={3.5} />
           </Box>
-          <Text
-            fontSize="10.5px"
-            color="gray.700"
-            fontWeight="800"
-            textTransform="uppercase"
-            letterSpacing="wider"
-          >
-            Evolución Comercial
-          </Text>
+          <VStack align="start" spacing={0}>
+            <Text
+              fontSize="10.5px"
+              color="gray.700"
+              fontWeight="800"
+              textTransform="uppercase"
+              letterSpacing="wider"
+            >
+              Evolución Comercial
+            </Text>
+            {nombreVendedor && (
+              <Text fontSize="9px" color="green.700" fontWeight="700" isTruncated maxW="130px">
+                {nombreVendedor}
+              </Text>
+            )}
+          </VStack>
         </HStack>
 
         {/* Selector Píldora: Día | Semanal | Mensual */}
@@ -235,7 +244,7 @@ export function SurfaceChartCard({ data }) {
 
       {/* ── Gráfico de Área Rellena (AreaChart) con Gradientes (82px alto) ── */}
       <Box w="full" h="82px" minW={0} minH={0} my={0.5}>
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
           <AreaChart
             data={surfaceData}
             margin={{ top: 4, right: 10, left: -22, bottom: 0 }}

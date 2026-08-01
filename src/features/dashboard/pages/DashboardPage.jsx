@@ -5,13 +5,22 @@ import {
   Flex,
   SimpleGrid,
   HStack,
+  VStack,
   IconButton,
   Skeleton,
-  useColorModeValue
+  useColorModeValue,
+  Select,
+  Button,
+  Alert,
+  AlertIcon,
+  AlertTitle,
+  AlertDescription,
+  Badge,
 } from "@chakra-ui/react";
 import { ChevronLeftIcon, ChevronRightIcon } from "@chakra-ui/icons";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+import { Calendar, RotateCcw, UserCheck } from "lucide-react";
 
 import { useAuthStore } from "../../../features/auth/stores/useAuthStore";
 import {
@@ -26,11 +35,47 @@ import { SalesSummary } from "../components/SalesSummary";
 import { SalesStats } from "../components/SalesStats";
 import { SurfaceChartCard } from "../components/SurfaceChartCard";
 import { DashboardCommercialPanel } from "../components/DashboardCommercialPanel";
+import SellerSelect from "../../../components/SellerSelect";
+
+const MONTHS_LIST = [
+  { value: 1, label: "Enero" },
+  { value: 2, label: "Febrero" },
+  { value: 3, label: "Marzo" },
+  { value: 4, label: "Abril" },
+  { value: 5, label: "Mayo" },
+  { value: 6, label: "Junio" },
+  { value: 7, label: "Julio" },
+  { value: 8, label: "Agosto" },
+  { value: 9, label: "Septiembre" },
+  { value: 10, label: "Octubre" },
+  { value: 11, label: "Noviembre" },
+  { value: 12, label: "Diciembre" },
+];
 
 export function DashboardPage() {
   const { salesEmployeeCode, username } = useAuthStore();
   const carouselRef = useRef(null);
   const [activeCardIndex, setActiveCardIndex] = useState(0);
+
+  // Roles
+  const isVendedor = salesEmployeeCode && salesEmployeeCode > 0;
+  const isAdmin = !salesEmployeeCode || salesEmployeeCode === 0;
+
+  // Rango y Filtros Dinámicos
+  const todayDate = new Date();
+  const currentRealYear = todayDate.getFullYear();
+  const currentRealMonth = todayDate.getMonth() + 1;
+
+  const [selectedYear, setSelectedYear] = useState(currentRealYear);
+  const [selectedMonth, setSelectedMonth] = useState(currentRealMonth);
+  const [selectedSellerCode, setSelectedSellerCode] = useState(isVendedor ? salesEmployeeCode : 0);
+  const [selectedSellerOption, setSelectedSellerOption] = useState({ value: 0, label: "Todos los vendedores" });
+
+  const querySlpCode = isVendedor ? salesEmployeeCode : (selectedSellerCode || 0);
+
+  const yearFrom = selectedYear;
+  const monthFrom = selectedMonth;
+  const monthTo = selectedMonth;
 
   const handleScroll = () => {
     if (!carouselRef.current) return;
@@ -59,17 +104,21 @@ export function DashboardPage() {
     scrollToCard(Math.min(activeCardIndex + 1, 2));
   };
 
-  // Roles
-  const isVendedor = salesEmployeeCode && salesEmployeeCode > 0;
-  const isAdmin = !salesEmployeeCode || salesEmployeeCode === 0;
+  const handleSelectPrevMonth = () => {
+    if (selectedMonth === 1) {
+      setSelectedMonth(12);
+      setSelectedYear((y) => y - 1);
+    } else {
+      setSelectedMonth((m) => m - 1);
+    }
+  };
 
-  const querySlpCode = isVendedor ? salesEmployeeCode : 0;
+  const handleSelectCurrentMonth = () => {
+    setSelectedMonth(currentRealMonth);
+    setSelectedYear(currentRealYear);
+  };
 
-  // ✅ Rango del mes actual (V3)
-  const todayDate = new Date();
-  const yearFrom = todayDate.getFullYear();
-  const monthFrom = todayDate.getMonth() + 1;
-  const monthTo = todayDate.getMonth() + 1;
+  const isCurrentMonthView = selectedYear === currentRealYear && selectedMonth === currentRealMonth;
 
   // ✅ Queries V3 enviando siempre consulta directa y fresca por usuario
   const {
@@ -110,12 +159,14 @@ export function DashboardPage() {
     resumenData = Array.isArray(adminData) ? adminData[0] : adminData;
   }
 
+  // Comprobar inicio de mes en cero
+  const isStartOfMonthZero = isCurrentMonthView && resumenData && 
+    Number(resumenData.AVANCE_MES_USD || 0) === 0 && 
+    Number(resumenData.PEDIDOS_MES_USD || 0) === 0;
+
   const today = format(new Date(), "EEEE, d 'de' MMMM 'del' yyyy", { locale: es });
   const todayIso = format(new Date(), "yyyy-MM-dd");
 
-  // Prefijos alineados con las queryKey reales de useQuotesSellers/useQuotesSellersAdmin
-  // (['quotesSellers', slpCode, yearFrom, monthFrom, monthTo, skip, pageSize]), para que
-  // invalidateQueries({exact:false}) sí encuentre y refetchee la query activa.
   const refreshQueries = [
     [QUERY_KEYS.quotesSellers, querySlpCode, yearFrom, monthFrom, monthTo],
     [QUERY_KEYS.quotesSellersAdmin, querySlpCode, yearFrom, monthFrom, monthTo],
@@ -140,6 +191,157 @@ export function DashboardPage() {
 
       {/* Sección Principales Métricas */}
       <Box maxW="1200px" mx="auto" px={4} py={6}>
+        {/* Barra Superior de Filtros y Selección de Período Comercial */}
+        <Flex
+          direction={{ base: "column", md: "row" }}
+          justify="space-between"
+          align={{ base: "stretch", md: "center" }}
+          bg="white"
+          p={4}
+          borderRadius="2xl"
+          boxShadow="sm"
+          border="1px solid"
+          borderColor="gray.100"
+          mb={6}
+          gap={3}
+        >
+          {/* Título de Rango e Indicador */}
+          <HStack spacing={3}>
+            <Box p={2.5} borderRadius="xl" bg="green.50" color="green.700">
+              <Calendar size={20} />
+            </Box>
+            <VStack align="start" spacing={0}>
+              <HStack spacing={2}>
+                <Text fontWeight="800" fontSize="sm" color="gray.800">
+                  Período Comercial
+                </Text>
+                <Badge colorScheme={isCurrentMonthView ? "green" : "blue"} borderRadius="full" px={2.5} py={0.5} fontSize="xs">
+                  {isCurrentMonthView ? "Mes Actual" : `${MONTHS_LIST.find(m => m.value === selectedMonth)?.label} ${selectedYear}`}
+                </Badge>
+              </HStack>
+              <Text fontSize="xs" color="gray.500">
+                Resumen de facturación, pedidos y meta por vendedor
+              </Text>
+            </VStack>
+          </HStack>
+
+          {/* Controles de Selección */}
+          <Flex direction={{ base: "column", sm: "row" }} gap={2} align="center" w={{ base: "full", md: "auto" }}>
+            {/* Botones de Acceso Rápido */}
+            <HStack spacing={1.5} w={{ base: "full", sm: "auto" }}>
+              <Button
+                size="xs"
+                h="36px"
+                px={3}
+                fontSize="xs"
+                fontWeight="700"
+                variant={isCurrentMonthView ? "solid" : "outline"}
+                colorScheme="green"
+                borderRadius="xl"
+                onClick={handleSelectCurrentMonth}
+              >
+                Mes Actual
+              </Button>
+              <Button
+                size="xs"
+                h="36px"
+                px={3}
+                fontSize="xs"
+                fontWeight="700"
+                variant={!isCurrentMonthView ? "solid" : "outline"}
+                colorScheme="blue"
+                borderRadius="xl"
+                leftIcon={<RotateCcw size={14} />}
+                onClick={handleSelectPrevMonth}
+              >
+                Mes Anterior
+              </Button>
+            </HStack>
+
+            {/* Selectores de Mes y Año */}
+            <HStack spacing={1.5} w={{ base: "full", sm: "auto" }}>
+              <Select
+                size="sm"
+                h="36px"
+                borderRadius="xl"
+                bg="gray.50"
+                borderColor="gray.200"
+                fontSize="xs"
+                fontWeight="600"
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                w="120px"
+              >
+                {MONTHS_LIST.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </Select>
+              <Select
+                size="sm"
+                h="36px"
+                borderRadius="xl"
+                bg="gray.50"
+                borderColor="gray.200"
+                fontSize="xs"
+                fontWeight="600"
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                w="90px"
+              >
+                {[currentRealYear, currentRealYear - 1, currentRealYear - 2].map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </Select>
+            </HStack>
+
+            {/* Selector de Vendedor (Solo para Administradores) */}
+            {isAdmin && (
+              <Box minW={{ base: "full", sm: "210px" }} w={{ base: "full", sm: "210px" }}>
+                <SellerSelect
+                  selectedSeller={selectedSellerOption}
+                  setSelectedSeller={(sel) => {
+                    setSelectedSellerOption(sel);
+                    setSelectedSellerCode(sel ? sel.value : 0);
+                  }}
+                  setValue={() => {}}
+                  hideLabel={true}
+                  size="sm"
+                  placeholder="Filtrar por Vendedor"
+                />
+              </Box>
+            )}
+          </Flex>
+        </Flex>
+
+        {/* Banner Informativo si el inicio del mes está en $0.00 */}
+        {isStartOfMonthZero && (
+          <Alert status="info" borderRadius="2xl" mb={6} border="1px solid" borderColor="blue.200" bg="blue.50">
+            <AlertIcon />
+            <Box flex="1">
+              <AlertTitle fontSize="sm" fontWeight="800" color="blue.900">
+                ¡Inicio de Mes {MONTHS_LIST.find(m => m.value === currentRealMonth)?.label}!
+              </AlertTitle>
+              <AlertDescription display="block" fontSize="xs" color="blue.700" mt={0.5}>
+                Aún no se registran facturas ni pedidos en el mes en curso. Puedes consultar la actividad y cumplimiento del mes anterior con un clic.
+              </AlertDescription>
+            </Box>
+            <Button
+              size="xs"
+              colorScheme="blue"
+              borderRadius="xl"
+              fontWeight="700"
+              leftIcon={<RotateCcw size={13} />}
+              onClick={handleSelectPrevMonth}
+            >
+              Ver Mes Anterior
+            </Button>
+          </Alert>
+        )}
+
         {/* Durante la carga directa de datos del usuario, mostrar Skeletons limpios */}
         {isLoading && (
           <SimpleGrid columns={{ base: 1, md: 3 }} spacing={6} w="full">
@@ -188,7 +390,7 @@ export function DashboardPage() {
                 sx={{
                   "&::-webkit-scrollbar": { display: "none" },
                   scrollbarWidth: "none",
-                  "-ms-overflow-style": "none",
+                  msOverflowStyle: "none",
                 }}
               >
                 <Box flexShrink={0} w="85vw" scrollSnapAlign="center">
