@@ -1,10 +1,10 @@
 import { Flex, Box, Text, HStack, Badge, Icon } from "@chakra-ui/react";
-import { Layers, CheckCircle2, AlertCircle } from "lucide-react";
+import { Layers, CheckCircle2, AlertCircle, FileText } from "lucide-react";
 import { motion } from "framer-motion";
 
 const MotionBox = motion(Box);
 
-export function ReceivableStatusFilter({ activeFilter, onFilterChange, totalCount, overdueCount, onTimeCount }) {
+export function ReceivableStatusFilter({ activeFilter, onFilterChange, totalCount, overdueCount, onTimeCount, creditCount = 0 }) {
   const filters = [
     {
       id: "all",
@@ -41,6 +41,18 @@ export function ReceivableStatusFilter({ activeFilter, onFilterChange, totalCoun
       badgeBg: "rgba(255, 255, 255, 0.25)",
       badgeColor: "white",
       iconColor: "#fca5a5"
+    },
+    {
+      id: "credito",
+      label: "Saldos a Favor",
+      count: creditCount,
+      icon: FileText,
+      activeBg: "linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%)",
+      activeColor: "white",
+      borderColor: "transparent",
+      badgeBg: "rgba(255, 255, 255, 0.25)",
+      badgeColor: "white",
+      iconColor: "#93c5fd"
     }
   ];
 
@@ -89,7 +101,7 @@ export function ReceivableStatusFilter({ activeFilter, onFilterChange, totalCoun
               <Icon 
                 as={IconComponent} 
                 boxSize={{ base: 3.5, md: 5 }} 
-                color={isActive ? f.iconColor : f.id === "activos" ? "green.500" : f.id === "rechazados" ? "red.500" : "gray.500"} 
+                color={isActive ? f.iconColor : f.id === "activos" ? "green.500" : f.id === "rechazados" ? "red.500" : f.id === "credito" ? "blue.500" : "gray.500"} 
                 flexShrink={0}
               />
               <Text 

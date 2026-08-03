@@ -79,6 +79,17 @@ export function DashboardPage() {
   const [adminYear, setAdminYear] = useState(currentRealYear);
   const [adminMonth, setAdminMonth] = useState(currentRealMonth);
 
+  // Ocultar meses futuros en el año en curso (ej. de Septiembre a Diciembre en 2026)
+  const maxMonthForAdminYear = adminYear === currentRealYear ? currentRealMonth : 12;
+  const availableAdminMonths = MONTH_NAMES.slice(0, maxMonthForAdminYear);
+
+  const handleAdminYearChange = (newYear) => {
+    setAdminYear(newYear);
+    if (newYear === currentRealYear && adminMonth > currentRealMonth) {
+      setAdminMonth(currentRealMonth);
+    }
+  };
+
   // Derivar año y mes según rol
   const selectedPeriod = last3Months[selectedPeriodIdx] || last3Months[0];
   const selectedYear  = isAdmin ? adminYear : selectedPeriod.year;
@@ -308,7 +319,7 @@ export function DashboardPage() {
                   onChange={(e) => setAdminMonth(Number(e.target.value))}
                   w="120px"
                 >
-                  {MONTH_NAMES.map((name, i) => (
+                  {availableAdminMonths.map((name, i) => (
                     <option key={i + 1} value={i + 1}>
                       {name}
                     </option>
@@ -323,7 +334,7 @@ export function DashboardPage() {
                   fontSize="xs"
                   fontWeight="600"
                   value={adminYear}
-                  onChange={(e) => setAdminYear(Number(e.target.value))}
+                  onChange={(e) => handleAdminYearChange(Number(e.target.value))}
                   w="95px"
                 >
                   {AVAILABLE_YEARS.map((y) => (

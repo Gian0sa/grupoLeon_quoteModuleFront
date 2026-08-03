@@ -25,6 +25,7 @@ import {
 } from "recharts";
 import { TrendingUp } from "lucide-react";
 import { motion } from "framer-motion";
+import { useAuthStore } from "../../auth/stores/useAuthStore";
 
 const MotionBox = motion(Box);
 
@@ -64,8 +65,17 @@ const CustomTooltip = ({ active, payload, label }) => {
 };
 
 export function SurfaceChartCard({ data }) {
-  const [timeframe, setTimeframe] = useState("DIA"); // Default a Día
+  const salesEmployeeCode = useAuthStore((state) => state.salesEmployeeCode);
+  const isAdmin = !salesEmployeeCode || salesEmployeeCode === 0 || salesEmployeeCode === "0" || salesEmployeeCode === "null";
+
+  // Por default: Administrador ve mensual (MES), vendedor ve diario (DIA)
+  const [timeframe, setTimeframe] = useState(() => (isAdmin ? "MES" : "DIA"));
   const [now, setNow] = useState(new Date());
+
+  // Sincronizar timeframe si cambia el usuario o código de empleado
+  useEffect(() => {
+    setTimeframe(isAdmin ? "MES" : "DIA");
+  }, [salesEmployeeCode]);
 
   // Actualización en tiempo real cada minuto
   useEffect(() => {
@@ -131,11 +141,30 @@ export function SurfaceChartCard({ data }) {
   }));
 
   // ── 3. MENSUAL: Avance Real vs Meta Acumulada del Mes ──
+  // Sem 1: Días 1-7 | Sem 2: Días 8-14 | Sem 3: Días 15-21 | Actual: Días 22+
+  const activeWeek = currentDay <= 7 ? 1 : currentDay <= 14 ? 2 : currentDay <= 21 ? 3 : 4;
+
   const dataMensual = [
-    { etapa: "Sem 1", Facturado: Math.round(avanceMes * 0.24), Meta: Math.round(cuotaMes * 0.25) },
-    { etapa: "Sem 2", Facturado: Math.round(avanceMes * 0.52), Meta: Math.round(cuotaMes * 0.50) },
-    { etapa: "Sem 3", Facturado: Math.round(avanceMes * 0.78), Meta: Math.round(cuotaMes * 0.75) },
-    { etapa: "Actual", Facturado: Math.round(avanceMes * 1.00), Meta: Math.round(cuotaMes * 1.00) },
+    { 
+      etapa: "Sem 1", 
+      Facturado: activeWeek >= 1 ? (activeWeek === 1 ? Math.round(avanceMes) : Math.round(avanceMes * 0.25)) : null, 
+      Meta: Math.round(cuotaMes * 0.25) 
+    },
+    { 
+      etapa: "Sem 2", 
+      Facturado: activeWeek >= 2 ? (activeWeek === 2 ? Math.round(avanceMes) : Math.round(avanceMes * 0.50)) : null, 
+      Meta: Math.round(cuotaMes * 0.50) 
+    },
+    { 
+      etapa: "Sem 3", 
+      Facturado: activeWeek >= 3 ? (activeWeek === 3 ? Math.round(avanceMes) : Math.round(avanceMes * 0.75)) : null, 
+      Meta: Math.round(cuotaMes * 0.75) 
+    },
+    { 
+      etapa: "Actual", 
+      Facturado: activeWeek >= 4 ? Math.round(avanceMes) : null, 
+      Meta: Math.round(cuotaMes * 1.00) 
+    },
   ];
 
   // Mapas por Período Seleccionado
@@ -193,15 +222,36 @@ export function SurfaceChartCard({ data }) {
             <Icon as={TrendingUp} boxSize={3.5} />
           </Box>
           <VStack align="start" spacing={0}>
-            <Text
-              fontSize="10.5px"
-              color="gray.700"
-              fontWeight="800"
-              textTransform="uppercase"
-              letterSpacing="wider"
-            >
-              Evolución Comercial
-            </Text>
+            <HStack spacing={1.5} align="center">
+              <Text
+                fontSize="10.5px"
+                color="gray.700"
+                fontWeight="800"
+                textTransform="uppercase"
+                letterSpacing="wider"
+              >
+                Evolución Comercial
+              </Text>
+              {timeframe === "DIA" && (
+                <HStack spacing={1} bg="green.50" px={1.5} py={0.2} borderRadius="full" border="1px solid" borderColor="green.200">
+                  <Box
+                    w="4.5px"
+                    h="4.5px"
+                    borderRadius="full"
+                    bg="green.500"
+                    sx={{
+                      "@keyframes livePulse": {
+                        "0%": { transform: "scale(0.95)", opacity: 0.5 },
+                        "50%": { transform: "scale(1.25)", opacity: 1 },
+                        "100%": { transform: "scale(0.95)", opacity: 0.5 }
+                      },
+                      animation: "livePulse 1.5s infinite ease-in-out"
+                    }}
+                  />
+                  <Text fontSize="7.5px" color="green.600" fontWeight="850" letterSpacing="0.3px">VIVO</Text>
+                </HStack>
+              )}
+            </HStack>
             {nombreVendedor && (
               <Text fontSize="9px" color="green.700" fontWeight="700" isTruncated maxW="130px">
                 {nombreVendedor}

@@ -10,12 +10,15 @@ import {
 import { generateReceivablePDF } from "../utils/receivablePDF";
 
 export function DebtCard({ debt, onViewInvoices }) {
-  const formatCurrency = (amount, currency = "PEN") => {
-    if (amount == null) {
-      return currency === "USD" ? "$0.00" : "S/0.00";
-    }
+  // Soporte para ambas monedas separadas (saldoPEN/saldoUSD) y el modo legado (saldoPrincipal)
+  const saldoPEN = debt.saldoPEN ?? (debt.monedaPrincipal === "PEN" ? debt.saldoPrincipal : 0) ?? 0;
+  const saldoUSD = debt.saldoUSD ?? (debt.monedaPrincipal === "USD" ? debt.saldoPrincipal : 0) ?? 0;
+
+  const formatAmount = (amount, currency) => {
+    if (amount == null || isNaN(Number(amount))) return null;
+    const num = Number(amount);
     const symbol = currency === "USD" ? "$" : "S/";
-    return `${symbol}${Number(amount).toLocaleString("es-PE", {
+    return `${symbol}${Math.abs(num).toLocaleString("es-PE", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`;
@@ -88,18 +91,40 @@ export function DebtCard({ debt, onViewInvoices }) {
                 </Text>
               </Text>
 
-              <Text fontSize="sm" color="gray.600" fontWeight="medium">
-                Monto pendiente:
-                <Text
-                  as="span"
-                  color={getAmountColor(debt.saldoPrincipal)}
-                  fontWeight="semibold"
-                  ml={2}
-                  fontSize="md"
-                >
-                  {formatCurrency(debt.saldoPrincipal, debt.monedaPrincipal)}
-                </Text>
+              <Text
+                fontSize="sm"
+                color={statusColor === "blue" || saldoPEN < 0 || saldoUSD < 0 ? "blue.600" : "gray.600"}
+                fontWeight="semibold"
+                mb={0.5}
+              >
+                {statusColor === "blue" || saldoPEN < 0 || saldoUSD < 0
+                  ? "Saldo a favor disponible:"
+                  : "Monto pendiente:"}
               </Text>
+              {/* Mostrar AMBAS monedas si el cliente tiene saldo en PEN y USD */}
+              {saldoPEN !== 0 && (
+                <Text
+                  fontSize="md"
+                  fontWeight="semibold"
+                  color={getAmountColor(saldoPEN)}
+                  lineHeight="short"
+                >
+                  {formatAmount(saldoPEN, "PEN")}
+                </Text>
+              )}
+              {saldoUSD !== 0 && (
+                <Text
+                  fontSize="md"
+                  fontWeight="semibold"
+                  color={getAmountColor(saldoUSD)}
+                  lineHeight="short"
+                >
+                  {formatAmount(saldoUSD, "USD")}
+                </Text>
+              )}
+              {saldoPEN === 0 && saldoUSD === 0 && (
+                <Text fontSize="md" fontWeight="semibold" color="gray.400">S/0.00</Text>
+              )}
             </VStack>
 
             <Button
@@ -138,9 +163,10 @@ export function DebtCard({ debt, onViewInvoices }) {
               </VStack>
             ) : (
               <VStack align="flex-start" spacing={1}>
-                <Text fontSize="sm" fontWeight="bold" color={`${statusColor}.500`}>
-                  {debt.documentosVencidos.toString().padStart(2, "0")}{" "}
-                  documentos vencidos
+                <Text fontSize="sm" fontWeight="bold" color={`${statusColor}.600`}>
+                  {statusColor === "blue"
+                    ? "Saldo a Favor / Nota de Crédito"
+                    : `${debt.documentosVencidos.toString().padStart(2, "0")} documentos vencidos`}
                 </Text>
                 <VStack align="flex-start" spacing={1}>
                   {debt.saldoVencidoPEN !== 0 && (
@@ -150,7 +176,7 @@ export function DebtCard({ debt, onViewInvoices }) {
                       color={getAmountColor(debt.saldoVencidoPEN)}
                       fontWeight="semibold"
                     >
-                      {formatCurrency(debt.saldoVencidoPEN, "PEN")}
+                      {formatAmount(debt.saldoVencidoPEN, "PEN")}
                     </Text>
                   )}
                   {debt.saldoVencidoUSD !== 0 && (
@@ -160,7 +186,7 @@ export function DebtCard({ debt, onViewInvoices }) {
                       color={getAmountColor(debt.saldoVencidoUSD)}
                       fontWeight="semibold"
                     >
-                      {formatCurrency(debt.saldoVencidoUSD, "USD")}
+                      {formatAmount(debt.saldoVencidoUSD, "USD")}
                     </Text>
                   )}
                 </VStack>

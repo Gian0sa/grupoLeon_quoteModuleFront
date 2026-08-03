@@ -15,15 +15,11 @@ export function DebtList({ debts, onViewInvoices, onViewDetails }) {
   return (
     <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} w="full">
       {debts.map((debt, index) => {
-        // Montos
+        // Montos por moneda desde el backend
         const saldoPEN = debt.pendingAmount?.PEN || 0;
         const saldoUSD = debt.pendingAmount?.USD || 0;
         const saldoVencidoPEN = debt.overdueAmount?.PEN || 0;
         const saldoVencidoUSD = debt.overdueAmount?.USD || 0;
-
-        // Determinar saldo y moneda principal
-        const saldoPrincipal = saldoUSD !== 0 ? saldoUSD : saldoPEN;
-        const monedaPrincipal = saldoUSD !== 0 ? "USD" : "PEN";
 
         // Documentos
         const totalDocumentos = debt.totalDocuments || 0;
@@ -50,9 +46,9 @@ export function DebtList({ debts, onViewInvoices, onViewDetails }) {
               ruc: debt.clientCode || "Sin RUC",
               vendedor: debt.vendedor || "Sin vendedor",
 
-              // Montos principales
-              saldoPrincipal,
-              monedaPrincipal,
+              // Montos pendientes por moneda (ambas separadas)
+              saldoPEN,
+              saldoUSD,
               
               // Montos vencidos por moneda
               saldoVencidoPEN,

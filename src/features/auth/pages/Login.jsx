@@ -132,36 +132,7 @@ export function Login() {
           zIndex={0}
         />
         
-        {/* Mobile Top-to-Bottom Light Sweep (Restricted to Header) */}
-        <Box
-          display={{ base: "block", md: "none" }}
-          position="absolute"
-          top="0"
-          left="0"
-          w="100%"
-          h="40vh"
-          pointerEvents="none"
-          overflow="hidden"
-          zIndex={0}
-        >
-          <Box
-            position="absolute"
-            w="200%"
-            h="250px"
-            left="-50%"
-            bg="linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.15) 30%, rgba(255, 255, 255, 0.4) 50%, rgba(255, 255, 255, 0.15) 70%, transparent)"
-            sx={{
-              "@keyframes topDownSweepMobile": {
-                "0%": { transform: "translateY(-300px) rotate(-25deg)", opacity: 0 },
-                "5%": { opacity: 1 },
-                "35%": { transform: "translateY(50vh) rotate(-25deg)", opacity: 1 },
-                "40%": { opacity: 0 },
-                "100%": { transform: "translateY(50vh) rotate(-25deg)", opacity: 0 },
-              },
-              animation: "topDownSweepMobile 8s infinite cubic-bezier(0.4, 0, 0.2, 1)",
-            }}
-          />
-        </Box>
+
 
         {/* Mobile Logo (Hidden on Desktop) */}
         <Image
@@ -351,35 +322,7 @@ export function Login() {
           bgGradient="radial(circle, transparent 20%, rgba(0, 30, 10, 0.4) 100%)"
         />
 
-        {/* Top-to-Bottom Light Sweep */}
-        <Box
-          position="absolute"
-          top="0"
-          left="0"
-          w="100%"
-          h="100%"
-          pointerEvents="none"
-          overflow="hidden"
-          zIndex={0}
-        >
-          <Box
-            position="absolute"
-            w="200%"
-            h="250px"
-            left="-50%"
-            bg="linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.15) 30%, rgba(255, 255, 255, 0.4) 50%, rgba(255, 255, 255, 0.15) 70%, transparent)"
-            sx={{
-              "@keyframes topDownSweep": {
-                "0%": { transform: "translateY(-400px) rotate(-25deg)", opacity: 0 },
-                "5%": { opacity: 1 },
-                "35%": { transform: "translateY(120vh) rotate(-25deg)", opacity: 1 },
-                "40%": { opacity: 0 },
-                "100%": { transform: "translateY(120vh) rotate(-25deg)", opacity: 0 },
-              },
-              animation: "topDownSweep 8s infinite cubic-bezier(0.4, 0, 0.2, 1)",
-            }}
-          />
-        </Box>
+
 
         {/* Static Logo */}
         <Image

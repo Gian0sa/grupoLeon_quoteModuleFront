@@ -74,7 +74,7 @@ export default function ChartsSection({ data }) {
           <Heading size="sm" mb={3} color={textColor}>
             Cumplimiento del Mes
           </Heading>
-          <ResponsiveContainer width="100%" height={220}>
+          <ResponsiveContainer width="100%" height={220} minWidth={0} minHeight={0} debounce={50}>
             <PieChart>
               <Pie
                 data={pieData}
@@ -112,7 +112,7 @@ export default function ChartsSection({ data }) {
           <Heading size="sm" mb={3} color={textColor}>
             Avance vs Cuota
           </Heading>
-          <ResponsiveContainer width="100%" height={220}>
+          <ResponsiveContainer width="100%" height={220} minWidth={0} minHeight={0} debounce={50}>
             <BarChart data={barData}>
               <XAxis
                 dataKey="name"
