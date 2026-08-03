@@ -7,37 +7,46 @@ export function RefreshButton({
   queries = [], 
   variant = "ghost",
   size = "md",
-  showToast = false,
+  showToast = true,
   onRefreshStart,
   onRefreshEnd,
-  mode = "refetch" 
+  mode = "invalidateAndRefetch" 
 }) {
-  const { refetch, invalidate, invalidateAndRefetch } = useRefetchQueries();
+  const { refetch, invalidate, invalidateAndRefetch, refetchAll } = useRefetchQueries();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const toast = useToast();
 
   const handleClick = async () => {
+    if (isRefreshing) return;
     setIsRefreshing(true);
     onRefreshStart?.();
     
     try {
-      switch (mode) {
-        case "invalidate":
-          await invalidate(queries);
-          break;
-        case "invalidateAndRefetch":
-          await invalidateAndRefetch(queries);
-          break;
-        default:
-          await refetch(queries);
+      // Si no hay queries específicas → refrescar todo
+      if (!queries || queries.length === 0) {
+        await refetchAll();
+      } else {
+        switch (mode) {
+          case "invalidate":
+            await invalidate(queries);
+            break;
+          case "refetch":
+            await refetch(queries);
+            break;
+          case "invalidateAndRefetch":
+          default:
+            await invalidateAndRefetch(queries);
+        }
       }
       
       if (showToast) {
         toast({
           title: "Datos actualizados",
+          description: "La información fue recargada correctamente.",
           status: "success",
           duration: 2000,
           isClosable: true,
+          position: "top-right",
         });
       }
     } catch (error) {
@@ -46,10 +55,11 @@ export function RefreshButton({
       if (showToast) {
         toast({
           title: "Error al actualizar",
-          description: "No se pudieron actualizar los datos",
+          description: "No se pudieron recargar los datos. Intenta nuevamente.",
           status: "error",
           duration: 3000,
           isClosable: true,
+          position: "top-right",
         });
       }
     } finally {
@@ -59,9 +69,13 @@ export function RefreshButton({
   };
 
   return (
-    <Tooltip hasArrow label="Actualizar datos">
+    <Tooltip hasArrow label={isRefreshing ? "Actualizando..." : "Actualizar datos"}>
       <IconButton
-        icon={isRefreshing ? <Spinner size="md" color="white" /> : <RepeatIcon boxSize={{ base: 5, md: 6 }} color="white" />}
+        icon={
+          isRefreshing 
+            ? <Spinner size="sm" color="white" thickness="2px" /> 
+            : <RepeatIcon boxSize={{ base: 5, md: 6 }} color="white" />
+        }
         bg={variant === "ghost" ? "transparent" : "green.700"}
         onClick={handleClick}
         variant={variant}
@@ -71,9 +85,27 @@ export function RefreshButton({
         borderRadius="full"
         isDisabled={isRefreshing}
         colorScheme="whiteAlpha"
-        _hover={{ bg: "whiteAlpha.300", transform: isRefreshing ? "none" : "rotate(180deg)" }}
-        transition="transform 0.2s, background 0.2s"
+        _hover={{ bg: "whiteAlpha.300" }}
+        sx={
+          isRefreshing
+            ? {
+                "& svg, & .chakra-icon": {
+                  animation: "spin 0.8s linear infinite",
+                },
+                "@keyframes spin": {
+                  from: { transform: "rotate(0deg)" },
+                  to: { transform: "rotate(360deg)" },
+                },
+              }
+            : {
+                "&:hover svg, &:hover .chakra-icon": {
+                  transform: "rotate(180deg)",
+                  transition: "transform 0.3s ease",
+                },
+              }
+        }
+        transition="background 0.2s"
       />
     </Tooltip>
   );
-}
+}

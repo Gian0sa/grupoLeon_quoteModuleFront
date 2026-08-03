@@ -37,20 +37,25 @@ import { SurfaceChartCard } from "../components/SurfaceChartCard";
 import { DashboardCommercialPanel } from "../components/DashboardCommercialPanel";
 import SellerSelect from "../../../components/SellerSelect";
 
-const MONTHS_LIST = [
-  { value: 1, label: "Enero" },
-  { value: 2, label: "Febrero" },
-  { value: 3, label: "Marzo" },
-  { value: 4, label: "Abril" },
-  { value: 5, label: "Mayo" },
-  { value: 6, label: "Junio" },
-  { value: 7, label: "Julio" },
-  { value: 8, label: "Agosto" },
-  { value: 9, label: "Septiembre" },
-  { value: 10, label: "Octubre" },
-  { value: 11, label: "Noviembre" },
-  { value: 12, label: "Diciembre" },
+const MONTH_NAMES = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
 ];
+
+// Calcula los últimos N meses desde hoy (incluyendo el actual)
+function getLastNMonths(n = 3) {
+  const today = new Date();
+  const result = [];
+  for (let i = 0; i < n; i++) {
+    const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+    result.push({
+      month: d.getMonth() + 1,
+      year: d.getFullYear(),
+      label: `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`,
+    });
+  }
+  return result;
+}
 
 export function DashboardPage() {
   const { salesEmployeeCode, username } = useAuthStore();
@@ -61,21 +66,62 @@ export function DashboardPage() {
   const isVendedor = salesEmployeeCode && salesEmployeeCode > 0;
   const isAdmin = !salesEmployeeCode || salesEmployeeCode === 0;
 
-  // Rango y Filtros Dinámicos
-  const todayDate = new Date();
-  const currentRealYear = todayDate.getFullYear();
-  const currentRealMonth = todayDate.getMonth() + 1;
+  // 🗓️ Años dinámicos que CONTIENEN datos reales en SAP (2024 excluido por no tener registros)
+  const currentRealYear = new Date().getFullYear();
+  const currentRealMonth = new Date().getMonth() + 1;
+  const AVAILABLE_YEARS = [currentRealYear, 2025]; // 2024 no se muestra al no tener registros en SAP
 
-  const [selectedYear, setSelectedYear] = useState(currentRealYear);
-  const [selectedMonth, setSelectedMonth] = useState(currentRealMonth);
+  // Estado para Vendedor (Últimos 3 Meses)
+  const last3Months = getLastNMonths(3);
+  const [selectedPeriodIdx, setSelectedPeriodIdx] = useState(0);
+
+  // Estado para Administrador (Enrique) — Selección explícita de Mes y Año con datos
+  const [adminYear, setAdminYear] = useState(currentRealYear);
+  const [adminMonth, setAdminMonth] = useState(currentRealMonth);
+
+  // Derivar año y mes según rol
+  const selectedPeriod = last3Months[selectedPeriodIdx] || last3Months[0];
+  const selectedYear  = isAdmin ? adminYear : selectedPeriod.year;
+  const selectedMonth = isAdmin ? adminMonth : selectedPeriod.month;
+
+  // ⚠️ Siempre monthFrom === monthTo para evitar descuadres con SAP
+  const yearFrom  = selectedYear;
+  const monthFrom = selectedMonth;
+  const monthTo   = selectedMonth;
+
   const [selectedSellerCode, setSelectedSellerCode] = useState(isVendedor ? salesEmployeeCode : 0);
   const [selectedSellerOption, setSelectedSellerOption] = useState({ value: 0, label: "Todos los vendedores" });
 
   const querySlpCode = isVendedor ? salesEmployeeCode : (selectedSellerCode || 0);
 
-  const yearFrom = selectedYear;
-  const monthFrom = selectedMonth;
-  const monthTo = selectedMonth;
+  const isCurrentMonthView = selectedYear === currentRealYear && selectedMonth === currentRealMonth;
+
+  const handleSelectCurrentMonth = () => {
+    if (isAdmin) {
+      setAdminYear(currentRealYear);
+      setAdminMonth(currentRealMonth);
+    } else {
+      setSelectedPeriodIdx(0);
+    }
+  };
+
+  const handleSelectPrevMonth = () => {
+    if (isAdmin) {
+      if (adminMonth === 1) {
+        const prevYear = adminYear - 1;
+        if (AVAILABLE_YEARS.includes(prevYear)) {
+          setAdminYear(prevYear);
+          setAdminMonth(12);
+        } else {
+          setAdminMonth(1);
+        }
+      } else {
+        setAdminMonth((m) => m - 1);
+      }
+    } else {
+      setSelectedPeriodIdx((i) => Math.min(i + 1, last3Months.length - 1));
+    }
+  };
 
   const handleScroll = () => {
     if (!carouselRef.current) return;
@@ -96,29 +142,8 @@ export function DashboardPage() {
     setActiveCardIndex(index);
   };
 
-  const handlePrev = () => {
-    scrollToCard(Math.max(activeCardIndex - 1, 0));
-  };
-
-  const handleNext = () => {
-    scrollToCard(Math.min(activeCardIndex + 1, 2));
-  };
-
-  const handleSelectPrevMonth = () => {
-    if (selectedMonth === 1) {
-      setSelectedMonth(12);
-      setSelectedYear((y) => y - 1);
-    } else {
-      setSelectedMonth((m) => m - 1);
-    }
-  };
-
-  const handleSelectCurrentMonth = () => {
-    setSelectedMonth(currentRealMonth);
-    setSelectedYear(currentRealYear);
-  };
-
-  const isCurrentMonthView = selectedYear === currentRealYear && selectedMonth === currentRealMonth;
+  const handlePrev = () => scrollToCard(Math.max(activeCardIndex - 1, 0));
+  const handleNext = () => scrollToCard(Math.min(activeCardIndex + 1, 2));
 
   // ✅ Queries V3 enviando siempre consulta directa y fresca por usuario
   const {
@@ -157,6 +182,16 @@ export function DashboardPage() {
     resumenData = Array.isArray(vendedorData) ? vendedorData[0] : vendedorData;
   } else if (isAdmin && adminData) {
     resumenData = Array.isArray(adminData) ? adminData[0] : adminData;
+  }
+
+  // Preservar el nombre real del vendedor si SAP devuelve "Sin datos" (ej. vendedor nuevo en mes anterior)
+  if (resumenData && resumenData.VENDEDOR === "Sin datos") {
+    const fallbackName = isVendedor 
+      ? username 
+      : (selectedSellerOption && selectedSellerOption.value !== 0 ? selectedSellerOption.label : null);
+    if (fallbackName) {
+      resumenData = { ...resumenData, VENDEDOR: fallbackName };
+    }
   }
 
   // Comprobar inicio de mes en cero
@@ -216,7 +251,7 @@ export function DashboardPage() {
                   Período Comercial
                 </Text>
                 <Badge colorScheme={isCurrentMonthView ? "green" : "blue"} borderRadius="full" px={2.5} py={0.5} fontSize="xs">
-                  {isCurrentMonthView ? "Mes Actual" : `${MONTHS_LIST.find(m => m.value === selectedMonth)?.label} ${selectedYear}`}
+                  {isCurrentMonthView ? "Mes Actual" : `${MONTH_NAMES[selectedMonth - 1]} ${selectedYear}`}
                 </Badge>
               </HStack>
               <Text fontSize="xs" color="gray.500">
@@ -258,8 +293,47 @@ export function DashboardPage() {
               </Button>
             </HStack>
 
-            {/* Selectores de Mes y Año */}
-            <HStack spacing={1.5} w={{ base: "full", sm: "auto" }}>
+            {/* Selector de Período según Rol */}
+            {isAdmin ? (
+              <HStack spacing={1.5} w={{ base: "full", sm: "auto" }}>
+                <Select
+                  size="sm"
+                  h="36px"
+                  borderRadius="xl"
+                  bg="gray.50"
+                  borderColor="gray.200"
+                  fontSize="xs"
+                  fontWeight="600"
+                  value={adminMonth}
+                  onChange={(e) => setAdminMonth(Number(e.target.value))}
+                  w="120px"
+                >
+                  {MONTH_NAMES.map((name, i) => (
+                    <option key={i + 1} value={i + 1}>
+                      {name}
+                    </option>
+                  ))}
+                </Select>
+                <Select
+                  size="sm"
+                  h="36px"
+                  borderRadius="xl"
+                  bg="gray.50"
+                  borderColor="gray.200"
+                  fontSize="xs"
+                  fontWeight="600"
+                  value={adminYear}
+                  onChange={(e) => setAdminYear(Number(e.target.value))}
+                  w="95px"
+                >
+                  {AVAILABLE_YEARS.map((y) => (
+                    <option key={y} value={y}>
+                      {y}
+                    </option>
+                  ))}
+                </Select>
+              </HStack>
+            ) : (
               <Select
                 size="sm"
                 h="36px"
@@ -268,35 +342,17 @@ export function DashboardPage() {
                 borderColor="gray.200"
                 fontSize="xs"
                 fontWeight="600"
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                w="120px"
+                value={selectedPeriodIdx}
+                onChange={(e) => setSelectedPeriodIdx(Number(e.target.value))}
+                w={{ base: "full", sm: "175px" }}
               >
-                {MONTHS_LIST.map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.label}
+                {last3Months.map((p, i) => (
+                  <option key={i} value={i}>
+                    {i === 0 ? `${p.label} (Actual)` : p.label}
                   </option>
                 ))}
               </Select>
-              <Select
-                size="sm"
-                h="36px"
-                borderRadius="xl"
-                bg="gray.50"
-                borderColor="gray.200"
-                fontSize="xs"
-                fontWeight="600"
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(Number(e.target.value))}
-                w="90px"
-              >
-                {[currentRealYear, currentRealYear - 1, currentRealYear - 2].map((y) => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </Select>
-            </HStack>
+            )}
 
             {/* Selector de Vendedor (Solo para Administradores) */}
             {isAdmin && (
@@ -323,7 +379,7 @@ export function DashboardPage() {
             <AlertIcon />
             <Box flex="1">
               <AlertTitle fontSize="sm" fontWeight="800" color="blue.900">
-                ¡Inicio de Mes {MONTHS_LIST.find(m => m.value === currentRealMonth)?.label}!
+                ¡Inicio de Mes {MONTH_NAMES[(new Date().getMonth())]}!
               </AlertTitle>
               <AlertDescription display="block" fontSize="xs" color="blue.700" mt={0.5}>
                 Aún no se registran facturas ni pedidos en el mes en curso. Puedes consultar la actividad y cumplimiento del mes anterior con un clic.
