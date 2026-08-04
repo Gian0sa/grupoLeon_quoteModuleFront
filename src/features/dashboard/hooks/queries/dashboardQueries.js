@@ -63,24 +63,32 @@ export const useHistory = () => {
 };
 
 // ✅ Hook para Quotes by Seller (V3) - Consulta directa a backend sin cacheo local de usuario
-export const useQuotesSellers = ({ slpCode, yearFrom, monthFrom, monthTo, skip = 0, pageSize = 20 }) => {
+export const useQuotesSellers = ({ slpCode, yearFrom, monthFrom, monthTo }, options = {}) => {
+  const { enabled: enabledOption = true, ...restOptions } = options;
   return useQuery({
-    queryKey: ['quotesSellers', slpCode, yearFrom, monthFrom, monthTo, skip, pageSize],
-    queryFn: () => getQuotesSellers({ slpCode, yearFrom, monthFrom, monthTo, skip, pageSize }),
-    enabled: slpCode != null && yearFrom != null && monthFrom != null && monthTo != null,
+    queryKey: ['quotesSellers', slpCode, yearFrom, monthFrom, monthTo],
+    queryFn: () => getQuotesSellers({ slpCode, yearFrom, monthFrom, monthTo }),
+    enabled:
+      !!enabledOption &&
+      slpCode != null && yearFrom != null && monthFrom != null && monthTo != null,
     staleTime: 0, // Siempre datos frescos por usuario
     refetchOnMount: "always", // El QueryClient global tiene refetchOnMount:false; esta query sí debe refrescar siempre al montar
+    ...restOptions,
   });
 };
 
 // ✅ Hook para Quotes by Seller (Admin) (V3) - Consulta directa a backend sin cacheo local de usuario
-export const useQuotesSellersAdmin = ({ slpCode, yearFrom, monthFrom, monthTo }) => {
+export const useQuotesSellersAdmin = ({ slpCode, yearFrom, monthFrom, monthTo }, options = {}) => {
+  const { enabled: enabledOption = true, ...restOptions } = options;
   return useQuery({
     queryKey: ['quotesSellersAdmin', slpCode, yearFrom, monthFrom, monthTo],
     queryFn: () => getQuotesSellersAdmin({ slpCode, yearFrom, monthFrom, monthTo }),
-    enabled: slpCode != null && yearFrom != null && monthFrom != null && monthTo != null,
+    enabled:
+      !!enabledOption &&
+      slpCode != null && yearFrom != null && monthFrom != null && monthTo != null,
     staleTime: 0, // Siempre datos frescos por usuario
     refetchOnMount: "always", // El QueryClient global tiene refetchOnMount:false; esta query sí debe refrescar siempre al montar
+    ...restOptions,
   });
 };
 
@@ -111,35 +119,39 @@ export const useExchangeRate = ({ currency, date }) => {
 };
 
 // ✅ Motivos de anulación
-export const useDashboardMotives = () => {
+export const useDashboardMotives = ({ yearFrom, monthFrom, monthTo, slpCode } = {}) => {
   return useQuery({
-    queryKey: ['dashboardMotives'],
-    queryFn: getDashboardMotives,
+    queryKey: ['dashboardMotives', yearFrom, monthFrom, monthTo, slpCode],
+    queryFn: () => getDashboardMotives({ yearFrom, monthFrom, monthTo, slpCode }),
+    enabled: yearFrom != null && monthFrom != null && monthTo != null,
   });
 };
 
 // ✅ Pedidos cancelados
-export const useOrdersCancelated = () => {
+export const useOrdersCancelated = ({ yearFrom, monthFrom, monthTo, slpCode } = {}) => {
   return useQuery({
-    queryKey: ['ordersCancelated'],
-    queryFn: getOrdersCancelated,
+    queryKey: ['ordersCancelated', yearFrom, monthFrom, monthTo, slpCode],
+    queryFn: () => getOrdersCancelated({ yearFrom, monthFrom, monthTo, slpCode }),
+    enabled: yearFrom != null && monthFrom != null && monthTo != null,
   });
 };
 
 // ✅ Top productos cancelados
-export const useTopCanceledProducts = () => {
+export const useTopCanceledProducts = ({ yearFrom, monthFrom, monthTo, slpCode } = {}) => {
   return useQuery({
-    queryKey: ['topCanceledProducts'],
-    queryFn: getTopCanceledProducts,
+    queryKey: ['topCanceledProducts', yearFrom, monthFrom, monthTo, slpCode],
+    queryFn: () => getTopCanceledProducts({ yearFrom, monthFrom, monthTo, slpCode }),
+    enabled: yearFrom != null && monthFrom != null && monthTo != null,
   });
 };
 export const useTopCanceled = useTopCanceledProducts;
 
 // ✅ Top productos vendidos
-export const useTopSelledProducts = () => {
+export const useTopSelledProducts = ({ yearFrom, monthFrom, monthTo, slpCode } = {}) => {
   return useQuery({
-    queryKey: ['topSelledProducts'],
-    queryFn: getTopSelledProducts,
+    queryKey: ['topSelledProducts', yearFrom, monthFrom, monthTo, slpCode],
+    queryFn: () => getTopSelledProducts({ yearFrom, monthFrom, monthTo, slpCode }),
+    enabled: yearFrom != null && monthFrom != null && monthTo != null,
   });
 };
 export const useTopSelled = useTopSelledProducts;

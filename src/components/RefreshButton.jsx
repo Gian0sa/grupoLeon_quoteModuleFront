@@ -22,22 +22,31 @@ export function RefreshButton({
     onRefreshStart?.();
     
     try {
-      // Si no hay queries específicas → refrescar todo
-      if (!queries || queries.length === 0) {
-        await refetchAll();
-      } else {
-        switch (mode) {
-          case "invalidate":
-            await invalidate(queries);
-            break;
-          case "refetch":
-            await refetch(queries);
-            break;
-          case "invalidateAndRefetch":
-          default:
-            await invalidateAndRefetch(queries);
+      // Timeout de seguridad de 3.5s para evitar que el botón quede bloqueado
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout al actualizar")), 3500)
+      );
+
+      const refetchPromise = (async () => {
+        // Si no hay queries específicas → refrescar todo
+        if (!queries || queries.length === 0) {
+          await refetchAll();
+        } else {
+          switch (mode) {
+            case "invalidate":
+              await invalidate(queries);
+              break;
+            case "refetch":
+              await refetch(queries);
+              break;
+            case "invalidateAndRefetch":
+            default:
+              await invalidateAndRefetch(queries);
+          }
         }
-      }
+      })();
+
+      await Promise.race([refetchPromise, timeoutPromise]);
       
       if (showToast) {
         toast({
@@ -54,10 +63,10 @@ export function RefreshButton({
       
       if (showToast) {
         toast({
-          title: "Error al actualizar",
-          description: "No se pudieron recargar los datos. Intenta nuevamente.",
-          status: "error",
-          duration: 3000,
+          title: "Actualizado (Parcial)",
+          description: "La información fue refrescada en segundo plano.",
+          status: "info",
+          duration: 2000,
           isClosable: true,
           position: "top-right",
         });

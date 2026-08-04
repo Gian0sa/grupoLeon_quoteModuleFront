@@ -63,8 +63,8 @@ export function DashboardPage() {
   const [activeCardIndex, setActiveCardIndex] = useState(0);
 
   // Roles
-  const isVendedor = salesEmployeeCode && salesEmployeeCode > 0;
-  const isAdmin = !salesEmployeeCode || salesEmployeeCode === 0;
+  const isVendedor = !!(salesEmployeeCode && Number(salesEmployeeCode) > 0);
+  const isAdmin = !salesEmployeeCode || salesEmployeeCode === 0 || salesEmployeeCode === "0" || salesEmployeeCode === "null";
 
   // 🗓️ Años dinámicos que CONTIENEN datos reales en SAP (2024 excluido por no tener registros)
   const currentRealYear = new Date().getFullYear();
@@ -216,6 +216,13 @@ export function DashboardPage() {
   const refreshQueries = [
     [QUERY_KEYS.quotesSellers, querySlpCode, yearFrom, monthFrom, monthTo],
     [QUERY_KEYS.quotesSellersAdmin, querySlpCode, yearFrom, monthFrom, monthTo],
+    ['topProducts'],
+    ['promotions'],
+    ['history'],
+    ['dashboardMotives'],
+    ['ordersCancelated'],
+    ['topCanceledProducts'],
+    ['topSelledProducts'],
     [QUERY_KEYS.notifications],
     [QUERY_KEYS.exchangeRate, "USD", todayIso],
   ];
@@ -237,152 +244,154 @@ export function DashboardPage() {
 
       {/* Sección Principales Métricas */}
       <Box maxW="1200px" mx="auto" px={4} py={6}>
-        {/* Barra Superior de Filtros y Selección de Período Comercial */}
-        <Flex
-          direction={{ base: "column", md: "row" }}
-          justify="space-between"
-          align={{ base: "stretch", md: "center" }}
-          bg="white"
-          p={4}
-          borderRadius="2xl"
-          boxShadow="sm"
-          border="1px solid"
-          borderColor="gray.100"
-          mb={6}
-          gap={3}
-        >
-          {/* Título de Rango e Indicador */}
-          <HStack spacing={3}>
-            <Box p={2.5} borderRadius="xl" bg="green.50" color="green.700">
-              <Calendar size={20} />
-            </Box>
-            <VStack align="start" spacing={0}>
-              <HStack spacing={2}>
-                <Text fontWeight="800" fontSize="sm" color="gray.800">
-                  Período Comercial
+        {/* Barra Superior de Filtros y Selección de Período Comercial (Solo visible para Administradores) */}
+        {isAdmin && (
+          <Flex
+            direction={{ base: "column", md: "row" }}
+            justify="space-between"
+            align={{ base: "stretch", md: "center" }}
+            bg="white"
+            p={4}
+            borderRadius="2xl"
+            boxShadow="sm"
+            border="1px solid"
+            borderColor="gray.100"
+            mb={6}
+            gap={3}
+          >
+            {/* Título de Rango e Indicador */}
+            <HStack spacing={3}>
+              <Box p={2.5} borderRadius="xl" bg="green.50" color="green.700">
+                <Calendar size={20} />
+              </Box>
+              <VStack align="start" spacing={0}>
+                <HStack spacing={2}>
+                  <Text fontWeight="800" fontSize="sm" color="gray.800">
+                    Período Comercial
+                  </Text>
+                  <Badge colorScheme={isCurrentMonthView ? "green" : "blue"} borderRadius="full" px={2.5} py={0.5} fontSize="xs">
+                    {isCurrentMonthView ? "Mes Actual" : `${MONTH_NAMES[selectedMonth - 1]} ${selectedYear}`}
+                  </Badge>
+                </HStack>
+                <Text fontSize="xs" color="gray.500">
+                  Resumen de facturación, pedidos y meta por vendedor
                 </Text>
-                <Badge colorScheme={isCurrentMonthView ? "green" : "blue"} borderRadius="full" px={2.5} py={0.5} fontSize="xs">
-                  {isCurrentMonthView ? "Mes Actual" : `${MONTH_NAMES[selectedMonth - 1]} ${selectedYear}`}
-                </Badge>
-              </HStack>
-              <Text fontSize="xs" color="gray.500">
-                Resumen de facturación, pedidos y meta por vendedor
-              </Text>
-            </VStack>
-          </HStack>
-
-          {/* Controles de Selección */}
-          <Flex direction={{ base: "column", sm: "row" }} gap={2} align="center" w={{ base: "full", md: "auto" }}>
-            {/* Botones de Acceso Rápido */}
-            <HStack spacing={1.5} w={{ base: "full", sm: "auto" }}>
-              <Button
-                size="xs"
-                h="36px"
-                px={3}
-                fontSize="xs"
-                fontWeight="700"
-                variant={isCurrentMonthView ? "solid" : "outline"}
-                colorScheme="green"
-                borderRadius="xl"
-                onClick={handleSelectCurrentMonth}
-              >
-                Mes Actual
-              </Button>
-              <Button
-                size="xs"
-                h="36px"
-                px={3}
-                fontSize="xs"
-                fontWeight="700"
-                variant={!isCurrentMonthView ? "solid" : "outline"}
-                colorScheme="blue"
-                borderRadius="xl"
-                leftIcon={<RotateCcw size={14} />}
-                onClick={handleSelectPrevMonth}
-              >
-                Mes Anterior
-              </Button>
+              </VStack>
             </HStack>
 
-            {/* Selector de Período según Rol */}
-            {isAdmin ? (
+            {/* Controles de Selección */}
+            <Flex direction={{ base: "column", sm: "row" }} gap={2} align="center" w={{ base: "full", md: "auto" }}>
+              {/* Botones de Acceso Rápido */}
               <HStack spacing={1.5} w={{ base: "full", sm: "auto" }}>
-                <Select
-                  size="sm"
+                <Button
+                  size="xs"
                   h="36px"
-                  borderRadius="xl"
-                  bg="gray.50"
-                  borderColor="gray.200"
+                  px={3}
                   fontSize="xs"
-                  fontWeight="600"
-                  value={adminMonth}
-                  onChange={(e) => setAdminMonth(Number(e.target.value))}
-                  w="120px"
+                  fontWeight="700"
+                  variant={isCurrentMonthView ? "solid" : "outline"}
+                  colorScheme="green"
+                  borderRadius="xl"
+                  onClick={handleSelectCurrentMonth}
                 >
-                  {availableAdminMonths.map((name, i) => (
-                    <option key={i + 1} value={i + 1}>
-                      {name}
-                    </option>
-                  ))}
-                </Select>
-                <Select
-                  size="sm"
+                  Mes Actual
+                </Button>
+                <Button
+                  size="xs"
                   h="36px"
-                  borderRadius="xl"
-                  bg="gray.50"
-                  borderColor="gray.200"
+                  px={3}
                   fontSize="xs"
-                  fontWeight="600"
-                  value={adminYear}
-                  onChange={(e) => handleAdminYearChange(Number(e.target.value))}
-                  w="95px"
+                  fontWeight="700"
+                  variant={!isCurrentMonthView ? "solid" : "outline"}
+                  colorScheme="blue"
+                  borderRadius="xl"
+                  leftIcon={<RotateCcw size={14} />}
+                  onClick={handleSelectPrevMonth}
                 >
-                  {AVAILABLE_YEARS.map((y) => (
-                    <option key={y} value={y}>
-                      {y}
-                    </option>
-                  ))}
-                </Select>
+                  Mes Anterior
+                </Button>
               </HStack>
-            ) : (
-              <Select
-                size="sm"
-                h="36px"
-                borderRadius="xl"
-                bg="gray.50"
-                borderColor="gray.200"
-                fontSize="xs"
-                fontWeight="600"
-                value={selectedPeriodIdx}
-                onChange={(e) => setSelectedPeriodIdx(Number(e.target.value))}
-                w={{ base: "full", sm: "175px" }}
-              >
-                {last3Months.map((p, i) => (
-                  <option key={i} value={i}>
-                    {i === 0 ? `${p.label} (Actual)` : p.label}
-                  </option>
-                ))}
-              </Select>
-            )}
 
-            {/* Selector de Vendedor (Solo para Administradores) */}
-            {isAdmin && (
-              <Box minW={{ base: "full", sm: "210px" }} w={{ base: "full", sm: "210px" }}>
-                <SellerSelect
-                  selectedSeller={selectedSellerOption}
-                  setSelectedSeller={(sel) => {
-                    setSelectedSellerOption(sel);
-                    setSelectedSellerCode(sel ? sel.value : 0);
-                  }}
-                  setValue={() => {}}
-                  hideLabel={true}
+              {/* Selector de Período según Rol */}
+              {isAdmin ? (
+                <HStack spacing={1.5} w={{ base: "full", sm: "auto" }}>
+                  <Select
+                    size="sm"
+                    h="36px"
+                    borderRadius="xl"
+                    bg="gray.50"
+                    borderColor="gray.200"
+                    fontSize="xs"
+                    fontWeight="600"
+                    value={adminMonth}
+                    onChange={(e) => setAdminMonth(Number(e.target.value))}
+                    w="120px"
+                  >
+                    {availableAdminMonths.map((name, i) => (
+                      <option key={i + 1} value={i + 1}>
+                        {name}
+                      </option>
+                    ))}
+                  </Select>
+                  <Select
+                    size="sm"
+                    h="36px"
+                    borderRadius="xl"
+                    bg="gray.50"
+                    borderColor="gray.200"
+                    fontSize="xs"
+                    fontWeight="600"
+                    value={adminYear}
+                    onChange={(e) => handleAdminYearChange(Number(e.target.value))}
+                    w="95px"
+                  >
+                    {AVAILABLE_YEARS.map((y) => (
+                      <option key={y} value={y}>
+                        {y}
+                      </option>
+                    ))}
+                  </Select>
+                </HStack>
+              ) : (
+                <Select
                   size="sm"
-                  placeholder="Filtrar por Vendedor"
-                />
-              </Box>
-            )}
+                  h="36px"
+                  borderRadius="xl"
+                  bg="gray.50"
+                  borderColor="gray.200"
+                  fontSize="xs"
+                  fontWeight="600"
+                  value={selectedPeriodIdx}
+                  onChange={(e) => setSelectedPeriodIdx(Number(e.target.value))}
+                  w={{ base: "full", sm: "175px" }}
+                >
+                  {last3Months.map((p, i) => (
+                    <option key={i} value={i}>
+                      {i === 0 ? `${p.label} (Actual)` : p.label}
+                    </option>
+                  ))}
+                </Select>
+              )}
+
+              {/* Selector de Vendedor (Solo para Administradores) */}
+              {isAdmin && (
+                <Box minW={{ base: "full", sm: "210px" }} w={{ base: "full", sm: "210px" }}>
+                  <SellerSelect
+                    selectedSeller={selectedSellerOption}
+                    setSelectedSeller={(sel) => {
+                      setSelectedSellerOption(sel);
+                      setSelectedSellerCode(sel ? sel.value : 0);
+                    }}
+                    setValue={() => {}}
+                    hideLabel={true}
+                    size="sm"
+                    placeholder="Filtrar por Vendedor"
+                  />
+                </Box>
+              )}
+            </Flex>
           </Flex>
-        </Flex>
+        )}
 
         {/* Banner Informativo si el inicio del mes está en $0.00 */}
         {isStartOfMonthZero && (
@@ -441,7 +450,7 @@ export function DashboardPage() {
             >
               <SalesSummary data={resumenData} />
               <SalesStats data={resumenData} />
-              <SurfaceChartCard data={resumenData} />
+              <SurfaceChartCard data={resumenData} isCurrentMonth={isCurrentMonthView} />
             </SimpleGrid>
 
             {/* VISTA MÓVIL (Carrusel deslizable asistido con flechas y dots) */}
@@ -467,7 +476,7 @@ export function DashboardPage() {
                   <SalesStats data={resumenData} />
                 </Box>
                 <Box flexShrink={0} w="85vw" scrollSnapAlign="center">
-                  <SurfaceChartCard data={resumenData} />
+                  <SurfaceChartCard data={resumenData} isCurrentMonth={isCurrentMonthView} />
                 </Box>
               </Flex>
 

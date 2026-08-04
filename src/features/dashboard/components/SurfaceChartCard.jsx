@@ -64,18 +64,25 @@ const CustomTooltip = ({ active, payload, label }) => {
   return null;
 };
 
-export function SurfaceChartCard({ data }) {
+export function SurfaceChartCard({ data, isCurrentMonth = true }) {
   const salesEmployeeCode = useAuthStore((state) => state.salesEmployeeCode);
   const isAdmin = !salesEmployeeCode || salesEmployeeCode === 0 || salesEmployeeCode === "0" || salesEmployeeCode === "null";
 
-  // Por default: Administrador ve mensual (MES), vendedor ve diario (DIA)
-  const [timeframe, setTimeframe] = useState(() => (isAdmin ? "MES" : "DIA"));
+  // Por default: Administrador ve mensual (MES), vendedor ve diario (DIA). En meses anteriores se fuerza a MES.
+  const [timeframe, setTimeframe] = useState(() => {
+    if (!isCurrentMonth) return "MES";
+    return isAdmin ? "MES" : "DIA";
+  });
   const [now, setNow] = useState(new Date());
 
-  // Sincronizar timeframe si cambia el usuario o código de empleado
+  // Sincronizar timeframe si cambia el usuario, el código de empleado o el mes seleccionado
   useEffect(() => {
-    setTimeframe(isAdmin ? "MES" : "DIA");
-  }, [salesEmployeeCode]);
+    if (!isCurrentMonth) {
+      setTimeframe("MES");
+    } else {
+      setTimeframe(isAdmin ? "MES" : "DIA");
+    }
+  }, [salesEmployeeCode, isCurrentMonth]);
 
   // Actualización en tiempo real cada minuto
   useEffect(() => {
@@ -124,25 +131,9 @@ export function SurfaceChartCard({ data }) {
     Pedidos: currentHour >= item.threshold ? item.Pedidos : null,
   }));
 
-  // ── 2. SEMANAL: Días de la semana laborable ──
-  const rawDataSemanal = [
-    { etapa: "Lun", dayIndex: 1, Facturado: Math.round(avancePorDia * 0.8), Pedidos: Math.round(pedidosPorDia * 0.9) },
-    { etapa: "Mar", dayIndex: 2, Facturado: Math.round(avancePorDia * 1.1), Pedidos: Math.round(pedidosPorDia * 1.0) },
-    { etapa: "Mié", dayIndex: 3, Facturado: Math.round(avancePorDia * 0.9), Pedidos: Math.round(pedidosPorDia * 1.2) },
-    { etapa: "Jue", dayIndex: 4, Facturado: Math.round(avancePorDia * 1.3), Pedidos: Math.round(pedidosPorDia * 0.8) },
-    { etapa: "Vie", dayIndex: 5, Facturado: Math.round(avancePorDia * 1.0), Pedidos: Math.round(pedidosPorDia * 1.1) },
-    { etapa: "Sáb", dayIndex: 6, Facturado: Math.round(avancePorDia * 0.5), Pedidos: Math.round(pedidosPorDia * 0.4) },
-  ];
-
-  const dataSemanal = rawDataSemanal.map((item) => ({
-    etapa: item.etapa,
-    Facturado: currentDayOfWeek >= item.dayIndex ? item.Facturado : null,
-    Pedidos: currentDayOfWeek >= item.dayIndex ? item.Pedidos : null,
-  }));
-
-  // ── 3. MENSUAL: Avance Real vs Meta Acumulada del Mes ──
+  // ── 2. MENSUAL: Avance Real vs Meta Acumulada del Mes ──
   // Sem 1: Días 1-7 | Sem 2: Días 8-14 | Sem 3: Días 15-21 | Actual: Días 22+
-  const activeWeek = currentDay <= 7 ? 1 : currentDay <= 14 ? 2 : currentDay <= 21 ? 3 : 4;
+  const activeWeek = !isCurrentMonth ? 4 : (currentDay <= 7 ? 1 : currentDay <= 14 ? 2 : currentDay <= 21 ? 3 : 4);
 
   const dataMensual = [
     { 
@@ -168,32 +159,28 @@ export function SurfaceChartCard({ data }) {
   ];
 
   // Mapas por Período Seleccionado
-  const chartDataMap = { DIA: dataDia, SEMANAL: dataSemanal, MES: dataMensual };
+  const chartDataMap = { DIA: dataDia, MES: dataMensual };
   const surfaceData = chartDataMap[timeframe];
 
   const labelSecondaryKey = timeframe === "MES" ? "Meta" : "Pedidos";
 
   const montoFactMap = {
     DIA: avancePorDia,
-    SEMANAL: avancePorDia * Math.min(currentDayOfWeek, 5),
     MES: avanceMes,
   };
 
   const montoSecondaryMap = {
     DIA: pedidosPorDia,
-    SEMANAL: pedidosPorDia * Math.min(currentDayOfWeek, 5),
     MES: cuotaMes,
   };
 
   const registrosMap = {
     DIA: Math.max(1, Math.round(cantPedidos / diasLaboralesTranscurridos)),
-    SEMANAL: Math.max(1, Math.round((cantPedidos / diasLaboralesTranscurridos) * Math.min(currentDayOfWeek, 5))),
     MES: cantPedidos,
   };
 
   const labelMontoMap = {
     DIA: "MONTO (DÍA)",
-    SEMANAL: "MONTO (SEM.)",
     MES: "MONTO (MES)",
   };
 
@@ -260,36 +247,37 @@ export function SurfaceChartCard({ data }) {
           </VStack>
         </HStack>
 
-        {/* Selector Píldora: Día | Semanal | Mensual */}
-        <HStack spacing={0.5} bg="gray.100" p="2px" borderRadius="full">
-          {[
-            { id: "DIA", label: "Día" },
-            { id: "SEMANAL", label: "Sem." },
-            { id: "MES", label: "Mes" },
-          ].map((tf) => (
-            <Button
-              key={tf.id}
-              size="xs"
-              h="18px"
-              px={1.5}
-              fontSize="8.5px"
-              fontWeight="800"
-              borderRadius="full"
-              variant="ghost"
-              bg={timeframe === tf.id ? "white" : "transparent"}
-              color={timeframe === tf.id ? "green.700" : "gray.500"}
-              boxShadow={
-                timeframe === tf.id ? "0 2px 5px rgba(0,0,0,0.08)" : "none"
-              }
-              onClick={() => setTimeframe(tf.id)}
-              _hover={{
-                bg: timeframe === tf.id ? "white" : "gray.200",
-              }}
-            >
-              {tf.label}
-            </Button>
-          ))}
-        </HStack>
+        {/* Selector Píldora: Día | Mensual */}
+        {isCurrentMonth && (
+          <HStack spacing={0.5} bg="gray.100" p="2px" borderRadius="full">
+            {[
+              { id: "DIA", label: "Día" },
+              { id: "MES", label: "Mes" },
+            ].map((tf) => (
+              <Button
+                key={tf.id}
+                size="xs"
+                h="18px"
+                px={2.5}
+                fontSize="8.5px"
+                fontWeight="800"
+                borderRadius="full"
+                variant="ghost"
+                bg={timeframe === tf.id ? "white" : "transparent"}
+                color={timeframe === tf.id ? "green.700" : "gray.500"}
+                boxShadow={
+                  timeframe === tf.id ? "0 2px 5px rgba(0,0,0,0.08)" : "none"
+                }
+                onClick={() => setTimeframe(tf.id)}
+                _hover={{
+                  bg: timeframe === tf.id ? "white" : "gray.200",
+                }}
+              >
+                {tf.label}
+              </Button>
+            ))}
+          </HStack>
+        )}
       </Flex>
 
       {/* ── Gráfico de Área Rellena (AreaChart) con Gradientes (82px alto) ── */}
