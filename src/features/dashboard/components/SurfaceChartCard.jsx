@@ -281,8 +281,8 @@ export function SurfaceChartCard({ data, isCurrentMonth = true }) {
       </Flex>
 
       {/* ── Gráfico de Área Rellena (AreaChart) con Gradientes (82px alto) ── */}
-      <Box w="full" h="82px" minW={0} minH={0} my={0.5}>
-        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
+      <Box w="full" h="82px" minW={0} minH="82px" my={0.5}>
+        <ResponsiveContainer width="100%" height={82} minWidth={100} minHeight={82} debounce={50}>
           <AreaChart
             data={surfaceData}
             margin={{ top: 4, right: 10, left: -22, bottom: 0 }}

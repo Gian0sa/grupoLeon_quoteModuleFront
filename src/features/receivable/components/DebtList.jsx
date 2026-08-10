@@ -37,6 +37,16 @@ export function DebtList({ debts, onViewInvoices, onViewDetails }) {
           d => d.tipoDocumento === "Nota de Crédito"
         );
 
+        // Extraer fechas y días de mora del documento más antiguo
+        const docs = Array.isArray(debt.documents) ? debt.documents : [];
+        const overdueDocs = docs.filter(d => d.estaVencido || (d.diasVencimiento && d.diasVencimiento > 0));
+        const maxOverdueDays = overdueDocs.length > 0
+          ? Math.max(...overdueDocs.map(d => Number(d.diasVencimiento || 0)))
+          : Number(debt.maxOverdueDays || 0);
+        const oldestDueDate = overdueDocs.length > 0
+          ? overdueDocs.sort((a, b) => Number(b.diasVencimiento || 0) - Number(a.diasVencimiento || 0))[0]?.fechaContable
+          : docs[0]?.fechaContable || debt.oldestDueDate || "";
+
         return (
           <DebtCard
             key={debt.clientCode || index}
@@ -45,6 +55,8 @@ export function DebtList({ debts, onViewInvoices, onViewDetails }) {
               nombre: debt.clientName || "Sin nombre",
               ruc: debt.clientCode || "Sin RUC",
               vendedor: debt.vendedor || "Sin vendedor",
+              maxOverdueDays,
+              oldestDueDate,
 
               // Montos pendientes por moneda (ambas separadas)
               saldoPEN,

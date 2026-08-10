@@ -1,13 +1,5 @@
 import { create } from 'zustand';
-/*client,
-    products,
-    selectedPoint,
-    selectedTransport,
-    paymentImg,
-    selectedDeliveryForm,
-    selectedPaymentType,
-    comment,
-    deliveryDate, */
+
 export const useQuoteStore = create((set) => ({
   quoteId: null,
   client: null,
@@ -21,6 +13,9 @@ export const useQuoteStore = create((set) => ({
   paymentImg: null,
   comment: null,
   deliveryDate: null,
+  whsCode: "014",
+  contactPerson: "",
+  refNumber: "",
 
   setClient: (clientData) => set({ client: clientData }),
   setQuoteId: (id) => set({ quoteId: id }),
@@ -32,7 +27,10 @@ export const useQuoteStore = create((set) => ({
   setPaymentImg: (file) => set({ paymentImg: file }),
   setComment: (comment) => set({ comment }),
   setDeliveryDate: (date) => set({ deliveryDate: date }),
-  setOpNum: (opNum) => set({ opNum }), 
+  setOpNum: (opNum) => set({ opNum }),
+  setWhsCode: (code) => set({ whsCode: code || "014" }),
+  setContactPerson: (person) => set({ contactPerson: person }),
+  setRefNumber: (ref) => set({ refNumber: ref }),
 
   addProduct: (product) =>
     set((state) => {
@@ -63,19 +61,38 @@ export const useQuoteStore = create((set) => ({
       ),
     })),
 
-    clear: () =>
-      set({
-        quoteId: null,
-        client: null,
-        products: [],
-        opNum: null,
-        selectedPoint: null,
-        selectedTransport: "",
-        selectedDeliveryForm: "",
-        selectedPaymentType: "",
-        paymentImg: null,
-        comment: null,
-        deliveryDate: null,
-      }),
-    
+  setQuoteData: (quoteData) =>
+    set({
+      quoteId: quoteData.id || quoteData.docNumber || null,
+      client: quoteData.client || null,
+      products: quoteData.products || quoteData.items || [],
+      selectedPoint: quoteData.selectedPoint || null,
+      selectedTransport: quoteData.selectedTransport || "",
+      selectedDeliveryForm: quoteData.selectedDeliveryForm || "",
+      selectedPaymentType: quoteData.selectedPaymentType || "",
+      paymentImg: quoteData.paymentImg || null,
+      comment: quoteData.comment || null,
+      deliveryDate: quoteData.deliveryDate || null,
+      whsCode: quoteData.whsCode || "014",
+      contactPerson: quoteData.contactPerson || "",
+      refNumber: quoteData.refNumber || "",
+    }),
+
+  clear: () =>
+    set({
+      quoteId: null,
+      client: null,
+      products: [],
+      opNum: null,
+      selectedPoint: null,
+      selectedTransport: "",
+      selectedDeliveryForm: "",
+      selectedPaymentType: "",
+      paymentImg: null,
+      comment: null,
+      deliveryDate: null,
+      whsCode: "014",
+      contactPerson: "",
+      refNumber: "",
+    }),
 }));

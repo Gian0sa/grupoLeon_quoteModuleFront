@@ -61,8 +61,7 @@ export function LateralMenu() {
   };
 
   const applicationOptions = [
-    { label: 'Nueva cotización', icon: MdRequestQuote, path: '#', access: 'POST:/quotations' },
-    { label: 'Historial de cotizaciones', icon: MdHistory, path: '#', access: 'GET:/quotations' },
+    { label: 'Gestión de Cotizaciones', icon: MdRequestQuote, path: '/historyquotes', access: 'PUT:/profile/admin/:userId' },
     { label: 'Crear usuario', icon: MdPersonAdd, path: '/register', access: 'POST:/register' },
     { label: 'Solicitudes', icon: MdAssignmentTurnedIn, path: '#', access: 'GET:/requests' },
     { label: 'Pedidos', icon: MdLocalShipping, path: '/reports', access: 'GET:/reports' },

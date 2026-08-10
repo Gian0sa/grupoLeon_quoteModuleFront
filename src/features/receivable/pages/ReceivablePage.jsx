@@ -184,13 +184,49 @@ export function ReceivablePage() {
   const creditCount = allClients.filter(isClientCredit).length;
   const onTimeCount = allClients.filter(isClientActive).length;
 
-  // Filtrado reactivo de clientes según botón seleccionado
-  const filteredClients = allClients.filter((debt) => {
-    if (statusFilter === "rechazados") return isClientOverdue(debt);
-    if (statusFilter === "activos") return isClientActive(debt);
-    if (statusFilter === "credito") return isClientCredit(debt);
-    return true;
-  });
+  const [ageFilter, setAgeFilter] = useState("all"); // 'all' | '1-30' | '31-60' | '61-90' | '90+'
+  const [sortBy, setSortBy] = useState("debt"); // 'debt' | 'age'
+
+  const getMaxOverdueDays = (c) => {
+    const docs = Array.isArray(c.documents) ? c.documents : [];
+    const overdueDocs = docs.filter(d => d.estaVencido || (d.diasVencimiento && d.diasVencimiento > 0));
+    if (overdueDocs.length > 0) {
+      return Math.max(...overdueDocs.map(d => Number(d.diasVencimiento || 0)));
+    }
+    return Number(c.maxOverdueDays || 0);
+  };
+
+  const getEquivUSD = (c) => {
+    const overduePEN = Number(c.overdueAmount?.PEN ?? c.saldoVencidoPEN ?? 0);
+    const overdueUSD = Number(c.overdueAmount?.USD ?? c.saldoVencidoUSD ?? 0);
+    return (overduePEN > 0 ? overduePEN / 3.43 : 0) + (overdueUSD > 0 ? overdueUSD : 0);
+  };
+
+  // RN-FECHAS-03 y RN-FECHAS-04: Filtrado por tramo de días de mora y ordenación inteligente
+  const filteredClients = allClients
+    .filter((debt) => {
+      if (statusFilter === "rechazados") {
+        if (!isClientOverdue(debt)) return false;
+        const maxDays = getMaxOverdueDays(debt);
+        if (ageFilter === "1-30") return maxDays >= 1 && maxDays <= 30;
+        if (ageFilter === "31-60") return maxDays >= 31 && maxDays <= 60;
+        if (ageFilter === "61-90") return maxDays >= 61 && maxDays <= 90;
+        if (ageFilter === "90+") return maxDays > 90;
+        return true;
+      }
+      if (statusFilter === "activos") return isClientActive(debt);
+      if (statusFilter === "credito") return isClientCredit(debt);
+      return true;
+    })
+    .sort((a, b) => {
+      if (statusFilter === "rechazados") {
+        if (sortBy === "age") {
+          return getMaxOverdueDays(b) - getMaxOverdueDays(a); // Más antiguo primero
+        }
+        return getEquivUSD(b) - getEquivUSD(a); // Mayor deudor primero (por defecto)
+      }
+      return 0;
+    });
 
   if ((isLoading || (isInitialFetching && data?.hasMore)) && allClients.length === 0) {
     return (
@@ -260,6 +296,10 @@ export function ReceivablePage() {
           overdueCount={overdueCount}
           onTimeCount={onTimeCount}
           creditCount={creditCount}
+          ageFilter={ageFilter}
+          onAgeFilterChange={setAgeFilter}
+          sortBy={sortBy}
+          onSortByChange={setSortBy}
         />
       </Box>
 

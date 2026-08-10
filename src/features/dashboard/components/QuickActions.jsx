@@ -1,15 +1,26 @@
 import { Flex, Box, Text, useBreakpointValue } from "@chakra-ui/react";
-import { Tag, ShoppingBag, CreditCard } from "lucide-react";
+import { Tag, ShoppingBag, CreditCard, FileText } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
+import { useHasAccess } from "../../../shared/utils/permissions";
 
 const MotionBox = motion(Box);
 
 export function QuickActions() {
   const navigate = useNavigate();
   const iconSize = useBreakpointValue({ base: 15, sm: 17, md: 20 });
+  const hasAccess = useHasAccess();
+  const isAdmin = hasAccess("PUT:/profile/admin/:userId");
 
   const actions = [
+    ...(isAdmin ? [{
+      labelDesktop: "Cotizaciones",
+      labelMobile: "Cotizaciones",
+      icon: FileText,
+      path: "/historyquotes",
+      color: "#34d399",
+      bgGlow: "rgba(52, 211, 153, 0.25)",
+    }] : []),
     {
       labelDesktop: "Lista de Precios",
       labelMobile: "Lista Precios",
