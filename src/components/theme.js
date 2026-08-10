@@ -8,9 +8,37 @@ const config = {
 
 const styles = {
   global: {
+    // Blindaje anti scroll horizontal: ningún elemento ancho (tablas, steppers,
+    // grillas) puede empujar el viewport completo. El desplazamiento lateral
+    // solo debe existir dentro de contenedores que lo declaren explícitamente.
+    "html, body, #root": {
+      overflowX: "hidden",
+      maxWidth: "100vw",
+    },
+    "html, body": {
+      minHeight: "100vh",
+    },
     body: {
       bg: "bg",
       color: "text",
+      WebkitTextSizeAdjust: "100%",
+    },
+    "#root": {
+      minHeight: "100vh",
+      position: "relative",
+    },
+    // Medios anchos nunca desbordan su contenedor en teléfonos
+    "img, svg, video, canvas": {
+      maxWidth: "100%",
+    },
+    // Scrollbar interno visible en contenedores con overflow lateral propio,
+    // para que el usuario perciba que ese bloque se desplaza (no la página).
+    "@media (max-width: 767px)": {
+      ".mobile-scroll-x": {
+        overflowX: "auto",
+        WebkitOverflowScrolling: "touch",
+        maxWidth: "100%",
+      },
     },
   },
 };
@@ -68,6 +96,62 @@ const textStyles = {
   },
 };
 
-const theme = extendTheme({ config, styles, fonts, semanticTokens, textStyles });
+// Áreas de toque accesibles para el público objetivo (35–65 años).
+// En móvil (base) los controles crecen a 42–48px de alto; en escritorio (md+)
+// conservan las dimensiones compactas originales de Chakra para no alterar
+// las densidades de pantalla ya diseñadas.
+const TOUCH_FIELD = {
+  xs: { base: "36px", md: "24px" },
+  sm: { base: "42px", md: "32px" },
+  md: { base: "48px", md: "40px" },
+  lg: { base: "52px", md: "48px" },
+};
+
+// 16px en móvil evita el auto-zoom de iOS al enfocar un campo (que es una de
+// las causas más comunes de desplazamiento horizontal accidental).
+const TOUCH_FONT = {
+  xs: { base: "sm", md: "xs" },
+  sm: { base: "md", md: "sm" },
+  md: { base: "md", md: "md" },
+};
+
+const components = {
+  Button: {
+    // minW se iguala a minH para que los IconButton sigan siendo cuadrados;
+    // los botones con texto crecen por su contenido y no se ven afectados.
+    sizes: {
+      xs: { minH: TOUCH_FIELD.xs, minW: TOUCH_FIELD.xs, fontSize: TOUCH_FONT.xs },
+      sm: { minH: TOUCH_FIELD.sm, minW: TOUCH_FIELD.sm, fontSize: TOUCH_FONT.sm },
+      md: { minH: TOUCH_FIELD.md, minW: TOUCH_FIELD.md },
+      lg: { minH: TOUCH_FIELD.lg, minW: TOUCH_FIELD.lg },
+    },
+  },
+  Input: {
+    sizes: {
+      sm: { field: { h: TOUCH_FIELD.sm, fontSize: TOUCH_FONT.sm } },
+      md: { field: { h: TOUCH_FIELD.md, fontSize: TOUCH_FONT.md } },
+    },
+  },
+  Select: {
+    sizes: {
+      sm: { field: { h: TOUCH_FIELD.sm, fontSize: TOUCH_FONT.sm } },
+      md: { field: { h: TOUCH_FIELD.md, fontSize: TOUCH_FONT.md } },
+    },
+  },
+  NumberInput: {
+    sizes: {
+      sm: { field: { h: TOUCH_FIELD.sm, fontSize: TOUCH_FONT.sm } },
+      md: { field: { h: TOUCH_FIELD.md, fontSize: TOUCH_FONT.md } },
+    },
+  },
+  Textarea: {
+    sizes: {
+      sm: { fontSize: TOUCH_FONT.sm },
+      md: { fontSize: TOUCH_FONT.md },
+    },
+  },
+};
+
+const theme = extendTheme({ config, styles, fonts, semanticTokens, textStyles, components });
 
 export default theme;

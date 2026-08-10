@@ -48,6 +48,14 @@ export const useGetDeliveryForms = () => {
     return { dataDeliveryForms: data, isLoadingDeliveryForms: isLoading, errorDeliveryForms: error }
 }
 
+export const useGetWarehouses = () => {
+    return { warehouses: [], isLoading: false };
+};
+
+export const useIgvRate = () => {
+    return { igvRate: 0.18, isLoading: false };
+};
+
 // export const useGetExchangeRate = () => {
 //     const { data, isLoading, error } = useQuery({
 //         queryKey: ["ExchangeRatio"],

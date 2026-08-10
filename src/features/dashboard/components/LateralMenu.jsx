@@ -8,7 +8,6 @@ import {
   DrawerContent,
   IconButton,
   Button,
-  Image,
   VStack,
   HStack,
   Text,
@@ -62,8 +61,7 @@ export function LateralMenu() {
   };
 
   const applicationOptions = [
-    { label: 'Nueva cotización', icon: MdRequestQuote, path: '#', access: 'POST:/quotations' },
-    { label: 'Historial de cotizaciones', icon: MdHistory, path: '#', access: 'GET:/quotations' },
+    { label: 'Gestión de Cotizaciones', icon: MdRequestQuote, path: '/historyquotes', access: 'PUT:/profile/admin/:userId' },
     { label: 'Crear usuario', icon: MdPersonAdd, path: '/register', access: 'POST:/register' },
     { label: 'Solicitudes', icon: MdAssignmentTurnedIn, path: '#', access: 'GET:/requests' },
     { label: 'Pedidos', icon: MdLocalShipping, path: '/reports', access: 'GET:/reports' },
@@ -87,7 +85,7 @@ export function LateralMenu() {
   const adminOptions = [
     { label: 'Actualizar usuario', icon: MdPerson, path: '/profileAdmin', access: 'PUT:/profile/admin/:userId' },
     { label: 'Actualizar servicios', icon: MdHelp, path: '#', access: 'PUT:/services/:id' },
-    { label: 'Gestionar Notificaciones', icon: MdAssignment, path: '/notification', access: 'GET:/receivable' },
+    { label: 'Gestionar Notificaciones', icon: MdAssignment, path: '/notification', access: 'PUT:/profile/admin/:userId' },
     { label: 'Control de Asistencias (Admin)', icon: MdAccessTime, path: '/admin/attendance', access: 'PUT:/profile/admin/:userId' }
   ];
 
@@ -108,7 +106,6 @@ export function LateralMenu() {
               borderRadius="xl"
               bg={`${accentColor}.50`}
               flexShrink={0}
-              transition="all 0.2s ease"
             >
               <Icon as={icon} color={`${accentColor}.600`} boxSize={4} />
             </Flex>
@@ -125,17 +122,12 @@ export function LateralMenu() {
           _hover={{
             bg: HEADER_MAIN_BG,
             color: "white",
-            boxShadow: "0 6px 18px rgba(18, 108, 54, 0.35)",
-            transform: "translateX(4px)",
-            '& > span:first-of-type > div': { bg: "white" },
-            '& > span:first-of-type > div > svg': { color: "#126C36" },
-            '& > svg': { color: "white" },
+            boxShadow: "0 4px 14px rgba(18, 108, 54, 0.25)",
           }}
           _active={{
             bg: "#0e572b",
             color: "white",
           }}
-          transition="all 0.2s ease"
           h="46px"
           color="gray.700"
           w="full"
@@ -195,13 +187,18 @@ export function LateralMenu() {
         onClose={onClose}
         finalFocusRef={btnRef}
         size="md"
+        blockScrollOnMount={true}
+        preserveScrollBarGap={false}
+        autoFocus={false}
       >
-        <DrawerOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
+        {/* Sin backdropFilter para respuesta ultra veloz de 60fps en móviles */}
+        <DrawerOverlay bg="blackAlpha.600" transition="opacity 0.15s ease-out" />
         <DrawerContent
           bg="white"
           maxW="340px"
           borderLeftRadius="2xl"
           boxShadow="-8px 0 40px rgba(0,0,0,0.12)"
+          style={{ willChange: "transform", transform: "translateZ(0)" }}
         >
           {/* Header con perfil integrado */}
           <DrawerHeader p={0}>
@@ -258,114 +255,123 @@ export function LateralMenu() {
                 h="70px"
                 borderRadius="full"
                 bg="#278847"
-                opacity={0.35}
+                opacity={0.45}
                 pointerEvents="none"
               />
 
-              {/* Botón cerrar */}
-              <Flex justify="flex-end" mb={4} position="relative" zIndex={2}>
-                <IconButton
-                  icon={<CloseIcon boxSize={3} />}
-                  variant="ghost"
-                  color="whiteAlpha.700"
-                  size="sm"
-                  borderRadius="full"
-                  _hover={{ bg: "whiteAlpha.200", color: "white" }}
-                  onClick={onClose}
-                  aria-label="Cerrar menú"
-                />
-              </Flex>
+              {/* Botón Cerrar */}
+              <IconButton
+                icon={<CloseIcon boxSize={3} color="white" />}
+                variant="ghost"
+                size="sm"
+                borderRadius="full"
+                position="absolute"
+                top={3}
+                right={3}
+                zIndex={2}
+                _hover={{ bg: "whiteAlpha.300" }}
+                onClick={onClose}
+                aria-label="Cerrar menú"
+              />
 
-              {/* Perfil */}
-              <HStack spacing={4} position="relative" zIndex={2}>
+              {/* Avatar + Info de Usuario */}
+              <HStack spacing={4} align="center" position="relative" zIndex={1}>
                 <Box
-                  p="2px"
+                  w="58px"
+                  h="58px"
                   borderRadius="full"
-                  bg="linear-gradient(135deg, rgba(255,255,255,0.5), rgba(255,255,255,0.15))"
+                  bg="white"
+                  p="3px"
+                  boxShadow="0 4px 15px rgba(0,0,0,0.15)"
+                  flexShrink={0}
                 >
-                  <Image
-                    src="/assets/icons/avatar.jpg"
-                    boxSize="56px"
+                  <Flex
+                    w="100%"
+                    h="100%"
                     borderRadius="full"
-                    objectFit="cover"
-                    alt="Avatar"
-                    border="2px solid rgba(0,0,0,0.1)"
-                  />
+                    bg="green.100"
+                    align="center"
+                    justify="center"
+                    overflow="hidden"
+                  >
+                    <Icon as={MdPerson} color="green.700" boxSize={8} />
+                  </Flex>
                 </Box>
-                <VStack align="start" spacing={0.5} flex="1">
-                  <Text fontSize="md" fontWeight="800" color="white" lineHeight="tight">
-                    {username || "Usuario"}
+                <VStack align="start" spacing={0.5} overflow="hidden">
+                  <Text
+                    color="white"
+                    fontWeight="800"
+                    fontSize="16px"
+                    noOfLines={1}
+                    lineHeight="1.2"
+                  >
+                    {username || 'Usuario'}
                   </Text>
                   <Badge
-                    bg="whiteAlpha.200"
-                    color="green.100"
-                    borderRadius="full"
+                    bg="whiteAlpha.300"
+                    color="white"
                     fontSize="10px"
-                    fontWeight="600"
-                    px={2.5}
+                    px={2}
                     py={0.5}
-                    backdropFilter="blur(4px)"
-                    border="1px solid rgba(255,255,255,0.1)"
+                    borderRadius="full"
+                    letterSpacing="wider"
+                    textTransform="uppercase"
                   >
-                    Asesor de ventas
+                    {hasAdminAccess ? 'Administrador' : 'Asesor de Ventas'}
                   </Badge>
                 </VStack>
               </HStack>
             </Box>
           </DrawerHeader>
 
-          {/* Cuerpo del menú */}
-          <DrawerBody px={4} py={4} overflowY="auto">
+          {/* Cuerpo del menú con scroll fluido optimizado */}
+          <DrawerBody px={3} py={4}>
             <VStack spacing={4} align="stretch">
-              {/* Sección Aplicación */}
+              {/* SECCIÓN 1: Aplicación */}
               <Box>
                 <SectionLabel icon color="green">Aplicación</SectionLabel>
-                <VStack spacing={0.5} align="stretch">
+                <VStack spacing={1} align="stretch">
                   {renderMenuOptions(applicationOptions, "green")}
                 </VStack>
               </Box>
 
-              {/* Sección Cuenta */}
+              {/* SECCIÓN 2: Cuenta */}
               <Box>
                 <SectionLabel icon color="blue">Cuenta</SectionLabel>
-                <VStack spacing={0.5} align="stretch">
+                <VStack spacing={1} align="stretch">
                   {renderMenuOptions(accountOptions, "blue")}
                 </VStack>
               </Box>
 
-              {/* Sección Admin */}
-              {hasAdminAccess && (
+              {/* SECCIÓN 3: Administración (solo si tiene permisos) */}
+              {adminOptions.some(({ access }) => !access || hasAccess(access)) && (
                 <Box>
-                  <SectionLabel icon color="orange">Administración</SectionLabel>
-                  <VStack spacing={0.5} align="stretch">
-                    {renderMenuOptions(adminOptions, "orange")}
+                  <SectionLabel icon color="purple">Administración</SectionLabel>
+                  <VStack spacing={1} align="stretch">
+                    {renderMenuOptions(adminOptions, "purple")}
                   </VStack>
                 </Box>
               )}
             </VStack>
           </DrawerBody>
 
-          {/* Footer */}
-          <DrawerFooter px={5} py={4} borderTop="1px solid" borderColor="gray.100">
-            {isAuthenticated && (
-              <Button
-                onClick={handleLogout}
-                leftIcon={<Icon as={MdExitToApp} boxSize={5} />}
-                bg="linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)"
-                color="white"
-                _hover={{ bg: "linear-gradient(135deg, #b91c1c 0%, #991b1b 100%)", transform: "translateY(-1px)" }}
-                _active={{ transform: "translateY(0)" }}
-                w="100%"
-                h="46px"
-                borderRadius="xl"
-                fontWeight="700"
-                fontSize="14px"
-                boxShadow="0 4px 15px rgba(220, 38, 38, 0.3)"
-                transition="all 0.2s"
-              >
-                Cerrar sesión
-              </Button>
-            )}
+          {/* Footer con Botón de Cerrar Sesión */}
+          <DrawerFooter borderTop="1px solid" borderColor="gray.100" p={4}>
+            <Button
+              bg="linear-gradient(135deg, #b91c1c 0%, #dc2626 50%, #ef4444 100%)"
+              color="white"
+              w="full"
+              h="48px"
+              borderRadius="xl"
+              fontWeight="700"
+              fontSize="14px"
+              leftIcon={<Icon as={MdExitToApp} boxSize={5} />}
+              onClick={handleLogout}
+              boxShadow="0 4px 14px rgba(220, 38, 38, 0.25)"
+              _hover={{ bg: "#991b1b" }}
+            >
+              Cerrar sesión
+            </Button>
           </DrawerFooter>
         </DrawerContent>
       </Drawer>

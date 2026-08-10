@@ -15,50 +15,34 @@ export const getHistory = async () => {
     return response.data;
 };
 
-export const getQuotesSellersAdmin = async ({ slpCode, yearFrom, monthFrom, monthTo, page = 1, pageSize = 20 }) => {
+export const getQuotesSellersAdmin = async ({ slpCode, yearFrom, monthFrom, monthTo }) => {
   try {
-    const skip = (page - 1) * pageSize;
-
     const url = `/reportModule/AdminQuotesSellers/${slpCode}`;
 
     const response = await axiosInstance.get(url, {
-      params: {
-        yearFrom,
-        monthFrom,
-        monthTo,
-        skip,
-        pageSize,
-      },
+      params: { yearFrom, monthFrom, monthTo },
     });
 
     return response.data;
   } catch (error) {
     console.error("❌ Error al obtener cuotas del vendedor (Admin):", error);
-    return null;
+    // Se relanza: devolver null hacía que un fallo se viera igual que un mes sin datos.
+    throw error;
   }
 };
 
-export const getQuotesSellers = async ({ slpCode, yearFrom, monthFrom, monthTo, page = 1, pageSize = 20 }) => {
+export const getQuotesSellers = async ({ slpCode, yearFrom, monthFrom, monthTo }) => {
   try {
-    const skip = (page - 1) * pageSize;
-
-
     const url = `/reportModule/quotesSellers/${slpCode}`;
 
     const response = await axiosInstance.get(url, {
-      params: {
-        yearFrom,
-        monthFrom,
-        monthTo,
-        skip,
-        pageSize,
-      },
+      params: { yearFrom, monthFrom, monthTo },
     });
-console.log("Datos de cuotas del vendedor recibidos:", response.data);
+
     return response.data;
   } catch (error) {
     console.error("❌ Error al obtener cuotas del vendedor:", error);
-    return null;
+    throw error;
   }
 };
 
@@ -83,7 +67,7 @@ export const getDashboardMotives = async ({ yearFrom, monthFrom, monthTo, slpCod
     return response.data;
   } catch (error) {
     console.error('Error al obtener los motivos del dashboard:', error);
-    return null;
+    throw error;
   }
 };
 
@@ -96,7 +80,7 @@ export const getOrdersCancelated = async ({ yearFrom, monthFrom, monthTo, slpCod
     return response.data;
   } catch (error) {
     console.error('Error al obtener los pedidos cancelados:', error);
-    return null;
+    throw error;
   }
 };
 
@@ -109,7 +93,7 @@ export const getTopCanceledProducts = async ({ yearFrom, monthFrom, monthTo, slp
     return response.data;
   } catch (error) {
     console.error('Error al obtener los productos cancelados:', error);
-    return null;
+    throw error;
   }
 };
 
@@ -122,6 +106,6 @@ export const getTopSelledProducts = async ({ yearFrom, monthFrom, monthTo, slpCo
     return response.data;
   } catch (error) {
     console.error('Error al obtener los productos más vendidos:', error);
-    return null;
+    throw error;
   }
 };

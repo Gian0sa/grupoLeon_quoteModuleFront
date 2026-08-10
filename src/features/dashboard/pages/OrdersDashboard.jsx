@@ -38,8 +38,8 @@ import FiltersBarDrawer from "../components/OrdersDashboards/FiltersBarDrawer";
 
 export default function OrdersDashboard() {
   const { salesEmployeeCode } = useAuthStore();
-  const isVendedor = salesEmployeeCode && salesEmployeeCode > 0;
-  const isAdmin = !salesEmployeeCode || salesEmployeeCode === 0;
+  const isVendedor = !!(salesEmployeeCode && Number(salesEmployeeCode) > 0);
+  const isAdmin = !salesEmployeeCode || salesEmployeeCode === 0 || salesEmployeeCode === "0" || salesEmployeeCode === "null";
 
   const { isOpen, onOpen, onClose } = useDisclosure();
   const bgColor = useColorModeValue("#0B3D2E", "#0B3D2E");
@@ -59,9 +59,13 @@ export default function OrdersDashboard() {
     sellerCode: querySlpCode,
   });
 
+// El admin puede acotar a un vendedor concreto desde los filtros; el vendedor
+// siempre queda restringido al suyo.
+const effectiveSlpCode = isVendedor ? salesEmployeeCode : (filters.sellerCode || 0);
+
 const { data: vendedorData, isLoading: vendedorLoading, error: vendedorError } =
   useQuotesSellers({
-    slpCode: querySlpCode,
+    slpCode: effectiveSlpCode,
     yearFrom: filters.yearFrom,
     monthFrom: filters.monthFrom,
     monthTo: filters.monthTo,
@@ -69,7 +73,7 @@ const { data: vendedorData, isLoading: vendedorLoading, error: vendedorError } =
 
 const { data: adminData, isLoading: adminLoading, error: adminError } =
   useQuotesSellersAdmin({
-    slpCode: querySlpCode,
+    slpCode: effectiveSlpCode,
     yearFrom: filters.yearFrom,
     monthFrom: filters.monthFrom,
     monthTo: filters.monthTo,
@@ -81,7 +85,7 @@ const { data: adminData, isLoading: adminLoading, error: adminError } =
       yearFrom: filters.yearFrom,
       monthFrom: filters.monthFrom,
       monthTo: filters.monthTo,
-      slpCode: isVendedor ? salesEmployeeCode : filters.sellerCode,
+      slpCode: effectiveSlpCode,
     });
 
   const { data: cancelledOrders, isLoading: ordersCancelatedLoading, error: ordersCancelatedError } =
@@ -89,7 +93,7 @@ const { data: adminData, isLoading: adminLoading, error: adminError } =
       yearFrom: filters.yearFrom,
       monthFrom: filters.monthFrom,
       monthTo: filters.monthTo,
-      slpCode: isVendedor ? salesEmployeeCode : filters.sellerCode,
+      slpCode: effectiveSlpCode,
     });
 
   const { data: topCanceled, isLoading: topCanceledLoading, error: topCanceledError } =
@@ -97,7 +101,7 @@ const { data: adminData, isLoading: adminLoading, error: adminError } =
       yearFrom: filters.yearFrom,
       monthFrom: filters.monthFrom,
       monthTo: filters.monthTo,
-      slpCode: isVendedor ? salesEmployeeCode : filters.sellerCode,
+      slpCode: effectiveSlpCode,
     });
 
   const { data: topSelled, isLoading: topSelledLoading, error: topSelledError } =
@@ -105,7 +109,7 @@ const { data: adminData, isLoading: adminLoading, error: adminError } =
       yearFrom: filters.yearFrom,
       monthFrom: filters.monthFrom,
       monthTo: filters.monthTo,
-      slpCode: isVendedor ? salesEmployeeCode : filters.sellerCode,
+      slpCode: effectiveSlpCode,
     });
 
   const isLoading = isVendedor ? vendedorLoading : adminLoading;

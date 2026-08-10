@@ -20,14 +20,14 @@ import { useBrandTypeSubtype } from "../hooks/queries/productQueries";
 export function ProductList() {
   const [cardName, setCardName] = useState("");
 
-  // Filtros en edición - Por defecto SOLO disponibles con stock ("Y")
+  // Filtros en edición
   const [marca, setMarca] = useState("");
   const [tipo, setTipo] = useState("");
   const [subtipo, setSubtipo] = useState("");
   const [tipoPrecio, setTipoPrecio] = useState("FINAL");
   const [soloConStock, setSoloConStock] = useState("Y");
 
-  // Estado inicial de búsqueda automática (Cargar de inmediato los productos con stock "Y")
+  // Estado inicial de búsqueda: Al cargar inicialmente muestra solo productos con stock ("Y")
   const initialParams = {
     itemName: "",
     itemCode: "",
@@ -45,7 +45,7 @@ export function ProductList() {
   const [allProducts, setAllProducts] = useState([]);
 
   // Hook de React Query
-  const { data, isLoading, error, isFetching } = useProductsPriceList(
+  const { data, isLoading, error, isFetching, refetch } = useProductsPriceList(
     searchParams ? { ...searchParams, page } : { enabled: false }
   );
 
@@ -77,33 +77,30 @@ export function ProductList() {
   // Búsqueda simultánea por Código, OEM y Nombre de producto
   const handleSearch = () => {
     const trimmed = cardName.trim();
-    const newParams = {
-      itemName: trimmed,
-      itemCode: trimmed,
-      marca,
-      tipo,
-      subtipo,
-      stock: soloConStock,
-    };
+    const newStock = trimmed ? "N" : "Y";
 
-    setLastSearch(newParams);
-    setSearchParams(newParams);
-  };
+    const isDifferent =
+      trimmed !== searchParams.itemName ||
+      marca !== searchParams.marca ||
+      tipo !== searchParams.tipo ||
+      subtipo !== searchParams.subtipo ||
+      newStock !== searchParams.stock;
 
-  // Cambio instantáneo de filtro con Switch de stock
-  const handleStockToggle = (newStockValue) => {
-    setSoloConStock(newStockValue);
-    const trimmed = cardName.trim();
-    const newParams = {
-      itemName: trimmed,
-      itemCode: trimmed,
-      marca,
-      tipo,
-      subtipo,
-      stock: newStockValue,
-    };
-    setLastSearch(newParams);
-    setSearchParams(newParams);
+    if (isDifferent) {
+      const newParams = {
+        itemName: trimmed,
+        itemCode: trimmed,
+        marca,
+        tipo,
+        subtipo,
+        stock: newStock,
+      };
+      setLastSearch(newParams);
+      setSearchParams(newParams);
+    } else {
+      // Si la búsqueda es idéntica, forzamos un refetch manual de React Query para actualizar la data sin vaciar la pantalla
+      refetch();
+    }
   };
 
   // Cambio de texto con limpieza automática
@@ -116,7 +113,7 @@ export function ProductList() {
         marca,
         tipo,
         subtipo,
-        stock: soloConStock,
+        stock: "Y", // Al vaciar el buscador, volvemos a mostrar solo productos con stock
       };
       setLastSearch(newParams);
       setSearchParams(newParams);
@@ -146,7 +143,7 @@ export function ProductList() {
         tipoPrecio={tipoPrecio}
         setTipoPrecio={setTipoPrecio}
         soloConStock={soloConStock}
-        setSoloConStock={handleStockToggle}
+        setSoloConStock={() => {}}
         isLoadingBrandTypeSubtype={isLoadingBrandTypeSubtype}
         errorBrandTypeSubtype={errorBrandTypeSubtype}
       />

@@ -55,7 +55,7 @@ export function ProductPriceListSearchheader({
     }
   };
 
-  const activeFiltersCount = [marca, tipo, subtipo].filter(Boolean).length + (soloConStock === "Y" ? 1 : 0);
+  const activeFiltersCount = [marca, tipo, subtipo].filter(Boolean).length;
 
   return (
     <TopHeaderBanner
@@ -283,21 +283,8 @@ export function ProductPriceListSearchheader({
               </Select>
             </HStack>
 
-            {/* Fila 3 - Switch stock y limpiar filtros */}
-            <Flex justify="space-between" align="center" pt={1}>
-              <FormControl display="flex" alignItems="center" w="auto">
-                <FormLabel htmlFor="stock-switch" mb="0" fontSize="12px" fontWeight="700" color="whiteAlpha.900">
-                  Solo disponibles con stock
-                </FormLabel>
-                <Switch
-                  id="stock-switch"
-                  colorScheme="green"
-                  size="sm"
-                  isChecked={soloConStock === "Y"}
-                  onChange={(e) => setSoloConStock(e.target.checked ? "Y" : "N")}
-                />
-              </FormControl>
-
+            {/* Fila 3 - Limpiar filtros */}
+            <Flex justify="flex-end" align="center" pt={1}>
               {activeFiltersCount > 0 && (
                 <Button
                   variant="ghost"
@@ -309,7 +296,6 @@ export function ProductPriceListSearchheader({
                     setTipo("");
                     setSubtipo("");
                     setTipoPrecio("FINAL");
-                    setSoloConStock("N");
                   }}
                 >
                   Limpiar filtros

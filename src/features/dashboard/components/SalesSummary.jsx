@@ -21,7 +21,9 @@ export function SalesSummary({ data }) {
       maximumFractionDigits: 2,
     });
 
-  const progressValue = Math.min(100, Math.max(0, Number(data.CUMPLIMIENTO_PCT || 0)));
+  // Valor real para mostrar (puede superar 100%); la barra sí se recorta.
+  const progressValue = Math.max(0, Number(data.CUMPLIMIENTO_PCT || 0));
+  const barValue = Math.min(100, progressValue);
   const pedidos = formatCurrency(data.AVANCE_MES_USD);
   const cuota = formatCurrency(data.CUOTA_MES_USD);
   const cantidadPedidos = data.CANT_PEDIDOS || 0;
@@ -107,7 +109,7 @@ export function SalesSummary({ data }) {
           ${pedidos}
         </Text>
         <Text fontSize="xs" color="gray.400" mt={1} fontWeight="medium">
-          Facturas realizadas: <Text as="span" color="gray.700" fontWeight="bold">{cantidadPedidos}</Text>
+          Pedidos del mes: <Text as="span" color="gray.700" fontWeight="bold">{cantidadPedidos}</Text>
         </Text>
       </VStack>
 
@@ -117,7 +119,7 @@ export function SalesSummary({ data }) {
           <HStack spacing={1}>
             <Icon as={Target} boxSize={3.5} color="gray.400" />
             <Text fontSize="xs" color="gray.500" fontWeight="semibold">
-              Meta: ${cuota}
+              {Number(data.CUOTA_MES_USD || 0) > 0 ? `Meta: $${cuota}` : "Meta SAP: Sin asignar ($0.00)"}
             </Text>
           </HStack>
           <Text fontSize="xs" fontWeight="900" color={progressValue >= 70 ? "emerald.600" : "orange.600"}>
@@ -129,7 +131,7 @@ export function SalesSummary({ data }) {
         <Box w="full" h="8px" bg="gray.100" borderRadius="full" overflow="hidden" position="relative">
           <MotionBox
             initial={{ width: 0 }}
-            animate={{ width: `${progressValue}%` }}
+            animate={{ width: `${barValue}%` }}
             transition={{ duration: 1, ease: "easeOut" }}
             h="100%"
             borderRadius="full"

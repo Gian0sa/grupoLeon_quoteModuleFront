@@ -119,35 +119,116 @@ export function ReceivablePage() {
     lastClient,
   });
 
+  const [isInitialFetching, setIsInitialFetching] = useState(true);
+
   useEffect(() => {
     if (data?.clients?.clients) {
-      setAllClients((prev) =>
-        lastClient ? [...prev, ...data.clients.clients] : data.clients.clients
-      );
+      setAllClients((prev) => {
+        const newClients = data.clients.clients;
+        if (!lastClient) return newClients;
+        // Evitar duplicados por CardCode
+        const existingCodes = new Set(prev.map((c) => c.clientCode || c.cardCode));
+        const filteredNew = newClients.filter((c) => !existingCodes.has(c.clientCode || c.cardCode));
+        return [...prev, ...filteredNew];
+      });
+    }
+
+    // 🔄 Autocarga secuencial de páginas para consolidar la cartera completa
+    if (data?.hasMore && data?.lastClient) {
+      const timer = setTimeout(() => {
+        setLastClient(data.lastClient);
+      }, 100);
+      return () => clearTimeout(timer);
+    } else if (!data?.hasMore) {
+      setIsInitialFetching(false);
     }
   }, [data]);
+
   const refreshQueries = [
     [QUERY_KEYS.accountsReceivable, vendedorNombre, cliente.toUpperCase(), clientecode, lastClient]
   ];
 
-  // Cálculo de conteos para tarjetas de filtro
+  // 1. Helper para identificar si un cliente es de TARJETA AZUL (Saldo a favor / Nota de crédito / Monto vencido < 0)
+  const isClientCredit = (c) => {
+    const overduePEN = Number(c.overdueAmount?.PEN ?? c.saldoVencidoPEN ?? 0);
+    const overdueUSD = Number(c.overdueAmount?.USD ?? c.saldoVencidoUSD ?? 0);
+    
+    // Si el saldo neto es a favor del cliente (negativo), es azul
+    if (overduePEN < 0 || overdueUSD < 0) return true;
+    
+    // Si el saldo neto es deudor (positivo), es MORA REAL (Rojo), sin importar si tiene alguna nota de crédito pequeña
+    if (overduePEN > 0 || overdueUSD > 0) return false;
+    
+    // Si el saldo vencido neto es exactamente 0 pero aún hay documentos de crédito vivos, es azul
+    const hasCreditDoc = c.tipoDocumento === "Nota de Crédito" || c.documents?.some((d) => d.tipoDocumento === "Nota de Crédito");
+    return hasCreditDoc;
+  };
+
+  // 2. Helper para identificar si un cliente posee MORA REAL (Deuda vencida positiva > 0 y NO es azul)
+  const isClientOverdue = (c) => {
+    if (isClientCredit(c)) return false;
+    const overduePEN = Number(c.overdueAmount?.PEN ?? c.saldoVencidoPEN ?? 0);
+    const overdueUSD = Number(c.overdueAmount?.USD ?? c.saldoVencidoUSD ?? 0);
+    const overdueDocs = Number(c.overdueDocumentsCount ?? c.documentosVencidos ?? 0);
+    return overdueDocs > 0 && (overduePEN > 0 || overdueUSD > 0);
+  };
+
+  // 3. Helper para clientes ACTIVOS / AL DÍA (No morosos y no azules)
+  const isClientActive = (c) => {
+    return !isClientCredit(c) && !isClientOverdue(c);
+  };
+
+  // Conteos exactos y mutuamente excluyentes para las 4 pestañas:
   const totalCount = allClients.length;
-  const overdueCount = allClients.filter(
-    (c) => (c.overdueDocumentsCount || 0) > 0
-  ).length;
-  const onTimeCount = allClients.filter(
-    (c) => (c.overdueDocumentsCount || 0) === 0
-  ).length;
+  const overdueCount = allClients.filter(isClientOverdue).length;
+  const creditCount = allClients.filter(isClientCredit).length;
+  const onTimeCount = allClients.filter(isClientActive).length;
 
-  // Filtrado reactivo de clientes según botón seleccionado
-  const filteredClients = allClients.filter((debt) => {
-    const overdueDocuments = debt.overdueDocumentsCount || 0;
-    if (statusFilter === "rechazados") return overdueDocuments > 0;
-    if (statusFilter === "activos") return overdueDocuments === 0;
-    return true;
-  });
+  const [ageFilter, setAgeFilter] = useState("all"); // 'all' | '1-30' | '31-60' | '61-90' | '90+'
+  const [sortBy, setSortBy] = useState("debt"); // 'debt' | 'age'
 
-  if (isLoading && allClients.length === 0) {
+  const getMaxOverdueDays = (c) => {
+    const docs = Array.isArray(c.documents) ? c.documents : [];
+    const overdueDocs = docs.filter(d => d.estaVencido || (d.diasVencimiento && d.diasVencimiento > 0));
+    if (overdueDocs.length > 0) {
+      return Math.max(...overdueDocs.map(d => Number(d.diasVencimiento || 0)));
+    }
+    return Number(c.maxOverdueDays || 0);
+  };
+
+  const getEquivUSD = (c) => {
+    const overduePEN = Number(c.overdueAmount?.PEN ?? c.saldoVencidoPEN ?? 0);
+    const overdueUSD = Number(c.overdueAmount?.USD ?? c.saldoVencidoUSD ?? 0);
+    return (overduePEN > 0 ? overduePEN / 3.43 : 0) + (overdueUSD > 0 ? overdueUSD : 0);
+  };
+
+  // RN-FECHAS-03 y RN-FECHAS-04: Filtrado por tramo de días de mora y ordenación inteligente
+  const filteredClients = allClients
+    .filter((debt) => {
+      if (statusFilter === "rechazados") {
+        if (!isClientOverdue(debt)) return false;
+        const maxDays = getMaxOverdueDays(debt);
+        if (ageFilter === "1-30") return maxDays >= 1 && maxDays <= 30;
+        if (ageFilter === "31-60") return maxDays >= 31 && maxDays <= 60;
+        if (ageFilter === "61-90") return maxDays >= 61 && maxDays <= 90;
+        if (ageFilter === "90+") return maxDays > 90;
+        return true;
+      }
+      if (statusFilter === "activos") return isClientActive(debt);
+      if (statusFilter === "credito") return isClientCredit(debt);
+      return true;
+    })
+    .sort((a, b) => {
+      if (statusFilter === "rechazados") {
+        if (sortBy === "age") {
+          return getMaxOverdueDays(b) - getMaxOverdueDays(a); // Más antiguo primero
+        }
+        return getEquivUSD(b) - getEquivUSD(a); // Mayor deudor primero (por defecto)
+      }
+      return 0;
+    });
+
+  if ((isLoading || (isInitialFetching && data?.hasMore)) && allClients.length === 0) {
     return (
       <Box bg="gray.50" minH="100vh">
         <SearchHeader
@@ -214,6 +295,11 @@ export function ReceivablePage() {
           totalCount={totalCount}
           overdueCount={overdueCount}
           onTimeCount={onTimeCount}
+          creditCount={creditCount}
+          ageFilter={ageFilter}
+          onAgeFilterChange={setAgeFilter}
+          sortBy={sortBy}
+          onSortByChange={setSortBy}
         />
       </Box>
 

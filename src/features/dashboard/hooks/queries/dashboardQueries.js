@@ -22,27 +22,12 @@ import {
   getNotificationById,
 } from "../../services/notificationService";
 
-const STORAGE_KEY_SUMMARY = "antigravity_dashboard_summary_cache";
-
-// Utility para guardar y leer cache local instantáneo
-const saveSummaryCache = (data) => {
-  try {
-    if (data) {
-      localStorage.setItem(STORAGE_KEY_SUMMARY, JSON.stringify(data));
-    }
-  } catch (e) {
-    console.error("Error saving summary cache:", e);
-  }
-};
-
-const getSummaryCache = () => {
-  try {
-    const cached = localStorage.getItem(STORAGE_KEY_SUMMARY);
-    return cached ? JSON.parse(cached) : undefined;
-  } catch (e) {
-    return undefined;
-  }
-};
+// Limpieza de claves antiguas de cache local si existieran
+try {
+  localStorage.removeItem("antigravity_dashboard_summary_cache");
+} catch (e) {
+  // Ignore
+}
 
 // ✅ Hook para Top Products
 export const useTopProducts = () => {
@@ -52,7 +37,6 @@ export const useTopProducts = () => {
       const data = await getTopProducts();
       return adaptTopProducts(data);
     },
-    staleTime: 10 * 60 * 1000,
   });
 };
 
@@ -64,7 +48,6 @@ export const usePromotions = () => {
       const data = await getPromotions();
       return adaptPromotions(data);
     },
-    staleTime: 10 * 60 * 1000,
   });
 };
 
@@ -76,39 +59,36 @@ export const useHistory = () => {
       const data = await getHistory();
       return adaptHistory(data);
     },
-    staleTime: 10 * 60 * 1000,
   });
 };
 
-// ✅ Hook para Quotes by Seller (V3)
-export const useQuotesSellers = ({ slpCode, yearFrom, monthFrom, monthTo, skip = 0, pageSize = 20 }) => {
+// ✅ Hook para Quotes by Seller (V3) - Consulta directa a backend sin cacheo local de usuario
+export const useQuotesSellers = ({ slpCode, yearFrom, monthFrom, monthTo }, options = {}) => {
+  const { enabled: enabledOption = true, ...restOptions } = options;
   return useQuery({
-    queryKey: ['quotesSellers', slpCode, yearFrom, monthFrom, monthTo, skip, pageSize],
-    queryFn: async () => {
-      const res = await getQuotesSellers({ slpCode, yearFrom, monthFrom, monthTo, skip, pageSize });
-      saveSummaryCache(res);
-      return res;
-    },
-    enabled: slpCode != null && yearFrom != null && monthFrom != null && monthTo != null,
-    staleTime: 10 * 60 * 1000, // 10 minutos fresco
-    gcTime: 60 * 60 * 1000, // 1 hora en memoria
-    placeholderData: () => getSummaryCache(),
+    queryKey: ['quotesSellers', slpCode, yearFrom, monthFrom, monthTo],
+    queryFn: () => getQuotesSellers({ slpCode, yearFrom, monthFrom, monthTo }),
+    enabled:
+      !!enabledOption &&
+      slpCode != null && yearFrom != null && monthFrom != null && monthTo != null,
+    staleTime: 0, // Siempre datos frescos por usuario
+    refetchOnMount: "always", // El QueryClient global tiene refetchOnMount:false; esta query sí debe refrescar siempre al montar
+    ...restOptions,
   });
 };
 
-// ✅ Hook para Quotes by Seller (Admin) (V3)
-export const useQuotesSellersAdmin = ({ slpCode, yearFrom, monthFrom, monthTo }) => {
+// ✅ Hook para Quotes by Seller (Admin) (V3) - Consulta directa a backend sin cacheo local de usuario
+export const useQuotesSellersAdmin = ({ slpCode, yearFrom, monthFrom, monthTo }, options = {}) => {
+  const { enabled: enabledOption = true, ...restOptions } = options;
   return useQuery({
     queryKey: ['quotesSellersAdmin', slpCode, yearFrom, monthFrom, monthTo],
-    queryFn: async () => {
-      const res = await getQuotesSellersAdmin({ slpCode, yearFrom, monthFrom, monthTo });
-      saveSummaryCache(res);
-      return res;
-    },
-    enabled: slpCode != null && yearFrom != null && monthFrom != null && monthTo != null,
-    staleTime: 10 * 60 * 1000, // 10 minutos fresco
-    gcTime: 60 * 60 * 1000, // 1 hora en memoria
-    placeholderData: () => getSummaryCache(),
+    queryFn: () => getQuotesSellersAdmin({ slpCode, yearFrom, monthFrom, monthTo }),
+    enabled:
+      !!enabledOption &&
+      slpCode != null && yearFrom != null && monthFrom != null && monthTo != null,
+    staleTime: 0, // Siempre datos frescos por usuario
+    refetchOnMount: "always", // El QueryClient global tiene refetchOnMount:false; esta query sí debe refrescar siempre al montar
+    ...restOptions,
   });
 };
 
@@ -117,7 +97,6 @@ export const useNotifications = () => {
   return useQuery({
     queryKey: ["notifications"],
     queryFn: getNotifications,
-    staleTime: 5 * 60 * 1000,
   });
 };
 
@@ -127,7 +106,6 @@ export const useNotificationById = (id) => {
     queryKey: ["notification", id],
     queryFn: () => getNotificationById(id),
     enabled: !!id,
-    staleTime: 5 * 60 * 1000,
   });
 };
 
@@ -137,44 +115,43 @@ export const useExchangeRate = ({ currency, date }) => {
         queryKey: ['exchangeRate', currency, date],
         queryFn: () => getExchangeRate({ currency, date }),
         enabled: !!currency && !!date,
-        staleTime: 30 * 60 * 1000, // Tipo de cambio fresco 30 min
     });
 };
 
 // ✅ Motivos de anulación
-export const useDashboardMotives = () => {
+export const useDashboardMotives = ({ yearFrom, monthFrom, monthTo, slpCode } = {}) => {
   return useQuery({
-    queryKey: ['dashboardMotives'],
-    queryFn: getDashboardMotives,
-    staleTime: 10 * 60 * 1000,
+    queryKey: ['dashboardMotives', yearFrom, monthFrom, monthTo, slpCode],
+    queryFn: () => getDashboardMotives({ yearFrom, monthFrom, monthTo, slpCode }),
+    enabled: yearFrom != null && monthFrom != null && monthTo != null,
   });
 };
 
 // ✅ Pedidos cancelados
-export const useOrdersCancelated = () => {
+export const useOrdersCancelated = ({ yearFrom, monthFrom, monthTo, slpCode } = {}) => {
   return useQuery({
-    queryKey: ['ordersCancelated'],
-    queryFn: getOrdersCancelated,
-    staleTime: 10 * 60 * 1000,
+    queryKey: ['ordersCancelated', yearFrom, monthFrom, monthTo, slpCode],
+    queryFn: () => getOrdersCancelated({ yearFrom, monthFrom, monthTo, slpCode }),
+    enabled: yearFrom != null && monthFrom != null && monthTo != null,
   });
 };
 
 // ✅ Top productos cancelados
-export const useTopCanceledProducts = () => {
+export const useTopCanceledProducts = ({ yearFrom, monthFrom, monthTo, slpCode } = {}) => {
   return useQuery({
-    queryKey: ['topCanceledProducts'],
-    queryFn: getTopCanceledProducts,
-    staleTime: 10 * 60 * 1000,
+    queryKey: ['topCanceledProducts', yearFrom, monthFrom, monthTo, slpCode],
+    queryFn: () => getTopCanceledProducts({ yearFrom, monthFrom, monthTo, slpCode }),
+    enabled: yearFrom != null && monthFrom != null && monthTo != null,
   });
 };
 export const useTopCanceled = useTopCanceledProducts;
 
 // ✅ Top productos vendidos
-export const useTopSelledProducts = () => {
+export const useTopSelledProducts = ({ yearFrom, monthFrom, monthTo, slpCode } = {}) => {
   return useQuery({
-    queryKey: ['topSelledProducts'],
-    queryFn: getTopSelledProducts,
-    staleTime: 10 * 60 * 1000,
+    queryKey: ['topSelledProducts', yearFrom, monthFrom, monthTo, slpCode],
+    queryFn: () => getTopSelledProducts({ yearFrom, monthFrom, monthTo, slpCode }),
+    enabled: yearFrom != null && monthFrom != null && monthTo != null,
   });
 };
 export const useTopSelled = useTopSelledProducts;

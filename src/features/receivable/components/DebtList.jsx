@@ -15,15 +15,11 @@ export function DebtList({ debts, onViewInvoices, onViewDetails }) {
   return (
     <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} w="full">
       {debts.map((debt, index) => {
-        // Montos
+        // Montos por moneda desde el backend
         const saldoPEN = debt.pendingAmount?.PEN || 0;
         const saldoUSD = debt.pendingAmount?.USD || 0;
         const saldoVencidoPEN = debt.overdueAmount?.PEN || 0;
         const saldoVencidoUSD = debt.overdueAmount?.USD || 0;
-
-        // Determinar saldo y moneda principal
-        const saldoPrincipal = saldoUSD !== 0 ? saldoUSD : saldoPEN;
-        const monedaPrincipal = saldoUSD !== 0 ? "USD" : "PEN";
 
         // Documentos
         const totalDocumentos = debt.totalDocuments || 0;
@@ -41,6 +37,16 @@ export function DebtList({ debts, onViewInvoices, onViewDetails }) {
           d => d.tipoDocumento === "Nota de Crédito"
         );
 
+        // Extraer fechas y días de mora del documento más antiguo
+        const docs = Array.isArray(debt.documents) ? debt.documents : [];
+        const overdueDocs = docs.filter(d => d.estaVencido || (d.diasVencimiento && d.diasVencimiento > 0));
+        const maxOverdueDays = overdueDocs.length > 0
+          ? Math.max(...overdueDocs.map(d => Number(d.diasVencimiento || 0)))
+          : Number(debt.maxOverdueDays || 0);
+        const oldestDueDate = overdueDocs.length > 0
+          ? overdueDocs.sort((a, b) => Number(b.diasVencimiento || 0) - Number(a.diasVencimiento || 0))[0]?.fechaContable
+          : docs[0]?.fechaContable || debt.oldestDueDate || "";
+
         return (
           <DebtCard
             key={debt.clientCode || index}
@@ -49,10 +55,12 @@ export function DebtList({ debts, onViewInvoices, onViewDetails }) {
               nombre: debt.clientName || "Sin nombre",
               ruc: debt.clientCode || "Sin RUC",
               vendedor: debt.vendedor || "Sin vendedor",
+              maxOverdueDays,
+              oldestDueDate,
 
-              // Montos principales
-              saldoPrincipal,
-              monedaPrincipal,
+              // Montos pendientes por moneda (ambas separadas)
+              saldoPEN,
+              saldoUSD,
               
               // Montos vencidos por moneda
               saldoVencidoPEN,

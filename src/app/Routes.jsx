@@ -10,6 +10,7 @@ import { PrivateRoute } from "../app/middlewares/privateRoute.jsx";
 import { RoleRoute } from "../app/middlewares/roleRoute.jsx";
 import { History } from "../features/dashboard/components/History.jsx";
 import { HistoryQuotesPage } from "../features/quotes/pages/HistoryQuotesPage.jsx";
+import { QuoteApprovalPage } from "../features/quotes/pages/QuoteApprovalPage.jsx";
 import { Requests } from "../features/dashboard/components/Requests.jsx";
 import { RequestQuotePage } from "../features/supervisor/pages/RequestQuotePage.jsx";
 import { ReportPage } from "../features/reports/pages/ReportPage.jsx";
@@ -71,6 +72,14 @@ const AppRoutes = () => {
         element={
           <PrivateRoute>
             <HistoryQuotesPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/approvals"
+        element={
+          <PrivateRoute>
+            <QuoteApprovalPage />
           </PrivateRoute>
         }
       />
