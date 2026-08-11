@@ -61,7 +61,7 @@ export function LateralMenu() {
   };
 
   const applicationOptions = [
-    { label: 'Gestión de Cotizaciones', icon: MdRequestQuote, path: '/historyquotes', access: 'PUT:/profile/admin/:userId' },
+    { label: 'Gestión de Cotizaciones', icon: MdRequestQuote, path: '/historyquotes', access: 'POST:/quotations' },
     { label: 'Crear usuario', icon: MdPersonAdd, path: '/register', access: 'POST:/register' },
     { label: 'Solicitudes', icon: MdAssignmentTurnedIn, path: '#', access: 'GET:/requests' },
     { label: 'Pedidos', icon: MdLocalShipping, path: '/reports', access: 'GET:/reports' },
