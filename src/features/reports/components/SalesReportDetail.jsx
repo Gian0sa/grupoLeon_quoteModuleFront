@@ -15,9 +15,10 @@ import {
   useColorModeValue,
   Spinner,
   Badge,
+  Button,
   useBreakpointValue,
 } from "@chakra-ui/react";
-import { Check } from "lucide-react";
+import { Check, Download, FileText } from "lucide-react";
 import { useGetCompareOrderAndDeliveryNote } from "../hooks/queries/reportQueries";
 import {
   getOrderByCode,
@@ -28,12 +29,32 @@ import {
   generateOrderPDF,
   generateDeliveryPDF,
   downloadInvoicePDF,
+  downloadInvoicePDFdirectly,
 } from "../utils/pdfGenerators";
 
 export default function TrackingPage({ orden, data }) {
   const [loadingOrden, setLoadingOrden] = useState(false);
   const [loadingEntrega, setLoadingEntrega] = useState(false);
   const [loadingFactura, setLoadingFactura] = useState(false);
+
+  const handleDownloadInvoice = async (facturaId) => {
+    if (!facturaId) return;
+    setLoadingFactura(true);
+    try {
+      const invoiceData = await getInvoiceByCode(facturaId);
+      const referenceCode = invoiceData?.numAtCard || invoiceData?.NumAtCard;
+      if (referenceCode) {
+        await downloadInvoicePDFdirectly(referenceCode);
+      } else {
+        await downloadInvoicePDFdirectly(facturaId);
+      }
+    } catch (err) {
+      console.error("Error al descargar factura:", err);
+      alert("No se pudo descargar la factura.");
+    } finally {
+      setLoadingFactura(false);
+    }
+  };
 
   // Responsive values
   const bgMain = useColorModeValue("white", "gray.800");
@@ -313,7 +334,7 @@ export default function TrackingPage({ orden, data }) {
             <Box bg="white" p={3} borderRadius="lg" border="1px solid" borderColor="gray.100">
               {facturas.length > 0 ? (
                 facturas.map((f, idx) => (
-                  <VStack key={idx} align="stretch" spacing={1.5}>
+                  <VStack key={idx} align="stretch" spacing={2}>
                     <Flex justify="space-between" align="center">
                       <Text fontSize="13px" color="gray.600">Fecha factura:</Text>
                       <Text fontSize="13px" fontWeight="700" color="gray.800">{f.fecha}</Text>
@@ -322,6 +343,29 @@ export default function TrackingPage({ orden, data }) {
                       <Text fontSize="13px" color="gray.600">Monto facturado:</Text>
                       <Text fontSize="13px" fontWeight="800" color="green.600">${Number(f.montoUsd).toFixed(2)} USD</Text>
                     </Flex>
+                    <Button
+                      size="sm"
+                      colorScheme="green"
+                      bg="linear-gradient(135deg, #14532d 0%, #166534 50%, #15803d 100%)"
+                      color="white"
+                      leftIcon={<Download size={14} />}
+                      isLoading={loadingFactura}
+                      loadingText="Descargando Factura..."
+                      onClick={() => handleDownloadInvoice(f.id)}
+                      borderRadius="xl"
+                      mt={1.5}
+                      w="full"
+                      fontWeight="700"
+                      fontSize="12px"
+                      boxShadow="0 4px 12px rgba(22, 101, 52, 0.2)"
+                      _hover={{
+                        bg: "linear-gradient(135deg, #0f3d21 0%, #14532d 50%, #166534 100%)",
+                        transform: "translateY(-1px)",
+                      }}
+                      transition="all 0.2s"
+                    >
+                      Descargar Factura PDF
+                    </Button>
                   </VStack>
                 ))
               ) : (
