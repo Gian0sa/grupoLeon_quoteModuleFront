@@ -23,6 +23,7 @@ export function ImageUploadCard({
     onImageChange,
     existingImageData,
     isLoadingExistingImage,
+    fileInputKey,
 }) {
     const hasExistingImage = existingImageData?.hasImage;
     const { isOpen, onOpen, onClose } = useDisclosure();
@@ -167,6 +168,7 @@ export function ImageUploadCard({
             </Button>
 
             <Input
+                key={fileInputKey}
                 type="file"
                 id="file-input"
                 accept="image/*"

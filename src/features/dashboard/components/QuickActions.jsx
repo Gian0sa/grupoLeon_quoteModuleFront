@@ -10,10 +10,10 @@ export function QuickActions() {
   const navigate = useNavigate();
   const iconSize = useBreakpointValue({ base: 15, sm: 17, md: 20 });
   const hasAccess = useHasAccess();
-  const isAdmin = hasAccess("PUT:/profile/admin/:userId");
+  const canAccessQuotes = hasAccess("POST:/quotations") || hasAccess("GET:/quotations") || hasAccess("PUT:/profile/admin/:userId");
 
   const actions = [
-    ...(isAdmin ? [{
+    ...(canAccessQuotes ? [{
       labelDesktop: "Cotizaciones",
       labelMobile: "Cotizaciones",
       icon: FileText,

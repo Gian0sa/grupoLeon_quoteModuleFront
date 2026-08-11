@@ -66,7 +66,7 @@ export default function VisitLogPage() {
         resetSearch,
     } = useClientSearch();
 
-    const { image, imagePreview, isProcessingImage, handleImageChange, resetImage } =
+    const { image, imagePreview, isProcessingImage, handleImageChange, resetImage, fileInputKey } =
         useImageUpload();
 
     const {
@@ -175,6 +175,7 @@ export default function VisitLogPage() {
                                 onImageChange={handleImageChange}
                                 existingImageData={clientImageData}
                                 isLoadingExistingImage={isLoadingClientImage}
+                                fileInputKey={fileInputKey}
                             />
                         )}
 
