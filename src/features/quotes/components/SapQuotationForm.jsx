@@ -18,6 +18,9 @@ import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { useExchangeRate } from "../../dashboard/hooks/queries/dashboardQueries";
 import { axiosInstance } from "../../../shared/lib/axiosInstance";
 import { useGetTransports, useGetPaymentType, useGetDeliveryForms } from "../hooks/queries/quotesQueries";
+import { calculateQuoteTotals } from "../../../shared/utils/quoteCalculator";
+import { useNavigate } from "react-router-dom";
+import QuoteSubmitConfirmModal from "./QuoteSubmitConfirmModal";
 
 const money = (val, currency = "USD") => {
   const num = Number(val || 0);
@@ -31,8 +34,9 @@ const money = (val, currency = "USD") => {
 
 const todayIso = () => new Date().toISOString().split("T")[0];
 
-export default function SapQuotationForm({ sellerName = "Vendedor Autorizado" }) {
+export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", isTracking = false }) {
   const toast = useToast();
+  const navigate = useNavigate();
   const { username, userId } = useAuthStore();
   const localSeller = localStorage.getItem("username") || localStorage.getItem("userId");
   const activeSeller = (sellerName && sellerName !== "Vendedor SAP" && sellerName !== "Vendedor Autorizado")
@@ -57,17 +61,22 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado" })
     whsCode, setWhsCode,
     contactPerson, setContactPerson,
     refNumber, setRefNumber,
+    approvalStatus, setApprovalStatus,
     clear
   } = useQuoteStore();
 
   const [tempImage, setTempImage] = useState(null);
   const [currency] = useState("USD");
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [docDate, setDocDate] = useState(todayIso());
   const [docDueDate, setDocDueDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() + 15);
     return d.toISOString().split("T")[0];
   });
+
+  const isReadOnly = approvalStatus === "APROBADO_COMERCIAL";
+  const revealTabs = isTracking || approvalStatus === "APROBADO_COMERCIAL";
 
   useEffect(() => {
     if (quoteId) {
@@ -131,53 +140,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado" })
     }
   }, [whsCode, setWhsCode]);
 
-  // Cálculos de totales estilo SAP B1 — todo en SOLES (SOL) igual que la pantalla nativa de SAP
-  // El precio unitario viene en USD, SAP convierte automáticamente con el TC comercial
+  // Cálculos de totales estilo SAP B1 — unificados con la calculadora global
   const totals = useMemo(() => {
-    const tc = Number(exchangeRate) || 3.76;  // TC real desde SAP (sin ajuste manual)
-    const tcBase = tc;                         // TC Base = TC oficial SAP
-
-    let subtotalUSD = 0;      // Suma de (qty × price) sin descuento, en USD
-    let totalDiscountUSD = 0; // Total descuentos en USD
-    let discPct = 0;          // % descuento promedio ponderado (para mostrar)
-
-    (products || []).forEach((p) => {
-      const qty   = Number(p.quantity || 1);
-      const price = Number(p.price || 0);
-      const disc  = Number(p.discount || 0);
-      const base  = qty * price;
-      subtotalUSD      += base;
-      totalDiscountUSD += base * (disc / 100);
-    });
-
-    // Porcentaje de descuento global (solo para display, si todos tienen mismo %)
-    if (subtotalUSD > 0) {
-      discPct = (totalDiscountUSD / subtotalUSD) * 100;
-    }
-
-    const netBaseUSD = Math.max(0, subtotalUSD - totalDiscountUSD);
-    const igvUSD     = netBaseUSD * 0.18;
-    const grandTotalUSD = netBaseUSD + igvUSD;
-
-    // Convertir a SOLES con el TC comercial (como hace SAP)
-    const subtotalSOL    = subtotalUSD    * tc;
-    const discountSOL    = totalDiscountUSD * tc;
-    const netBaseSOL     = netBaseUSD     * tc;
-    const igvSOL         = igvUSD         * tc;
-    const grandTotalSOL  = grandTotalUSD  * tc;
-
-    // Nota: el margen cambiario lo determina SAP B1 internamente.
-
-    return {
-      // USD (referencia interna)
-      subtotalUSD, totalDiscountUSD, netBaseUSD, igvUSD, grandTotalUSD,
-      // SOL (lo que muestra SAP)
-      subtotalSOL, discountSOL, netBaseSOL, igvSOL, grandTotalSOL,
-      // Cambiario
-      tc, tcBase, marginSOL: 0,
-      // Descuento %
-      discPct,
-    };
+    return calculateQuoteTotals(products, exchangeRate);
   }, [products, exchangeRate]);
 
   const currentQuoteObj = useMemo(() => ({
@@ -199,7 +164,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado" })
   }), [docNumber, client, products, totals, activeSeller, docDate, docDueDate, contactPerson, refNumber, comment, selectedDeliveryForm, selectedTransport, selectedPaymentType]);
 
   // Manejadores de acciones locales
-  const handleSaveDraft = () => {
+  const handleSaveAction = (targetStatus) => {
     if (!client) {
       toast({
         title: "Selecciona un cliente",
@@ -208,7 +173,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado" })
         duration: 3000,
         isClosable: true,
       });
-      return;
+      return false;
     }
     if (products.length === 0) {
       toast({
@@ -218,7 +183,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado" })
         duration: 3000,
         isClosable: true,
       });
-      return;
+      return false;
     }
 
     const activeDocNumber = quoteId || docNumber;
@@ -233,22 +198,31 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado" })
     const existingStatus = existingDoc?.approvalStatus || existingDoc?.state;
     const isAdvanced = existingStatus && ["ENVIADO", "EN_PROCESO", "APROBADO", "RECHAZADO"].includes(existingStatus);
 
-    const currentStatus = isAdvanced ? existingStatus : "ENVIADO";
+    // Si ya está avanzada, no retrocede de estado, a menos que estemos enviando un borrador
+    const currentStatus = isAdvanced ? existingStatus : targetStatus;
     const nowIso = new Date().toISOString();
     const prevHistory = existingDoc?.historyLog || [];
-    const hasSentLog = prevHistory.some(h => h.status === "ENVIADO");
-    const updatedHistory = hasSentLog
-      ? prevHistory
-      : [
-          ...prevHistory,
-          { status: "ENVIADO", timestamp: nowIso, user: activeSeller, note: "Cotización enviada a validación" }
-        ];
+    
+    let updatedHistory = [...prevHistory];
+    
+    if (targetStatus === "ENVIADO" && !prevHistory.some(h => h.status === "ENVIADO")) {
+      updatedHistory.push({ status: "ENVIADO", timestamp: nowIso, user: activeSeller, note: "Cotización enviada a validación" });
+    } else if (targetStatus === "BORRADOR" && prevHistory.length === 0) {
+      updatedHistory.push({ status: "BORRADOR", timestamp: nowIso, user: activeSeller, note: "Borrador guardado" });
+    }
+
+    const clientRucVal = client?.LicTradNum || client?.raw?.LicTradNum || client?.FederalTaxID || client?.raw?.FederalTaxID || client?.cardCode || "";
+    const clientAddressVal = client?.Address || client?.raw?.Address || client?.address || "";
+    const clientNameVal = client?.CardName || client?.name || "CLIENTE GENERAL";
 
     const newDoc = {
       id: activeDocNumber,
       docNumber: activeDocNumber,
       docType,
       client,
+      clientName: clientNameVal,
+      clientRuc: clientRucVal,
+      clientAddress: clientAddressVal,
       products,
       currency: "USD",
       totals: finalTotals,
@@ -261,6 +235,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado" })
       selectedDeliveryForm,
       selectedTransport,
       selectedPaymentType,
+      selectedPoint,
       sellerName: activeSeller,
       createdByUsername: username || localSeller || "vendedor",
       createdByUserId: userId || null,
@@ -283,37 +258,215 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado" })
     window.dispatchEvent(new Event("localQuotesUpdated"));
     if (setQuoteId) setQuoteId(activeDocNumber);
 
-    // Emitir notificación hacia Facturación y Cobranza (Admin)
+    // Si se ENVIÓ a validación, generar la notificación para Facturación
+    if (targetStatus === "ENVIADO") {
+      const existingNotifs = JSON.parse(localStorage.getItem("grupoLeon_notifications") || "[]");
+      const clientName = client?.CardName || client?.name || "Cliente General";
+      const totalUsdStr = finalTotals?.grandTotalUSD ? `$${finalTotals.grandTotalUSD.toFixed(2)}` : "$0.00";
+      const ADMIN_FACTURACION_USERNAME = "enrique";
+      const senderUsername = username || localSeller || "vendedor";
+      const notifObj = {
+        id: `NOTIF-${Date.now()}`,
+        targetRole: "FACTURACION",
+        targetUsername: ADMIN_FACTURACION_USERNAME,
+        fromUsername: senderUsername,
+        fromUserId: userId || null,
+        quoteId: activeDocNumber,
+        quoteObj: newDoc,
+        title: `📩 Nueva Cotización Recibida - ${activeDocNumber}`,
+        description: `Enviada por ${activeSeller} • Cliente: ${clientName} (${totalUsdStr}) ${opNum ? `• Váucher BCP: N° ${opNum}` : ''}. Requiere validación.`,
+        status: "ENVIADO",
+        timestamp: new Date().toISOString(),
+        read: false
+      };
+      localStorage.setItem("grupoLeon_notifications", JSON.stringify([notifObj, ...existingNotifs.filter(n => n.quoteId !== activeDocNumber || n.targetUsername !== ADMIN_FACTURACION_USERNAME)]));
+      window.dispatchEvent(new Event("localNotificationsUpdated"));
+    }
+
+    return { isExisting, activeDocNumber, newDoc };
+  };
+
+  const handleSaveDraft = () => {
+    const result = handleSaveAction("BORRADOR");
+    if (result) {
+      toast({
+        title: "📝 Borrador Guardado",
+        description: `Documento ${result.activeDocNumber} guardado localmente como borrador.`,
+        status: "info",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  };
+
+  const handleSaveAndSend = () => {
+    // Validaciones previas antes de abrir el modal de confirmación
+    if (!client) {
+      toast({
+        title: "Selecciona un cliente",
+        description: "Debes buscar y seleccionar un socio de negocio antes de enviar.",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+    if (products.length === 0) {
+      toast({
+        title: "Agrega al menos un artículo",
+        description: "La cotización debe tener al menos 1 producto en la grilla.",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+    // Abrir modal de confirmación pre-envío
+    setShowConfirmModal(true);
+  };
+
+  const handleConfirmedSend = () => {
+    setShowConfirmModal(false);
+    const result = handleSaveAction("ENVIADO");
+    if (result) {
+      toast({
+        title: "✅ Cotización Enviada a Validación",
+        description: `Documento ${result.activeDocNumber} registrado y enviado a la Asesora de Facturación.`,
+        status: "success",
+        duration: 5000,
+        isClosable: true,
+      });
+      handleNewQuote();
+    }
+  };
+
+  const handleSendToBillingValidation = () => {
+    // Validar campos obligatorios de logística y pagos
+    if (!selectedDeliveryForm) {
+      toast({
+        title: "Forma de entrega requerida",
+        description: "Debe seleccionar una forma de entrega para el despacho.",
+        status: "warning",
+        duration: 3000,
+        isClosable: true
+      });
+      return;
+    }
+    if (!selectedPaymentType) {
+      toast({
+        title: "Condición de pago requerida",
+        description: "Debe seleccionar la condición de pago.",
+        status: "warning",
+        duration: 3000,
+        isClosable: true
+      });
+      return;
+    }
+    const isPickup = Number(selectedDeliveryForm?.TrnspCode) === 1 || String(selectedDeliveryForm?.TrnspName || '').toLowerCase().includes("recojo");
+    if (!isPickup && !selectedPoint) {
+      toast({
+        title: "Punto de llegada requerido",
+        description: "Debe seleccionar o escribir la dirección de despacho.",
+        status: "warning",
+        duration: 3000,
+        isClosable: true
+      });
+      return;
+    }
+    if (!isPickup && !selectedTransport) {
+      toast({
+        title: "Agencia de transporte requerida",
+        description: "Debe seleccionar o escribir la agencia de transporte.",
+        status: "warning",
+        duration: 3000,
+        isClosable: true
+      });
+      return;
+    }
+    if (!opNum) {
+      toast({
+        title: "N° Operación / Voucher requerido",
+        description: "Debe ingresar el número de operación bancaria de abono.",
+        status: "warning",
+        duration: 3000,
+        isClosable: true
+      });
+      return;
+    }
+
+    const activeDocNumber = quoteId || docNumber;
+    const nowIso = new Date().toISOString();
+    
+    const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
+    const existingDoc = saved.find((q) => (q.id || q.docNumber) === activeDocNumber);
+    const prevHistory = existingDoc?.historyLog || [];
+    
+    const updatedHistory = [
+      { status: "PENDIENTE_FACTURACION", timestamp: nowIso, user: activeSeller, note: `Datos logísticos y de pago cargados (N° Op: ${opNum}). Enviado a validación definitiva de Facturación.` },
+      ...prevHistory
+    ];
+
+    const finalTotals = {
+      ...totals,
+      grandTotal: totals.grandTotalUSD,
+    };
+
+    const newDoc = {
+      ...(existingDoc || {}),
+      id: activeDocNumber,
+      docNumber: activeDocNumber,
+      selectedDeliveryForm,
+      selectedTransport,
+      selectedPaymentType,
+      selectedPoint,
+      opNum,
+      paymentImg,
+      totals: finalTotals,
+      updatedAt: nowIso,
+      status: "PENDIENTE_FACTURACION",
+      state: "PENDIENTE_FACTURACION",
+      approvalStatus: "PENDIENTE_FACTURACION",
+      historyLog: updatedHistory
+    };
+
+    const updated = saved.map((q) => ((q.id || q.docNumber) === activeDocNumber ? newDoc : q));
+    localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updated));
+    window.dispatchEvent(new Event("localQuotesUpdated"));
+
+    // Enviar notificación a Facturación (Enrique)
     const existingNotifs = JSON.parse(localStorage.getItem("grupoLeon_notifications") || "[]");
     const clientName = client?.CardName || client?.name || "Cliente General";
     const totalUsdStr = finalTotals?.grandTotalUSD ? `$${finalTotals.grandTotalUSD.toFixed(2)}` : "$0.00";
-    // El admin de facturación se determina por el config de la organización
     const ADMIN_FACTURACION_USERNAME = "enrique";
-    const senderUsername = username || localSeller || "vendedor";
+    
     const notifObj = {
       id: `NOTIF-${Date.now()}`,
       targetRole: "FACTURACION",
-      targetUsername: ADMIN_FACTURACION_USERNAME,  // ← a quién va la notificación
-      fromUsername: senderUsername,                // ← quién la envió
+      targetUsername: ADMIN_FACTURACION_USERNAME,
+      fromUsername: activeSeller,
       fromUserId: userId || null,
       quoteId: activeDocNumber,
       quoteObj: newDoc,
-      title: `📩 Nueva Cotización Recibida - ${activeDocNumber}`,
-      description: `Enviada por ${activeSeller} • Cliente: ${clientName} (${totalUsdStr}) ${opNum ? `• Váucher BCP: N° ${opNum}` : ''}. Requiere validación de depósito y aprobación.`,
-      status: "ENVIADO",
+      title: `💳 Cotización con Abono Listo - ${activeDocNumber}`,
+      description: `El vendedor ${activeSeller} adjuntó abono para ${clientName} (${totalUsdStr}) • N° Op: ${opNum}. Listo para emitir en SAP.`,
+      status: "PENDIENTE_FACTURACION",
       timestamp: new Date().toISOString(),
       read: false
     };
-    localStorage.setItem("grupoLeon_notifications", JSON.stringify([notifObj, ...existingNotifs.filter(n => n.quoteId !== activeDocNumber || n.targetUsername !== ADMIN_FACTURACION_USERNAME)]));
+    
+    localStorage.setItem("grupoLeon_notifications", JSON.stringify([notifObj, ...existingNotifs.filter(n => n.quoteId !== activeDocNumber)]));
     window.dispatchEvent(new Event("localNotificationsUpdated"));
 
     toast({
-      title: isExisting ? "Cotización Actualizada" : "✅ Cotización Guardada y Enviada a Validación",
-      description: `Documento ${activeDocNumber} registrado con éxito. Se envió una notificación a la Asesora de Facturación y Cobranza.`,
+      title: "📩 Enviado a Facturación",
+      description: `Los datos logísticos y el abono N° ${opNum} fueron enviados a la Asesora de Facturación para su emisión en SAP.`,
       status: "success",
       duration: 5000,
-      isClosable: true,
+      isClosable: true
     });
+
+    handleNewQuote();
+    navigate("/historyquotes");
   };
 
   const [isSubmittingSap, setIsSubmittingSap] = useState(false);
@@ -508,20 +661,64 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado" })
             <Badge colorScheme={docType === "OFERTA_VENTA" ? "blue" : "emerald"} px={2.5} py={1} borderRadius="md" fontSize="xs" textTransform="uppercase">
               Nº {docNumber}
             </Badge>
-            <Badge colorScheme="orange" px={2.5} py={1} borderRadius="md" fontSize="xs">
-              <Box as="span" display={{ base: "none", md: "inline" }}>Estado: Abierto (Borrador)</Box>
-              <Box as="span" display={{ base: "inline", md: "none" }}>Abierto (Borrador)</Box>
+            <Badge
+              bg={
+                approvalStatus === "APROBADO_COMERCIAL"
+                  ? "#fef9c3"
+                  : approvalStatus === "PENDIENTE_FACTURACION"
+                  ? "#f5f3ff"
+                  : "orange.100"
+              }
+              color={
+                approvalStatus === "APROBADO_COMERCIAL"
+                  ? "#854d0e"
+                  : approvalStatus === "PENDIENTE_FACTURACION"
+                  ? "#5b21b6"
+                  : "orange.800"
+              }
+              border="1px solid"
+              borderColor={
+                approvalStatus === "APROBADO_COMERCIAL"
+                  ? "#fef08a"
+                  : approvalStatus === "PENDIENTE_FACTURACION"
+                  ? "#ddd6fe"
+                  : "orange.200"
+              }
+              px={2.5}
+              py={1}
+              borderRadius="md"
+              fontSize="xs"
+              fontWeight="900"
+            >
+              <Box as="span">
+                Estado: {approvalStatus || "Borrador (Abierto)"}
+              </Box>
             </Badge>
           </Flex>
         </Flex>
 
-        <Grid templateColumns={{ base: "1fr", lg: "repeat(2, 1fr)" }} gap={6}>
-          {/* Columna Izquierda: Datos de Cliente y Moneda */}
-          <VStack align="stretch" spacing={3}>
-            <ClientAutocomplete client={client} setClient={setClient} />
+        {/* ── BÚSQUEDA DE CLIENTE Y CAMPOS PROGRESIVOS NATIVOS ── */}
+        {revealTabs ? (
+          <Grid templateColumns={{ base: "1fr", lg: "repeat(2, 1fr)" }} gap={6}>
+            {/* Columna Izquierda: Datos de Cliente y Moneda */}
+            <VStack align="stretch" spacing={3}>
+              {isReadOnly ? (
+                <Box p={3.5} bg="#f0fdf4" borderRadius="xl" border="1.5px solid" borderColor="#bbf7d0" boxShadow="xs">
+                  <Text fontSize="10px" fontWeight="900" color="#166534" textTransform="uppercase" letterSpacing="wider" mb={1.5}>
+                    🤝 Cliente SAP (Seleccionado y Bloqueado)
+                  </Text>
+                  <Text fontSize="xs" color="gray.800" fontWeight="700">
+                    {client?.CardName || client?.name || "Cliente General"}
+                  </Text>
+                  <Text fontSize="0.75rem" color="gray.500" fontWeight="600" mt={0.5}>
+                    Documento: {client?.CardCode || client?.id || "N/A"}
+                  </Text>
+                </Box>
+              ) : (
+                <ClientAutocomplete client={client} setClient={setClient} />
+              )}
 
-            {/* Persona de contacto y OC Cliente: Solo visibles al pasar a Factura/Pedido */}
-            {docType === "PEDIDO_CLIENTE" && (
+              {/* Persona de contacto y OC Cliente (Fase Pedido) */}
               <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={3}>
                 <FormControl>
                   <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="gray.700" mb={1}>
@@ -566,20 +763,14 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado" })
                   />
                 </FormControl>
               </Grid>
-            )}
+            </VStack>
 
-            {/* Campos SAP (Moneda, TC, Almacén 014, Vendedor) preservados internamente y ocultos en UI */}
-          </VStack>
-
-          {/* Columna Derecha: Almacén Fijo 014 y Vendedor */}
-          <VStack align="stretch" spacing={3}>
-
-            {/* Fechas de contabilización y validez: Visibles solo en Pedido / Factura */}
-            {docType === "PEDIDO_CLIENTE" && (
+            {/* Columna Derecha: Fechas de Contabilización y Vencimiento */}
+            <VStack align="stretch" spacing={3}>
               <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={3}>
                 <FormControl>
                   <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="gray.700" mb={1}>
-                    Válido Hasta / Entrega
+                    Válido Hasta / Vencimiento
                   </FormLabel>
                   <Input
                     type="date"
@@ -603,9 +794,28 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado" })
                   />
                 </FormControl>
               </Grid>
+            </VStack>
+          </Grid>
+        ) : (
+          /* FASE 1: Cotización Inicial limpia — Buscador compacto de 560px */
+          <Box w="full" maxW={{ base: "full", md: "560px" }}>
+            {isReadOnly ? (
+              <Box p={3.5} bg="#f0fdf4" borderRadius="xl" border="1.5px solid" borderColor="#bbf7d0" boxShadow="xs">
+                <Text fontSize="10px" fontWeight="900" color="#166534" textTransform="uppercase" letterSpacing="wider" mb={1.5}>
+                  🤝 Cliente SAP (Seleccionado y Bloqueado)
+                </Text>
+                <Text fontSize="xs" color="gray.800" fontWeight="700">
+                  {client?.CardName || client?.name || "Cliente General"}
+                </Text>
+                <Text fontSize="0.75rem" color="gray.500" fontWeight="600" mt={0.5}>
+                  Documento: {client?.CardCode || client?.id || "N/A"}
+                </Text>
+              </Box>
+            ) : (
+              <ClientAutocomplete client={client} setClient={setClient} />
             )}
-          </VStack>
-        </Grid>
+          </Box>
+        )}
       </Box>
 
       {/* ── SECCIÓN CENTRAL CON PESTAÑAS SAP ── */}
@@ -634,122 +844,63 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado" })
               </HStack>
             </Tab>
 
-            {/* Pestañas Logística y Finanzas/Abonos Bancarios: Disponibles para Cotización y Pedido */}
-            <Tab flexShrink={0} whiteSpace="nowrap" minH={{ base: "44px", md: "auto" }} _selected={{ bg: "white", color: "#126C36", fontWeight: "800", borderTop: "3px solid #126C36" }}>
-              <HStack spacing={1.5} fontSize="xs">
-                <Truck className="w-3.5 h-3.5" />
-                <Text>Logística y Agencia</Text>
-              </HStack>
-            </Tab>
-
-            <Tab flexShrink={0} whiteSpace="nowrap" minH={{ base: "44px", md: "auto" }} _selected={{ bg: "white", color: "#126C36", fontWeight: "800", borderTop: "3px solid #126C36" }}>
-              <HStack spacing={1.5} fontSize="xs">
-                <CreditCard className="w-3.5 h-3.5" />
-                <Text>Finanzas y Abonos</Text>
-              </HStack>
-            </Tab>
-
-            <Tab flexShrink={0} whiteSpace="nowrap" minH={{ base: "44px", md: "auto" }} _selected={{ bg: "white", color: "#126C36", fontWeight: "800", borderTop: "3px solid #126C36" }}>
-              <HStack spacing={1.5} fontSize="xs">
-                <Paperclip className="w-3.5 h-3.5" />
-                <Text>Anexos</Text>
-              </HStack>
-            </Tab>
+            {revealTabs && (
+              <Tab flexShrink={0} whiteSpace="nowrap" minH={{ base: "44px", md: "auto" }} _selected={{ bg: "white", color: "#126C36", fontWeight: "800", borderTop: "3px solid #126C36" }}>
+                <HStack spacing={1.5} fontSize="xs">
+                  <Truck className="w-3.5 h-3.5" />
+                  <Text>Logística, Pagos y Anexos</Text>
+                </HStack>
+              </Tab>
+            )}
           </TabList>
 
           <TabPanels p={{ base: 2, md: 4 }}>
             {/* Pestaña 1: Contenido (Grid de productos) */}
             <TabPanel p={0}>
               <SapItemGrid
+                client={client}
                 products={products}
                 onAddProduct={addProduct}
                 onRemoveProduct={removeProduct}
                 onUpdateProduct={updateProduct}
                 currency="USD"
                 whsCode="014"
+                isReadOnly={isReadOnly}
               />
             </TabPanel>
 
-            {/* Pestaña 2: Logística de Campo */}
-            <TabPanel p={2}>
-              <VStack align="stretch" spacing={3}>
-                <Text fontSize="xs" fontWeight="800" color="gray.700" textTransform="uppercase">
-                  Punto de Entrega y Agencia de Transporte (Boleta de Campo)
-                </Text>
-                <NewSellTerms
-                  client={client}
-                  transports={dataTransports || []}
-                  deliveryPoints={deliveryPoints}
-                  deliveryForms={dataDeliveryForms || []}
-                  paymentTypes={dataPaymentTypes || []}
-                  selectedPoint={selectedPoint}
-                  setSelectedPoint={setSelectedPoint}
-                  selectedTransport={selectedTransport}
-                  setSelectedTransport={setSelectedTransport}
-                  selectedDeliveryForm={selectedDeliveryForm}
-                  setSelectedDeliveryForm={setSelectedDeliveryForm}
-                  selectedPaymentType={selectedPaymentType}
-                  setSelectedPaymentType={setSelectedPaymentType}
-                  deliveryDate={deliveryDate}
-                  setDeliveryDate={setDeliveryDate}
-                  comment={comment}
-                  setComment={setComment}
-                  paymentImg={paymentImg}
-                  setPaymentImg={setPaymentImg}
-                  tempImage={tempImage}
-                  setTempImage={setTempImage}
-                  opNum={opNum}
-                  setOpNum={setOpNum}
-                />
-              </VStack>
-            </TabPanel>
-
-            {/* Pestaña 3: Finanzas y Voucher Bancario */}
-            <TabPanel p={2}>
-              <Box p={{ base: 3, md: 4 }} bg="gray.50" borderRadius="lg" border="1px solid" borderColor="gray.200">
-                <Text fontSize={{ base: "13px", md: "xs" }} fontWeight="800" color="gray.800" mb={3} textTransform="uppercase">
-                  Condición de Pago y Abono Bancario (Voucher)
-                </Text>
-                <Grid templateColumns={{ base: "1fr", md: "repeat(3, 1fr)" }} gap={4}>
-                  <FormControl>
-                    <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700">Forma de Pago</FormLabel>
-                    <ChakraSelect size="sm" bg="white" borderRadius="md" value={selectedPaymentType || "CONTADO"} onChange={(e) => setSelectedPaymentType(e.target.value)}>
-                      <option value="CONTADO">Contado / Transferencia Inmediata</option>
-                      <option value="ANTICIPADO">Anticipado / Depósito Bancario</option>
-                      <option value="CRED_30">Crédito 30 días</option>
-                    </ChakraSelect>
-                  </FormControl>
-                  <FormControl>
-                    <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700">Banco de Abono</FormLabel>
-                    <ChakraSelect size="sm" bg="white" borderRadius="md" defaultValue="BCP_SOLES">
-                      <option value="BCP_SOLES">BCP (Soles) - 191-0104153-0-60</option>
-                      <option value="BBVA_SOLES">BBVA Continental (Soles)</option>
-                      <option value="SCOTIA_USD">Scotiabank (USD) - 000-1245211</option>
-                    </ChakraSelect>
-                  </FormControl>
-                  <FormControl>
-                    <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700">N° Operación / Voucher / Chq</FormLabel>
-                    <Input
-                      size="sm"
-                      bg="white"
-                      borderRadius="md"
-                      placeholder="Ej: 0169944"
-                      value={opNum || ""}
-                      onChange={(e) => setOpNum(e.target.value)}
-                    />
-                  </FormControl>
-                </Grid>
-              </Box>
-            </TabPanel>
-
-            {/* Pestaña final: Anexos */}
-            <TabPanel p={2}>
-              <Box p={6} border="2px dashed" borderColor="gray.300" borderRadius="lg" textAlign="center">
-                <Paperclip className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                <Text fontSize="sm" fontWeight="600" color="gray.600">Adjuntar archivos a la cotización</Text>
-                <Text fontSize="xs" color="gray.400">PDF, Órdenes de Compra o Comprobantes</Text>
-              </Box>
-            </TabPanel>
+            {/* Pestaña 2: Logística, Pagos y Anexos Unificados */}
+            {revealTabs && (
+              <TabPanel p={2}>
+                <VStack align="stretch" spacing={3}>
+                  <NewSellTerms
+                    client={client}
+                    transports={dataTransports || []}
+                    deliveryPoints={deliveryPoints}
+                    deliveryForms={dataDeliveryForms || []}
+                    paymentTypes={dataPaymentTypes || []}
+                    selectedPoint={selectedPoint}
+                    setSelectedPoint={setSelectedPoint}
+                    selectedTransport={selectedTransport}
+                    setSelectedTransport={setSelectedTransport}
+                    selectedDeliveryForm={selectedDeliveryForm}
+                    setSelectedDeliveryForm={setSelectedDeliveryForm}
+                    selectedPaymentType={selectedPaymentType}
+                    setSelectedPaymentType={setSelectedPaymentType}
+                    deliveryDate={deliveryDate}
+                    setDeliveryDate={setDeliveryDate}
+                    comment={comment}
+                    setComment={setComment}
+                    paymentImg={paymentImg}
+                    setPaymentImg={setPaymentImg}
+                    tempImage={tempImage}
+                    setTempImage={setTempImage}
+                    opNum={opNum}
+                    setOpNum={setOpNum}
+                  />
+                </VStack>
+              </TabPanel>
+            )}
           </TabPanels>
         </Tabs>
       </Box>
@@ -844,32 +995,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado" })
               </Text>
             </Flex>
 
-            {/* ── Desglose del Tipo de Cambio (SAP Base vs Comercial) ── */}
-            <Box mt={2} pt={2} borderTop="1px dashed rgba(255,255,255,0.2)">
-              <Text fontSize="0.6rem" fontWeight="800" textTransform="uppercase" letterSpacing="wider" color="#86efac" mb={1.5}>
-                Tipo de Cambio Aplicado
-              </Text>
-              <VStack align="stretch" spacing={1} fontSize="0.65rem">
-                <Flex justify="space-between" color="rgba(255,255,255,0.65)">
-                  <Text>TC Base SAP:</Text>
-                  <Text fontFamily="mono">S/ {totals.tcBase.toFixed(2)}</Text>
-                </Flex>
-                <Flex justify="space-between" color="rgba(255,255,255,0.65)">
-                  <Text>Margen comercial:</Text>
-                  <Text fontFamily="mono" color="#86efac">+ S/ 0.02</Text>
-                </Flex>
-                <Flex justify="space-between" color="#ffffff" fontWeight="700">
-                  <Text>TC Comercial:</Text>
-                  <Text fontFamily="mono">S/ {totals.tc.toFixed(2)}</Text>
-                </Flex>
-                {totals.marginSOL > 0 && (
-                  <Flex justify="space-between" color="#fde68a">
-                    <Text fontWeight="700">Ganancia diferencial TC:</Text>
-                    <Text fontFamily="mono" fontWeight="800">+ SOL {totals.marginSOL.toFixed(2)}</Text>
-                  </Flex>
-                )}
-              </VStack>
-            </Box>
+
           </VStack>
         </Box>
       </Grid>
@@ -894,21 +1020,64 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado" })
           direction={{ base: "column", sm: "row" }}
           wrap={{ base: "nowrap", sm: "wrap" }}
           align={{ base: "stretch", sm: "center" }}
-          w={{ base: "full", md: "auto" }}
+          w={{ base: "full", md: "full" }}
         >
-          {docType === "OFERTA_VENTA" && (
-            <Button
-              bg="#126C36"
-              color="white"
-              _hover={{ bg: "#0e572b" }}
-              size="md"
-              w={{ base: "full", sm: "auto" }}
-              leftIcon={<Save className="w-4 h-4" />}
-              onClick={handleSaveDraft}
-              fontWeight="800"
-            >
-              Guardar y Enviar a Validación
-            </Button>
+          {approvalStatus === "APROBADO_COMERCIAL" ? (
+            <>
+              <Button
+                bg="#16a34a"
+                color="white"
+                _hover={{ bg: "#15803d" }}
+                size="md"
+                w={{ base: "full", sm: "auto" }}
+                leftIcon={<CheckCircle2 className="w-4 h-4" />}
+                onClick={handleSendToBillingValidation}
+                fontWeight="850"
+                boxShadow="0 4px 12px rgba(22,163,74,0.3)"
+              >
+                ⚡ Enviar a Validación de Facturación
+              </Button>
+              <Button
+                colorScheme="red"
+                variant="outline"
+                size="md"
+                w={{ base: "full", sm: "auto" }}
+                onClick={() => {
+                  clear();
+                  navigate("/historyquotes");
+                }}
+                fontWeight="700"
+              >
+                Cancelar
+              </Button>
+            </>
+          ) : (
+            docType === "OFERTA_VENTA" && (
+              <>
+                <Button
+                  bg="#126C36"
+                  color="white"
+                  _hover={{ bg: "#0e572b" }}
+                  size="md"
+                  w={{ base: "full", sm: "auto" }}
+                  leftIcon={<Save className="w-4 h-4" />}
+                  onClick={handleSaveAndSend}
+                  fontWeight="800"
+                >
+                  Guardar y Enviar a Validación
+                </Button>
+                <Button
+                  colorScheme="gray"
+                  size="md"
+                  w={{ base: "full", sm: "auto" }}
+                  leftIcon={<Save className="w-4 h-4 text-gray-500" />}
+                  onClick={handleSaveDraft}
+                  fontWeight="700"
+                >
+                  Guardar como Borrador
+                </Button>
+              </>
+            )
           )}
 
           <Button
@@ -920,7 +1089,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado" })
             onClick={() => setIsPreviewOpen(true)}
             fontWeight="700"
           >
-            Ver Boleta / Comprobante
+            Ver Boleta
           </Button>
 
           <Button
@@ -932,52 +1101,23 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado" })
             onClick={handleNewQuote}
             fontWeight="700"
           >
-            Limpiar / Nueva Cotización
+            Limpiar
           </Button>
         </Flex>
-
-        {/* Menú Dropdown "Copiar a" (Próximamente para Facturación Directa) */}
-        <Menu placement="top-end">
-          <MenuButton
-            as={Button}
-            rightIcon={<ChevronDown className="w-4 h-4" />}
-            bg="gray.600"
-            color="white"
-            _hover={{ bg: "gray.700" }}
-            size="md"
-            w={{ base: "full", md: "auto" }}
-            variant="solid"
-            fontWeight="700"
-          >
-            Copiar a {">"}
-          </MenuButton>
-          <MenuList shadow="xl" borderRadius="lg" p={1} maxW="calc(100vw - 24px)">
-            <MenuItem
-              icon={<Copy className="w-4 h-4 text-gray-500" />}
-              fontWeight="600"
-              minH={{ base: "44px", md: "auto" }}
-              whiteSpace="normal"
-              onClick={handleCopyToOrder}
-            >
-              Pedido de cliente (🔒 Próximamente)
-            </MenuItem>
-            <MenuItem
-              icon={<FileText className="w-4 h-4 text-gray-500" />}
-              fontWeight="600"
-              minH={{ base: "44px", md: "auto" }}
-              whiteSpace="normal"
-              onClick={handleCopyToInvoice}
-            >
-              Factura de deudores (🔒 Próximamente)
-            </MenuItem>
-          </MenuList>
-        </Menu>
       </Flex>
 
       {/* Modal de Documento Oficial SAP */}
       <SapQuoteDocumentModal
         isOpen={isPreviewOpen}
         onClose={() => setIsPreviewOpen(false)}
+        quote={currentQuoteObj}
+      />
+
+      {/* Modal de Confirmación Pre-Envío (Checklist de Seguridad) */}
+      <QuoteSubmitConfirmModal
+        isOpen={showConfirmModal}
+        onClose={() => setShowConfirmModal(false)}
+        onConfirm={handleConfirmedSend}
         quote={currentQuoteObj}
       />
     </VStack>

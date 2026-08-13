@@ -30,10 +30,10 @@ export const useVisitLogById = (id) => {
     });
 };
 
-export const useActiveVisitByVendor = (vendorName) => {
+export const useActiveVisitByVendor = (vendorName, vendorCode) => {
     return useQuery({
         queryKey: [
-            "activeVisit", vendorName
+            "activeVisit", vendorName, vendorCode
         ],
         queryFn: async () => {
             let serverData = null;
@@ -42,7 +42,7 @@ export const useActiveVisitByVendor = (vendorName) => {
             } catch (error) {
                 console.warn("Could not fetch active visit from server (offline):", error);
             }
-            return getActiveVisitState(vendorName, serverData);
+            return getActiveVisitState(vendorName, serverData, vendorCode);
         },
         networkMode: "always"
     });

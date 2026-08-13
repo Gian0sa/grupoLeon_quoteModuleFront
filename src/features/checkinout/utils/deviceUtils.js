@@ -1,67 +1,95 @@
-export const compressImage = (file, maxSizeMB = 1) => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = (event) => {
-            const img = new Image();
-            img.src = event.target.result;
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                let width = img.width;
-                let height = img.height;
+const MAX_DIMENSION = 1600;
 
-                // Reducir dimensiones si es muy grande
-                const MAX_WIDTH = 1920;
-                const MAX_HEIGHT = 1920;
+/**
+ * Decodifica el archivo sin pasarlo nunca a Base64.
+ *
+ * La versión anterior hacía `readAsDataURL` sobre el archivo ORIGINAL (una foto
+ * de cámara pesa 10–15 MB, y en Base64 crece un 33% más) y luego asignaba esa
+ * cadena a `img.src`. En un teléfono eso agota la memoria del navegador y
+ * termina en "Error al cargar imagen" o recargando la página.
+ *
+ * `createImageBitmap` decodifica directamente desde el Blob, sin copia
+ * intermedia. El respaldo con objectURL tampoco genera Base64.
+ */
+const decodeImage = async (file) => {
+    if (typeof createImageBitmap === "function") {
+        try {
+            return { source: await createImageBitmap(file), release: (s) => s.close?.() };
+        } catch {
+            // Safari antiguo puede fallar con algunos JPEG: se usa el respaldo.
+        }
+    }
 
-                if (width > height) {
-                    if (width > MAX_WIDTH) {
-                        height *= MAX_WIDTH / width;
-                        width = MAX_WIDTH;
-                    }
-                } else {
-                    if (height > MAX_HEIGHT) {
-                        width *= MAX_HEIGHT / height;
-                        height = MAX_HEIGHT;
-                    }
-                } canvas.width = width;
-                canvas.height = height;
+    const url = URL.createObjectURL(file);
+    try {
+        const img = await new Promise((resolve, reject) => {
+            const el = new Image();
+            el.onload = () => resolve(el);
+            el.onerror = () => reject(new Error("Error al cargar imagen"));
+            el.src = url;
+        });
+        return { source: img, release: () => URL.revokeObjectURL(url) };
+    } catch (err) {
+        URL.revokeObjectURL(url);
+        throw err;
+    }
+};
 
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, width, height);
-
-                // Comprimir con calidad variable hasta lograr el tamaño deseado
-                let quality = 0.8;
-                const compress = () => {
-                    canvas.toBlob((blob) => {
-                        if (blob) {
-                            const sizeMB = blob.size / 1024 / 1024;
-                            console.log(`Imagen comprimida: ${
-                                sizeMB.toFixed(2)
-                            }MB con calidad ${quality}`);
-
-                            if (sizeMB > maxSizeMB && quality > 0.1) {
-                                quality -= 0.1;
-                                compress();
-                            } else {
-                                const compressedFile = new File([blob], file.name, {
-                                    type: 'image/jpeg',
-                                    lastModified: Date.now()
-                                });
-                                resolve(compressedFile);
-                            }
-                        } else {
-                            reject(new Error('Error al comprimir imagen'));
-                        }
-                    }, 'image/jpeg', quality);
-                };
-
-                compress();
-            };
-            img.onerror = () => reject(new Error('Error al cargar imagen'));
-        };
-        reader.onerror = () => reject(new Error('Error al leer archivo'));
+const canvasToBlob = (canvas, quality) =>
+    new Promise((resolve, reject) => {
+        canvas.toBlob(
+            (blob) => (blob ? resolve(blob) : reject(new Error("Error al comprimir imagen"))),
+            "image/jpeg",
+            quality
+        );
     });
+
+export const compressImage = async (file, maxSizeMB = 1) => {
+    const { source, release } = await decodeImage(file);
+    let canvas;
+
+    try {
+        const naturalW = source.width;
+        const naturalH = source.height;
+        const scale = Math.min(1, MAX_DIMENSION / Math.max(naturalW, naturalH));
+        const width = Math.round(naturalW * scale);
+        const height = Math.round(naturalH * scale);
+
+        canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(source, 0, 0, width, height);
+
+        // Dos pasadas en lugar del bucle recursivo anterior (que podía re-codificar
+        // el canvas hasta 8 veces y congelaba el teléfono). Si la primera excede
+        // el objetivo, la segunda ajusta la calidad por proporción.
+        let blob = await canvasToBlob(canvas, 0.72);
+        const maxBytes = maxSizeMB * 1024 * 1024;
+
+        if (blob.size > maxBytes) {
+            const ratio = maxBytes / blob.size;
+            const quality = Math.min(0.7, Math.max(0.35, 0.72 * Math.sqrt(ratio)));
+            const retry = await canvasToBlob(canvas, quality);
+            if (retry.size < blob.size) blob = retry;
+        }
+
+        console.log(
+            `Imagen comprimida: ${(file.size / 1024 / 1024).toFixed(2)}MB → ${(blob.size / 1024 / 1024).toFixed(2)}MB (${width}x${height})`
+        );
+
+        return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", {
+            type: "image/jpeg",
+            lastModified: Date.now(),
+        });
+    } finally {
+        // Liberar explícitamente: en móviles el GC llega tarde y la siguiente
+        // foto arrancaría con la memoria ya comprometida.
+        release?.(source);
+        if (canvas) {
+            canvas.width = 0;
+            canvas.height = 0;
+        }
+    }
 };
 
 export const getLocation = () => {

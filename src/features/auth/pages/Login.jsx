@@ -35,7 +35,13 @@ export function Login() {
 
   const [showPassword, setShowPassword] = useState(false);
   const [captchaToken, setCaptchaToken] = useState(null);
-  const [captchaError, setCaptchaError] = useState(false);
+  // Guarda el texto del error (o null). Antes era un booleano y siempre decía
+  // "verifica que no eres un robot", incluso cuando la causa era de red.
+  const [captchaError, setCaptchaError] = useState(null);
+  // En local la clave está restringida al dominio de producción: Cloudflare
+  // devuelve 600010 y el widget queda en "Verificando..." reintentando sin fin.
+  // Con esto se oculta el recuadro roto en vez de dejarlo girando.
+  const [captchaUnavailable, setCaptchaUnavailable] = useState(false);
   const [captchaKey, setCaptchaKey] = useState(0); // ✅ fix: key separada
 
   const toast = useToast();
@@ -60,15 +66,18 @@ export function Login() {
   }
 
   const resetCaptcha = () => {
+    // En local el widget no puede resolverse; recargarlo solo reinicia el bucle
+    // de reintentos y borra el marcador que permite seguir trabajando.
+    if (import.meta.env.DEV && captchaUnavailable) return;
     setCaptchaKey((prev) => prev + 1);
     setCaptchaToken(null);
   };
 
   const onSubmit = (data) => {
-     if (!captchaToken) {
-       setCaptchaError(true);
-       return;
-     }
+    if (!captchaToken) {
+      setCaptchaError("Completa la verificación de seguridad para continuar.");
+      return;
+    }
 
     login.mutate(
       { ...data, captchaToken },
@@ -131,8 +140,6 @@ export function Login() {
           bgGradient="radial(circle, transparent 20%, rgba(0, 30, 10, 0.4) 100%)"
           zIndex={0}
         />
-        
-
 
         {/* Mobile Logo (Hidden on Desktop) */}
         <Image
@@ -147,39 +154,34 @@ export function Login() {
 
         <Box
           zIndex={1}
-          bg={{ base: "white", md: "whiteAlpha.900" }}
-          backdropFilter={{ base: "none", md: "blur(16px)" }}
+          bg="white"
           p={{ base: 6, sm: 8 }}
           borderRadius="2xl"
           boxShadow="0 10px 40px rgba(0, 0, 0, 0.08)"
           w="full"
           maxW="420px"
         >
-          <VStack spacing={5} align="stretch">
-            <Box textAlign="center">
-              <Heading size="lg" color="gray.800" fontWeight="extrabold" letterSpacing="tight">
+          <VStack spacing={5} w="full" align="stretch">
+            <VStack spacing={2} align="center" textAlign="center">
+              <Heading size="lg" color="gray.800" fontWeight="bold">
                 ¡Hola de nuevo!
               </Heading>
-              <Text fontSize="sm" color="gray.500" mt={1}>
+              <Text color="gray.500" fontSize="sm">
                 Accede a tu cuenta de Autopartes
               </Text>
-            </Box>
+            </VStack>
 
+          <VStack spacing={4} align="stretch">
             <FormControl isInvalid={errors.email}>
               <Input
-                variant="filled"
-                bg="#eef2f6"
-                _hover={{ bg: "#e2e8f0" }}
-                _focus={{ bg: "white", borderColor: "green.500" }}
-                borderRadius="xl"
-                placeholder="Correo electrónico"
+                placeholder="ejemplo@autopartes.pe"
                 size="lg"
+                bg="gray.100"
+                border="none"
+                _focus={{ bg: "white", boxShadow: "outline" }}
+                borderRadius="xl"
                 {...register("email", {
-                  required: "El correo es obligatorio",
-                  pattern: {
-                    value: /^[^@]+@[^@]+\.[^@]+$/,
-                    message: "Correo inválido",
-                  },
+                  required: "El correo es requerido",
                 })}
               />
               <FormErrorMessage>{errors.email?.message}</FormErrorMessage>
@@ -188,15 +190,14 @@ export function Login() {
             <FormControl isInvalid={errors.password}>
               <InputGroup size="lg">
                 <Input
-                  variant="filled"
-                  bg="#eef2f6"
-                  _hover={{ bg: "#e2e8f0" }}
-                  _focus={{ bg: "white", borderColor: "green.500" }}
-                  borderRadius="xl"
                   type={showPassword ? "text" : "password"}
-                  placeholder="Contraseña"
+                  placeholder="••••••"
+                  bg="gray.100"
+                  border="none"
+                  _focus={{ bg: "white", boxShadow: "outline" }}
+                  borderRadius="xl"
                   {...register("password", {
-                    required: "La contraseña es obligatoria",
+                    required: "La contraseña es requerida",
                     minLength: { value: 6, message: "Mínimo 6 caracteres" },
                   })}
                 />
@@ -222,17 +223,37 @@ export function Login() {
               </Link>
             </Flex>
 
-            <Center w="full" overflow="hidden">
+            <Center w="full" overflow="hidden" display={captchaUnavailable ? "none" : "flex"}>
               <Turnstile
                 key={captchaKey}
                 siteKey={siteKey}
+                // Sin reintentos en local: la clave nunca podrá validarse en
+                // localhost y el bucle llena la consola de cientos de errores.
+                options={{ retry: import.meta.env.DEV ? "never" : "auto" }}
                 onSuccess={(token) => {
                   setCaptchaToken(token);
-                  setCaptchaError(false);
+                  setCaptchaError(null);
+                  setCaptchaUnavailable(false);
                 }}
                 onError={() => {
-                  setCaptchaError(true);
-                  resetCaptcha();
+                  // En local la clave real está restringida al dominio de
+                  // producción, así que el widget falla siempre. Se deja pasar
+                  // el envío con un marcador para no bloquear el desarrollo;
+                  // quien decide es el backend, que solo lo acepta si tiene
+                  // TURNSTILE_DEV_BYPASS=true.
+                  if (import.meta.env.DEV) {
+                    setCaptchaToken("local-dev");
+                    setCaptchaError(null);
+                    setCaptchaUnavailable(true);
+                    return;
+                  }
+                  // En producción un fallo del captcha es un fallo real: no se
+                  // finge éxito, porque el backend lo rechazaría igual y el
+                  // usuario vería un error confuso al enviar.
+                  setCaptchaToken(null);
+                  setCaptchaError(
+                    "No se pudo cargar la verificación de seguridad. Revisa tu conexión y recarga la página."
+                  );
                 }}
                 onExpire={() => {
                   resetCaptcha();
@@ -242,7 +263,7 @@ export function Login() {
 
             {captchaError && (
               <Box color="red.500" fontSize="sm" textAlign="center">
-                Por favor, verifica que no eres un robot.
+                {captchaError}
               </Box>
             )}
 
@@ -263,7 +284,7 @@ export function Login() {
             </Button>
           </VStack>
 
-          <Flex mt={6} justify="center" align="center" fontSize="xs" color="gray.400">
+          <Flex mt={4} justify="center" align="center" fontSize="xs" color="gray.400">
             <Text as="span">Desarrollado por:&nbsp;</Text>
             <Box
               display="inline-block"
@@ -296,8 +317,9 @@ export function Login() {
               />
             </Box>
           </Flex>
-        </Box>
-      </Flex>
+        </VStack>
+      </Box>
+    </Flex>
 
       {/* Right Panel: Green Background with Lightning Flash */}
       <Flex

@@ -28,25 +28,65 @@ export const updateQuote = async (quote) => {
 }
 
 export const getTransports = async () => {
-    const response = await axiosInstance.get(`/quoteModule/clients/transports`);
-    return response.data;
-
+    try {
+        const response = await axiosInstance.get(`/quoteModule/clients/transports`);
+        return response.data || [];
+    } catch (err) {
+        console.warn("Uso de transportes locales (fallback):", err?.message);
+        return [
+            { TrnspCode: 1, TrnspName: "Recojo en Tienda / Almacén Central" },
+            { TrnspCode: 2, TrnspName: "Shalom Empresarial" },
+            { TrnspCode: 3, TrnspName: "Marvisur Cargo" },
+            { TrnspCode: 4, TrnspName: "Flores Cargo" },
+            { TrnspCode: 5, TrnspName: "Cavia Expreso" },
+            { TrnspCode: 6, TrnspName: "Transportes Wari" }
+        ];
+    }
 };
 
 export const getPaymentType = async () => {
-    const response = await axiosInstance.get(`/quoteModule/clients/payment-terms`);
-    return response.data.value;
-}
+    try {
+        const response = await axiosInstance.get(`/quoteModule/clients/payment-terms`);
+        const list = response.data?.value || response.data || [];
+        return list.map(item => ({
+            GroupNum: item.GroupNum ?? item.GroupNumber ?? item.value,
+            GroupNumber: item.GroupNumber ?? item.GroupNum ?? item.value,
+            PymntGroup: item.PymntGroup || item.PaymentTermsGroupName || item.label || "Contado",
+            PaymentTermsGroupName: item.PaymentTermsGroupName || item.PymntGroup || item.label || "Contado"
+        }));
+    } catch (err) {
+        console.warn("Uso de condiciones de pago locales (fallback):", err?.message);
+        return [
+            { GroupNum: 1, GroupNumber: 1, PymntGroup: "Contado / Depósito Inmediato", PaymentTermsGroupName: "Contado / Depósito Inmediato" },
+            { GroupNum: 2, GroupNumber: 2, PymntGroup: "Crédito 15 días", PaymentTermsGroupName: "Crédito 15 días" },
+            { GroupNum: 3, GroupNumber: 3, PymntGroup: "Crédito 30 días", PaymentTermsGroupName: "Crédito 30 días" },
+            { GroupNum: 4, GroupNumber: 4, PymntGroup: "Crédito 60 días", PaymentTermsGroupName: "Crédito 60 días" }
+        ];
+    }
+};
 
 export const getDeliveryForms = async () => {
-    const response = await axiosInstance.get(`/quoteModule/clients/delivery-forms`);
-    return response.data;
-}
+    try {
+        const response = await axiosInstance.get(`/quoteModule/clients/delivery-forms`);
+        return response.data || [];
+    } catch (err) {
+        console.warn("Uso de formas de entrega locales (fallback):", err?.message);
+        return [
+            { TrnspCode: 1, TrnspName: "Recojo en Almacén / Tienda" },
+            { TrnspCode: 2, TrnspName: "Envío a Domicilio / Agencia Lima" },
+            { TrnspCode: 3, TrnspName: "Despacho a Provincia (Agencia)" }
+        ];
+    }
+};
 
 export const getIgvRate = async () => {
-    const response = await axiosInstance.get(`/quoteModule/igv`);
-    return response.data;
-}
+    try {
+        const response = await axiosInstance.get(`/quoteModule/igv`);
+        return response.data;
+    } catch (err) {
+        return { rate: 0.18 };
+    }
+};
 
 export const uploadImage = async (file) => {
     const formData = new FormData();

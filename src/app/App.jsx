@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import AppRoutes from "./Routes";
 import { ChakraProvider, ColorModeScript } from "@chakra-ui/react";
 import theme from "../components/theme";
+import { SyncQueueProvider } from "../features/checkinout/context/SyncQueueProvider";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -31,7 +32,11 @@ function App() {
       <ChakraProvider theme={theme}>
         <ColorModeScript initialColorMode={theme.config.initialColorMode} />
         <QueryClientProvider client={queryClient}>
-          <AppRoutes />
+          {/* La cola de visitas offline vive aquí para seguir sincronizando
+              en cualquier pantalla, no solo en el módulo de registro. */}
+          <SyncQueueProvider>
+            <AppRoutes />
+          </SyncQueueProvider>
         </QueryClientProvider>
       </ChakraProvider>
     </React.StrictMode>

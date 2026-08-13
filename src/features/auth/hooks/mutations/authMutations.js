@@ -7,6 +7,7 @@ import {
 } from "../../services/auhtService";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../stores/useAuthStore";
+import { flushVisitQueue } from "../../../checkinout/services/visitQueueFlush";
 import { useToast } from "@chakra-ui/react";
 
 export function useAuthMutations() {
@@ -104,8 +105,20 @@ export function useAuthMutations() {
 
   // 🔹 LOGOUT
   const logoutMutation = useMutation({
-    mutationFn: logoutUser,
+    // Última oportunidad de subir las visitas pendientes: después de esto la
+    // sesión deja de ser válida y las marcas tendrían que esperar al próximo
+    // ingreso. No bloquea el cierre: si no hay red, se abandona en 4 s y los
+    // datos quedan a salvo en IndexedDB.
+    mutationFn: async () => {
+      await flushVisitQueue();
+      return logoutUser();
+    },
     onSuccess: () => {
+      logout();
+      navigate("/");
+    },
+    onError: () => {
+      // Si el backend falla, igual se cierra sesión localmente.
       logout();
       navigate("/");
     },

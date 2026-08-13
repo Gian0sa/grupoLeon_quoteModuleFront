@@ -200,36 +200,40 @@ export default function ClientAutocomplete({ client, setClient }) {
     searchTerm &&
     ((isSearchingByCode && !dataByCode) || (!isSearchingByCode && activeNameList.length === 0));
 
-  // 2. BUSCADOR ÚNICO INTELIGENTE SAP
+  // 2. BUSCADOR ÚNICO INTELIGENTE SAP (Diseño Compacto y Elegante)
   return (
-    <Box>
-      <Box p={{ base: 2.5, md: 3 }} bg="emerald.50/50" borderRadius="xl" border="1px dashed" borderColor="emerald.300">
-        <Box fontSize="xs" fontWeight="800" color="emerald.900" mb={1.5} letterSpacing="wider" textTransform="uppercase">
-          <Box as="span" display={{ base: "none", md: "inline" }}>🔍 Búsqueda Inteligente de Cliente SAP</Box>
-          <Box as="span" display={{ base: "inline", md: "none" }}>🔍 Buscar Cliente en SAP</Box>
+    <Box w="full" maxW={{ base: "full", md: "560px" }}>
+      <Box p={2.5} bg="#f0fdf4" borderRadius="lg" border="1.5px dashed #86efac">
+        <Box fontSize="11px" fontWeight="900" color="#166534" mb={1} letterSpacing="wider" textTransform="uppercase">
+          🔍 Búsqueda Inteligente de Cliente SAP
         </Box>
-        <Flex gap={2}>
+        <Flex gap={2} align="center">
           <Input
+            flex="1"
             size="sm"
             borderRadius="md"
-            placeholder="Escribe RUC, DNI o Nombre de Cliente..."
+            placeholder="Escribe RUC, DNI o Razón Social..."
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value.toUpperCase())}
             onKeyPress={handleKeyPress}
             bg="white"
-            borderColor="gray.300"
+            borderColor="#cbd5e1"
             fontSize="xs"
-            _focus={{ borderColor: "emerald.500", boxShadow: "0 0 0 1px #10b981" }}
+            fontWeight="600"
+            _focus={{ borderColor: "#16a34a", boxShadow: "0 0 0 1px #16a34a" }}
           />
           <Button
             size="sm"
-            colorScheme="emerald"
-            px={4}
+            colorScheme="green"
+            bg="#0d6334"
+            _hover={{ bg: "#166534" }}
+            px={3.5}
             onClick={triggerSearch}
             isLoading={isSearching}
             leftIcon={<FiSearch />}
             fontSize="xs"
-            fontWeight="700"
+            fontWeight="800"
+            flexShrink={0}
           >
             Buscar
           </Button>

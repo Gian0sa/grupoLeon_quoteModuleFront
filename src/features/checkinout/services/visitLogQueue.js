@@ -69,6 +69,11 @@ export const removeFromQueue = async (id) => {
   await db.delete(STORE_NAME, id);
 };
 
+export const clearAllQueue = async () => {
+  const db = await getDB();
+  await db.clear(STORE_NAME);
+};
+
 export const getQueueCount = async () => {
   const db = await getDB();
   return db.count(STORE_NAME);
@@ -86,16 +91,60 @@ export const updateQueueItem = async (id, updates) => {
   await tx.done;
 };
 
-export const getActiveVisitState = async (vendorName, serverActiveVisitData) => {
+// Estados de un ítem en cola.
+// PENDING / SYNCING → se reintentan solos.
+// NEEDS_REVIEW      → el servidor lo rechazó por regla de negocio. NO se borra
+//                     automáticamente ni se reintenta a ciegas: requiere que el
+//                     vendedor o un admin lo concilie, para no perder la visita.
+export const QUEUE_STATUS = {
+  PENDING: "PENDING",
+  SYNCING: "SYNCING",
+  SYNCED: "SYNCED",
+  NEEDS_REVIEW: "NEEDS_REVIEW",
+};
+
+// Un ítem sigue "en vuelo" mientras no esté confirmado por el servidor.
+export const isUnsynced = (item) => item.status !== QUEUE_STATUS.SYNCED;
+
+const norm = (v) => String(v ?? "").trim().toLowerCase();
+
+// El vendedor se identifica sin distinguir mayúsculas y aceptando el código SAP
+// como respaldo: al reiniciar sesión el nombre puede volver con otra grafía y
+// antes eso volvía "invisible" su propia cola.
+export const belongsToVendor = (item, vendorName, vendorCode) => {
+  if (vendorCode && item.vendorCode && norm(item.vendorCode) === norm(vendorCode)) return true;
+  return !!vendorName && norm(item.vendorName) === norm(vendorName);
+};
+
+/**
+ * Devuelve los ítems del vendedor que aún no están confirmados por el servidor.
+ * Es la base de la regla "si hay algo en vuelo, se encola" de useVisitSubmit.
+ */
+export const getUnsyncedForVendor = async (vendorName, vendorCode) => {
+  const queue = await getQueue();
+  return queue
+    .filter((i) => belongsToVendor(i, vendorName, vendorCode) && isUnsynced(i))
+    .sort((a, b) => a.id - b.id);
+};
+
+/**
+ * Fusiona el estado del servidor con la cola local para decidir si hay un
+ * Check-In abierto. La cola manda sobre el servidor porque puede contener marcas
+ * que aún no viajaron.
+ */
+export const getActiveVisitState = async (vendorName, serverActiveVisitData, vendorCode) => {
   let hasActiveCheckIn = serverActiveVisitData?.active || false;
   let activeVisit = serverActiveVisitData?.visit || null;
 
   const queue = await getQueue();
   const vendorQueue = queue
-    .filter((item) => item.vendorName === vendorName)
+    .filter((item) => belongsToVendor(item, vendorName, vendorCode))
     .sort((a, b) => a.id - b.id);
 
   for (const item of vendorQueue) {
+    // Un ítem ya confirmado no aporta: el servidor ya lo refleja.
+    if (item.status === QUEUE_STATUS.SYNCED) continue;
+
     if (item.type === "IN") {
       hasActiveCheckIn = true;
       activeVisit = {
@@ -104,9 +153,11 @@ export const getActiveVisitState = async (vendorName, serverActiveVisitData) => 
         sapCode: item.sapCode || null,
         latitude: item.latitude,
         longitude: item.longitude,
-        createdAt: item._queuedAt || Date.now(),
+        createdAt: item.createdAt || item._queuedAt || Date.now(),
+        visitGroupId: item.visitGroupId || null,
         isLocal: true,
-        status: item.status || "PENDING",
+        status: item.status || QUEUE_STATUS.PENDING,
+        needsReview: item.status === QUEUE_STATUS.NEEDS_REVIEW,
         errorMessage: item.errorMessage || null,
       };
     } else if (item.type === "OUT") {
@@ -116,4 +167,23 @@ export const getActiveVisitState = async (vendorName, serverActiveVisitData) => 
   }
 
   return { active: hasActiveCheckIn, visit: activeVisit };
+};
+
+/**
+ * visitGroupId del Check-In abierto, para que el Check-Out se empareje con él.
+ * Busca primero en la cola local y cae al dato del servidor.
+ */
+export const getOpenVisitGroupId = async (vendorName, vendorCode, serverActiveVisit) => {
+  const queue = await getQueue();
+  const vendorQueue = queue
+    .filter((item) => belongsToVendor(item, vendorName, vendorCode))
+    .sort((a, b) => a.id - b.id);
+
+  let groupId = serverActiveVisit?.visitGroupId || null;
+  for (const item of vendorQueue) {
+    if (item.status === QUEUE_STATUS.SYNCED) continue;
+    if (item.type === "IN") groupId = item.visitGroupId || groupId;
+    else if (item.type === "OUT") groupId = null;
+  }
+  return groupId;
 };

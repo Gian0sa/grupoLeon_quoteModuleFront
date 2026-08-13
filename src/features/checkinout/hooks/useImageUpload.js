@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useToast } from "@chakra-ui/react";
 import { compressImage } from "../utils/deviceUtils";
 
@@ -6,6 +6,21 @@ export function useImageUpload() {
     const [image, setImage] = useState(null);
     const [imagePreview, setImagePreview] = useState(null);
     const [isProcessingImage, setIsProcessingImage] = useState(false);
+    // objectURL vigente del preview; hay que revocarlo o queda retenido en memoria.
+    const previewUrlRef = useRef(null);
+
+    const setPreviewFromFile = useCallback((file) => {
+        if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+        const url = file ? URL.createObjectURL(file) : null;
+        previewUrlRef.current = url;
+        setImagePreview(url);
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+        };
+    }, []);
     // fileInputKey cambia en cada reset para forzar al browser a recrear el <input>
     // esto soluciona el bug donde seleccionar la misma foto no dispara onChange
     const [fileInputKey, setFileInputKey] = useState(0);
@@ -27,27 +42,10 @@ export function useImageUpload() {
         try {
             const compressedFile = await compressImage(file, 1);
             setImage(compressedFile);
-
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                clearTimeout(safetyTimer);
-                setImagePreview(reader.result);
-                setIsProcessingImage(false);
-            };
-            reader.onerror = () => {
-                clearTimeout(safetyTimer);
-                setIsProcessingImage(false);
-                // Incrementar key para resetear el input y permitir reintento
-                setFileInputKey((k) => k + 1);
-                toast({
-                    title: "Error al leer imagen",
-                    description: "No se pudo leer el archivo. Intenta de nuevo.",
-                    status: "error",
-                    duration: 4000,
-                    isClosable: true,
-                });
-            };
-            reader.readAsDataURL(compressedFile);
+            // Preview por objectURL: no crea una copia Base64 de la foto en memoria.
+            setPreviewFromFile(compressedFile);
+            clearTimeout(safetyTimer);
+            setIsProcessingImage(false);
         } catch (error) {
             clearTimeout(safetyTimer);
             setIsProcessingImage(false);
@@ -61,15 +59,15 @@ export function useImageUpload() {
                 isClosable: true,
             });
         }
-    }, [toast]);
+    }, [toast, setPreviewFromFile]);
 
     const resetImage = useCallback(() => {
         setImage(null);
-        setImagePreview(null);
+        setPreviewFromFile(null);
         // Incrementar key para forzar recreación del <input type="file">
         // Esto permite seleccionar la misma foto de nuevo sin que el proceso se congele
         setFileInputKey((k) => k + 1);
-    }, []);
+    }, [setPreviewFromFile]);
 
     return {
         image,

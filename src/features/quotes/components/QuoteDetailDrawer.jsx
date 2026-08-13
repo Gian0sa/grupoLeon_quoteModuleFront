@@ -6,6 +6,7 @@ import {
   DrawerHeader,
   DrawerBody,
   DrawerCloseButton,
+  DrawerFooter,
   Box,
   Flex,
   Text,
@@ -54,9 +55,12 @@ import {
   ShieldCheck,
   Lock,
   Send,
-  RotateCcw
+  RotateCcw,
+  Download
 } from "lucide-react";
 import { RejectReasonModal } from "./RejectReasonModal";
+import QuotePdfModal from "./QuotePdfModal";
+import { calculateQuoteTotals } from "../../../shared/utils/quoteCalculator";
 import { useAuthStore } from "../../../features/auth/stores/useAuthStore";
 
 export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
@@ -68,6 +72,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [isResubmitModalOpen, setIsResubmitModalOpen] = useState(false);
   const [resubmitNote, setResubmitNote] = useState("");
+  const [pdfQuote, setPdfQuote] = useState(null);
   const toast = useToast();
 
   if (!quote) return null;
@@ -81,11 +86,14 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
     { status: "GENERADO", timestamp: quote.createdAt || new Date().toISOString(), user: quote.sellerName || "Manuel (Vendedor)", note: "Cotización creada en aplicativo" }
   ];
 
-  // Calcular Totales
-  const subtotalUSD = quote.totals?.subtotalUSD || products.reduce((acc, p) => acc + (Number(p.price || p.unitPrice || 0) * Number(p.quantity || 1)), 0);
-  const igvUSD = quote.totals?.igvUSD || (subtotalUSD * 0.18);
-  const grandTotalUSD = quote.totals?.grandTotalUSD || (subtotalUSD + igvUSD);
-  const grandTotalSOL = quote.totals?.grandTotalSOL || (grandTotalUSD * (quote.totals?.tc || 3.43));
+  // Calcular Totales unificados con calculadora global
+  const tcVal = Number(quote.totals?.tc) || 3.76;
+  const calcRes = calculateQuoteTotals(products, tcVal);
+  const displayProducts = calcRes.normalizedProducts;
+  const subtotalUSD = calcRes.subtotalUSD;
+  const igvUSD = calcRes.igvUSD;
+  const grandTotalUSD = calcRes.grandTotalUSD;
+  const grandTotalSOL = calcRes.grandTotalSOL;
 
   // Formateadores y cálculos de marca de tiempo en vivo
   const formatTimeStr = (isoStr) => {
@@ -177,7 +185,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
           title: "Cotización Aprobada",
           subtitle: "ETAPA FINAL: LISTO PARA FACTURAR",
           desc: "Cotización aprobada exitosamente por la Asesora de Facturación (Enrique). Stock en Almacén 014 y depósito validados.",
-          subdesc: "Lista para emisión oficial en SAP Business One.",
+          subdesc: "Aprobada en el flujo de pruebas comerciales de la aplicación.",
           timeInStage: "Aprobado"
         };
       case "EN_PROCESO":
@@ -229,8 +237,14 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
 
   // Función para aprobar por Admin (Enrique)
   const handleApproveByAdmin = () => {
+    const isCommercial = status === "ENVIADO" || status === "EN_PROCESO";
+    const nextStatus = isCommercial ? "APROBADO_COMERCIAL" : "APROBADO";
+    const note = isCommercial 
+      ? `Aprobado Comercial por ${adminUsername || "Admin"}` 
+      : `Pedido Emitido Oficialmente en SAP por ${adminUsername || "Facturación"}`;
+
     if (onUpdateStatus) {
-      onUpdateStatus(quote.id || quote.docNumber, "APROBADO", `Aprobado por ${adminUsername || "Admin Facturación"}`);
+      onUpdateStatus(quote.id || quote.docNumber, nextStatus, note);
     }
 
     // Notificación dirigida al vendedor que creó la cotización
@@ -242,10 +256,12 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
       targetUsername: sellerUsername,           // ← al vendedor que la creó
       fromUsername: adminUsername || "enrique", // ← del admin logueado
       quoteId: quote.docNumber || quote.id,
-      quoteObj: quote,
-      title: `✅ Cotización ${quote.docNumber || quote.id} Aprobada`,
-      description: `La cotización fue aprobada por ${adminUsername || "Administrador"}. Lista para emisión en SAP Business One.`,
-      status: "APROBADO",
+      quoteObj: { ...quote, approvalStatus: nextStatus, status: nextStatus },
+      title: isCommercial ? `📢 Cotización Aprobada Comercialmente` : `✓ Pedido SAP Emitido`,
+      description: isCommercial 
+        ? `Cotización ${quote.docNumber || quote.id} aprobada comercialmente. Completa los datos logísticos y abono para continuar.`
+        : `El pedido ${quote.docNumber || quote.id} fue emitido y registrado oficialmente en SAP Business One.`,
+      status: nextStatus,
       timestamp: new Date().toISOString(),
       read: false
     };
@@ -253,8 +269,10 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
     window.dispatchEvent(new Event("localNotificationsUpdated"));
 
     toast({
-      title: "✅ Cotización Aprobada",
-      description: `Se notificó al vendedor ${sellerUsername || ""} que la cotización fue aprobada.`,
+      title: isCommercial ? "✅ Precios Aprobados" : "⚡ Pedido Emitido SAP",
+      description: isCommercial 
+        ? `Se notificó al vendedor ${sellerUsername || ""} para que complete logística y abono.`
+        : `Pedido SAP generado exitosamente.`,
       status: "success",
       duration: 4000,
       isClosable: true,
@@ -405,8 +423,12 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
           overflow="hidden"
           w="full"
           maxW={{ base: "100vw", md: "940px" }}
+          display="flex"
+          flexDirection="column"
+          h="100vh"
+          maxH="100vh"
         >
-          <DrawerHeader bg="#126C36" color="white" py={3} px={{ base: 4, md: 6 }}>
+          <DrawerHeader bg="#126C36" color="white" py={3} px={{ base: 4, md: 6 }} flexShrink={0}>
             <Flex align="center" justify="space-between" gap={2}>
               <HStack spacing={3} minW={0}>
                 <FileText className="w-5.5 h-5.5 text-emerald-300 flex-shrink-0" />
@@ -429,7 +451,20 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
             </Flex>
           </DrawerHeader>
 
-          <DrawerBody p={{ base: 3, md: 5 }} bg="slate.50" overflowY="auto" overflowX="hidden">
+          <DrawerBody
+            p={{ base: 3, md: 5 }}
+            pb={{ base: 12, md: 16 }}
+            bg="slate.50"
+            flex="1"
+            overflowY="auto"
+            overflowX="hidden"
+            sx={{
+              WebkitOverflowScrolling: "touch",
+              scrollbarWidth: "thin",
+              "&::-webkit-scrollbar": { width: "6px" },
+              "&::-webkit-scrollbar-thumb": { bg: "gray.300", borderRadius: "full" }
+            }}
+          >
             {/* PANEL DE ACCIONES SEGÚN EL ROL AUTENTICADO Y ESTADO DE LA COTIZACIÓN */}
             {activeRole === "SELLER" ? (
               status === "RECHAZADO" ? (
@@ -532,77 +567,107 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
                   </Badge>
                 </Flex>
               </Box>
-            ) : (
-              <Box bg="white" p={4} borderRadius="xl" border="2px solid" borderColor="emerald.500" boxShadow="sm" mb={5}>
-                <Flex align="center" justify="space-between" wrap="wrap" gap={3}>
-                  <Box minW={0}>
-                    <Text fontSize={{ base: "13px", md: "xs" }} fontWeight="900" color="emerald.900" textTransform="uppercase" letterSpacing="wide">
-                      👑 Panel de Decisión Comercial — Admin / Facturación ({adminUsername || "Enrique"})
+            ) : status === "APROBADO_COMERCIAL" ? (
+              <Box bg="amber.50" p={4} borderRadius="xl" border="1.5px solid" borderColor="amber.300" mb={4}>
+                <HStack spacing={3}>
+                  <Flex w="36px" h="36px" borderRadius="full" bg="amber.500" align="center" justify="center" color="white" flexShrink={0}>
+                    <Clock className="w-5 h-5" />
+                  </Flex>
+                  <Box>
+                    <Text fontSize="xs" fontWeight="900" color="amber.900" textTransform="uppercase">
+                      📢 Aprobación Comercial Completada
                     </Text>
-                    <Text fontSize={{ base: "13px", md: "11px" }} color="gray.700">
-                      Evalúa la solicitud de {quote.sellerName || "Manuel"}. Aprobar enviará la orden a SAP; Rechazar abrirá la ventana de motivo obligatorio.
+                    <Text fontSize="11px" color="amber.800" fontWeight="600">
+                      Esperando que el vendedor ({quote.sellerName}) complete la información de pago (depósito) y despacho.
                     </Text>
                   </Box>
-                  {/* Decisión irreversible: en móvil los botones se apilan a
-                      ancho completo y 44px de alto para evitar toques erróneos. */}
+                </HStack>
+              </Box>
+            ) : (
+              <Box bg="white" p={{ base: 3.5, md: 4 }} borderRadius="xl" border="2px solid" borderColor="emerald.500" boxShadow="sm" mb={4}>
+                <VStack align="stretch" spacing={3}>
+                  <Box minW={0}>
+                    <Text fontSize={{ base: "12px", md: "xs" }} fontWeight="900" color="emerald.900" textTransform="uppercase" letterSpacing="wide">
+                      {status === "PENDIENTE_FACTURACION" 
+                        ? "💳 Panel de Facturación y Emisión SAP" 
+                        : `👑 Panel de Decisión Comercial — Admin / Facturación (${adminUsername || "Enrique"})`}
+                    </Text>
+                    <Text fontSize={{ base: "11px", md: "xs" }} color="gray.600" mt={0.5}>
+                      {status === "PENDIENTE_FACTURACION"
+                        ? `Valida el voucher y depósito ingresados por el vendedor. Aprobar emitirá el Pedido en SAP.`
+                        : `Evalúa la cotización comercial enviada por ${quote.sellerName || "vendedor"}.`}
+                    </Text>
+                  </Box>
                   <Flex
                     direction={{ base: "column", sm: "row" }}
-                    gap={3}
-                    w={{ base: "full", md: "auto" }}
+                    gap={2.5}
+                    w="full"
                   >
                     <Button
-                      size={{ base: "md", md: "sm" }}
-                      w={{ base: "full", sm: "auto" }}
-                      colorScheme="emerald"
+                      size="md"
+                      minH="44px"
+                      w={{ base: "full", sm: "1fr" }}
+                      flex="1"
+                      colorScheme="green"
+                      bg="#16a34a"
+                      color="white"
+                      _hover={{ bg: "#15803d" }}
                       leftIcon={<CheckCircle2 className="w-4 h-4" />}
                       onClick={handleApproveByAdmin}
                       fontWeight="800"
+                      borderRadius="xl"
                     >
-                      Aprobar y Emitir en SAP
+                      {status === "PENDIENTE_FACTURACION" ? "⚡ Aprobar y Generar Pedido SAP" : "Aprobar Cotización"}
                     </Button>
                     <Button
-                      size={{ base: "md", md: "sm" }}
-                      w={{ base: "full", sm: "auto" }}
+                      size="md"
+                      minH="44px"
+                      w={{ base: "full", sm: "1fr" }}
+                      flex="1"
                       colorScheme="red"
+                      bg="#dc2626"
+                      color="white"
+                      _hover={{ bg: "#b91c1c" }}
                       leftIcon={<XCircle className="w-4 h-4" />}
                       onClick={() => setIsRejectModalOpen(true)}
                       fontWeight="800"
+                      borderRadius="xl"
                     >
                       Rechazar Cotización
                     </Button>
                   </Flex>
-                </Flex>
+                </VStack>
               </Box>
             )}
 
-            {/* FICHA TÉCNICA RÁPIDA */}
+            {/* FICHA TÉCNICA RÁPIDA (Optimizada para Celular) */}
             <Grid
               templateColumns={{ base: "repeat(2, 1fr)", md: "repeat(4, 1fr)" }}
-              gap={{ base: 3, md: 3 }}
-              mb={5}
+              gap={{ base: 2.5, md: 3 }}
+              mb={4}
               bg="white"
-              p={3.5}
+              p={{ base: 3, md: 4 }}
               borderRadius="xl"
               border="1px solid"
               borderColor="gray.200"
               boxShadow="xs"
             >
-              <Box minW={0}>
-                <Text fontSize={{ base: "11px", md: "10px" }} fontWeight="700" color="gray.500" textTransform="uppercase">Razón Social</Text>
-                <Text fontSize={{ base: "13px", md: "xs" }} fontWeight="800" color="gray.800" isTruncated>{client.CardName || client.name || quote.clientName || "CLIENTE NO REGISTRADO"}</Text>
-              </Box>
-              <Box minW={0}>
-                <Text fontSize={{ base: "11px", md: "10px" }} fontWeight="700" color="gray.500" textTransform="uppercase">RUC / Documento</Text>
-                <Text fontSize={{ base: "13px", md: "xs" }} fontWeight="800" color="gray.800" isTruncated>{client.CardCode || client.Ruc || quote.clientDocument || "—"}</Text>
-              </Box>
-              <Box minW={0}>
-                <Text fontSize={{ base: "11px", md: "10px" }} fontWeight="700" color="gray.500" textTransform="uppercase">Vendedor Asignado</Text>
-                <Text fontSize={{ base: "13px", md: "xs" }} fontWeight="800" color="gray.800" isTruncated>{quote.sellerName || "Manuel"}</Text>
-              </Box>
-              <Box minW={0}>
-                <Text fontSize={{ base: "11px", md: "10px" }} fontWeight="700" color="gray.500" textTransform="uppercase">Fecha Registro</Text>
-                <Text fontSize={{ base: "13px", md: "xs" }} fontWeight="800" color="gray.800" isTruncated>{quote.docDate || new Date(createdIso).toLocaleDateString()}</Text>
-              </Box>
+              <GridItem colSpan={{ base: 2, md: 1 }} minW={0}>
+                <Text fontSize="10px" fontWeight="700" color="gray.500" textTransform="uppercase">Razón Social</Text>
+                <Text fontSize={{ base: "13px", md: "xs" }} fontWeight="900" color="gray.900" isTruncated>{client.CardName || client.name || quote.clientName || "CLIENTE NO REGISTRADO"}</Text>
+              </GridItem>
+              <GridItem minW={0}>
+                <Text fontSize="10px" fontWeight="700" color="gray.500" textTransform="uppercase">RUC / Documento</Text>
+                <Text fontSize={{ base: "12px", md: "xs" }} fontWeight="800" color="gray.800" fontFamily="mono" isTruncated>{client.CardCode || client.Ruc || quote.clientDocument || "—"}</Text>
+              </GridItem>
+              <GridItem minW={0}>
+                <Text fontSize="10px" fontWeight="700" color="gray.500" textTransform="uppercase">Vendedor Asignado</Text>
+                <Text fontSize={{ base: "12px", md: "xs" }} fontWeight="800" color="gray.800" isTruncated>{quote.sellerName || "Enrique"}</Text>
+              </GridItem>
+              <GridItem minW={0}>
+                <Text fontSize="10px" fontWeight="700" color="gray.500" textTransform="uppercase">Fecha Registro</Text>
+                <Text fontSize={{ base: "12px", md: "xs" }} fontWeight="800" color="gray.800" isTruncated>{quote.docDate || new Date(createdIso).toLocaleDateString()}</Text>
+              </GridItem>
             </Grid>
 
             {/* SECCIÓN 📍 RUTA / SEGUIMIENTO DE LA COTIZACIÓN (ESTILO RAPPI) */}
@@ -623,116 +688,188 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
                 </HStack>
               </Flex>
 
-              {/* LÍNEA DE PROGRESO INTERACTIVA DINÁMICA (100% Responsiva en Móvil - Sin recortes) */}
-              <Box
-                w="full"
-                maxW="100%"
-                overflow="hidden"
-                pb={1}
-              >
-              <Box position="relative" py={3} px={{ base: 2, sm: 4, md: 8 }} bg="gray.50" borderRadius="xl" w="full">
-                {/* Línea conectora gris de fondo */}
-                <Box position="absolute" top="33px" left={{ base: "30px", sm: "40px", md: "55px" }} right={{ base: "30px", sm: "40px", md: "55px" }} h="3px" bg="gray.200" borderRadius="full" zIndex={0} />
+              {/* VISTA MÓVIL: LÍNEA DE TIEMPO VERTICAL ELEGANTE (ESTILO DELIVERY RAPPI) */}
+              <Box display={{ base: "block", md: "none" }} py={2} px={1}>
+                <VStack align="stretch" spacing={3} position="relative" pl={2}>
+                  {/* Línea vertical conectora */}
+                  <Box position="absolute" top="15px" bottom="25px" left="17px" w="2.5px" bg="gray.200" borderRadius="full" zIndex={0} />
 
-                {/* Línea conectora de progreso activa */}
-                <Box
-                  position="absolute"
-                  top="33px"
-                  left={{ base: "30px", sm: "40px", md: "55px" }}
-                  h="3px"
-                  bg={status === "RECHAZADO" ? "red.500" : status === "EN_PROCESO" ? "orange.400" : "emerald.500"}
-                  borderRadius="full"
-                  zIndex={0}
-                  transition="all 0.4s ease"
-                  style={{
-                    width: (status === "BORRADOR" || status === "GENERADO") ? "0%" : status === "ENVIADO" ? "33%" : status === "EN_PROCESO" ? "66%" : "100%"
-                  }}
-                />
-
-                <Flex justify="space-between" align="flex-start" position="relative" zIndex={1} w="full">
                   {/* Paso 1: Cotizado */}
-                  <VStack spacing={1} align="center" minW="0" flex="1">
-                    <Text fontSize={{ base: "9px", sm: "10px" }} fontWeight="800" color="emerald.800" isTruncated>COTIZADO</Text>
-                    <Flex w={{ base: "28px", sm: "32px", md: "34px" }} h={{ base: "28px", sm: "32px", md: "34px" }} borderRadius="full" bg="emerald.500" align="center" justify="center" color="white" boxShadow="sm">
+                  <Flex align="start" gap={3} zIndex={1} position="relative">
+                    <Flex w="28px" h="28px" borderRadius="full" bg="emerald.500" align="center" justify="center" color="white" boxShadow="xs" flexShrink={0}>
                       <Check className="w-3.5 h-3.5 stroke-[3]" />
                     </Flex>
-                    <Text fontSize={{ base: "9px", sm: "10px" }} fontWeight="700" color="gray.600">{stepCotizado.time}</Text>
-                  </VStack>
-
-                  {/* Burbuja SLA 1 */}
-                  <Flex align="center" justify="center" h={{ base: "58px", sm: "68px" }}>
-                    <Badge variant="subtle" colorScheme="green" fontSize={{ base: "7.5px", sm: "9px" }} px={{ base: 1, sm: 2 }} py={0.5} borderRadius="full" bg="white" border="1px solid" borderColor="green.200">
-                      {dur1To2}
-                    </Badge>
+                    <Box bg="gray.50" p={2.5} borderRadius="xl" border="1px solid" borderColor="emerald.200" flex="1">
+                      <Flex justify="space-between" align="center">
+                        <Text fontSize="11px" fontWeight="900" color="emerald.900">1. COTIZADO</Text>
+                        <Badge colorScheme="green" fontSize="9px">{stepCotizado.time}</Badge>
+                      </Flex>
+                      <Text fontSize="10px" color="gray.600" mt={0.5}>Documento registrado en sistema</Text>
+                    </Box>
                   </Flex>
+
+                  {/* SLA 1 */}
+                  {dur1To2 !== "—" && (
+                    <Text fontSize="9px" fontWeight="800" color="gray.400" pl={9} my={-1}>
+                      ⏱️ Tiempo transcurrido: {dur1To2}
+                    </Text>
+                  )}
 
                   {/* Paso 2: Solicitud */}
-                  <VStack spacing={1} align="center" minW="0" flex="1">
-                    <Text fontSize={{ base: "9px", sm: "10px" }} fontWeight="800" color={stepSolicitud.isCompleted ? "emerald.800" : "gray.400"} isTruncated>SOLICITUD</Text>
-                    <Flex w={{ base: "28px", sm: "32px", md: "34px" }} h={{ base: "28px", sm: "32px", md: "34px" }} borderRadius="full" bg={stepSolicitud.isCompleted ? "emerald.500" : "gray.200"} align="center" justify="center" color="white" boxShadow="sm">
+                  <Flex align="start" gap={3} zIndex={1} position="relative">
+                    <Flex w="28px" h="28px" borderRadius="full" bg={stepSolicitud.isCompleted ? "emerald.500" : "gray.300"} align="center" justify="center" color="white" boxShadow="xs" flexShrink={0}>
                       {stepSolicitud.isCompleted ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : <Circle className="w-3.5 h-3.5 text-gray-400" />}
                     </Flex>
-                    <Text fontSize={{ base: "9px", sm: "10px" }} fontWeight="700" color="gray.600">{stepSolicitud.time}</Text>
-                  </VStack>
-
-                  {/* Burbuja SLA 2 */}
-                  <Flex align="center" justify="center" h={{ base: "58px", sm: "68px" }}>
-                    <Badge variant="subtle" colorScheme="green" fontSize={{ base: "7.5px", sm: "9px" }} px={{ base: 1, sm: 2 }} py={0.5} borderRadius="full" bg="white" border="1px solid" borderColor="green.200">
-                      {dur2To3}
-                    </Badge>
+                    <Box bg={stepSolicitud.isCompleted ? "gray.50" : "white"} p={2.5} borderRadius="xl" border="1px solid" borderColor={stepSolicitud.isCompleted ? "emerald.200" : "gray.200"} flex="1">
+                      <Flex justify="space-between" align="center">
+                        <Text fontSize="11px" fontWeight="900" color={stepSolicitud.isCompleted ? "emerald.900" : "gray.500"}>2. SOLICITUD ENVIADA</Text>
+                        <Badge colorScheme={stepSolicitud.isCompleted ? "blue" : "gray"} fontSize="9px">{stepSolicitud.time}</Badge>
+                      </Flex>
+                      <Text fontSize="10px" color="gray.600" mt={0.5}>Enviada a Facturación para revisión</Text>
+                    </Box>
                   </Flex>
+
+                  {/* SLA 2 */}
+                  {dur2To3 !== "—" && (
+                    <Text fontSize="9px" fontWeight="800" color="gray.400" pl={9} my={-1}>
+                      ⏱️ Tiempo en evaluación: {dur2To3}
+                    </Text>
+                  )}
 
                   {/* Paso 3: Revisión */}
-                  <VStack spacing={1} align="center" minW="0" flex="1">
-                    <Text fontSize={{ base: "9px", sm: "10px" }} fontWeight="800" color={stepRevision.isCompleted ? (status === "RECHAZADO" ? "red.800" : "emerald.800") : "gray.400"} isTruncated>REVISIÓN</Text>
-                    <Flex w={{ base: "28px", sm: "32px", md: "34px" }} h={{ base: "28px", sm: "32px", md: "34px" }} borderRadius="full" bg={stepRevision.isCompleted ? (status === "RECHAZADO" ? "red.500" : "emerald.500") : "gray.200"} align="center" justify="center" color="white" boxShadow="sm">
+                  <Flex align="start" gap={3} zIndex={1} position="relative">
+                    <Flex w="28px" h="28px" borderRadius="full" bg={stepRevision.isCompleted ? (status === "RECHAZADO" ? "red.500" : "emerald.500") : "gray.300"} align="center" justify="center" color="white" boxShadow="xs" flexShrink={0}>
                       {stepRevision.isCompleted ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : <Circle className="w-3.5 h-3.5 text-gray-400" />}
                     </Flex>
-                    <Text fontSize={{ base: "9px", sm: "10px" }} fontWeight="700" color="gray.600">{stepRevision.time}</Text>
-                  </VStack>
-
-                  {/* Burbuja SLA 3 */}
-                  <Flex align="center" justify="center" h={{ base: "58px", sm: "68px" }}>
-                    <Badge variant="subtle" colorScheme={status === "RECHAZADO" ? "red" : "green"} fontSize={{ base: "7.5px", sm: "9px" }} px={{ base: 1, sm: 2 }} py={0.5} borderRadius="full" bg="white" border="1px solid" borderColor={status === "RECHAZADO" ? "red.200" : "green.200"}>
-                      {dur3To4}
-                    </Badge>
+                    <Box bg={stepRevision.isCompleted ? "gray.50" : "white"} p={2.5} borderRadius="xl" border="1px solid" borderColor={stepRevision.isCompleted ? (status === "RECHAZADO" ? "red.200" : "emerald.200") : "gray.200"} flex="1">
+                      <Flex justify="space-between" align="center">
+                        <Text fontSize="11px" fontWeight="900" color={stepRevision.isCompleted ? (status === "RECHAZADO" ? "red.900" : "emerald.900") : "gray.500"}>3. EN REVISIÓN</Text>
+                        <Badge colorScheme={stepRevision.isCompleted ? "purple" : "gray"} fontSize="9px">{stepRevision.time}</Badge>
+                      </Flex>
+                      <Text fontSize="10px" color="gray.600" mt={0.5}>Evaluación por Asesora de Facturación</Text>
+                    </Box>
                   </Flex>
 
-                  {/* Paso 4: Final */}
-                  <VStack spacing={1} align="center" minW="0" flex="1">
-                    <Text fontSize={{ base: "9px", sm: "10px" }} fontWeight="800" color={stepFinal.isCompleted ? (stepFinal.isRejected ? "red.800" : "emerald.800") : "gray.400"} isTruncated>
-                      {stepFinal.isCompleted ? (stepFinal.isRejected ? "RECHAZADO" : "APROBADO") : "FINAL"}
+                  {/* SLA 3 */}
+                  {dur3To4 !== "—" && (
+                    <Text fontSize="9px" fontWeight="800" color="gray.400" pl={9} my={-1}>
+                      ⏱️ Resolución final: {dur3To4}
                     </Text>
-                    <Flex
-                      w={{ base: "28px", sm: "32px", md: "34px" }}
-                      h={{ base: "28px", sm: "32px", md: "34px" }}
-                      borderRadius="full"
-                      bg={
-                        stepFinal.isCompleted
-                          ? stepFinal.isRejected
-                            ? "red.500"
-                            : "emerald.500"
-                          : "gray.200"
-                      }
-                      align="center"
-                      justify="center"
-                      color="white"
-                      boxShadow="sm"
-                    >
-                      {stepFinal.isCompleted ? (
-                        stepFinal.isRejected ? (
-                          <XCircle className="w-3.5 h-3.5 stroke-[3]" />
-                        ) : (
-                          <Check className="w-3.5 h-3.5 stroke-[3]" />
-                        )
-                      ) : (
-                        <Circle className="w-3.5 h-3.5 text-gray-400" />
-                      )}
+                  )}
+
+                  {/* Paso 4: Final */}
+                  <Flex align="start" gap={3} zIndex={1} position="relative">
+                    <Flex w="28px" h="28px" borderRadius="full" bg={stepFinal.isCompleted ? (stepFinal.isRejected ? "red.500" : "emerald.500") : "gray.300"} align="center" justify="center" color="white" boxShadow="xs" flexShrink={0}>
+                      {stepFinal.isCompleted ? (stepFinal.isRejected ? <XCircle className="w-3.5 h-3.5 stroke-[3]" /> : <Check className="w-3.5 h-3.5 stroke-[3]" />) : <Circle className="w-3.5 h-3.5 text-gray-400" />}
                     </Flex>
-                    <Text fontSize={{ base: "9px", sm: "10px" }} fontWeight="700" color="gray.600">{stepFinal.time}</Text>
-                  </VStack>
-                </Flex>
+                    <Box bg={stepFinal.isCompleted ? (stepFinal.isRejected ? "red.50" : "emerald.50") : "white"} p={2.5} borderRadius="xl" border="1px solid" borderColor={stepFinal.isCompleted ? (stepFinal.isRejected ? "red.200" : "emerald.200") : "gray.200"} flex="1">
+                      <Flex justify="space-between" align="center">
+                        <Text fontSize="11px" fontWeight="900" color={stepFinal.isCompleted ? (stepFinal.isRejected ? "red.900" : "emerald.900") : "gray.500"}>
+                          4. RESULTADO FINAL: {stepFinal.isCompleted ? (stepFinal.isRejected ? "RECHAZADO" : "APROBADO") : "PENDIENTE"}
+                        </Text>
+                        <Badge colorScheme={stepFinal.isCompleted ? (stepFinal.isRejected ? "red" : "green") : "gray"} fontSize="9px">{stepFinal.time}</Badge>
+                      </Flex>
+                      <Text fontSize="10px" color="gray.600" mt={0.5}>{stepFinal.isCompleted ? (stepFinal.isRejected ? "Documento rechazado con observación" : "Cotización aprobada") : "Esperando resolución"}</Text>
+                    </Box>
+                  </Flex>
+                </VStack>
               </Box>
+
+              {/* VISTA ESCRITORIO: LÍNEA HORIZONTAL */}
+              <Box display={{ base: "none", md: "block" }} w="full" maxW="100%" overflow="hidden" pb={1}>
+                <Box position="relative" py={3} px={8} bg="gray.50" borderRadius="xl" w="full">
+                  <Box position="absolute" top="33px" left="55px" right="55px" h="3px" bg="gray.200" borderRadius="full" zIndex={0} />
+                  <Box
+                    position="absolute"
+                    top="33px"
+                    left="55px"
+                    h="3px"
+                    bg={status === "RECHAZADO" ? "red.500" : status === "EN_PROCESO" ? "orange.400" : "emerald.500"}
+                    borderRadius="full"
+                    zIndex={0}
+                    transition="all 0.4s ease"
+                    style={{
+                      width: (status === "BORRADOR" || status === "GENERADO") ? "0%" : status === "ENVIADO" ? "33%" : status === "EN_PROCESO" ? "66%" : "100%"
+                    }}
+                  />
+
+                  <Flex justify="space-between" align="flex-start" position="relative" zIndex={1} w="full">
+                    <VStack spacing={1} align="center" minW="0" flex="1">
+                      <Text fontSize="10px" fontWeight="800" color="emerald.800" isTruncated>COTIZADO</Text>
+                      <Flex w="34px" h="34px" borderRadius="full" bg="emerald.500" align="center" justify="center" color="white" boxShadow="sm">
+                        <Check className="w-3.5 h-3.5 stroke-[3]" />
+                      </Flex>
+                      <Text fontSize="10px" fontWeight="700" color="gray.600">{stepCotizado.time}</Text>
+                    </VStack>
+
+                    <Flex align="center" justify="center" h="68px">
+                      <Badge variant="subtle" colorScheme="green" fontSize="9px" px={2} py={0.5} borderRadius="full" bg="white" border="1px solid" borderColor="green.200">
+                        {dur1To2}
+                      </Badge>
+                    </Flex>
+
+                    <VStack spacing={1} align="center" minW="0" flex="1">
+                      <Text fontSize="10px" fontWeight="800" color={stepSolicitud.isCompleted ? "emerald.800" : "gray.400"} isTruncated>SOLICITUD</Text>
+                      <Flex w="34px" h="34px" borderRadius="full" bg={stepSolicitud.isCompleted ? "emerald.500" : "gray.200"} align="center" justify="center" color="white" boxShadow="sm">
+                        {stepSolicitud.isCompleted ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : <Circle className="w-3.5 h-3.5 text-gray-400" />}
+                      </Flex>
+                      <Text fontSize="10px" fontWeight="700" color="gray.600">{stepSolicitud.time}</Text>
+                    </VStack>
+
+                    <Flex align="center" justify="center" h="68px">
+                      <Badge variant="subtle" colorScheme="green" fontSize="9px" px={2} py={0.5} borderRadius="full" bg="white" border="1px solid" borderColor="green.200">
+                        {dur2To3}
+                      </Badge>
+                    </Flex>
+
+                    <VStack spacing={1} align="center" minW="0" flex="1">
+                      <Text fontSize="10px" fontWeight="800" color={stepRevision.isCompleted ? (status === "RECHAZADO" ? "red.800" : "emerald.800") : "gray.400"} isTruncated>REVISIÓN</Text>
+                      <Flex w="34px" h="34px" borderRadius="full" bg={stepRevision.isCompleted ? (status === "RECHAZADO" ? "red.500" : "emerald.500") : "gray.200"} align="center" justify="center" color="white" boxShadow="sm">
+                        {stepRevision.isCompleted ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : <Circle className="w-3.5 h-3.5 text-gray-400" />}
+                      </Flex>
+                      <Text fontSize="10px" fontWeight="700" color="gray.600">{stepRevision.time}</Text>
+                    </VStack>
+
+                    <Flex align="center" justify="center" h="68px">
+                      <Badge variant="subtle" colorScheme={status === "RECHAZADO" ? "red" : "green"} fontSize="9px" px={2} py={0.5} borderRadius="full" bg="white" border="1px solid" borderColor={status === "RECHAZADO" ? "red.200" : "green.200"}>
+                        {dur3To4}
+                      </Badge>
+                    </Flex>
+
+                    <VStack spacing={1} align="center" minW="0" flex="1">
+                      <Text fontSize="10px" fontWeight="800" color={stepFinal.isCompleted ? (stepFinal.isRejected ? "red.800" : "emerald.800") : "gray.400"} isTruncated>
+                        {stepFinal.isCompleted ? (stepFinal.isRejected ? "RECHAZADO" : "APROBADO") : "FINAL"}
+                      </Text>
+                      <Flex
+                        w="34px"
+                        h="34px"
+                        borderRadius="full"
+                        bg={
+                          stepFinal.isCompleted
+                            ? stepFinal.isRejected
+                              ? "red.500"
+                              : "emerald.500"
+                            : "gray.200"
+                        }
+                        align="center"
+                        justify="center"
+                        color="white"
+                        boxShadow="sm"
+                      >
+                        {stepFinal.isCompleted ? (
+                          stepFinal.isRejected ? (
+                            <XCircle className="w-3.5 h-3.5 stroke-[3]" />
+                          ) : (
+                            <Check className="w-3.5 h-3.5 stroke-[3]" />
+                          )
+                        ) : (
+                          <Circle className="w-3.5 h-3.5 text-gray-400" />
+                        )}
+                      </Flex>
+                      <Text fontSize="10px" fontWeight="700" color="gray.600">{stepFinal.time}</Text>
+                    </VStack>
+                  </Flex>
+                </Box>
               </Box>
 
               {/* DETALLE PANEL ALERTA DE ESTADO (Solo para estados no-rechazados para evitar duplicados) */}
@@ -762,7 +899,22 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
                     </Box>
                     <Box>
                       <Text fontSize="9px" fontWeight="700" color="gray.400" textTransform="uppercase">Estado Comercial</Text>
-                      <Badge colorScheme={status === "APROBADO" ? "green" : status === "RECHAZADO" ? "red" : "blue"} fontSize="xs">{status}</Badge>
+                      <Badge
+                        colorScheme={
+                          status === "APROBADO"
+                            ? "green"
+                            : status === "APROBADO_COMERCIAL"
+                            ? "amber"
+                            : status === "PENDIENTE_FACTURACION"
+                            ? "purple"
+                            : status === "RECHAZADO"
+                            ? "red"
+                            : "blue"
+                        }
+                        fontSize="xs"
+                      >
+                        {status}
+                      </Badge>
                     </Box>
                     <Box>
                       <Text fontSize="9px" fontWeight="700" color="gray.400" textTransform="uppercase">Última Actualización</Text>
@@ -788,42 +940,76 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
                       </Badge>
                     </Flex>
 
-                    {/* Scroll lateral encorsetado: la tabla se desplaza dentro
-                        de su propio marco, nunca arrastra el drawer. */}
-                    <TableContainer
-                      border="1px solid"
-                      borderColor="gray.200"
-                      borderRadius="lg"
-                      overflowX="auto"
-                      maxW="100%"
-                      sx={{ WebkitOverflowScrolling: "touch" }}
-                    >
-                      <Table variant="simple" size="sm">
-                        <Thead bg="gray.50">
-                          <Tr>
-                            <Th fontSize={{ base: "11px", md: "10px" }} color="gray.600" px={{ base: 2, md: 4 }}>Código</Th>
-                            <Th fontSize={{ base: "11px", md: "10px" }} color="gray.600" px={{ base: 2, md: 4 }}>Descripción</Th>
-                            <Th fontSize={{ base: "11px", md: "10px" }} textAlign="right" color="gray.600" px={{ base: 2, md: 4 }}>Cant.</Th>
-                            <Th fontSize={{ base: "11px", md: "10px" }} textAlign="right" color="gray.600" px={{ base: 2, md: 4 }}>Total (USD)</Th>
-                          </Tr>
-                        </Thead>
-                        <Tbody fontSize={{ base: "13px", md: "xs" }}>
-                          {products.map((item, idx) => {
-                            const qty = Number(item.quantity || 1);
-                            const price = Number(item.price || item.unitPrice || 0);
-                            const total = qty * price;
-                            return (
-                              <Tr key={idx} _hover={{ bg: "gray.50" }}>
-                                <Td fontWeight="800" color="gray.700" fontFamily="mono" px={{ base: 2, md: 4 }}>{item.id || item.productCode || item.code || "ART"}</Td>
-                                <Td fontWeight="600" color="gray.900" px={{ base: 2, md: 4 }} minW="140px" whiteSpace="normal">{item.name || item.productName || "Artículo"}</Td>
-                                <Td textAlign="right" fontWeight="800" px={{ base: 2, md: 4 }}>{qty}</Td>
-                                <Td textAlign="right" fontWeight="850" color="emerald.900" fontFamily="mono" px={{ base: 2, md: 4 }}>${total.toFixed(2)}</Td>
-                              </Tr>
-                            );
-                          })}
-                        </Tbody>
-                      </Table>
-                    </TableContainer>
+                    {/* VISTA MÓVIL DE PRODUCTOS (TARJETAS) */}
+                    <Box display={{ base: "block", md: "none" }}>
+                      <VStack align="stretch" spacing={3}>
+                        {displayProducts.map((item, idx) => {
+                          return (
+                            <Box
+                              key={idx}
+                              p={3}
+                              bg="gray.50"
+                              borderRadius="xl"
+                              border="1px solid"
+                              borderColor="gray.200"
+                            >
+                              <Flex justify="space-between" align="start" gap={2} mb={1}>
+                                <Badge colorScheme="blue" variant="solid" fontSize="10px" borderRadius="md" px={1.5} fontFamily="mono">
+                                  {item.itemCode || item.code || item.id || "ART"}
+                                </Badge>
+                                <Text fontSize="xs" fontWeight="900" color="emerald.900" fontFamily="mono">
+                                  ${item.lineTotal.toFixed(2)}
+                                </Text>
+                              </Flex>
+                              <Text fontSize="12px" fontWeight="700" color="gray.900" mb={2}>
+                                {item.description || item.ItemDescription || item.name || "Artículo"}
+                              </Text>
+                              <Flex justify="space-between" fontSize="11px" color="gray.600" pt={1.5} borderTop="1px dashed" borderColor="gray.200">
+                                <Text>Cant: <Text as="span" fontWeight="800" color="gray.900">{item.quantity} uds</Text></Text>
+                                <Text>Precio: <Text as="span" fontWeight="800" color="gray.900">${item.price.toFixed(2)}</Text></Text>
+                                {item.discountPercent > 0 && (
+                                  <Text color="green.700" fontWeight="800">Desc: {item.discountPercent}%</Text>
+                                )}
+                              </Flex>
+                            </Box>
+                          );
+                        })}
+                      </VStack>
+                    </Box>
+
+                    {/* VISTA ESCRITORIO DE PRODUCTOS (TABLA CLÁSICA CON DESCUENTOS) */}
+                    <Box display={{ base: "none", md: "block" }}>
+                      <TableContainer border="1px solid" borderColor="gray.200" borderRadius="lg" overflowX="auto">
+                        <Table variant="simple" size="sm">
+                          <Thead bg="gray.50">
+                            <Tr>
+                              <Th fontSize="10px" color="gray.600" px={3}>Código</Th>
+                              <Th fontSize="10px" color="gray.600" px={3}>Descripción</Th>
+                              <Th fontSize="10px" textAlign="right" color="gray.600" px={3}>Cant.</Th>
+                              <Th fontSize="10px" textAlign="right" color="gray.600" px={3}>P. Lista</Th>
+                              <Th fontSize="10px" textAlign="right" color="gray.600" px={3}>Desc. %</Th>
+                              <Th fontSize="10px" textAlign="right" color="gray.600" px={3}>Total (USD)</Th>
+                            </Tr>
+                          </Thead>
+                          <Tbody fontSize="xs">
+                            {displayProducts.map((item, idx) => {
+                              return (
+                                <Tr key={idx} _hover={{ bg: "gray.50" }}>
+                                  <Td fontWeight="800" color="gray.700" fontFamily="mono" px={3}>{item.itemCode || item.code || item.id || "ART"}</Td>
+                                  <Td fontWeight="600" color="gray.900" px={3} minW="140px" whiteSpace="normal">{item.description || item.ItemDescription || item.name || "Artículo"}</Td>
+                                  <Td textAlign="right" fontWeight="800" px={3}>{item.quantity}</Td>
+                                  <Td textAlign="right" fontWeight="600" px={3}>${item.price.toFixed(2)}</Td>
+                                  <Td textAlign="right" fontWeight="800" color={item.discountPercent > 0 ? "green.600" : "gray.400"} px={3}>
+                                    {item.discountPercent > 0 ? `${item.discountPercent}%` : "0%"}
+                                  </Td>
+                                  <Td textAlign="right" fontWeight="850" color="emerald.900" fontFamily="mono" px={3}>${item.lineTotal.toFixed(2)}</Td>
+                                </Tr>
+                              );
+                            })}
+                          </Tbody>
+                        </Table>
+                      </TableContainer>
+                    </Box>
 
                     {/* Totales integrados al pie de artículos */}
                     <Box bg="#0f2e22" color="white" p={4} borderRadius="xl" mt={4} boxShadow="sm">
@@ -881,6 +1067,10 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
                         dotColor = "red.500";
                         bgCircle = "red.50";
                         tagScheme = "red";
+                      } else if (log.status === "VISTO") {
+                        dotColor = "purple.500";
+                        bgCircle = "purple.50";
+                        tagScheme = "purple";
                       } else if (log.status === "ENVIADO") {
                         dotColor = "blue.500";
                         bgCircle = "blue.50";
@@ -932,8 +1122,31 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
               </GridItem>
             </Grid>
           </DrawerBody>
+          <DrawerFooter bg="gray.50" borderTop="1px solid" borderColor="gray.200" py={3} px={{ base: 4, md: 6 }}>
+            <HStack justify="space-between" w="100%">
+              <Button
+                colorScheme="teal"
+                variant="outline"
+                size="sm"
+                leftIcon={<Download className="w-4 h-4 text-teal-600" />}
+                onClick={() => setPdfQuote(quote)}
+                fontWeight="800"
+              >
+                Descargar Documento PDF
+              </Button>
+              <Button size="sm" onClick={onClose} fontWeight="700">
+                Cerrar
+              </Button>
+            </HStack>
+          </DrawerFooter>
         </DrawerContent>
       </Drawer>
+
+      <QuotePdfModal
+        isOpen={!!pdfQuote}
+        onClose={() => setPdfQuote(null)}
+        quote={pdfQuote}
+      />
 
       {/* Modal Obligatorio de Motivo de Rechazo */}
       <RejectReasonModal

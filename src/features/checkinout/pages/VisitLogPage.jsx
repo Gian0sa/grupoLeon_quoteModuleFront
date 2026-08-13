@@ -16,7 +16,7 @@ import { useClientSearch, parseSearchToInitialData } from "../hooks/useClientSea
 import { useImageUpload } from "../hooks/useImageUpload";
 import { useVisitSubmit } from "../hooks/useVisitSubmit";
 import { useClientImage } from "../hooks/queries/visitLogQueries";
-import { useSyncQueue } from "../hooks/useSyncQueue";
+import { useSyncQueueContext } from "../context/SyncQueueProvider";
 
 import { useDisclosure } from "@chakra-ui/react";
 import { NewClientModal } from "../components/NewClientModal";
@@ -34,13 +34,14 @@ export default function VisitLogPage() {
         syncPending,
         retryItem,
         removeItem,
-    } = useSyncQueue();
+        clearAll,
+    } = useSyncQueueContext();
 
     const {
         data: activeVisitData,
         isLoading: isLoadingActiveVisit,
         refetch: refetchActiveVisit,
-    } = useActiveVisitByVendor(username);
+    } = useActiveVisitByVendor(username, salesEmployeeCode);
 
     const activeVisit = activeVisitData?.visit || null;
     const hasActiveCheckIn = activeVisitData?.active || false;
@@ -122,6 +123,7 @@ export default function VisitLogPage() {
                     queueItems={queueItems.filter(item => item.status !== "SYNCED")}
                     onRetry={retryItem}
                     onDelete={removeItem}
+                    onClearAll={clearAll}
                     isSyncing={isSyncing}
                     onSyncAll={syncPending}
                 />

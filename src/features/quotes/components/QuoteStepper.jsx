@@ -3,10 +3,10 @@ import { Box, Flex, Text, HStack } from "@chakra-ui/react";
 import { Check, Send, Clock, CheckCircle2, XCircle } from "lucide-react";
 
 export const STAGES = [
-  { id: "GENERADO", label: "Generado", icon: Check },
-  { id: "ENVIADO", label: "Enviado", icon: Send },
-  { id: "EN_PROCESO", label: "En Proceso", icon: Clock },
-  { id: "APROBADO", label: "Aprobado", icon: CheckCircle2 }
+  { id: "GENERADO", label: "Borrador", icon: Check },
+  { id: "ENVIADO", label: "Aprob. Comercial", icon: Send },
+  { id: "PENDIENTE_FACTURACION", label: "Facturación", icon: Clock },
+  { id: "APROBADO", label: "Pedido Emitido", icon: CheckCircle2 }
 ];
 
 export function getStageIndex(status) {
@@ -15,14 +15,19 @@ export function getStageIndex(status) {
     case "GENERADO":
     case "DRAFT":
     case "draft":
+    case "BORRADOR":
+    case "borrador":
       return 0;
     case "ENVIADO":
-      return 1;
     case "EN_PROCESO":
-    case "PENDIENTE":
+      return 1;
+    case "APROBADO_COMERCIAL":
+      return 1;
+    case "PENDIENTE_FACTURACION":
       return 2;
     case "APROBADO":
     case "COMPLETADO":
+    case "PEDIDO_EMITIDO":
       return 3;
     default:
       return 0;

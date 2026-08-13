@@ -1,11 +1,12 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Box, Table, Thead, Tbody, Tr, Th, Td, TableContainer,
   IconButton, NumberInput, NumberInputField, Text, Button,
   HStack, Badge, Flex, VStack, Divider, Grid
 } from "@chakra-ui/react";
-import { Trash2, Package } from "lucide-react";
+import { Trash2, Package, Sparkles } from "lucide-react";
 import ItemAutocomplete from "./ItemAutocomplete";
+import { DiscountPopoverModal } from "./DiscountPopoverModal";
 
 const money = (val, currency = "USD") => {
   const num = Number(val || 0);
@@ -18,13 +19,27 @@ const money = (val, currency = "USD") => {
 };
 
 export default function SapItemGrid({
+  client,
   products = [],
   onAddProduct,
   onRemoveProduct,
   onUpdateProduct,
   currency = "USD",
-  whsCode = "014"
+  whsCode = "014",
+  isReadOnly = false
 }) {
+  const [selectedDiscountItem, setSelectedDiscountItem] = useState(null);
+  const [isDiscountModalOpen, setIsDiscountModalOpen] = useState(false);
+
+  const handleOpenDiscountModal = (item) => {
+    setSelectedDiscountItem(item);
+    setIsDiscountModalOpen(true);
+  };
+
+  const handleApplyDiscountFromModal = (itemId, newLineDiscount) => {
+    onUpdateProduct(itemId, { lineDiscount: newLineDiscount });
+  };
+
   const handleItemSelect = (selectedItem) => {
     if (!selectedItem) return;
     onAddProduct({
@@ -45,18 +60,40 @@ export default function SapItemGrid({
 
   return (
     <Box bg="white" p={{ base: 2, md: 4 }} borderRadius="xl" border="1px solid" borderColor="gray.200" boxShadow="sm">
-      {/* Buscador de artículos por Código o Nombre */}
-      <Box mb={4} p={{ base: 2, md: 3 }} bg="#f0fdf4" borderRadius="lg" border="1px solid" borderColor="#bbf7d0">
-        <Flex align="center" gap={1.5} mb={1.5}>
-          <Package className="w-3.5 h-3.5 text-emerald-700" />
-          <Text fontSize={{ base: "0.65rem", md: "xs" }} fontWeight="800" color="#166534" textTransform="uppercase" letterSpacing="wider">
-            Buscar Artículo en SAP
+      {!client ? (
+        <Box
+          mb={4}
+          p={4}
+          bg="orange.50"
+          border="1.5px solid"
+          borderColor="orange.200"
+          borderRadius="xl"
+          textAlign="center"
+          boxShadow="xs"
+        >
+          <Text fontSize="xs" fontWeight="900" color="orange.800" textTransform="uppercase" letterSpacing="wider" mb={1}>
+            ⚠️ Cotización Bloqueada
           </Text>
-        </Flex>
-        <ItemAutocomplete onSelect={handleItemSelect} placeholder="Escribe código o nombre del Artículo" />
-      </Box>
+          <Text fontSize="xs" fontWeight="700" color="gray.700">
+            Por favor, seleccione un cliente en el panel superior para poder buscar y agregar artículos.
+          </Text>
+        </Box>
+      ) : (
+        <Box mb={4} p={{ base: 2, md: 3 }} bg="#f0fdf4" borderRadius="lg" border="1px solid" borderColor="#bbf7d0">
+          <Flex align="center" gap={1.5} mb={1.5}>
+            <Package className="w-3.5 h-3.5 text-emerald-700" />
+            <Text fontSize={{ base: "0.65rem", md: "xs" }} fontWeight="800" color="#166534" textTransform="uppercase" letterSpacing="wider">
+              Buscar Artículo en SAP
+            </Text>
+          </Flex>
+          <ItemAutocomplete 
+            onSelect={handleItemSelect} 
+            isDisabled={false}
+            placeholder="Escribe código o nombre del Artículo" 
+          />
+        </Box>
+      )}
 
-      {/* ── VISTA MÓVIL: TARJETAS COMPACTAS (100% AJUSTABLE A PANTALLA DE TELÉFONO) ── */}
       <VStack display={{ base: "flex", md: "none" }} spacing={3} align="stretch">
         {products.length === 0 ? (
           <VStack py={8} spacing={2} color="gray.500" bg="gray.50" borderRadius="lg" border="1px dashed" borderColor="gray.300">
@@ -72,38 +109,41 @@ export default function SapItemGrid({
             const lineTotal = qty * price * (1 - disc / 100);
 
             return (
-              <Box
-                key={item.id || index}
-                p={3}
-                bg="white"
-                borderRadius="xl"
-                border="1px solid"
-                borderColor="emerald.200"
-                boxShadow="xs"
-              >
-                {/* Cabecera Tarjeta: Número + Nombre + Eliminar */}
+              <Box key={item.id || index} p={3} bg="white" borderRadius="xl" border="1px solid" borderColor="emerald.200" boxShadow="xs">
                 <Flex align="start" justify="space-between" gap={2} mb={2}>
-                  <HStack spacing={2} flex="1">
-                    <Badge colorScheme="emerald" variant="solid" borderRadius="full" px={2} py={0.5} fontSize="0.65rem" fontWeight="900">
-                      #{index + 1}
-                    </Badge>
-                    <Text fontSize="xs" fontWeight="800" color="gray.900" lineHeight="tight">
-                      {item.name}
-                    </Text>
-                  </HStack>
-                  <IconButton
-                    aria-label="Eliminar"
-                    icon={<Trash2 className="w-4 h-4" />}
-                    size="xs"
-                    colorScheme="red"
-                    variant="ghost"
-                    onClick={() => onRemoveProduct(item.id)}
-                  />
+                  <Box flex="1" minW={0}>
+                    <Flex align="center" wrap="wrap" gap={1.5}>
+                      <Text fontSize="xs" fontWeight="900" color="gray.900" lineHeight="tight">
+                        {item.name}
+                      </Text>
+                      <Badge
+                        colorScheme={item.stock > 0 ? "green" : "red"}
+                        bg={item.stock > 0 ? "#16a34a" : "#dc2626"}
+                        color="white"
+                        variant="solid"
+                        px={2}
+                        py={0.5}
+                        fontSize="0.65rem"
+                        fontWeight="900"
+                        borderRadius="md"
+                        flexShrink={0}
+                      >
+                        Stk: {item.stock ?? 0}
+                      </Badge>
+                    </Flex>
+                  </Box>
+                  {!isReadOnly && (
+                    <IconButton
+                      aria-label="Eliminar"
+                      icon={<Trash2 className="w-4 h-4 text-red-500" />}
+                      size="xs"
+                      colorScheme="red"
+                      variant="ghost"
+                      onClick={() => onRemoveProduct(item.id)}
+                    />
+                  )}
                 </Flex>
-
                 <Divider mb={2.5} borderColor="gray.100" />
-
-                {/* Grilla de Controles: Cantidad | Precio Unit. | %Desc | Alm/Stock */}
                 <Grid templateColumns="1fr 1.2fr 1fr 1fr" gap={2} align="center" mb={2.5}>
                   <Box>
                     <Text fontSize="0.6rem" color="gray.500" fontWeight="800" mb={0.5} textAlign="center">CANT.</Text>
@@ -111,55 +151,86 @@ export default function SapItemGrid({
                       size="xs"
                       min={1}
                       value={item.quantity}
-                      onChange={(valStr, valNum) => onUpdateProduct(item.id, { quantity: valNum > 0 ? valNum : 1 })}
+                      isDisabled={isReadOnly}
+                      onChange={(valStr) => {
+                        if (valStr === "") {
+                          onUpdateProduct(item.id, { quantity: "" });
+                        } else {
+                          const parsed = parseInt(valStr, 10);
+                          onUpdateProduct(item.id, { quantity: isNaN(parsed) ? "" : parsed });
+                        }
+                      }}
+                      onBlur={() => {
+                        if (!item.quantity || Number(item.quantity) < 1) {
+                          onUpdateProduct(item.id, { quantity: 1 });
+                        }
+                      }}
                     >
-                      <NumberInputField textAlign="center" fontWeight="800" bg="gray.50" px={1} borderRadius="md" />
+                      <NumberInputField textAlign="center" fontWeight="800" bg={qty >= (item.stock || 0) ? "red.50" : "gray.50"} color={qty >= (item.stock || 0) ? "red.600" : "inherit"} px={1} borderRadius="md" />
                     </NumberInput>
                   </Box>
-
                   <Box>
-                    <Text fontSize="0.6rem" color="gray.500" fontWeight="800" mb={0.5} textAlign="right">P. UNIT ($)</Text>
-                    <NumberInput
-                      size="xs"
-                      min={0}
-                      precision={2}
-                      value={item.price}
-                      onChange={(valStr, valNum) => onUpdateProduct(item.id, { price: valNum >= 0 ? valNum : 0 })}
+                    <Text fontSize="0.6rem" color="gray.500" fontWeight="800" mb={0.5} textAlign="right">
+                      P. UNIT ({currency === "PEN" ? "S/" : "$"})
+                    </Text>
+                    <Box
+                      bg="gray.100"
+                      border="1px solid"
+                      borderColor="gray.200"
+                      borderRadius="md"
+                      py={0.5}
+                      px={1.5}
+                      textAlign="right"
+                      fontWeight="800"
+                      fontSize="xs"
+                      color="gray.800"
+                      h="24px"
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="flex-end"
                     >
-                      <NumberInputField textAlign="right" fontWeight="700" bg="gray.50" px={1} borderRadius="md" />
-                    </NumberInput>
+                      {money(item.price, currency)}
+                    </Box>
                   </Box>
-
                   <Box textAlign="center">
-                    <Text fontSize="0.6rem" color="gray.500" fontWeight="800" mb={0.5}>% DESC</Text>
+                    <Text fontSize="0.6rem" color="gray.500" fontWeight="800" mb={0.5}>DESC SAP</Text>
                     <Badge colorScheme="green" fontSize="0.65rem" fontWeight="800" py={0.5} px={1.5} borderRadius="md">
                       {item.discount || 0}%
                     </Badge>
                   </Box>
-
-                  <Box textAlign="center">
-                    <Text fontSize="0.6rem" color="gray.500" fontWeight="800" mb={0.5}>ALM. / STK</Text>
-                    <VStack spacing={0} align="center">
-                      <Badge colorScheme="amber" variant="solid" fontSize="0.6rem" fontWeight="800">
-                        {item.whsCode || whsCode || "014"}
-                      </Badge>
-                      {item.stock !== undefined && (
-                        <Text fontSize="0.55rem" fontWeight="800" color={item.stock > 0 ? "emerald.700" : "red.600"}>
-                          Stk: {item.stock}
-                        </Text>
-                      )}
-                    </VStack>
+                  <Box textAlign="center" cursor={isReadOnly ? "default" : "pointer"} onClick={isReadOnly ? undefined : () => handleOpenDiscountModal(item)}>
+                    <Text fontSize="0.6rem" color="#1d4ed8" fontWeight="900" mb={0.5}>DESC. ADIC ⚡</Text>
+                    <Box
+                      bg="#eff6ff"
+                      border="1.5px solid"
+                      borderColor="#93c5fd"
+                      borderRadius="md"
+                      py={0.5}
+                      px={1.5}
+                      textAlign="center"
+                      fontWeight="900"
+                      fontSize="xs"
+                      color="#1e40af"
+                      boxShadow="xs"
+                      _hover={isReadOnly ? undefined : { bg: "#dbeafe", borderColor: "#2563eb" }}
+                    >
+                      {item.lineDiscount || 0}% ⚡
+                    </Box>
                   </Box>
                 </Grid>
-
-                {/* Subtotal del Producto */}
+                {qty >= (item.stock || 0) && (
+                  <Text fontSize="xs" color="red.500" fontWeight="700" textAlign="center" mb={2}>
+                    ⚠️ Has seleccionado todo el stock disponible o supera la disponibilidad.
+                  </Text>
+                )}
+                {(item.stock || 0) === 0 && (
+                  <Button size="xs" colorScheme="orange" w="full" mb={2} variant="outline" borderStyle="dashed">
+                    📦 Agregar a Pedido por Traer
+                  </Button>
+                )}
                 <Flex align="center" justify="space-between" bg="emerald.50" px={3} py={1.5} borderRadius="lg" border="1px solid" borderColor="emerald.100">
-                  <Text fontSize="0.65rem" fontWeight="800" color="emerald.900" textTransform="uppercase">
-                    Total Fila:
-                  </Text>
-                  <Text fontSize="xs" fontWeight="900" color="emerald.900">
-                    {money(lineTotal, currency)}
-                  </Text>
+                  <Text fontSize="0.65rem" fontWeight="800" color="emerald.900" textTransform="uppercase">Total Fila:</Text>
+                  <Text fontSize="xs" fontWeight="900" color="emerald.900">{money(lineTotal * (1 - (item.lineDiscount || 0) / 100), currency)}</Text>
                 </Flex>
               </Box>
             );
@@ -167,27 +238,24 @@ export default function SapItemGrid({
         )}
       </VStack>
 
-      {/* ── VISTA ESCRITORIO: TABLA COMPLETA (ORDENADOR) ── */}
       <Box display={{ base: "none", md: "block" }}>
         <TableContainer borderRadius="lg" border="1px solid" borderColor="gray.200" overflowX="auto">
           <Table variant="simple" size="sm">
             <Thead bg="#0e572b">
               <Tr>
-                <Th w="40px" px={2} textTransform="none" fontSize="xs" color="white" fontWeight="800">#</Th>
-                <Th w="120px" px={2} textTransform="none" fontSize="xs" color="white" fontWeight="800">Código</Th>
                 <Th minW="220px" px={2} textTransform="none" fontSize="xs" color="white" fontWeight="800">Descripción del artículo</Th>
                 <Th w="85px" px={2} textAlign="center" textTransform="none" fontSize="xs" color="white" fontWeight="800">Cantidad</Th>
                 <Th w="105px" px={2} textAlign="right" textTransform="none" fontSize="xs" color="white" fontWeight="800">Precio unidad</Th>
-                <Th w="85px" px={2} textAlign="center" textTransform="none" fontSize="xs" color="white" fontWeight="800">% Desc.</Th>
-                <Th w="95px" px={2} textAlign="center" textTransform="none" fontSize="xs" color="white" fontWeight="800">Almacén</Th>
+                <Th w="85px" px={2} textAlign="center" textTransform="none" fontSize="xs" color="white" fontWeight="800">% Desc SAP</Th>
+                <Th w="85px" px={2} textAlign="center" textTransform="none" fontSize="xs" color="white" fontWeight="800">% Desc Adic.</Th>
                 <Th w="115px" px={2} textAlign="right" textTransform="none" fontSize="xs" color="white" fontWeight="800">Total (doc.)</Th>
-                <Th w="50px" px={2} textAlign="center" textTransform="none" fontSize="xs" color="white" fontWeight="800">Acción</Th>
+                {!isReadOnly && <Th w="50px" px={2} textAlign="center" textTransform="none" fontSize="xs" color="white" fontWeight="800">Acción</Th>}
               </Tr>
             </Thead>
             <Tbody>
               {products.length === 0 ? (
                 <Tr>
-                  <Td colSpan={9} textAlign="center" py={10} color="gray.600">
+                  <Td colSpan={isReadOnly ? 6 : 7} textAlign="center" py={10} color="gray.600">
                     <VStack spacing={2}>
                       <Package className="w-10 h-10 text-emerald-600" />
                       <Text fontSize="sm" fontWeight="700" color="gray.700">Sin artículos agregados a la cotización</Text>
@@ -201,82 +269,79 @@ export default function SapItemGrid({
                   const price = Number(item.price || 0);
                   const disc = Number(item.discount || 0);
                   const lineTotal = qty * price * (1 - disc / 100);
+                  const netTotal = lineTotal * (1 - (item.lineDiscount || 0) / 100);
 
                   return (
                     <Tr key={item.id || index} _hover={{ bg: "emerald.50/40" }}>
-                      <Td px={2} fontWeight="700" color="gray.600" fontSize="xs">{index + 1}</Td>
-                      <Td px={2} fontWeight="800" color="#126C36" fontSize="xs">
-                        <Text fontFamily="mono" fontSize="xs">{item.code || item.id}</Text>
-                      </Td>
-                      <Td px={2} fontSize="xs" color="gray.900" fontWeight="600" maxW="260px" isTruncated title={item.name}>
-                        {item.name}
-                      </Td>
+                      <Td px={2} fontSize="xs" color="gray.900" fontWeight="600" maxW="260px" isTruncated title={item.name}>{item.name}</Td>
                       <Td px={2} textAlign="center">
                         <NumberInput
                           size="xs"
                           maxW="75px"
                           min={1}
                           value={item.quantity}
-                          onChange={(valStr, valNum) => onUpdateProduct(item.id, { quantity: valNum > 0 ? valNum : 1 })}
+                          isDisabled={isReadOnly}
+                          onChange={(valStr) => {
+                            if (valStr === "") {
+                              onUpdateProduct(item.id, { quantity: "" });
+                            } else {
+                              const parsed = parseInt(valStr, 10);
+                              onUpdateProduct(item.id, { quantity: isNaN(parsed) ? "" : parsed });
+                            }
+                          }}
+                          onBlur={() => {
+                            if (!item.quantity || Number(item.quantity) < 1) {
+                              onUpdateProduct(item.id, { quantity: 1 });
+                            }
+                          }}
                         >
                           <NumberInputField textAlign="center" fontWeight="700" bg="white" px={1} />
                         </NumberInput>
                       </Td>
-                      <Td px={2} textAlign="right">
-                        <NumberInput
-                          size="xs"
-                          maxW="90px"
-                          min={0}
-                          precision={2}
-                          value={item.price}
-                          onChange={(valStr, valNum) => onUpdateProduct(item.id, { price: valNum >= 0 ? valNum : 0 })}
-                        >
-                          <NumberInputField textAlign="right" fontWeight="600" bg="white" px={1} />
-                        </NumberInput>
+                      <Td px={2} textAlign="right" fontWeight="800" fontSize="xs" color="gray.800">
+                        {money(item.price, currency)}
                       </Td>
                       <Td px={2} textAlign="center">
-                        <NumberInput
-                          size="xs"
-                          maxW="65px"
-                          isReadOnly
-                          value={item.discount || 0}
-                        >
-                          <NumberInputField
-                            textAlign="center"
-                            color="#126C36"
-                            fontWeight="800"
-                            bg="gray.50"
-                            cursor="not-allowed"
-                            px={1}
-                            title="Descuento fijado por regla de negocio / SAP"
-                          />
-                        </NumberInput>
+                        <Badge colorScheme="green" fontSize="xs" fontWeight="800" px={1.5} py={0.5} borderRadius="md">
+                          {item.discount || 0}%
+                        </Badge>
                       </Td>
                       <Td px={2} textAlign="center">
-                        <VStack spacing={0.5} align="center">
-                          <Badge colorScheme="amber" variant="solid" fontSize="0.65rem" fontWeight="800">
-                            {item.whsCode || whsCode || "014"}
-                          </Badge>
-                          {item.stock !== undefined && (
-                            <Badge colorScheme={item.stock > 0 ? "green" : "red"} fontSize="0.55rem" fontWeight="800" px={1}>
-                              Stk: {item.stock}
-                            </Badge>
-                          )}
-                        </VStack>
+                        <Button
+                          size="xs"
+                          bg="#eff6ff"
+                          color="#1e40af"
+                          border="1.5px solid"
+                          borderColor="#93c5fd"
+                          boxShadow="xs"
+                          isDisabled={isReadOnly}
+                          _hover={isReadOnly ? undefined : { bg: "#dbeafe", borderColor: "#2563eb" }}
+                          onClick={() => handleOpenDiscountModal(item)}
+                          fontWeight="900"
+                          fontSize="xs"
+                          px={2.5}
+                          py={1}
+                          borderRadius="md"
+                          title="Toca para desplegar el selector de descuentos"
+                        >
+                          {item.lineDiscount || 0}% ⚡
+                        </Button>
                       </Td>
                       <Td px={2} textAlign="right" fontWeight="800" color="gray.900" fontSize="xs">
-                        {money(lineTotal, currency)}
+                        {money(netTotal, currency)}
                       </Td>
-                      <Td px={2} textAlign="center">
-                        <IconButton
-                          aria-label="Eliminar fila"
-                          icon={<Trash2 className="w-3.5 h-3.5" />}
-                          size="xs"
-                          colorScheme="red"
-                          variant="ghost"
-                          onClick={() => onRemoveProduct(item.id)}
-                        />
-                      </Td>
+                      {!isReadOnly && (
+                        <Td px={2} textAlign="center">
+                          <IconButton
+                            aria-label="Eliminar fila"
+                            icon={<Trash2 className="w-3.5 h-3.5" />}
+                            size="xs"
+                            colorScheme="red"
+                            variant="ghost"
+                            onClick={() => onRemoveProduct(item.id)}
+                          />
+                        </Td>
+                      )}
                     </Tr>
                   );
                 })
@@ -318,6 +383,13 @@ export default function SapItemGrid({
           </VStack>
         </Box>
       )}
+      {/* Selector de Descuento Adicional Desplegable */}
+      <DiscountPopoverModal
+        isOpen={isDiscountModalOpen}
+        onClose={() => setIsDiscountModalOpen(false)}
+        item={selectedDiscountItem}
+        onApplyDiscount={handleApplyDiscountFromModal}
+      />
     </Box>
   );
 }

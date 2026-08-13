@@ -199,6 +199,7 @@ export function ProfileAdmin() {
   const pageBg = useColorModeValue("gray.50", "gray.900");
   const tableBg = useColorModeValue("white", "gray.800");
   const hoverBg = useColorModeValue("gray.50", "gray.700");
+  const inputBg = useColorModeValue("white", "gray.700");
 
   // Responsive: mostrar tabla o cards
   const isMobile = useBreakpointValue({ base: true, md: false });
@@ -473,7 +474,7 @@ export function ProfileAdmin() {
                 value={searchTerm}
                 onChange={handleSearchChange}
                 focusBorderColor="green.500"
-                bg={useColorModeValue("white", "gray.700")}
+                bg={inputBg}
               />
             </InputGroup>
             <Stack
