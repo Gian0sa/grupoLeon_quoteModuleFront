@@ -38,14 +38,21 @@ export const useSyncQueue = ({ enabled = true } = {}) => {
     if (isSyncingRef.current) return;
     if (!enabledRef.current) return;
 
+    // Se activa antes del primer await: si el montaje, el evento "online" y el
+    // visibilitychange disparan syncPending() casi al mismo tiempo (típico al
+    // reabrir la app justo cuando vuelve la señal), solo la primera llamada debe
+    // pasar de aquí en adelante. Activarlo después del await dejaba una ventana
+    // donde las tres pasaban el candado y triplicaban el envío del mismo ítem.
+    isSyncingRef.current = true;
+
     const items = await getQueue();
     if (items.length === 0) {
       setPendingCount(0);
       setQueueItems([]);
+      isSyncingRef.current = false;
       return;
     }
 
-    isSyncingRef.current = true;
     setIsSyncing(true);
     console.log(`🔄 Sincronizando ${items.length} check-in(s)/out(s) pendientes...`);
     let syncedCount = 0;
