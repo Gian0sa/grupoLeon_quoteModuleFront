@@ -1,210 +1,243 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
-// ─── HELPER DE LOGO VECTORIAL SVG ───
-const addLogo = async (doc, { x = 145, y = 10, width = 50, height = 15 } = {}) => {
+// ─── HELPER LOGO ───
+const addLogo = async (doc, { x = 170, y = 5, width = 25, height = 25 } = {}) => {
   try {
     const img = new Image();
     img.crossOrigin = "anonymous";
 
     await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error("Timeout logo")), 2500);
-      img.onload = () => {
-        clearTimeout(timeout);
-        resolve();
-      };
-      img.onerror = (e) => {
-        clearTimeout(timeout);
-        reject(e);
-      };
-      img.src = "/assets/logo.svg";
+      img.onload = () => { clearTimeout(timeout); resolve(); };
+      img.onerror = (e) => { clearTimeout(timeout); reject(e); };
+      img.src = "/assets/LogoAutopartes.jpg";
     });
 
     const canvas = document.createElement("canvas");
-    canvas.width = 720;
-    canvas.height = 146;
+    canvas.width = img.width || 300;
+    canvas.height = img.height || 300;
     const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, 720, 146);
-    ctx.drawImage(img, 0, 0, 720, 146);
-    const dataUrl = canvas.toDataURL("image/png");
-    doc.addImage(dataUrl, "PNG", x, y, width, height);
+    ctx.drawImage(img, 0, 0);
+    const imageDataURL = canvas.toDataURL("image/jpeg", 0.9);
+    doc.addImage(imageDataURL, "JPEG", x, y, width, height);
   } catch {
-    doc.setFont("helvetica", "bold").setFontSize(13).setTextColor(45, 150, 80);
-    doc.text("Autopartes s.a.", x, y + 8);
+    doc.setFont("helvetica", "bold").setFontSize(8).setTextColor(45, 150, 80);
+    doc.text("Autopartes s.a.", x + width / 2, y + height / 2, { align: "center" });
   }
 };
 
-const safeText = (val, fb = "") => (val !== null && val !== undefined && val !== "" ? String(val).trim() : fb);
+const safeText = (val, fb = "-") => (val !== null && val !== undefined && val !== "" ? String(val).trim() : fb);
+
+const formatCurrency = (amount, currency = "", decimals = 2) => {
+  if (typeof amount !== "number" || isNaN(amount)) return "0.00";
+  const num = Math.abs(amount);
+  const formatted = `${currency} ${num.toFixed(decimals)}`.trim();
+  return amount < 0 ? `-${formatted}` : formatted;
+};
 
 const formatDate = (dateStr) => {
   if (!dateStr) return "-";
+
   let d;
-  if (dateStr.includes("-") && dateStr.split("-")[0].length <= 2) {
+  if (typeof dateStr === "string" && dateStr.includes("-") && dateStr.split("-")[0].length <= 2) {
     const [day, month, year] = dateStr.split("-");
     d = new Date(year, month - 1, day);
-  } else if (dateStr.includes("/") && dateStr.split("/")[0].length <= 2) {
+  } else if (typeof dateStr === "string" && dateStr.includes("/") && dateStr.split("/")[0].length <= 2) {
     const [day, month, year] = dateStr.split("/");
     d = new Date(year, month - 1, day);
-  } else if (dateStr.match(/^\d{4}-\d{2}-\d{2}/)) {
+  } else if (typeof dateStr === "string" && dateStr.match(/^\d{4}-\d{2}-\d{2}/)) {
     const [year, month, day] = dateStr.split("T")[0].split("-");
     d = new Date(year, month - 1, day);
   } else {
     d = new Date(dateStr);
   }
 
-  if (isNaN(d.getTime())) return String(dateStr);
+  if (isNaN(d.getTime())) return "-";
   const dd = String(d.getDate()).padStart(2, "0");
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const yyyy = d.getFullYear();
   return `${dd}/${mm}/${yyyy}`;
 };
 
-const formatDateLong = (dateObj) => {
-  const d = dateObj instanceof Date ? dateObj : new Date();
-  const day = d.getDate();
-  const months = [
-    "enero", "febrero", "marzo", "abril", "mayo", "junio",
-    "julio", "agosto", "setiembre", "octubre", "noviembre", "diciembre"
-  ];
-  const month = months[d.getMonth()];
-  const year = d.getFullYear();
-  return `${day} de ${month} de ${year}`;
-};
+const venceHoy = (docu) => {
+  if (!docu) return false;
+  const fechaVencimiento = docu.REFDATE || docu.fechaContable || docu.fechaVencimiento || "";
+  if (!fechaVencimiento) return false;
 
-const formatCurrencyNum = (amount) => {
-  const num = Number(amount || 0);
-  return num.toFixed(2);
-};
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
 
-const formatCurrency = (amount, currency = "PEN") => {
-  const num = Number(amount || 0);
-  const formatted = num.toFixed(2);
-  if (!currency) return formatted;
-  const symbol = currency === "USD" ? "USD" : "PEN";
-  return `${symbol} ${formatted}`;
+  let fechaDoc;
+  if (typeof fechaVencimiento === "string" && fechaVencimiento.includes("-") && fechaVencimiento.split("-")[0].length <= 2) {
+    const [day, month, year] = fechaVencimiento.split("-");
+    fechaDoc = new Date(year, month - 1, day);
+  } else if (typeof fechaVencimiento === "string" && fechaVencimiento.includes("/") && fechaVencimiento.split("/")[0].length <= 2) {
+    const [day, month, year] = fechaVencimiento.split("/");
+    fechaDoc = new Date(year, month - 1, day);
+  } else if (typeof fechaVencimiento === "string" && fechaVencimiento.match(/^\d{4}-\d{2}-\d{2}/)) {
+    const [year, month, day] = fechaVencimiento.split("T")[0].split("-");
+    fechaDoc = new Date(year, month - 1, day);
+  } else {
+    fechaDoc = new Date(fechaVencimiento);
+  }
+
+  if (isNaN(fechaDoc.getTime())) return false;
+  fechaDoc.setHours(0, 0, 0, 0);
+  return fechaDoc.getTime() === hoy.getTime();
 };
 
 const getEstadoInfo = (estado, tipoDoc) => {
   if (tipoDoc === "Nota de Crédito") {
-    return { text: "SALDO A FAVOR", bg: [23, 162, 184], fg: [255, 255, 255] };
+    return { text: "SALDO A FAVOR", color: [23, 162, 184] };
   }
-  switch (estado) {
-    case "vencido":
-      return { text: "VENCIDO", bg: [220, 53, 69], fg: [255, 255, 255] };
-    case "parcialmente_vencido":
-      return { text: "PARCIALMENTE VENCIDO", bg: [245, 166, 35], fg: [255, 255, 255] };
-    case "al_dia":
-    default:
-      return { text: "AL DÍA", bg: [40, 167, 69], fg: [255, 255, 255] };
-  }
-};
-
-const venceHoy = (docu) => {
-  if (!docu) return false;
-  const hoy = new Date();
-  const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-${String(hoy.getDate()).padStart(2, "0")}`;
-  const fechaDoc = docu.fechaContable || docu.REFDATE || docu.fechaDocumento || "";
-  return fechaDoc.startsWith(hoyStr);
+  const estados = {
+    parcialmente_vencido: { text: "PARCIALMENTE VENCIDO", color: [255, 193, 7] },
+    vencido: { text: "VENCIDO", color: [220, 53, 69] },
+    al_dia: { text: "AL DÍA", color: [40, 167, 69] },
+    por_vencer: { text: "POR VENCER", color: [23, 162, 184] },
+  };
+  return estados[estado] || { text: estado?.toUpperCase() || "AL DÍA", color: [40, 167, 69] };
 };
 
 // ============================================================================
-// 📄 REPORTE 1: FICHA DE CUENTA POR COBRAR (Título: "CUENTA POR COBRAR")
+// 📄 REPORTE 1: FICHA DE CUENTA POR COBRAR (Imagen 1 Exacta)
 // Trigger: Botón "Ver detalles >" de la Tarjeta del Cliente (DebtCard.jsx)
 // ============================================================================
 
-const addReceivableHeader = (doc, debt) => {
-  // Banner azul para el título
-  doc.setFillColor(31, 78, 121);
-  doc.rect(14, 12, 110, 10, "F");
-  doc.setFont("helvetica", "bold").setFontSize(14).setTextColor(255, 255, 255);
-  doc.text("CUENTA POR COBRAR", 17, 19);
-
-  // Badge de Estado del Cliente
-  const estadoInfo = getEstadoInfo(debt.estado, debt.tipoDocumento);
-  doc.setFillColor(...estadoInfo.bg);
-  doc.rect(14, 25, 60, 6, "F");
-  doc.setFont("helvetica", "bold").setFontSize(8.5).setTextColor(...estadoInfo.fg);
-  doc.text(estadoInfo.text, 17, 29.2);
+const addHeader = (doc) => {
+  doc.setFont("helvetica", "bold").setFontSize(18).setTextColor(0, 0, 0).text("CUENTA POR COBRAR", 14, 20);
 };
 
-const addReceivableClientInfo = (doc, debt) => {
-  const startY = 36;
-  doc.setFontSize(8.5).setTextColor(0, 0, 0);
+const addClientInfo = (doc, debt) => {
+  const startY = 30;
+  const leftX = 14;
+  const rightX = 110;
 
-  const cleanCode = safeText(debt.ruc || debt.clientCode, "").replace("CL", "");
-  const clientName = safeText(debt.nombre || debt.clientName, "Sin cliente");
-  const vendedor = safeText(debt.vendedor, "No asignado");
-  const totalDocs = debt.totalDocumentos || debt.documents?.length || 0;
-  const vencidosCount = debt.documentosVencidos || debt.documents?.filter((d) => d.estaVencido).length || 0;
-  const pctVencidos = totalDocs > 0 ? Math.round((vencidosCount / totalDocs) * 100) : 0;
+  const estadoInfo = getEstadoInfo(debt.estado, debt.tipoDocumento);
+  doc.setFont("helvetica", "bold")
+    .setFontSize(8.5)
+    .setFillColor(...estadoInfo.color)
+    .setTextColor(255, 255, 255)
+    .rect(leftX, startY - 3, 55, 7, "F")
+    .text(estadoInfo.text, leftX + 2, startY + 1.5);
+
+  doc.setTextColor(0, 0, 0);
 
   const docs = debt.documents || debt.documentos || [];
-  const overdueDocs = docs.filter((d) => d.estaVencido || (d.diasVencimiento && d.diasVencimiento > 0));
-  const maxOverdueDays = overdueDocs.length > 0
-    ? Math.max(...overdueDocs.map((d) => Number(d.diasVencimiento || 0)))
+  const docsConVencimiento = docs.filter((d) => d.diasVencimiento && d.diasVencimiento > 0);
+  const antiguedadPromedio = docsConVencimiento.length > 0
+    ? Math.round(docsConVencimiento.reduce((sum, d) => sum + Number(d.diasVencimiento || 0), 0) / docsConVencimiento.length)
     : Number(debt.maxOverdueDays || 0);
 
-  // Columna Izquierda
-  const leftItems = [
-    { label: "Cliente:", value: `"${clientName}"` },
+  const cleanCode = safeText(debt.ruc || debt.clientCode, "-").replace("CL", "");
+  const clientName = safeText(debt.nombre || debt.clientName, "Sin cliente");
+
+  const leftData = [
+    { label: "Cliente:", value: clientName },
     { label: "RUC:", value: cleanCode },
     { label: "Código:", value: cleanCode },
-    { label: "Vendedor:", value: vendedor },
+    { label: "Vendedor:", value: safeText(debt.vendedor, "No asignado") },
   ];
 
-  leftItems.forEach((item, index) => {
-    const y = startY + index * 5.5;
-    doc.setFont("helvetica", "bold").text(item.label, 14, y);
-    doc.setFont("helvetica", "bold").text(item.value, 40, y);
-  });
+  const totalDocs = debt.totalDocumentos || debt.totalDocuments || docs.length;
+  const vencidosCount = debt.documentosVencidos || debt.overdueDocumentsCount || docs.filter((d) => d.estaVencido).length;
+  const pctVencidos = totalDocs > 0 ? Math.round((vencidosCount / totalDocs) * 100) : 0;
 
-  // Columna Derecha
-  const rightItems = [
+  const rightData = [
     { label: "Total Docs:", value: `${totalDocs}` },
     { label: "Vencidos:", value: `${vencidosCount}` },
     { label: "% Vencidos:", value: `${pctVencidos}%` },
-    { label: "Antigüedad:", value: `${maxOverdueDays}d` },
+    { label: "Antigüedad:", value: `${antiguedadPromedio}d` },
   ];
 
-  rightItems.forEach((item, index) => {
-    const y = startY + index * 5.5;
-    doc.setFont("helvetica", "bold").text(item.label, 110, y);
-    doc.setFont("helvetica", "normal").text(item.value, 142, y);
+  leftData.forEach((item, i) => {
+    const y = startY + 9 + i * 7.5;
+    doc.setFont("helvetica", "bold").setFontSize(9).text(item.label, leftX, y);
+    doc.setFont("helvetica", "normal").setFontSize(9);
+
+    if (item.label === "Cliente:" && item.value.length > 30) {
+      const maxWidth = 70; // Ancho máximo para no colisionar con la columna derecha
+      const lines = doc.splitTextToSize(item.value, maxWidth);
+      doc.text(lines, leftX + 23, y);
+    } else {
+      doc.text(item.value, leftX + 23, y);
+    }
   });
 
-  // Barra de Encabezado de Saldos / Vencidos
-  const barY = startY + 24;
-  doc.setFont("helvetica", "bold").setFontSize(8).setTextColor(0, 0, 0);
-  doc.text("SALDOS:", 14, barY);
-  doc.text("VENCIDOS:", 110, barY);
-  doc.setDrawColor(0, 0, 0).setLineWidth(0.4).line(14, barY + 1.5, 196, barY + 1.5);
+  rightData.forEach((item, i) => {
+    const y = startY + 9 + i * 6;
+    doc.setFont("helvetica", "bold").setFontSize(9).text(item.label, rightX, y);
+    doc.setFont("helvetica", "normal").setFontSize(9).text(item.value, rightX + 28, y);
+  });
+
+  const montosY = startY + 38;
+  doc.setDrawColor(200).setLineWidth(0.3).line(leftX, montosY, rightX + 85, montosY);
+
+  const saldoPEN = debt.pendingAmount?.PEN ?? debt.saldoPEN ?? 0;
+  const saldoUSD = debt.pendingAmount?.USD ?? debt.saldoUSD ?? 0;
+  const saldoVencidoPEN = debt.overdueAmount?.PEN ?? debt.saldoVencidoPEN ?? 0;
+  const saldoVencidoUSD = debt.overdueAmount?.USD ?? debt.saldoVencidoUSD ?? 0;
+
+  doc.setFont("helvetica", "bold").setFontSize(8).text("SALDOS:", leftX, montosY + 4);
+  doc.setFont("helvetica", "normal")
+    .text(`PEN: ${formatCurrency(saldoPEN, "PEN")}`, leftX, montosY + 9)
+    .text(`USD: ${formatCurrency(saldoUSD, "USD")}`, leftX, montosY + 13.5);
+
+  doc.setFont("helvetica", "bold").text("VENCIDOS:", rightX, montosY + 4);
+  doc.setFont("helvetica", "normal")
+    .text(`PEN: ${formatCurrency(saldoVencidoPEN, "PEN")}`, rightX, montosY + 9)
+    .text(`USD: ${formatCurrency(saldoVencidoUSD, "USD")}`, rightX, montosY + 13.5);
 };
 
-const addReceivableDocumentsTable = (doc, debt) => {
+const addDocumentsTable = (doc, debt) => {
   const documents = debt.documents || debt.documentos || [];
 
-  if (documents.length === 0) {
-    doc.setFont("helvetica", "italic").setFontSize(9).text("No hay documentos registrados", 14, 75);
+  if (!documents.length) {
+    doc.setFont("helvetica", "italic").setFontSize(9).text("No hay documentos registrados", 14, 78);
     return;
   }
 
-  const tableData = documents.map((document) => {
-    const numDoc = safeText(document.numeroDocumento || document.NRO_DOC);
-    const tipo = safeText(document.tipoDocumento || document.TIPO_DOC, "Factura");
-    const fDoc = formatDate(document.fechaImpuesto || document.TAXDATE || document.fechaDocumento);
-    const fCont = formatDate(document.fechaContable || document.REFDATE);
-    const cond = safeText(document.condicionPago || document.CONDICION, "—");
-    const dias = document.estaVencido ? String(document.diasVencimiento || 0) : "-";
+  const tableData = documents.map((d) => {
+    const esNotaCredito = d.tipoDocumento === "Nota de Crédito" || d.TIPO_DOC === "Nota de Crédito";
+    const moneda = (d.moneda || d.TIPOCAMBIO || "USD").toUpperCase().includes("USD") ? "USD" : "PEN";
+    const venceHoyDoc = venceHoy(d);
 
-    const isUSD = (document.moneda || document.TIPOCAMBIO || "USD").toUpperCase().includes("USD");
-    const totalOriginal = Number(document.totalDocumento || document.TOTAL_DOC || 0);
-    const montoText = `${isUSD ? "USD" : "PEN"} ${formatCurrencyNum(totalOriginal)}`;
+    let monto = 0;
+    if (moneda === "USD") {
+      monto = Number(d.SALDO_USD ?? d.saldoPendiente?.USD ?? d.totalDocumento ?? d.TOTAL_DOC ?? 0);
+    } else {
+      monto = Number(d.SALDO_PEN ?? d.saldoPendiente?.PEN ?? d.totalDocumento ?? d.TOTAL_DOC ?? 0);
+    }
 
-    return [numDoc, tipo, fDoc, fCont, cond, dias, montoText];
+    if (esNotaCredito && monto > 0) {
+      monto = -monto;
+    }
+
+    let diasTexto = "-";
+    if (venceHoyDoc && !esNotaCredito) {
+      diasTexto = "HOY";
+    } else if (d.estaVencido && !esNotaCredito) {
+      diasTexto = `${d.diasVencimiento || 0}`;
+    }
+
+    // Extracción limpia de fechas en SAP / HANA sin Invalid Date
+    const fechaDocRaw = d.TAXDATE || d.fechaImpuesto || d.FECHA_DOC || d.fechaDocumento;
+    const fechaContRaw = d.REFDATE || d.fechaContable;
+
+    return [
+      safeText(d.numeroDocumento || d.NRO_DOC),
+      safeText(d.tipoDocumento || d.TIPO_DOC, "Factura de Cliente"),
+      formatDate(fechaDocRaw || fechaContRaw),
+      formatDate(fechaContRaw || fechaDocRaw),
+      safeText(d.condicionPago || d.CONDICION, "—"),
+      diasTexto,
+      formatCurrency(monto, moneda),
+    ];
   });
 
   autoTable(doc, {
-    startY: 65,
+    startY: 68,
     head: [["N° Doc", "Tipo", "F. Doc", "F. Cont", "Cond", "Días", "Total"]],
     body: tableData,
     styles: {
@@ -223,12 +256,12 @@ const addReceivableDocumentsTable = (doc, debt) => {
     },
     columnStyles: {
       0: { cellWidth: 35 },
-      1: { cellWidth: 25 },
-      2: { cellWidth: 24, halign: "center" },
-      3: { cellWidth: 24, halign: "center" },
+      1: { cellWidth: 32 },
+      2: { cellWidth: 22, halign: "center" },
+      3: { cellWidth: 22, halign: "center" },
       4: { cellWidth: 30 },
       5: { cellWidth: 15, halign: "center" },
-      6: { cellWidth: 29, halign: "right" },
+      6: { cellWidth: 26, halign: "right" },
     },
     margin: { left: 14, right: 14 },
     alternateRowStyles: { fillColor: [248, 249, 250] },
@@ -268,7 +301,7 @@ const addReceivableDocumentsTable = (doc, debt) => {
   });
 };
 
-const addReceivableSummary = (doc, debt) => {
+const addSummary = (doc, debt) => {
   const finalY = doc.lastAutoTable?.finalY || 120;
   const startY = finalY + 8;
   const leftX = 14;
@@ -284,18 +317,19 @@ const addReceivableSummary = (doc, debt) => {
       })
       .reduce((s, d) => {
         const monto = moneda === "USD"
-          ? (d.SALDO_USD || d.saldoPendiente?.USD || d.totalDocumento || d.TOTAL_DOC || 0)
-          : (d.SALDO_PEN || d.saldoPendiente?.PEN || d.totalDocumento || d.TOTAL_DOC || 0);
+          ? (d.SALDO_USD ?? d.saldoPendiente?.USD ?? d.totalDocumento ?? d.TOTAL_DOC ?? 0)
+          : (d.SALDO_PEN ?? d.saldoPendiente?.PEN ?? d.totalDocumento ?? d.TOTAL_DOC ?? 0);
         return s + Number(monto);
       }, 0);
 
-  const vencidosTotal = docs.filter((d) => d.estaVencido && !venceHoy(d));
-  const porVencerTotal = docs.filter((d) => !d.estaVencido && !venceHoy(d));
-  const vencenHoyTotal = docs.filter((d) => venceHoy(d));
+  const docsReales = docs;
+  const vencidosTotal = docsReales.filter((d) => d.estaVencido && !venceHoy(d));
+  const porVencerTotal = docsReales.filter((d) => !d.estaVencido && !venceHoy(d));
+  const vencenHoyTotal = docsReales.filter((d) => venceHoy(d));
 
   // SECCIÓN IZQUIERDA - Resumen Ejecutivo
-  doc.setFont("helvetica", "bold").setFontSize(9.5).text("RESUMEN EJECUTIVO", leftX, startY);
-  doc.setDrawColor(52, 58, 64).setLineWidth(0.4).line(leftX, startY + 1.5, leftX + 55, startY + 1.5);
+  doc.setFont("helvetica", "bold").setFontSize(10).text("RESUMEN EJECUTIVO", leftX, startY);
+  doc.setDrawColor(52, 58, 64).setLineWidth(0.4).line(leftX, startY + 1.5, leftX + 60, startY + 1.5);
 
   const leftData = [
     { label: "Docs Vencidos:", value: `${vencidosTotal.length} de ${debt.totalDocumentos || docs.length}` },
@@ -311,7 +345,7 @@ const addReceivableSummary = (doc, debt) => {
   ];
 
   leftData.forEach((item, i) => {
-    const y = startY + 6.5 + i * 4.6;
+    const y = startY + 7 + i * 5;
     if (item.highlight) {
       doc.setTextColor(255, 152, 0);
       doc.setFont("helvetica", "bold").setFontSize(7.5).text(item.label, leftX, y);
@@ -324,8 +358,8 @@ const addReceivableSummary = (doc, debt) => {
   });
 
   // SECCIÓN DERECHA - Por Tipo de Documento
-  doc.setFont("helvetica", "bold").setFontSize(9.5).text("POR TIPO DE DOCUMENTO", rightX, startY);
-  doc.setDrawColor(52, 58, 64).setLineWidth(0.4).line(rightX, startY + 1.5, rightX + 86, startY + 1.5);
+  doc.setFont("helvetica", "bold").setFontSize(10).text("POR TIPO DE DOCUMENTO", rightX, startY);
+  doc.setDrawColor(52, 58, 64).setLineWidth(0.4).line(rightX, startY + 1.5, rightX + 85, startY + 1.5);
 
   const facturas = docs.filter((d) => (d.tipoDocumento || d.TIPO_DOC || "").includes("Factura"));
   const boletas = docs.filter((d) => (d.tipoDocumento || d.TIPO_DOC || "").includes("Boleta"));
@@ -341,7 +375,7 @@ const addReceivableSummary = (doc, debt) => {
     { label: "Letras", docs: letras },
   ];
 
-  let yPos = startY + 6.5;
+  let yPos = startY + 7;
   rightData.forEach((item) => {
     const totalUSD = sum(item.docs, "USD");
     const totalPEN = sum(item.docs, "PEN");
@@ -350,15 +384,15 @@ const addReceivableSummary = (doc, debt) => {
     doc.setFont("helvetica", "bold").setFontSize(7.5);
     doc.text(`${item.label}:`, rightX, yPos);
     doc.setFont("helvetica", "normal");
-    doc.text(total, rightX + 86, yPos, { align: "right" });
-    yPos += 4.6;
+    doc.text(total, rightX + 85, yPos, { align: "right" });
+    yPos += 5;
   });
 
   yPos += 2;
   doc.setFont("helvetica", "normal").setFontSize(7).setTextColor(100);
-  doc.text("Cartera: 0.00", rightX + 86, yPos, { align: "right" });
-  yPos += 3.5;
-  doc.text("Banco: 0.00", rightX + 86, yPos, { align: "right" });
+  doc.text("Cartera: 0.00", rightX + 85, yPos, { align: "right" });
+  yPos += 4;
+  doc.text("Banco: 0.00", rightX + 85, yPos, { align: "right" });
 
   const allUSD = sum(docs, "USD");
   const allPEN = sum(docs, "PEN");
@@ -366,16 +400,16 @@ const addReceivableSummary = (doc, debt) => {
   const montoGeneral = allUSD !== 0 ? allUSD : allPEN;
 
   yPos += 2;
-  doc.setDrawColor(0).setLineWidth(0.4).line(rightX + 40, yPos, rightX + 86, yPos);
-  doc.line(rightX + 40, yPos + 0.5, rightX + 86, yPos + 0.5);
+  doc.setDrawColor(0).setLineWidth(0.4).line(rightX + 40, yPos, rightX + 85, yPos);
+  doc.line(rightX + 40, yPos + 0.5, rightX + 85, yPos + 0.5);
 
-  yPos += 4.5;
+  yPos += 5;
   doc.setFont("helvetica", "bold").setFontSize(9).setTextColor(0, 0, 0);
   doc.text(monedaGeneral, rightX + 40, yPos);
-  doc.text(formatCurrencyNum(montoGeneral), rightX + 86, yPos, { align: "right" });
+  doc.text(formatCurrency(montoGeneral, ""), rightX + 85, yPos, { align: "right" });
 };
 
-const addReceivableFooter = (doc) => {
+const addFooter = (doc) => {
   const pageCount = doc.internal.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
@@ -387,7 +421,7 @@ const addReceivableFooter = (doc) => {
 };
 
 /**
- * 📄 REPORTE 1: Ficha de Cuenta por Cobrar (CUENTA POR COBRAR - Imagen 1)
+ * 📄 REPORTE 1: Ficha de Cuenta por Cobrar (CUENTA POR COBRAR - Imagen 1 Exacta)
  */
 export const generateReceivablePDF = async (debt, { filename, autoDownload = true } = {}) => {
   if (!debt) return;
@@ -395,19 +429,19 @@ export const generateReceivablePDF = async (debt, { filename, autoDownload = tru
   const defaultFilename = `Cuenta-Por-Cobrar-${safeText(debt?.ruc || debt?.clientCode, "Sin-RUC")}.pdf`;
 
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
-  await addLogo(doc, { x: 145, y: 10, width: 50, height: 15 });
-  addReceivableHeader(doc, debt);
-  addReceivableClientInfo(doc, debt);
-  addReceivableDocumentsTable(doc, debt);
-  addReceivableSummary(doc, debt);
-  addReceivableFooter(doc);
+  await addLogo(doc, { x: 170, y: 5, width: 25, height: 25 });
+  addHeader(doc);
+  addClientInfo(doc, debt);
+  addDocumentsTable(doc, debt);
+  addSummary(doc, debt);
+  addFooter(doc);
 
   if (autoDownload) doc.save(filename || defaultFilename);
   return doc;
 };
 
 // ============================================================================
-// 📄 REPORTE 2: ESTADO DE CUENTA DE CLIENTES (Autopartes S.A. Oficial)
+// 📄 REPORTE 2: ESTADO DE CUENTA DE CLIENTES (Autopartes S.A. Oficial SAP)
 // Trigger: Botón "[📄 Descargar Estado de Cuenta (PDF)]" del Modal (InvoicesModal.jsx)
 // ============================================================================
 
@@ -422,23 +456,46 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
   const dateFormatted = `${String(now.getDate()).padStart(2, "0")}/${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()}`;
   const timeFormatted = now.toTimeString().split(" ")[0];
 
-  // 1. Logo Vectorial SVG Oficial Nítido
-  await addLogo(doc, { x: 10, y: 8, width: 45, height: 9.1 });
+  try {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
 
-  // 2. Metadatos de Cabecera Superior Derecha
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("Timeout logo")), 2500);
+      img.onload = () => { clearTimeout(timeout); resolve(); };
+      img.onerror = (e) => { clearTimeout(timeout); reject(e); };
+      img.src = "/assets/logo.svg";
+    });
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 720;
+    canvas.height = 146;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0, 720, 146);
+    const dataUrl = canvas.toDataURL("image/png");
+    doc.addImage(dataUrl, "PNG", 10, 8, 45, 9.1);
+  } catch {
+    doc.setFont("helvetica", "bold").setFontSize(13).setTextColor(45, 150, 80);
+    doc.text("Autopartes s.a.", 10, 15);
+  }
+
   doc.setFont("helvetica", "normal").setFontSize(7.5).setTextColor(0, 0, 0);
   doc.text(`Fecha ${dateFormatted}`, 200, 9, { align: "right" });
   doc.text(`Hora ${timeFormatted}`, 200, 13, { align: "right" });
   doc.text(`Página 1 de 1`, 200, 19, { align: "right" });
 
-  // 3. Título Centrado Oficial
   doc.setFont("helvetica", "bold").setFontSize(10.5).setTextColor(0, 0, 0);
   doc.text("*** Estado de Cuenta de Clientes ***", 105, 23, { align: "center" });
 
   doc.setFont("helvetica", "normal").setFontSize(8.5);
-  doc.text(`Estado de Cuenta al ${formatDateLong(now)}`, 105, 27.5, { align: "center" });
 
-  // 4. Barra Superior de Títulos de Tabla
+  const months = [
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "setiembre", "octubre", "noviembre", "diciembre"
+  ];
+  const dateLongStr = `${now.getDate()} de ${months[now.getMonth()]} de ${now.getFullYear()}`;
+  doc.text(`Estado de Cuenta al ${dateLongStr}`, 105, 27.5, { align: "center" });
+
   const headerY = 34;
   doc.setDrawColor(0, 0, 0).setLineWidth(0.5);
   doc.line(10, headerY, 200, headerY);
@@ -455,7 +512,6 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
 
   doc.line(10, headerY + 6, 200, headerY + 6);
 
-  // 5. Vendedor Centrado Subrayado
   const documents = debt.documents || debt.documentos || [];
   const salesperson = safeText(debt.vendedor || documents[0]?.NOMBVENDEDOR, "No Asignado");
   const rawCode = safeText(debt.clientCode || debt.ruc || documents[0]?.CARDCODE, "");
@@ -469,12 +525,10 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
   const sellerWidth = doc.getTextWidth(sellerText);
   doc.setLineWidth(0.4).line(105 - sellerWidth / 2, vendorY + 0.8, 105 + sellerWidth / 2, vendorY + 0.8);
 
-  // 6. Cliente
   const clientY = vendorY + 6.5;
   doc.setFont("helvetica", "bold").setFontSize(8).setTextColor(0, 0, 0);
   doc.text(`${cleanCode}    "${clientName}"`, 10, clientY);
 
-  // 7. Preparación de datos de documentos
   let totalSaldoPEN = 0;
   let totalSaldoUSD = 0;
 
@@ -523,9 +577,9 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
       condicion,
       serieDocText,
       codigoUnico,
-      montoTexto: `${isUSD ? "USD" : "PEN"}  ${formatCurrencyNum(totalOriginal)}`,
-      saldoPENTexto: formatCurrencyNum(saldoPEN),
-      saldoUSDTexto: formatCurrencyNum(saldoUSD),
+      montoTexto: `${isUSD ? "USD" : "PEN"}  ${totalOriginal.toFixed(2)}`,
+      saldoPENTexto: saldoPEN.toFixed(2),
+      saldoUSDTexto: saldoUSD.toFixed(2),
       saldoPEN,
       saldoUSD,
       rawDoc: d,
@@ -545,7 +599,6 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
       ])
     : [["—", "—", "Sin documentos pendientes", "—", "—", "—", "0.00", "0.00"]];
 
-  // 8. Renderizado de Tabla de Datos
   autoTable(doc, {
     startY: clientY + 3.5,
     body: bodyData,
@@ -584,14 +637,13 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
 
   let currentY = (doc.lastAutoTable?.finalY || (clientY + 15)) + 1;
 
-  // 9. Fila de Totales de la Tabla
   doc.setDrawColor(0, 0, 0).setLineWidth(0.4);
   doc.line(162, currentY, 200, currentY);
   currentY += 3.5;
 
   doc.setFont("helvetica", "bold").setFontSize(8).setTextColor(0, 0, 0);
-  doc.text(formatCurrencyNum(totalSaldoPEN), 181, currentY, { align: "right" });
-  doc.text(formatCurrencyNum(totalSaldoUSD), 200, currentY, { align: "right" });
+  doc.text(totalSaldoPEN.toFixed(2), 181, currentY, { align: "right" });
+  doc.text(totalSaldoUSD.toFixed(2), 200, currentY, { align: "right" });
 
   currentY += 1.2;
   doc.setLineWidth(0.3).line(162, currentY, 200, currentY);
@@ -599,7 +651,6 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
 
   currentY += 12;
 
-  // 10. Paneles de Resumen Inferior
   const startSummaryY = currentY;
 
   const vencidos = tableRows.filter((r) => r.isOverdue);
@@ -635,7 +686,6 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
   const totalNCUSD = notasCred.reduce((acc, r) => acc + r.saldoUSD, 0);
   const totalNDUSD = notasDeb.reduce((acc, r) => acc + r.saldoUSD, 0);
 
-  // RESUMEN POR VENCIMIENTO (IZQUIERDA)
   const leftX = 18;
   doc.setFont("helvetica", "bold").setFontSize(7.5).setTextColor(0, 0, 0);
   doc.text("RESUMEN POR VENCIMIENTO", leftX, startSummaryY);
@@ -658,7 +708,7 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
   } else {
     doc.text("0", leftX + 25, yL, { align: "center" });
   }
-  doc.text(formatCurrencyNum(totalVencidosUSD), leftX + 56, yL, { align: "right" });
+  doc.text(totalVencidosUSD.toFixed(2), leftX + 56, yL, { align: "right" });
 
   yL += 4.5;
   doc.text("Doc. Vence Hoy", leftX - 8, yL);
@@ -670,16 +720,15 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
   doc.text("Doc. por Vencer", leftX - 8, yL);
   doc.text(":", leftX + 13, yL);
   doc.text(String(porVencer.length), leftX + 25, yL, { align: "center" });
-  doc.text(formatCurrencyNum(totalPorVencerUSD), leftX + 56, yL, { align: "right" });
+  doc.text(totalPorVencerUSD.toFixed(2), leftX + 56, yL, { align: "right" });
 
   yL += 3.5;
   doc.setLineWidth(0.4).line(leftX + 32, yL, leftX + 56, yL);
   yL += 4.5;
   doc.setFont("helvetica", "bold").setFontSize(8);
   doc.text("USD", leftX + 24, yL);
-  doc.text(formatCurrencyNum(totalSaldoUSD), leftX + 56, yL, { align: "right" });
+  doc.text(totalSaldoUSD.toFixed(2), leftX + 56, yL, { align: "right" });
 
-  // RESUMEN POR TIPO DE DOCUMENTO (DERECHA)
   const rightX = 86;
   doc.setFont("helvetica", "bold").setFontSize(7.5).setTextColor(0, 0, 0);
   doc.text("RESUMEN POR TIPO DE DOCUMENTO", rightX, startSummaryY);
@@ -693,33 +742,33 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
 
   doc.text("Total Factura", rightX, yR);
   doc.text(":", rightX + 20, yR);
-  doc.text(formatCurrencyNum(totalFacturasUSD), rightX + 58, yR, { align: "right" });
+  doc.text(totalFacturasUSD.toFixed(2), rightX + 58, yR, { align: "right" });
 
   yR += 4;
   doc.text("Total Boleta", rightX, yR);
   doc.text(":", rightX + 20, yR);
-  doc.text(formatCurrencyNum(totalBoletasUSD), rightX + 58, yR, { align: "right" });
+  doc.text(totalBoletasUSD.toFixed(2), rightX + 58, yR, { align: "right" });
 
   yR += 4;
   doc.text("Total Nota Cred", rightX, yR);
   doc.text(":", rightX + 20, yR);
-  doc.text(formatCurrencyNum(totalNCUSD), rightX + 58, yR, { align: "right" });
+  doc.text(totalNCUSD.toFixed(2), rightX + 58, yR, { align: "right" });
 
   yR += 4;
   doc.text("Total Nota Deb", rightX, yR);
   doc.text(":", rightX + 20, yR);
-  doc.text(formatCurrencyNum(totalNDUSD), rightX + 58, yR, { align: "right" });
+  doc.text(totalNDUSD.toFixed(2), rightX + 58, yR, { align: "right" });
 
   yR += 4;
   doc.text("Total Letras", rightX, yR);
   doc.text(":", rightX + 20, yR);
-  doc.text(formatCurrencyNum(totalLetrasUSD), rightX + 58, yR, { align: "right" });
+  doc.text(totalLetrasUSD.toFixed(2), rightX + 58, yR, { align: "right" });
 
   yR += 3.5;
   doc.setFont("helvetica", "normal").setFontSize(7).setTextColor(60, 60, 60);
   doc.text(`En Cartera : 0.00`, rightX + 16, yR);
   yR += 3.2;
-  doc.text(`En el Banco : ${formatCurrencyNum(totalLetrasUSD)}`, rightX + 16, yR);
+  doc.text(`En el Banco : ${totalLetrasUSD.toFixed(2)}`, rightX + 16, yR);
 
   yR += 2.5;
   doc.setLineWidth(0.3).line(rightX + 34, yR, rightX + 58, yR);
@@ -728,7 +777,7 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
   yR += 4.5;
   doc.setFont("helvetica", "bold").setFontSize(8).setTextColor(0, 0, 0);
   doc.text("USD", rightX + 26, yR);
-  doc.text(formatCurrencyNum(totalSaldoUSD), rightX + 58, yR, { align: "right" });
+  doc.text(totalSaldoUSD.toFixed(2), rightX + 58, yR, { align: "right" });
 
   doc.setLineWidth(0.6).line(77, startSummaryY - 2, 77, yR + 2);
 
