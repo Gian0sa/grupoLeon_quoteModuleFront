@@ -57,16 +57,22 @@ import { QuoteDetailDrawer } from "../components/QuoteDetailDrawer";
 import QuotePdfModal from "../components/QuotePdfModal";
 import { calculateQuoteTotals } from "../../../shared/utils/quoteCalculator";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
+import { useQueryClient } from "@tanstack/react-query";
+import { useGetQuotes } from "../hooks/queries/quotesQueries";
+import { updateQuote, deleteQuote, createQuote } from "../services/quoteService";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 
 export function QuoteApprovalPage() {
   const toast = useToast();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const today = format(new Date(), "EEEE, d 'de' MMMM 'del' yyyy", { locale: es });
 
   const { username: authUsername, role: authRole } = useAuthStore();
   const isAdminUser = authRole === "ADMIN" || authUsername?.toLowerCase() === "enrique";
+
+  const { data: serverQuotes, isLoading: isServerLoading, refetch: refetchServerQuotes } = useGetQuotes();
 
   const handleLoadQuote = (q) => {
     if (typeof useQuoteStore.getState().setQuoteData === "function") {
@@ -87,31 +93,47 @@ export function QuoteApprovalPage() {
   const [pdfQuote, setPdfQuote] = useState(null);
   const [deleteConfirmDoc, setDeleteConfirmDoc] = useState(null);
 
-  // Cargar cotizaciones desde localStorage (Sandbox local)
+  // Sincronizar cotizaciones desde el servidor en tiempo real (Polling activo cada 5s)
+  useEffect(() => {
+    if (serverQuotes && Array.isArray(serverQuotes)) {
+      setQuotes(serverQuotes);
+      // Guardar copia local como respaldo
+      localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(serverQuotes));
+    }
+  }, [serverQuotes]);
+
+  // Cargar cotizaciones iniciales desde localStorage si el servidor tarda
   const loadQuotes = () => {
     try {
+      if (serverQuotes && serverQuotes.length > 0) {
+        setQuotes(serverQuotes);
+        return;
+      }
       const stored = localStorage.getItem("grupoLeon_local_quotes");
       if (stored) {
         const parsed = JSON.parse(stored);
         setQuotes(Array.isArray(parsed) ? parsed : []);
-      } else {
-        localStorage.setItem("grupoLeon_local_quotes", "[]");
-        setQuotes([]);
       }
     } catch (err) {
       console.error("Error al cargar cotizaciones:", err);
-      setQuotes([]);
     }
   };
 
   const DRAFT_STATUSES = ["BORRADOR", "GENERADO"];
 
-  const handleDeleteQuote = (id, currentStatus) => {
-    const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
+  const handleDeleteQuote = async (id, currentStatus) => {
     const isHardDelete = !currentStatus || DRAFT_STATUSES.includes(currentStatus) || currentStatus === "ANULADO";
 
+    try {
+      await deleteQuote(id, isHardDelete);
+      queryClient.invalidateQueries({ queryKey: ["quotes"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    } catch (e) {
+      console.error("Error eliminando cotización en el servidor:", e);
+    }
+
+    const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
     if (isHardDelete) {
-      // HARD DELETE: Borradores, cotizaciones anuladas y pruebas → se eliminan físicamente para todos
       const updated = saved.filter(q => (q.id || q.docNumber) !== id);
       localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updated));
       window.dispatchEvent(new Event("localQuotesUpdated"));
@@ -123,7 +145,6 @@ export function QuoteApprovalPage() {
         isClosable: true
       });
     } else {
-      // SOFT DELETE / ANULACIÓN LÓGICA: Cotizaciones enviadas/aprobadas → se marcan como ANULADO en todos los campos de estado
       const nowIso = new Date().toISOString();
       const adminName = authUsername || "Enrique";
       const updated = saved.map(q => {
@@ -160,6 +181,7 @@ export function QuoteApprovalPage() {
     setQuotes([]);
     window.dispatchEvent(new Event("localQuotesUpdated"));
     window.dispatchEvent(new Event("localNotificationsUpdated"));
+    queryClient.invalidateQueries({ queryKey: ["quotes"] });
     toast({
       title: "🧹 Historial Limpiado",
       description: "Se han eliminado todas las cotizaciones de prueba.",
@@ -170,15 +192,32 @@ export function QuoteApprovalPage() {
   };
 
   // ── RECALL: Vendedor retira solicitud que aún no fue abierta por Enrique ──
-  const handleRecallQuote = (docId) => {
+  const handleRecallQuote = async (docId) => {
     const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
     const nowIso = new Date().toISOString();
     const recallUser = authUsername || "vendedor";
+    const target = quotes.find(q => (q.id || q.docNumber) === docId) || saved.find(q => (q.id || q.docNumber) === docId);
+    const prevLogs = target?.historyLog || [];
+    const version = (target?.quoteVersion || 1);
+    const newLog = { status: "EN_EDICION", timestamp: nowIso, user: recallUser, note: `↩️ Solicitud retirada por el vendedor para corrección (v${version})` };
+    const updatedHistory = [newLog, ...prevLogs];
+
+    try {
+      await updateQuote({
+        id: docId,
+        docNumber: docId,
+        state: "EN_EDICION",
+        approvalStatus: "EN_EDICION",
+        historyLog: updatedHistory,
+      });
+      queryClient.invalidateQueries({ queryKey: ["quotes"] });
+    } catch (e) {
+      console.error("Error retirando cotización:", e);
+    }
+
     const updated = saved.map(q => {
       if ((q.id || q.docNumber) !== docId) return q;
-      if (q.viewedByAdmin) return q; // Ya fue abierto por Enrique, no se puede retirar
-      const prevLogs = q.historyLog || [];
-      const version = (q.quoteVersion || 1);
+      if (q.viewedByAdmin) return q;
       return {
         ...q,
         status: "EN_EDICION",
@@ -187,17 +226,13 @@ export function QuoteApprovalPage() {
         quoteVersion: version,
         recalledAt: nowIso,
         recalledBy: recallUser,
-        historyLog: [
-          { status: "EN_EDICION", timestamp: nowIso, user: recallUser, note: `↩️ Solicitud retirada por el vendedor para corrección (v${version})` },
-          ...prevLogs
-        ]
+        historyLog: updatedHistory
       };
     });
     localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updated));
     window.dispatchEvent(new Event("localQuotesUpdated"));
 
-    // Cargar la cotización en el formulario para edición
-    const recalledDoc = updated.find(q => (q.id || q.docNumber) === docId);
+    const recalledDoc = updated.find(q => (q.id || q.docNumber) === docId) || target;
     if (recalledDoc) {
       const store = useQuoteStore.getState();
       if (typeof store.setQuoteData === "function") {
@@ -221,16 +256,35 @@ export function QuoteApprovalPage() {
   };
 
   // ── OBSERVE: Enrique devuelve con observación al vendedor ──
-  const handleObserveQuote = (docId) => {
+  const handleObserveQuote = async (docId) => {
     const reason = window.prompt("💬 Escribe la observación o motivo de devolución al vendedor:");
     if (!reason || !reason.trim()) return;
 
     const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
     const nowIso = new Date().toISOString();
     const adminName = authUsername || "Enrique";
+    const target = quotes.find(q => (q.id || q.docNumber) === docId) || saved.find(q => (q.id || q.docNumber) === docId);
+    const prevLogs = target?.historyLog || [];
+    const newLog = { status: "OBSERVADO", timestamp: nowIso, user: adminName, note: `💬 Devuelto por ${adminName}: ${reason.trim()}` };
+    const updatedHistory = [newLog, ...prevLogs];
+
+    try {
+      await updateQuote({
+        id: docId,
+        docNumber: docId,
+        state: "OBSERVADO",
+        approvalStatus: "OBSERVADO",
+        rejectionReason: reason.trim(),
+        historyLog: updatedHistory,
+      });
+      queryClient.invalidateQueries({ queryKey: ["quotes"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    } catch (e) {
+      console.error("Error observando cotización:", e);
+    }
+
     const updated = saved.map(q => {
       if ((q.id || q.docNumber) !== docId) return q;
-      const prevLogs = q.historyLog || [];
       return {
         ...q,
         status: "OBSERVADO",
@@ -239,16 +293,12 @@ export function QuoteApprovalPage() {
         observedAt: nowIso,
         observedBy: adminName,
         observationReason: reason.trim(),
-        historyLog: [
-          { status: "OBSERVADO", timestamp: nowIso, user: adminName, note: `💬 Devuelto por ${adminName}: ${reason.trim()}` },
-          ...prevLogs
-        ]
+        historyLog: updatedHistory
       };
     });
     localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updated));
     window.dispatchEvent(new Event("localQuotesUpdated"));
 
-    // Notificar al vendedor
     const observedDoc = updated.find(q => (q.id || q.docNumber) === docId);
     const existingNotifs = JSON.parse(localStorage.getItem("grupoLeon_notifications") || "[]");
     const notifObj = {
@@ -263,6 +313,8 @@ export function QuoteApprovalPage() {
       timestamp: nowIso,
       read: false
     };
+    localStorage.setItem("grupoLeon_notifications", JSON.stringify([notifObj, ...existingNotifs.filter(n => n.quoteId !== docId || n.status !== "OBSERVADO")]));
+    window.dispatchEvent(new Event("localNotificationsUpdated"));
     localStorage.setItem("grupoLeon_notifications", JSON.stringify([notifObj, ...existingNotifs]));
     window.dispatchEvent(new Event("localNotificationsUpdated"));
 
@@ -334,27 +386,47 @@ export function QuoteApprovalPage() {
   }, []);
 
   // Transición de Estado del Workflow (Stepper)
-  const handleUpdateStatus = (docId, newStatus) => {
+  const handleUpdateStatus = async (docId, newStatus) => {
+    const target = quotes.find(q => (q.id || q.docNumber) === docId);
+    const currentLog = target?.historyLog || [];
+    const newLogEntry = {
+      status: newStatus,
+      timestamp: new Date().toISOString(),
+      user: authUsername || "Enrique",
+      note:
+        newStatus === "ENVIADO"
+          ? "Enviado a Cliente / Aprobador"
+          : newStatus === "EN_PROCESO"
+          ? "Puesto En Proceso de Revisión"
+          : newStatus === "APROBADO_COMERCIAL"
+          ? "Aprobado Comercial por Administrador"
+          : newStatus === "APROBADO"
+          ? "Aprobado exitosamente — Listo para facturar"
+          : "Rechazado"
+    };
+    const updatedHistory = [newLogEntry, ...currentLog];
+
+    try {
+      await updateQuote({
+        id: docId,
+        docNumber: docId,
+        state: newStatus,
+        approvalStatus: newStatus,
+        historyLog: updatedHistory,
+      });
+      queryClient.invalidateQueries({ queryKey: ["quotes"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    } catch (err) {
+      console.error("Error actualizando estado de cotización en servidor:", err);
+    }
+
     const updated = quotes.map((q) => {
       if (q.id === docId || q.docNumber === docId) {
-        const currentLog = q.historyLog || [];
-        const newLogEntry = {
-          status: newStatus,
-          timestamp: new Date().toISOString(),
-          user: "Enrique",
-          note:
-            newStatus === "ENVIADO"
-              ? "Enviado a Cliente / Aprobador"
-              : newStatus === "EN_PROCESO"
-              ? "Puesto En Proceso de Revisión"
-              : newStatus === "APROBADO"
-              ? "Aprobado exitosamente — Listo para facturar"
-              : "Rechazado"
-        };
         return {
           ...q,
+          state: newStatus,
           approvalStatus: newStatus,
-          historyLog: [newLogEntry, ...currentLog]
+          historyLog: updatedHistory
         };
       }
       return q;
@@ -366,12 +438,13 @@ export function QuoteApprovalPage() {
     if (selectedQuote && (selectedQuote.id === docId || selectedQuote.docNumber === docId)) {
       setSelectedQuote((prev) => ({
         ...prev,
+        state: newStatus,
         approvalStatus: newStatus,
         historyLog: [
           {
             status: newStatus,
             timestamp: new Date().toISOString(),
-            user: "Enrique",
+            user: authUsername || "Enrique",
             note: "Actualización desde detalle"
           },
           ...(prev.historyLog || [])
@@ -382,7 +455,7 @@ export function QuoteApprovalPage() {
     toast({
       title: `Estado Actualizado: ${newStatus}`,
       description: `La cotización ${docId} avanzó en el flujo comercial.`,
-      status: newStatus === "APROBADO" ? "success" : newStatus === "RECHAZADO" ? "error" : "info",
+      status: newStatus === "APROBADO" || newStatus === "APROBADO_COMERCIAL" ? "success" : newStatus === "RECHAZADO" ? "error" : "info",
       duration: 3500,
       isClosable: true
     });

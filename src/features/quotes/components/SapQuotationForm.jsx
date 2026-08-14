@@ -13,6 +13,8 @@ import ClientAutocomplete from "./ClientAutocomplete";
 import SapItemGrid from "./SapItemGrid";
 import { NewSellTerms } from "./NewSellTerms";
 import { SapQuoteDocumentModal } from "./SapQuoteDocumentModal";
+import { useQueryClient } from "@tanstack/react-query";
+import { createQuote, updateQuote } from "../services/quoteService";
 import { useQuoteStore } from "../stores/quoteStore";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { useExchangeRate } from "../../dashboard/hooks/queries/dashboardQueries";
@@ -37,6 +39,7 @@ const todayIso = () => new Date().toISOString().split("T")[0];
 export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", isTracking = false }) {
   const toast = useToast();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { username, userId } = useAuthStore();
   const localSeller = localStorage.getItem("username") || localStorage.getItem("userId");
   const activeSeller = (sellerName && sellerName !== "Vendedor SAP" && sellerName !== "Vendedor Autorizado")
@@ -258,6 +261,14 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     window.dispatchEvent(new Event("localQuotesUpdated"));
     if (setQuoteId) setQuoteId(activeDocNumber);
 
+    // Persistencia centralizada en MySQL vía Backend
+    createQuote(newDoc).then(() => {
+      queryClient.invalidateQueries({ queryKey: ["quotes"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    }).catch(err => {
+      console.error("Error persistiendo cotización en base de datos:", err);
+    });
+
     // Si se ENVIÓ a validación, generar la notificación para Facturación
     if (targetStatus === "ENVIADO") {
       const existingNotifs = JSON.parse(localStorage.getItem("grupoLeon_notifications") || "[]");
@@ -291,7 +302,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     if (result) {
       toast({
         title: "📝 Borrador Guardado",
-        description: `Documento ${result.activeDocNumber} guardado localmente como borrador.`,
+        description: `Documento ${result.activeDocNumber} guardado exitosamente en el servidor.`,
         status: "info",
         duration: 3000,
         isClosable: true,
@@ -331,7 +342,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     if (result) {
       toast({
         title: "✅ Cotización Enviada a Validación",
-        description: `Documento ${result.activeDocNumber} registrado y enviado a la Asesora de Facturación.`,
+        description: `Documento ${result.activeDocNumber} registrado y enviado en tiempo real a la Asesora de Facturación.`,
         status: "success",
         duration: 5000,
         isClosable: true,
@@ -432,6 +443,14 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     const updated = saved.map((q) => ((q.id || q.docNumber) === activeDocNumber ? newDoc : q));
     localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updated));
     window.dispatchEvent(new Event("localQuotesUpdated"));
+
+    // Persistir actualización en MySQL
+    updateQuote(newDoc).then(() => {
+      queryClient.invalidateQueries({ queryKey: ["quotes"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    }).catch(err => {
+      console.error("Error actualizando cotización a PENDIENTE_FACTURACION:", err);
+    });
 
     // Enviar notificación a Facturación (Enrique)
     const existingNotifs = JSON.parse(localStorage.getItem("grupoLeon_notifications") || "[]");

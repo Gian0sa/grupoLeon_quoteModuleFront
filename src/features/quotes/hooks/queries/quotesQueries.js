@@ -1,12 +1,34 @@
-import { getQuote, getQuoteById, getTransports ,getPaymentType , getDeliveryForms} from "../../services/quoteService"
+import {
+    getQuote,
+    getQuotes,
+    getQuoteById,
+    getTransports,
+    getPaymentType,
+    getDeliveryForms,
+    getNotifications,
+} from "../../services/quoteService"
 import { useQuery } from "@tanstack/react-query"
 
-export const useGetQuotes = () => {
-    const { data, isLoading, error } = useQuery({
-        queryKey: ["quotes"],
-        queryFn: () => getQuote(),
+export const useGetQuotes = (filters = {}) => {
+    const query = useQuery({
+        queryKey: ["quotes", filters],
+        queryFn: () => getQuotes(filters),
+        refetchInterval: 5000, // Live poll every 5 seconds for real-time multi-user sync
+        refetchOnWindowFocus: true,
     })
-    return { data, isLoading, error }
+    return { ...query, data: query.data || [], isLoading: query.isLoading, error: query.error }
+}
+
+export const useQuotes = useGetQuotes;
+
+export const useNotifications = (targetRole, targetUsername) => {
+    const query = useQuery({
+        queryKey: ["notifications", targetRole, targetUsername],
+        queryFn: () => getNotifications(targetRole, targetUsername),
+        refetchInterval: 5000, // Live poll every 5 seconds
+        refetchOnWindowFocus: true,
+    })
+    return { ...query, data: query.data || [], isLoading: query.isLoading, error: query.error }
 }
 
 export const useGetQuoteById = (id) => {
@@ -14,6 +36,7 @@ export const useGetQuoteById = (id) => {
         queryKey: ["quoteById", id],
         queryFn:  () => getQuoteById(id),
         enabled: !!id,
+        refetchInterval: 5000,
     })
     return { data, isLoading, error }
 }
