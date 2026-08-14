@@ -16,7 +16,7 @@ import {
 } from "@chakra-ui/react";
 import { useMemo, useState, useEffect } from "react";
 import { useMyVisitLogs } from "../hooks/queries/visitLogQueries";
-import { useSyncQueue } from "../hooks/useSyncQueue";
+import { useSyncQueueContext } from "../context/SyncQueueProvider";
 import { BackButton } from "../../../components/BackButton";
 import { getQueue } from "../services/visitLogQueue";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
@@ -104,7 +104,7 @@ const isThisMonth = (date) => {
 export default function MyVisitsPage() {
   const { username } = useAuthStore();
   const { data, isLoading, error } = useMyVisitLogs();
-  const { retryGroup, syncPending, isSyncing } = useSyncQueue();
+  const { retryGroup, syncPending, isSyncing } = useSyncQueueContext();
   const [queueItems, setQueueItems] = useState([]);
   const [filterType, setFilterType] = useState("today");
   const [statusFilter, setStatusFilter] = useState("all"); // 'all', 'pending', 'errors'

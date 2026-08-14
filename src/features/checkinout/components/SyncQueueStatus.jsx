@@ -23,15 +23,27 @@ import {
 } from "@chakra-ui/react";
 import { FiRefreshCw, FiTrash2, FiClock, FiAlertTriangle, FiChevronDown, FiChevronUp } from "react-icons/fi";
 
-export default function SyncQueueStatus({ queueItems, onRetry, onDelete, isSyncing, onSyncAll }) {
+export default function SyncQueueStatus({ queueItems, onRetry, onDelete, onClearAll, isSyncing, onSyncAll }) {
   const [isOpen, setIsOpen] = useState(false);
   const [deleteItemId, setDeleteItemId] = useState(null);
   const [isAlertOpen, setIsAlertOpen] = useState(false);
+  const [isClearAllAlertOpen, setIsClearAllAlertOpen] = useState(false);
   const cancelRef = React.useRef();
 
   const handleDeleteClick = (id) => {
     setDeleteItemId(id);
     setIsAlertOpen(true);
+  };
+
+  const handleClearAllClick = () => {
+    setIsClearAllAlertOpen(true);
+  };
+
+  const handleConfirmClearAll = () => {
+    if (onClearAll) {
+      onClearAll();
+    }
+    setIsClearAllAlertOpen(false);
   };
 
   const handleConfirmDelete = () => {
@@ -51,6 +63,7 @@ export default function SyncQueueStatus({ queueItems, onRetry, onDelete, isSynci
 
   const getStatusColor = (status) => {
     switch (status) {
+      case "NEEDS_REVIEW":
       case "FAILED": return "red";
       case "SYNCING": return "blue";
       default: return "yellow";
@@ -59,11 +72,14 @@ export default function SyncQueueStatus({ queueItems, onRetry, onDelete, isSynci
 
   const getStatusLabel = (status) => {
     switch (status) {
-      case "FAILED": return "Fallido";
-      case "SYNCING": return "Sincronizando";
-      default: return "Pendiente";
+      case "NEEDS_REVIEW":
+      case "FAILED": return "Requiere revisión";
+      case "SYNCING": return "Enviando";
+      default: return "Pendiente de envío";
     }
   };
+
+  const needsAttention = (status) => status === "NEEDS_REVIEW" || status === "FAILED";
 
   return (
     <>
@@ -91,6 +107,20 @@ export default function SyncQueueStatus({ queueItems, onRetry, onDelete, isSynci
               </VStack>
             </HStack>
             <HStack spacing={2}>
+              {onClearAll && (
+                <Button
+                  size="xs"
+                  variant="outline"
+                  colorScheme="red"
+                  onClick={handleClearAllClick}
+                  isLoading={isSyncing}
+                  leftIcon={<FiTrash2 />}
+                  fontSize="2xs"
+                  px={2}
+                >
+                  Limpiar Todo
+                </Button>
+              )}
               <Button
                 size="xs"
                 colorScheme="orange"
@@ -122,7 +152,7 @@ export default function SyncQueueStatus({ queueItems, onRetry, onDelete, isSynci
                   bg="white"
                   borderRadius="md"
                   border="1px solid"
-                  borderColor={item.status === "FAILED" ? "red.100" : "gray.100"}
+                  borderColor={needsAttention(item.status) ? "red.100" : "gray.100"}
                   fontSize="xs"
                   boxShadow="2xs"
                 >
@@ -153,10 +183,12 @@ export default function SyncQueueStatus({ queueItems, onRetry, onDelete, isSynci
                       <Badge colorScheme={getStatusColor(item.status)} fontSize="2xs" px={1.5} borderRadius="sm">
                         {getStatusLabel(item.status)}
                       </Badge>
-                      {item.status === "FAILED" && (
-                        <Tooltip label="Reintentar">
+                      {needsAttention(item.status) && (
+                        <Tooltip label="Reintentar envío">
                           <IconButton
-                            size="xs"
+                            size="sm"
+                            minH="40px"
+                            minW="40px"
                             icon={<FiRefreshCw />}
                             colorScheme="blue"
                             variant="ghost"
@@ -209,6 +241,33 @@ export default function SyncQueueStatus({ queueItems, onRetry, onDelete, isSynci
               </Button>
               <Button colorScheme="red" onClick={handleConfirmDelete} ml={3} size="sm">
                 Eliminar
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialogOverlay>
+      </AlertDialog>
+
+      <AlertDialog
+        isOpen={isClearAllAlertOpen}
+        leastDestructiveRef={cancelRef}
+        onClose={() => setIsClearAllAlertOpen(false)}
+      >
+        <AlertDialogOverlay>
+          <AlertDialogContent mx={4}>
+            <AlertDialogHeader fontSize="lg" fontWeight="bold">
+              Limpiar cola de sincronización
+            </AlertDialogHeader>
+
+            <AlertDialogBody>
+              ¿Está seguro de vaciar toda la cola local? Todos los registros pendientes de prueba u obsoletos serán eliminados de la memoria local.
+            </AlertDialogBody>
+
+            <AlertDialogFooter>
+              <Button ref={cancelRef} onClick={() => setIsClearAllAlertOpen(false)} size="sm">
+                Cancelar
+              </Button>
+              <Button colorScheme="red" onClick={handleConfirmClearAll} ml={3} size="sm">
+                Limpiar Todo
               </Button>
             </AlertDialogFooter>
           </AlertDialogContent>

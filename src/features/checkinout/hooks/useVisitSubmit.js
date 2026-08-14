@@ -1,9 +1,13 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useToast } from "@chakra-ui/react";
 import { useCreateVisitLog } from "../../checkinout/hooks/mutations/visitLogMutations";
 import { getLocation } from "../utils/deviceUtils";
 import { useNavigate } from "react-router-dom";
-import { addToQueue, getQueue } from "../services/visitLogQueue";
+import {
+    addToQueue,
+    getUnsyncedForVendor,
+    getOpenVisitGroupId,
+} from "../services/visitLogQueue";
 
 const LOCATION_ERRORS = {
     GEOLOCATION_NOT_SUPPORTED: {
@@ -26,6 +30,9 @@ const LOCATION_ERRORS = {
 
 export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVisit, selectedClient, image, existingImageData }) {
     const [isSubmitting, setIsSubmitting] = useState(false);
+    // `isSubmitting` solo bloquea el botón tras un re-render; en un teléfono un
+    // doble toque rápido entra antes de eso. Este candado es síncrono.
+    const inFlightRef = useRef(false);
     const { mutate: createVisit, isLoading: isCreatingVisit, isPending } = useCreateVisitLog();
     const toast = useToast();
     const navigate = useNavigate();
@@ -83,22 +90,60 @@ export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVis
         return true;
     };
 
+    // Libera el candado síncrono junto con el estado visible del botón.
+    const finishSubmit = () => {
+        inFlightRef.current = false;
+        setIsSubmitting(false);
+    };
+
     const submit = async (type, { onSuccess, onError }) => {
+        if (inFlightRef.current) {
+            console.warn("Envío ignorado: ya hay una marca en curso");
+            return;
+        }
         if (!validate(type)) return;
 
+        inFlightRef.current = true;
         setIsSubmitting(true);
 
         try {
-            const location = await getLocation();
+            // El GPS falla a menudo en campo (sin señal, permiso denegado, timeout).
+            // Antes eso abortaba el envío y la visita se perdía sin dejar rastro;
+            // ahora se registra igual y se marca para conciliación.
+            let location = null;
+            let reviewReason = null;
+            try {
+                location = await getLocation();
+            } catch (locErr) {
+                const info = LOCATION_ERRORS[locErr.message];
+                reviewReason = `Sin ubicación: ${info?.title || locErr.message || "error de GPS"}`;
+                toast({
+                    title: "Sin ubicación GPS",
+                    description: "La marca se registrará sin coordenadas y quedará señalada para revisión.",
+                    status: "warning",
+                    duration: 5000,
+                    isClosable: true,
+                    position: "top",
+                });
+            }
+
+            // El Check-In abre un grupo; el Check-Out reutiliza el del Check-In
+            // abierto. Este identificador es el que empareja ambas marcas en el
+            // servidor, con independencia de cuándo se sincronicen.
+            const visitGroupId =
+                type === "IN"
+                    ? `grp-${crypto.randomUUID()}`
+                    : (await getOpenVisitGroupId(username, userCode, activeVisit)) || null;
 
             const formData = new FormData();
-            console.log("selectedClient", selectedClient);
             formData.append("type", type);
             formData.append("vendorName", username);
             formData.append("vendorCode", userCode);
             formData.append("storeName", selectedClient.firstName);
             formData.append("createdAt", new Date().toISOString());
             formData.append("uuid", crypto.randomUUID());
+            if (visitGroupId) formData.append("visitGroupId", visitGroupId);
+            if (reviewReason) formData.append("reviewReason", reviewReason);
 
             // Caso SAP
             if (selectedClient.type === "SAP") {
@@ -118,8 +163,10 @@ export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVis
                     })
                 );
             }
-            formData.append("latitude", location.latitude);
-            formData.append("longitude", location.longitude);
+            if (location) {
+                formData.append("latitude", location.latitude);
+                formData.append("longitude", location.longitude);
+            }
 
             if (type === "IN" && image) {
                 formData.append("image", image);
@@ -133,20 +180,26 @@ export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVis
                 navigate(`/clienteBusqueda?storeName=${encodeURIComponent(storeNameParam)}&clientCode=${encodeURIComponent(clientCodeParam)}&returnTo=/visitLog`);
             };
 
-            // Antes de enviar, verificar si hay operaciones activas (PENDING o SYNCING) en la cola
-            const queue = await getQueue();
-            const activeQueueCount = queue.filter(item => item.status === "PENDING" || item.status === "SYNCING").length;
-            if (activeQueueCount > 0) {
+            // REGLA DURA: si el vendedor tiene CUALQUIER marca sin confirmar por el
+            // servidor, esta también se encola. Nunca se envía directo.
+            //
+            // Antes solo se contaban PENDING y SYNCING, así que un Check-In en
+            // FAILED daba cero y el Check-Out salía directo al servidor — que,
+            // sin el Check-In registrado, lo rechazaba con "sin Check-In previo"
+            // y dejaba al vendedor trabado. Contar también los fallidos y los
+            // que esperan revisión cierra esa vía.
+            const unsynced = await getUnsyncedForVendor(username, userCode);
+            if (unsynced.length > 0) {
                 const localId = await addToQueue(formData);
                 toast({
                     title: `Check-${type === "IN" ? "In" : "Out"} guardado localmente`,
-                    description: `Hay otras operaciones pendientes en cola. Se sincronizará automáticamente.`,
+                    description: "Tienes marcas pendientes de enviar. Esta se sincronizará junto con ellas, en orden.",
                     status: "warning",
                     duration: 5000,
                     isClosable: true,
                     position: "top",
                 });
-                setIsSubmitting(false);
+                finishSubmit();
                 onSuccess?.({ isLocal: true, id: localId }, type);
                 if (type === "IN") {
                     redirectToHistory();
@@ -166,7 +219,7 @@ export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVis
                         isClosable: true,
                         position: "top",
                     });
-                    setIsSubmitting(false);
+                    finishSubmit();
                     onSuccess?.(data, type);
                     if (type === "IN") {
                         redirectToHistory();
@@ -183,7 +236,7 @@ export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVis
                             isClosable: true,
                             position: "top",
                         });
-                        setIsSubmitting(false);
+                        finishSubmit();
                         onSuccess?.({ isLocal: true, id: localId }, type);
                         if (type === "IN") {
                             redirectToHistory();
@@ -198,7 +251,7 @@ export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVis
                             isClosable: true,
                             position: "top",
                         });
-                        setIsSubmitting(false);
+                        finishSubmit();
                         onError?.(error);
                     }
                 },
@@ -212,7 +265,7 @@ export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVis
                 duration: 5000,
                 isClosable: true,
             });
-            setIsSubmitting(false);
+            finishSubmit();
         }
     };
 

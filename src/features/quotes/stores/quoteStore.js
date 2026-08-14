@@ -14,11 +14,13 @@ export const useQuoteStore = create((set) => ({
   comment: null,
   deliveryDate: null,
   whsCode: "014",
+  approvalStatus: null,
   contactPerson: "",
   refNumber: "",
 
   setClient: (clientData) => set({ client: clientData }),
   setQuoteId: (id) => set({ quoteId: id }),
+  setApprovalStatus: (status) => set({ approvalStatus: status }),
 
   setSelectedPoint: (point) => set({ selectedPoint: point }),
   setSelectedTransport: (transport) => set({ selectedTransport: transport }),
@@ -76,6 +78,7 @@ export const useQuoteStore = create((set) => ({
       whsCode: quoteData.whsCode || "014",
       contactPerson: quoteData.contactPerson || "",
       refNumber: quoteData.refNumber || "",
+      approvalStatus: quoteData.approvalStatus || quoteData.state || null,
     }),
 
   clear: () =>
@@ -94,5 +97,6 @@ export const useQuoteStore = create((set) => ({
       whsCode: "014",
       contactPerson: "",
       refNumber: "",
+      approvalStatus: null,
     }),
 }));

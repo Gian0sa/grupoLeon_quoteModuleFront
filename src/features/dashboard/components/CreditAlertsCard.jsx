@@ -253,15 +253,14 @@ export function CreditAlertsCard() {
             >
               <Icon as={FiAlertCircle} boxSize={5} />
             </Flex>
-            <Box minW={0}>
-              <HStack spacing={1.5} flexWrap="nowrap" align="center">
+            <Box minW={0} flex={1}>
+              <Flex gap={1.5} flexWrap="wrap" align="center">
                 <Text
                   fontSize={{ base: "sm", sm: "md" }}
                   fontWeight="800"
                   color="gray.800"
                   letterSpacing="tight"
                   lineHeight="shorter"
-                  whiteSpace="nowrap"
                 >
                   Alertas de Crédito y Mora
                 </Text>
@@ -278,7 +277,7 @@ export function CreditAlertsCard() {
                     {criticalClients.length} CRÍTICOS
                   </Badge>
                 )}
-              </HStack>
+              </Flex>
               <Text fontSize="xs" color="gray.500" display={{ base: "none", xl: "block" }} noOfLines={1}>
                 Estado de cuenta de clientes a tu cargo
               </Text>
