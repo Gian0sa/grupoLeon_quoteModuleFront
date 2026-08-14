@@ -224,30 +224,50 @@ export const downloadInvoicePDF = async (invoiceDetalle) => {
 };
 
 export const downloadInvoicePDFdirectly = async (referenceCode) => {
+  if (!referenceCode) {
+    throw new Error("No se proporcionó un código de referencia válido.");
+  }
 
   const url = `${import.meta.env.VITE_API_URL}/reportModule/pdf/${referenceCode}`;
 
-  try {
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        "Accept": "application/pdf",
-      },
-      credentials: "include",
-    });
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      "Accept": "application/pdf, application/json",
+    },
+    credentials: "include",
+  });
 
-    const blob = await response.blob();
-    const blobUrl = window.URL.createObjectURL(blob);
-
-    const link = document.createElement("a");
-    link.href = blobUrl;
-    link.download = `Factura_${referenceCode}.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(blobUrl);
-  } catch (err) {
-    console.error("No se pudo descargar el archivo:", err);
-    alert("No se pudo descargar el archivo.");
+  if (!response.ok) {
+    let errorMsg = `Error ${response.status}: No se pudo obtener el PDF del comprobante ${referenceCode}.`;
+    try {
+      const errJson = await response.json();
+      if (errJson?.message) errorMsg = errJson.message;
+    } catch (_) {
+      try {
+        const errText = await response.text();
+        if (errText) errorMsg = errText;
+      } catch (__) {}
+    }
+    throw new Error(errorMsg);
   }
+
+  const contentType = response.headers.get("content-type");
+  if (contentType && !contentType.includes("application/pdf") && !contentType.includes("octet-stream")) {
+    throw new Error("La respuesta del servidor no corresponde a un documento PDF válido.");
+  }
+
+  const blob = await response.blob();
+  if (!blob || blob.size === 0) {
+    throw new Error("El documento PDF recibido está vacío o no contiene datos.");
+  }
+
+  const blobUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = blobUrl;
+  link.download = `Factura_${referenceCode}.pdf`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(blobUrl);
 };

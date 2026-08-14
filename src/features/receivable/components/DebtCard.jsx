@@ -469,7 +469,14 @@ export function DebtCard({ debt, onViewInvoices }) {
               e.currentTarget.style.transform = "scale(1)";
               e.currentTarget.style.filter = "none";
             }}
-            onClick={() => generateReceivablePDF(debt)}
+            onClick={async (e) => {
+              e.stopPropagation();
+              try {
+                await generateReceivablePDF(debt);
+              } catch (error) {
+                console.error("Error al generar Estado de Cuenta:", error);
+              }
+            }}
           >
             Ver detalles <ChevronRight size={16} />
           </button>

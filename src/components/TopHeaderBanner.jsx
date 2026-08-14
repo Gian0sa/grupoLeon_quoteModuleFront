@@ -18,6 +18,7 @@ import { NotificationDrawer } from "./NotificationDrawer";
 import { LateralMenu } from "../features/dashboard/components/LateralMenu";
 import { useExchangeRate } from "../features/dashboard/hooks/queries/dashboardQueries";
 import { useAuthStore } from "../features/auth/stores/useAuthStore";
+import { useNotifications } from "../features/quotes/hooks/queries/quotesQueries";
 import { QUERY_KEYS } from "../shared/utils/queryKeys";
 
 export const HEADER_BRAND_IMAGE = "/assets/header-brand-bg.png";
@@ -44,37 +45,37 @@ export function TopHeaderBanner({
   pt = { base: 5, md: 6 },
   mb = 6
 }) {
-  const { salesEmployeeCode, username, userId } = useAuthStore();
+  const { salesEmployeeCode, username, userId, role } = useAuthStore();
   const todayStr = format(new Date(), "yyyy-MM-dd");
   const { isOpen: isNotifOpen, onOpen: onOpenNotif, onClose: onCloseNotif } = useDisclosure();
-  const [notifCount, setNotifCount] = React.useState(0);
 
-  const checkNotifications = () => {
+  const { data: serverNotifs } = useNotifications(
+    role === "ADMIN" ? "FACTURACION" : undefined,
+    username
+  );
+
+  const notifCount = React.useMemo(() => {
+    if (serverNotifs && Array.isArray(serverNotifs)) {
+      return serverNotifs.filter((n) => !n.read).length;
+    }
     try {
       const saved = JSON.parse(localStorage.getItem("grupoLeon_notifications") || "[]");
-      // Solo contar las notificaciones del usuario en sesión
-      const mine = saved.filter((n) => {
+      return saved.filter((n) => {
         if (n.targetUsername && username) {
           return n.targetUsername.toLowerCase() === username.toLowerCase();
+        }
+        if (n.targetRole === "FACTURACION" && (role === "ADMIN" || username?.toLowerCase() === "enrique")) {
+          return true;
         }
         if (n.targetUserId && userId) {
           return String(n.targetUserId) === String(userId);
         }
         return false;
-      });
-      setNotifCount(mine.length);
-    } catch (e) {
-      setNotifCount(0);
+      }).filter((n) => !n.read).length;
+    } catch {
+      return 0;
     }
-  };
-
-  React.useEffect(() => {
-    checkNotifications();
-    window.addEventListener("localNotificationsUpdated", checkNotifications);
-    return () => {
-      window.removeEventListener("localNotificationsUpdated", checkNotifications);
-    };
-  }, [username, userId]);
+  }, [serverNotifs, username, userId, role]);
 
   const { data: exchangeRate, isLoading: isLoadingExchangeRate } = useExchangeRate(
     {
