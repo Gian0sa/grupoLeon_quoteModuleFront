@@ -7,6 +7,7 @@ import { useClientQueries, useClientQueriesByName } from "../../clients/hooks/qu
 import { adaptClientFromApi } from "../../clients/adapters/clientAdapter";
 import { axiosInstance } from "../../../shared/lib/axiosInstance";
 import { useDebounce } from "../../../shared/hooks/useDebounce";
+import { normalizeQuoteClient } from "../stores/quoteStore";
 
 export default function ClientAutocomplete({ client, setClient }) {
   const [searchInput, setSearchInput] = useState("");
@@ -121,16 +122,15 @@ export default function ClientAutocomplete({ client, setClient }) {
 
   const handleSelectClient = (clientData) => {
     const adapted = adaptClientFromApi(clientData);
-    const cardCode = adapted.id || clientData.CardCode || clientData.cardCode || (clientData.LicTradNum ? `CL${clientData.LicTradNum}` : "");
-    const cardName = adapted.firstName || clientData.CardName || clientData.clientName || "";
-    const address = adapted.address || clientData.Address || clientData.address || "";
-
-    setClient({
-      CardCode: cardCode,
-      CardName: cardName,
-      Address: address,
+    const normalizedClient = normalizeQuoteClient({
+      ...clientData,
+      CardCode: adapted.id || clientData.CardCode || clientData.cardCode,
+      CardName: adapted.firstName || clientData.CardName || clientData.clientName,
+      Address: adapted.address || clientData.Address || clientData.address,
       raw: clientData,
     });
+
+    setClient(normalizedClient);
 
     setSearchTerm("");
     setSearchInput("");
@@ -146,6 +146,9 @@ export default function ClientAutocomplete({ client, setClient }) {
 
   // 1. VISTA CUANDO EL CLIENTE YA ESTÁ SELECCIONADO
   if (client) {
+    const normalizedClient = normalizeQuoteClient(client) || client;
+    const cardCode = normalizedClient.CardCode || "No registrado";
+    const documentNumber = normalizedClient.LicTradNum || normalizedClient.clientRuc || "No registrado";
     return (
       <Box
         p={4}
@@ -177,18 +180,18 @@ export default function ClientAutocomplete({ client, setClient }) {
         </HStack>
 
         <Text fontWeight="800" fontSize="md" color="emerald.950" mb={1}>
-          {client.CardName}
+          {normalizedClient.CardName || "Cliente seleccionado"}
         </Text>
 
-        {client.CardCode && (
+        {(normalizedClient.CardCode || normalizedClient.LicTradNum) && (
           <Text fontSize="xs" color="gray.700" mb={0.5}>
-            <strong>Código SAP / RUC:</strong> {client.CardCode}
+            <strong>Código SAP:</strong> {cardCode} <strong>• RUC / Doc:</strong> {documentNumber}
           </Text>
         )}
 
-        {client.Address && (
-          <Text fontSize="xs" color="gray.700" isTruncated title={client.Address}>
-            <strong>Dirección:</strong> {client.Address}
+        {normalizedClient.Address && (
+          <Text fontSize="xs" color="gray.700" isTruncated title={normalizedClient.Address}>
+            <strong>Dirección:</strong> {normalizedClient.Address}
           </Text>
         )}
       </Box>

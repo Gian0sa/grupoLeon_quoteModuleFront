@@ -32,14 +32,6 @@ export default function QuoteSubmitConfirmModal({
   const rucLabel = cleanRuc.length === 8 ? "DNI" : "RUC";
   const address = client?.Address || client?.raw?.Address || client?.address || "-";
 
-  const paymentLabel = typeof selectedPaymentType === "object"
-    ? (selectedPaymentType?.PymntGroup || selectedPaymentType?.PaymentTermsGroupName || "Sin definir")
-    : (selectedPaymentType || "Sin definir");
-
-  const transportLabel = typeof selectedTransport === "object"
-    ? (selectedTransport?.Name || selectedTransport?.name || "-")
-    : (selectedTransport || "-");
-
   const totals = calculateQuoteTotals(products, 3.76);
   const itemCount = products.length;
   const totalQty = products.reduce((s, p) => s + Number(p.quantity || p.Quantity || 1), 0);
@@ -102,14 +94,17 @@ export default function QuoteSubmitConfirmModal({
               </VStack>
             </Box>
 
-            {/* Sección: Condiciones */}
+            {/* Sección: Responsable Comercial */}
             <Box bg="#f8fafc" border="1px solid #e2e8f0" borderRadius="lg" p={3}>
-              <Text fontSize="xs" fontWeight="900" color="#475569" textTransform="uppercase" mb={2}>💳 Condiciones Comerciales</Text>
+              <Text fontSize="xs" fontWeight="900" color="#475569" textTransform="uppercase" mb={2}>👤 Responsable Comercial</Text>
               <VStack align="flex-start" spacing={1} fontSize="sm">
-                <HStack><Text fontWeight="700" color="#475569">Forma de Pago:</Text><Text fontWeight="800">{paymentLabel}</Text></HStack>
-                <HStack><Text fontWeight="700" color="#475569">Transporte:</Text><Text fontWeight="800">{transportLabel}</Text></HStack>
-                <HStack><Text fontWeight="700" color="#475569">Vendedor:</Text><Text fontWeight="800">{sellerName}</Text></HStack>
-                {comment && <HStack align="flex-start"><Text fontWeight="700" color="#475569">Nota:</Text><Text fontSize="xs" color="#64748b">{comment}</Text></HStack>}
+                <HStack><Text fontWeight="700" color="#475569">Vendedor Asignado:</Text><Text fontWeight="800">{sellerName || "Vendedor Autorizado"}</Text></HStack>
+                {comment && (
+                  <HStack align="flex-start">
+                    <Text fontWeight="700" color="#475569" whiteSpace="nowrap">Observación / Nota:</Text>
+                    <Text fontSize="xs" color="#64748b">{comment}</Text>
+                  </HStack>
+                )}
               </VStack>
             </Box>
 

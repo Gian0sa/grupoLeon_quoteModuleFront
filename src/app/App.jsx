@@ -5,6 +5,7 @@ import AppRoutes from "./Routes";
 import { ChakraProvider, ColorModeScript } from "@chakra-ui/react";
 import theme from "../components/theme";
 import { SyncQueueProvider } from "../features/checkinout/context/SyncQueueProvider";
+import { useQuoteSocket } from "../features/quotes/hooks/useQuoteSocket";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -26,12 +27,18 @@ const queryClient = new QueryClient({
   },
 });
 
+function RealtimeSocketListener() {
+  useQuoteSocket();
+  return null;
+}
+
 function App() {
   return (
     <React.StrictMode>
       <ChakraProvider theme={theme}>
         <ColorModeScript initialColorMode={theme.config.initialColorMode} />
         <QueryClientProvider client={queryClient}>
+          <RealtimeSocketListener />
           {/* La cola de visitas offline vive aquí para seguir sincronizando
               en cualquier pantalla, no solo en el módulo de registro. */}
           <SyncQueueProvider>
