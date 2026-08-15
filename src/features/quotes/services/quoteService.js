@@ -2,10 +2,17 @@ import { axiosInstance } from "../../../shared/lib/axiosInstance"
 import { useAuthStore } from "../../auth/stores/useAuthStore"
 import axios from "axios"
 
-export const getQuote = async () => {
-    const response = await axiosInstance.get('/quoteModule/quotes')
-    return response.data
-}
+export const getQuotes = async (filters = {}) => {
+    try {
+        const response = await axiosInstance.get('/quoteModule/quotes', { params: filters });
+        return response.data || [];
+    } catch (err) {
+        console.error("Error fetching quotes:", err);
+        return [];
+    }
+};
+
+export const getQuote = getQuotes;
 
 export const getQuoteById = async (id) => {
     try {
@@ -15,17 +22,60 @@ export const getQuoteById = async (id) => {
         console.error("Error al obtener la cotización:", error);
         return null;
     }
-}
+};
 
 export const createQuote = async (quote) => {
-    const response = await axiosInstance.post('/quoteModule/quotes', quote)
-    return response.data
-}
+    const response = await axiosInstance.post('/quoteModule/quotes', quote);
+    return response.data;
+};
 
 export const updateQuote = async (quote) => {
-    const response = await axiosInstance.put(`/quoteModule/quotes/${quote.id}`, quote)
-    return response.data
-}
+    const docId = quote.docNumber || quote.id;
+    const response = await axiosInstance.put(`/quoteModule/quotes/${docId}`, quote);
+    return response.data;
+};
+
+export const deleteQuote = async (id, isHard = false) => {
+    const response = await axiosInstance.delete(`/quoteModule/quotes/${id}`, {
+        params: { hard: isHard }
+    });
+    return response.data;
+};
+
+export const getNotifications = async (targetRole, targetUsername) => {
+    try {
+        const response = await axiosInstance.get('/quoteModule/notifications', {
+            params: { targetRole, targetUsername }
+        });
+        return response.data || [];
+    } catch (err) {
+        console.error("Error fetching notifications:", err);
+        return [];
+    }
+};
+
+export const markNotificationAsRead = async (id) => {
+    try {
+        const response = await axiosInstance.patch(`/quoteModule/notifications/${id}/read`);
+        return response.data;
+    } catch (err) {
+        console.error("Error marking notification read:", err);
+        return null;
+    }
+};
+
+export const clearNotifications = async (targetRole, targetUsername) => {
+    try {
+        const response = await axiosInstance.post('/quoteModule/notifications/clear', {
+            targetRole,
+            targetUsername
+        });
+        return response.data;
+    } catch (err) {
+        console.error("Error clearing notifications:", err);
+        return { success: false };
+    }
+};
 
 export const getTransports = async () => {
     try {

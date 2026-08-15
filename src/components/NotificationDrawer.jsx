@@ -20,23 +20,31 @@ import {
 import { FiBell, FiCheckCircle, FiXCircle, FiEye, FiTrash2, FiClock, FiFileText, FiUser } from "react-icons/fi";
 import { QuoteDetailDrawer } from "../features/quotes/components/QuoteDetailDrawer";
 import { useAuthStore } from "../features/auth/stores/useAuthStore";
+import { useQueryClient } from "@tanstack/react-query";
+import { useNotifications } from "../features/quotes/hooks/queries/quotesQueries";
+import { markNotificationAsRead, clearNotifications } from "../features/quotes/services/quoteService";
 
 export function NotificationDrawer({ isOpen, onClose }) {
-  const { username, userId } = useAuthStore();
-  const [localNotifications, setLocalNotifications] = useState([]);
+  const { username, userId, role } = useAuthStore();
+  const queryClient = useQueryClient();
   const [selectedQuoteForDrawer, setSelectedQuoteForDrawer] = useState(null);
   const [isQuoteDrawerOpen, setIsQuoteDrawerOpen] = useState(false);
 
+  const { data: serverNotifs } = useNotifications(
+    role === "ADMIN" ? "FACTURACION" : undefined,
+    username
+  );
+
   // Filtra notificaciones que pertenecen SOLO al usuario en sesión
-  // Coincide por username (caso principal) o por userId como fallback
   const filterForCurrentUser = (notifs) => {
     if (!username && !userId) return [];
     return notifs.filter((n) => {
-      // Coincidencia exacta de targetUsername (insensible a mayúsculas)
       if (n.targetUsername && username) {
         return n.targetUsername.toLowerCase() === username.toLowerCase();
       }
-      // Fallback: coincidencia por userId
+      if (n.targetRole === "FACTURACION" && (role === "ADMIN" || username?.toLowerCase() === "enrique")) {
+        return true;
+      }
       if (n.targetUserId && userId) {
         return String(n.targetUserId) === String(userId);
       }
@@ -44,53 +52,60 @@ export function NotificationDrawer({ isOpen, onClose }) {
     });
   };
 
-  const reloadNotifications = () => {
+  const myNotifications = React.useMemo(() => {
+    if (serverNotifs && Array.isArray(serverNotifs)) {
+      return filterForCurrentUser(serverNotifs);
+    }
     try {
       const raw = localStorage.getItem("grupoLeon_notifications");
       const saved = raw ? JSON.parse(raw) : [];
-      setLocalNotifications(saved);
-    } catch (err) {
-      console.error("Error cargando notificaciones:", err);
-      setLocalNotifications([]);
+      return filterForCurrentUser(saved);
+    } catch {
+      return [];
     }
+  }, [serverNotifs, username, userId, role]);
+
+  const handleClearAll = async () => {
+    try {
+      await clearNotifications(role === "ADMIN" ? "FACTURACION" : undefined, username);
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    } catch (e) {
+      console.error("Error clearing server notifications:", e);
+    }
+
+    try {
+      const raw = localStorage.getItem("grupoLeon_notifications");
+      const all = raw ? JSON.parse(raw) : [];
+      const remaining = all.filter((n) => {
+        if (n.targetUsername && username) {
+          return n.targetUsername.toLowerCase() !== username.toLowerCase();
+        }
+        if (n.targetUserId && userId) {
+          return String(n.targetUserId) !== String(userId);
+        }
+        return true;
+      });
+      localStorage.setItem("grupoLeon_notifications", JSON.stringify(remaining));
+      window.dispatchEvent(new Event("localNotificationsUpdated"));
+    } catch {}
   };
 
-  useEffect(() => {
-    reloadNotifications();
-    window.addEventListener("localNotificationsUpdated", reloadNotifications);
-    return () => {
-      window.removeEventListener("localNotificationsUpdated", reloadNotifications);
-    };
-  }, []);
+  const handleDeleteNotif = async (id) => {
+    try {
+      await markNotificationAsRead(id);
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    } catch (e) {
+      console.error("Error marking notif read:", e);
+    }
 
-  const handleClearAll = () => {
-    // Solo elimina las del usuario activo, no las de otros usuarios
-    const raw = localStorage.getItem("grupoLeon_notifications");
-    const all = raw ? JSON.parse(raw) : [];
-    const remaining = all.filter((n) => {
-      if (n.targetUsername && username) {
-        return n.targetUsername.toLowerCase() !== username.toLowerCase();
-      }
-      if (n.targetUserId && userId) {
-        return String(n.targetUserId) !== String(userId);
-      }
-      return true;
-    });
-    localStorage.setItem("grupoLeon_notifications", JSON.stringify(remaining));
-    setLocalNotifications(remaining);
-    window.dispatchEvent(new Event("localNotificationsUpdated"));
+    try {
+      const raw = localStorage.getItem("grupoLeon_notifications");
+      const all = raw ? JSON.parse(raw) : [];
+      const updated = all.filter((n) => n.id !== id);
+      localStorage.setItem("grupoLeon_notifications", JSON.stringify(updated));
+      window.dispatchEvent(new Event("localNotificationsUpdated"));
+    } catch {}
   };
-
-  const handleDeleteNotif = (id) => {
-    const raw = localStorage.getItem("grupoLeon_notifications");
-    const all = raw ? JSON.parse(raw) : [];
-    const updated = all.filter((n) => n.id !== id);
-    localStorage.setItem("grupoLeon_notifications", JSON.stringify(updated));
-    setLocalNotifications(updated);
-    window.dispatchEvent(new Event("localNotificationsUpdated"));
-  };
-
-  const myNotifications = filterForCurrentUser(localNotifications);
 
   const formatTimeAgo = (isoStr) => {
     if (!isoStr) return "Hace un momento";

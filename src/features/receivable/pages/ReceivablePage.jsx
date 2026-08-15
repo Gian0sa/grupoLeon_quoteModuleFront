@@ -1,21 +1,20 @@
-import { Box, Spinner, Center, Alert, AlertIcon, Button } from "@chakra-ui/react";
+import { Box, Spinner, Center, Alert, AlertIcon, Button, HStack, Text } from "@chakra-ui/react";
 import { SearchHeader } from "../components/SearchHeader";
 import { DebtList } from "../components/DebtList";
 import { ReceivableStatusFilter } from "../components/ReceivableStatusFilter";
 import SellerSelectReceivable from "../components/SellerSelectReceivable";
 import { useGetAccountsReceivable } from "../hooks/receivableQueries";
 import { useState, useEffect, useRef } from "react";
-import styles from "./ReceivablePage.module.css";
 import InvoicesModal from "../components/InvoicesModal";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { QUERY_KEYS } from "../../../shared/utils/queryKeys";
-
 
 export function ReceivablePage() {
   const [cliente, setCliente] = useState("");
   const [clientecode, setClientecode] = useState("");
   const [searchValue, setSearchValue] = useState("");
   const [selectedSeller, setSelectedSeller] = useState(null);
+  const [selectedClient, setSelectedClient] = useState(null);
   const [selectedInvoices, setSelectedInvoices] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all"); // 'all' | 'overdue' | 'onTime'
@@ -39,7 +38,7 @@ export function ReceivablePage() {
   const debounceTimer = useRef(null);
   const lastSearchValue = useRef("");
 
-  // búsqueda de cliente
+  // Búsqueda de cliente con debounce
   useEffect(() => {
     if (searchValue && searchValue !== lastSearchValue.current && searchValue.length > 2) {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
@@ -52,7 +51,7 @@ export function ReceivablePage() {
           setCliente(trimmedValue);
           setClientecode("");
         }
-        setLastClient(null);  // reset cursor en nueva búsqueda
+        setLastClient(null);
         setAllClients([]);
         lastSearchValue.current = searchValue;
       }, 800);
@@ -104,6 +103,7 @@ export function ReceivablePage() {
   };
 
   const handleViewInvoices = (debt) => {
+    setSelectedClient(debt);
     setSelectedInvoices(debt.documents || []);
     setIsModalOpen(true);
   };
@@ -188,12 +188,11 @@ export function ReceivablePage() {
   const [sortBy, setSortBy] = useState("debt"); // 'debt' | 'age'
 
   const getMaxOverdueDays = (c) => {
-    const docs = Array.isArray(c.documents) ? c.documents : [];
-    const overdueDocs = docs.filter(d => d.estaVencido || (d.diasVencimiento && d.diasVencimiento > 0));
-    if (overdueDocs.length > 0) {
-      return Math.max(...overdueDocs.map(d => Number(d.diasVencimiento || 0)));
-    }
-    return Number(c.maxOverdueDays || 0);
+    const docs = c.documents || [];
+    const overdueDays = docs
+      .filter((d) => d.estaVencido || d.isOverdue)
+      .map((d) => Number(d.diasVencimiento || 0));
+    return overdueDays.length > 0 ? Math.max(...overdueDays) : 0;
   };
 
   const getEquivUSD = (c) => {
@@ -258,7 +257,7 @@ export function ReceivablePage() {
         <Center h="50vh">
           <Alert status="error">
             <AlertIcon />
-            Error al cargar los datos: {error.message}
+            {error.message || "Error al cargar los datos"}
           </Alert>
         </Center>
       </Box>
@@ -266,7 +265,7 @@ export function ReceivablePage() {
   }
 
   return (
-    <Box bg="gray.50" minH="100vh">
+    <Box bg="gray.50" minH="100vh" pb={8}>
       <SearchHeader
         title="Cuentas por cobrar"
         placeholder="Buscar nombre de cliente"
@@ -276,14 +275,27 @@ export function ReceivablePage() {
         refreshQueries={refreshQueries}
       />
 
+      {/* Selector de vendedor para perfil Administrador */}
       {!isSellerProfile && (
-        <Box maxW="1200px" mx="auto" px={4} pb={2}>
+        <Box maxW="1200px" mx="auto" px={4} pt={2} pb={1}>
           <SellerSelectReceivable
             selectedSeller={selectedSeller}
             setSelectedSeller={handleSellerChange}
             setValue={() => {}}
             error={null}
           />
+        </Box>
+      )}
+
+      {/* Barra de progreso de consolidación de cartera en background */}
+      {isInitialFetching && data?.hasMore && allClients.length > 0 && (
+        <Box maxW="1200px" mx="auto" px={4} pt={2}>
+          <HStack spacing={2} bg="green.50" p={2} borderRadius="md" border="1px solid" borderColor="green.200">
+            <Spinner size="xs" color="green.600" />
+            <Text fontSize="xs" color="green.800" fontWeight="600">
+              Consolidando cartera ({allClients.length} clientes cargados)...
+            </Text>
+          </HStack>
         </Box>
       )}
 
@@ -322,6 +334,7 @@ export function ReceivablePage() {
       <InvoicesModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
+        cliente={selectedClient}
         documentos={selectedInvoices}
       />
     </Box>
