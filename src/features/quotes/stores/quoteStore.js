@@ -17,6 +17,47 @@ const cleanDocumentNumber = (value) => {
 };
 
 /**
+ * Normaliza cualquier ítem proveniente de SAP, la Base de Datos o localStorage
+ * para que jamás se pierdan los nombres, códigos ni precios.
+ */
+export const normalizeQuoteItem = (item) => {
+  if (!item || typeof item !== "object") return null;
+  const id = item.id || item.productCode || item.itemCode || item.code || item.ItemCode || String(Date.now());
+  const code = item.productCode || item.itemCode || item.code || item.ItemCode || item.id || "";
+  const name = item.name || item.productName || item.description || item.ItemName || item.ItemDescription || item.Dscription || "Artículo General";
+  const price = Number(item.price ?? item.unitPrice ?? item.Price ?? item.importe ?? 0);
+  const discount = Number(item.discount ?? item.Discount ?? 0);
+  const lineDiscount = Number(item.lineDiscount ?? item.LineDiscount ?? 0);
+  const quantity = parseInt(item.quantity ?? item.Quantity ?? 1, 10);
+  const stock = Number(item.stock ?? item.Stock ?? item.OnHand ?? 0);
+  const whsCode = item.whsCode || item.WhsCode || "014";
+  const sigla = item.sigla || item.Sigla || "";
+  const marca = item.marca || item.Marca || "";
+
+  return {
+    ...item,
+    id,
+    code,
+    productCode: code,
+    itemCode: code,
+    name,
+    productName: name,
+    description: name,
+    ItemDescription: name,
+    ItemName: name,
+    price,
+    unitPrice: price,
+    discount,
+    lineDiscount,
+    quantity: isNaN(quantity) || quantity < 1 ? 1 : quantity,
+    stock,
+    whsCode,
+    sigla,
+    marca,
+  };
+};
+
+/**
  * Convierte las distintas formas de cliente que devuelve SAP, el backend o
  * localStorage a la forma que consumen el formulario y el autocomplete.
  */
@@ -123,30 +164,39 @@ export const useQuoteStore = create((set) => ({
 
   addProduct: (product) =>
     set((state) => {
-      const existe = state.products.find((p) => p.id === product.id);
+      const normalized = normalizeQuoteItem(product);
+      if (!normalized) return state;
+      const existe = state.products.find((p) => (p.id === normalized.id || (p.code && p.code === normalized.code)));
       if (existe) {
         return {
           products: state.products.map((p) =>
-            p.id === product.id
-              ? { ...p, quantity: p.quantity + product.quantity }
+            (p.id === normalized.id || (p.code && p.code === normalized.code))
+              ? { ...p, quantity: p.quantity + normalized.quantity }
               : p
           ),
         };
       }
-      return { products: [...state.products, product] };
+      return { products: [...state.products, normalized] };
     }),
 
-  setProducts: (products) => set({ products: Array.isArray(products) ? products : [] }),
+  setProducts: (products) =>
+    set({
+      products: Array.isArray(products)
+        ? products.map(normalizeQuoteItem).filter(Boolean)
+        : [],
+    }),
 
   removeProduct: (id) =>
     set((state) => ({
-      products: state.products.filter((p) => p.id !== id),
+      products: state.products.filter((p) => p.id !== id && p.code !== id),
     })),
 
   updateProduct: (id, updatedFields) =>
     set((state) => ({
       products: state.products.map((product) =>
-        product.id === id ? { ...product, ...updatedFields } : product
+        (product.id === id || product.code === id)
+          ? normalizeQuoteItem({ ...product, ...updatedFields })
+          : product
       ),
     })),
 
@@ -161,11 +211,17 @@ export const useQuoteStore = create((set) => ({
       raw: storedClient.raw || quoteData.clientRaw || (Object.keys(storedClient).length ? storedClient : null),
     });
 
+    const rawList = Array.isArray(quoteData.products) && quoteData.products.length > 0
+      ? quoteData.products
+      : (quoteData.items || []);
+
+    const products = rawList.map(normalizeQuoteItem).filter(Boolean);
+
     set({
       ...initialQuoteState,
       quoteId: quoteData.id || quoteData.docNumber || null,
       client,
-      products: Array.isArray(quoteData.products) ? quoteData.products : (quoteData.items || []),
+      products,
       opNum: quoteData.opNum || null,
       selectedPoint: quoteData.selectedPoint || null,
       selectedTransport: quoteData.selectedTransport || "",

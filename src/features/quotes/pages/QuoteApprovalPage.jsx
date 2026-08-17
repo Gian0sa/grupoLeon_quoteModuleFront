@@ -96,7 +96,7 @@ export function QuoteApprovalPage() {
   // Sincronizar cotizaciones desde el servidor en tiempo real sin borrar borradores locales
   useEffect(() => {
     const local = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
-    if (serverQuotes && Array.isArray(serverQuotes) && serverQuotes.length > 0) {
+    if (serverQuotes && Array.isArray(serverQuotes)) {
       const serverDocIds = new Set(serverQuotes.map(q => q.docNumber || q.id));
       const unsyncedLocal = local.filter(q => !serverDocIds.has(q.docNumber || q.id));
       const merged = [...unsyncedLocal, ...serverQuotes];

@@ -169,40 +169,27 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
   // Manejadores de acciones locales
   const handleSaveAction = (targetStatus = "BORRADOR", { silent = false } = {}) => {
-    if (!client && (!products || products.length === 0)) {
+    if (!client || !products || products.length === 0) {
       if (!silent) {
-        toast({
-          title: "Cotización vacía",
-          description: "Debes seleccionar un cliente o agregar al menos un artículo antes de guardar.",
-          status: "warning",
-          duration: 3000,
-          isClosable: true,
-        });
+        if (!client) {
+          toast({
+            title: "Selecciona un cliente",
+            description: "Debes buscar y seleccionar un socio de negocio antes de guardar.",
+            status: "warning",
+            duration: 3000,
+            isClosable: true,
+          });
+        } else {
+          toast({
+            title: "Agrega al menos un artículo",
+            description: "La cotización debe tener al menos 1 producto en la grilla antes de guardar como borrador.",
+            status: "warning",
+            duration: 3000,
+            isClosable: true,
+          });
+        }
       }
       return false;
-    }
-
-    if (!silent) {
-      if (!client) {
-        toast({
-          title: "Selecciona un cliente",
-          description: "Debes buscar y seleccionar un socio de negocio antes de guardar.",
-          status: "warning",
-          duration: 3000,
-          isClosable: true,
-        });
-        return false;
-      }
-      if (!products || products.length === 0) {
-        toast({
-          title: "Agrega al menos un artículo",
-          description: "La cotización debe tener al menos 1 producto en la grilla.",
-          status: "warning",
-          duration: 3000,
-          isClosable: true,
-        });
-        return false;
-      }
     }
 
     const activeDocNumber = quoteId || docNumber;
@@ -324,13 +311,13 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   // Autoguardado preventivo (Exit-Safe & Crash-Safe)
   useEffect(() => {
     const handleBeforeUnload = () => {
-      if (!isExplicitlySubmittingRef.current && (client || (products && products.length > 0))) {
+      if (!isExplicitlySubmittingRef.current && client && products && products.length > 0) {
         handleSaveAction("BORRADOR", { silent: true });
       }
     };
 
     const handleVisibilityChange = () => {
-      if (!isExplicitlySubmittingRef.current && document.visibilityState === "hidden" && (client || (products && products.length > 0))) {
+      if (!isExplicitlySubmittingRef.current && document.visibilityState === "hidden" && client && products && products.length > 0) {
         handleSaveAction("BORRADOR", { silent: true });
       }
     };
@@ -341,17 +328,17 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      // Guardar automáticamente al salir de la pantalla solo si no se envió explícitamente
-      if (!isExplicitlySubmittingRef.current && (client || (products && products.length > 0))) {
+      // Guardar automáticamente al salir de la pantalla solo si no se envió explícitamente y hay datos completos
+      if (!isExplicitlySubmittingRef.current && client && products && products.length > 0) {
         handleSaveAction("BORRADOR", { silent: true });
       }
     };
   }, [client, products, totals, docNumber, quoteId, comment, selectedDeliveryForm, selectedTransport, selectedPaymentType, opNum]);
 
   const handleSaveDraft = () => {
-    isExplicitlySubmittingRef.current = true;
     const result = handleSaveAction("BORRADOR");
-    if (result) {
+    if (result && result.success) {
+      isExplicitlySubmittingRef.current = true;
       toast({
         title: "📝 Borrador Guardado",
         description: `Documento ${result.activeDocNumber} guardado exitosamente. Redirigiendo a Gestión de Cotizaciones...`,

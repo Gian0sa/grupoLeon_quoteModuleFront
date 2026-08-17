@@ -1,9 +1,25 @@
 import { io } from "socket.io-client";
 
-const rawApiUrl = import.meta.env.VITE_WS_URL || "http://localhost:3002";
+const resolveSocketUrl = () => {
+  if (import.meta.env.VITE_WS_URL) {
+    return import.meta.env.VITE_WS_URL.replace(/\/$/, "");
+  }
+  const apiUrl = import.meta.env.VITE_API_URL || "";
+  if (apiUrl.startsWith("http")) {
+    try {
+      const parsed = new URL(apiUrl);
+      // Si apunta al servidor remoto o dominio público, conectar al mismo origin
+      if (!parsed.hostname.includes("localhost") && !parsed.hostname.includes("127.0.0.1")) {
+        return parsed.origin;
+      }
+    } catch (e) {
+      console.warn("Error parseando VITE_API_URL:", e.message);
+    }
+  }
+  return "http://localhost:3002";
+};
 
-// Limpiar trailing slash
-const SOCKET_URL = rawApiUrl.replace(/\/$/, "");
+const SOCKET_URL = resolveSocketUrl();
 
 export const socket = io(SOCKET_URL, {
   path: "/socket.io",
