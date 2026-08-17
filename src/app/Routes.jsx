@@ -252,6 +252,14 @@ const AppRoutes = () => {
         }
       />
       <Route
+        path="/visitMap"
+        element={
+          <PrivateRoute>
+            <VisitLogsMapView/>
+          </PrivateRoute>
+        }
+      />
+      <Route
         path="/myVisits"
         element={
           <PrivateRoute>

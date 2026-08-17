@@ -1,14 +1,15 @@
+// Paleta de Colores Curada y Armoniosa para Mapeo de Vendedores en el Mapa de Visitas
 export const VENDOR_COLOR_PALETTE = [
-    "#ef4444",
-    "#3b82f6",
-    "#10b981",
-    "#f59e0b",
-    "#8b5cf6",
-    "#ec4899",
-    "#14b8a6",
-    "#f97316",
-    "#1b1b1bff",
-    "#6366f1",
-    "#eab308",
-    "#06b6d4",
+    "#0e572b", // Verde Institucional Grupo León
+    "#2563eb", // Azul Real
+    "#7c3aed", // Violeta Profundo
+    "#0d9488", // Verde Teal
+    "#e11d48", // Carmesí / Rose
+    "#d97706", // Ámbar Cálido
+    "#0284c7", // Cyan Zafiro
+    "#4f46e5", // Indigo Elegante
+    "#059669", // Esmeralda Brillante
+    "#c026d3", // Magenta Fucsia
+    "#475569", // Pizarra Oscuro
+    "#b45309", // Bronce Dorado
 ];

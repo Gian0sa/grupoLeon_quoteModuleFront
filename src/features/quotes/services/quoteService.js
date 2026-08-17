@@ -64,7 +64,7 @@ export const getNotifications = async (targetRole, targetUsername) => {
         });
         return response.data || [];
     } catch (err) {
-        console.error("Error fetching notifications:", err);
+        // Silently catch unauthenticated/network errors to prevent console spamming
         return [];
     }
 };

@@ -99,9 +99,10 @@ export const getTopCanceledProducts = async ({ yearFrom, monthFrom, monthTo, slp
 
 export const getTopSelledProducts = async ({ yearFrom, monthFrom, monthTo, slpCode }) => {
   try {
-    console.log(`Obteniendo productos más vendidos para vendedor ${slpCode}`);
+    const finalSlpCode = slpCode || 0;
+    console.log(`Obteniendo productos más vendidos para vendedor ${finalSlpCode === 0 ? "TODOS (Empresa)" : finalSlpCode}`);
     const response = await axiosInstance.get(`/reportModule/topSelledProducts`, {
-      params: { yearFrom, monthFrom, monthTo, slpCode },
+      params: { yearFrom, monthFrom, monthTo, slpCode: finalSlpCode },
     });
     return response.data;
   } catch (error) {
