@@ -12,12 +12,13 @@ import {
     useColorModeValue,
 } from "@chakra-ui/react";
 import { FiShoppingBag, FiSearch, FiX, FiUserCheck, FiPlus } from "react-icons/fi";
+import { useNavigate } from "react-router-dom";
 import { adaptClientFromApi } from "../../clients/adapters/clientAdapter";
 
 function ClientSearchInput({ inputValue, onChange, onSearch, onKeyPress, isSearching, onCreateNewClient }) {
     return (
         <Box mb={3}>
-            <Flex gap={2} mb={2}>
+            <Flex gap={2}>
                 <Input
                     placeholder="Buscar por RUC, DNI o Nombre del cliente..."
                     value={inputValue}
@@ -51,30 +52,6 @@ function ClientSearchInput({ inputValue, onChange, onSearch, onKeyPress, isSearc
                     _hover={{ bg: "#0d4226" }}
                 >
                     Buscar
-                </Button>
-            </Flex>
-
-            <Flex justify="space-between" align="center" px={1} pt={1} flexWrap="wrap" gap={1}>
-                <Text fontSize="xs" color="gray.500">
-                    ¿El cliente no está registrado en SAP?
-                </Text>
-                <Button
-                    size="xs"
-                    variant="solid"
-                    colorScheme="green"
-                    bg="green.50"
-                    color="green.700"
-                    border="1px solid"
-                    borderColor="green.300"
-                    borderRadius="md"
-                    px={2.5}
-                    py={1}
-                    fontWeight="700"
-                    onClick={onCreateNewClient}
-                    leftIcon={<FiPlus />}
-                    _hover={{ bg: "green.100" }}
-                >
-                    Registrar Cliente Nuevo
                 </Button>
             </Flex>
         </Box>
@@ -213,10 +190,15 @@ function ClientSearchResults({
 
 function SelectedClient({ client, hasActiveCheckIn, onClear }) {
     const isNewClient = client.type === "NEW";
+    const navigate = useNavigate();
+
+    const sapCodeDisplay = (client.id && client.id !== "AUTO")
+        ? client.id
+        : (client.sapCode || client.cardCode || client.clientCode || "");
 
     return (
         <Box
-            p={5}
+            p={4}
             bg="linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)"
             borderRadius="xl"
             border="2px solid"
@@ -242,43 +224,45 @@ function SelectedClient({ client, hasActiveCheckIn, onClear }) {
 
             <HStack spacing={2} mb={2}>
                 <Badge
-                    bg={hasActiveCheckIn ? "amber.500" : isNewClient ? "blue.600" : "green.700"}
+                    bg={hasActiveCheckIn ? "#0e572b" : isNewClient ? "blue.600" : "green.700"}
                     color="white"
                     px={3}
-                    py={0.5}
+                    py={1}
                     borderRadius="full"
-                    fontSize="10px"
-                    fontWeight="700"
+                    fontSize="11px"
+                    fontWeight="900"
+                    letterSpacing="0.5px"
+                    boxShadow="0 2px 6px rgba(14, 87, 43, 0.25)"
                 >
                     {hasActiveCheckIn
-                        ? "Check-In Activo"
+                        ? "✓ CHECK-IN ACTIVO"
                         : isNewClient
-                        ? "Cliente Nuevo"
-                        : "Cliente Seleccionado"}
+                            ? "CLIENTE NUEVO"
+                            : "CLIENTE SELECCIONADO"}
                 </Badge>
             </HStack>
 
-            <Text fontWeight="800" fontSize="lg" color="green.900" mb={1.5}>
+            <Text fontWeight="850" fontSize="md" color="green.950" mb={1} lineHeight="1.2">
                 {client.firstName}
             </Text>
 
             {/* SOLO SAP */}
-            {!isNewClient && client.id !== "AUTO" && (
-                <Text fontSize="xs" color="gray.700" mb={1}>
-                    <strong>Código SAP:</strong> {client.id}
+            {!isNewClient && (
+                <Text fontSize="xs" color="gray.800" fontWeight="600" mb={0.5}>
+                    <strong>Código SAP:</strong> {sapCodeDisplay || "No asignado"}
                 </Text>
             )}
 
             {/* SOLO SAP */}
             {!isNewClient && (
-                <Text fontSize="xs" color="gray.700">
+                <Text fontSize="xs" color="gray.700" fontWeight="500">
                     <strong>Dirección:</strong> {client.address}
                 </Text>
             )}
 
             {/* SOLO NUEVO */}
             {isNewClient && (
-                <HStack spacing={4} pt={1}>
+                <HStack spacing={4} pt={0.5}>
                     <Text fontSize="xs" color="gray.700">
                         <strong>Documento:</strong> {client.documentNumber}
                     </Text>
@@ -286,6 +270,53 @@ function SelectedClient({ client, hasActiveCheckIn, onClear }) {
                         <strong>Tipo:</strong> {client.isBusiness ? "Empresa" : "Persona"}
                     </Text>
                 </HStack>
+            )}
+
+            {/* APARTADO COMPACTO INTERNO PARA ACCESO AL COTIZADOR EN CHECK-OUT */}
+            {hasActiveCheckIn && (
+                <Flex
+                    pt={2.5}
+                    mt={2.5}
+                    borderTop="1px dashed"
+                    borderColor="green.300"
+                    justify="space-between"
+                    align="center"
+                    flexWrap="wrap"
+                    gap={2}
+                >
+                    <HStack spacing={1.5}>
+                        <FiShoppingBag size={14} color="#0e572b" />
+                        <Text fontSize="11px" fontWeight="800" color="green.900">
+                            Historial de Busqueda
+                        </Text>
+                    </HStack>
+                    <Button
+                        size="xs"
+                        h="28px"
+                        bg="linear-gradient(135deg, #14532d 0%, #166534 50%, #15803d 100%)"
+                        color="white"
+                        borderRadius="lg"
+                        px={3}
+                        fontWeight="800"
+                        fontSize="10px"
+                        leftIcon={<FiShoppingBag size={12} />}
+                        boxShadow="0 2px 6px rgba(22, 101, 52, 0.2)"
+                        _hover={{ bg: "#0d4226", transform: "translateY(-1px)" }}
+                        onClick={() => {
+                            const clientName = client.firstName || "";
+                            const sapCode = sapCodeDisplay;
+                            try {
+                                localStorage.setItem(
+                                    "grupoLeon_active_client_cache",
+                                    JSON.stringify({ clientName, sapCode, timestamp: Date.now() })
+                                );
+                            } catch (e) { }
+                            navigate(`/clienteBusqueda?storeName=${encodeURIComponent(clientName)}&clientCode=${encodeURIComponent(sapCode)}&returnTo=/visitLog`);
+                        }}
+                    >
+                        Historial Cliente 
+                    </Button>
+                </Flex>
             )}
         </Box>
     );
