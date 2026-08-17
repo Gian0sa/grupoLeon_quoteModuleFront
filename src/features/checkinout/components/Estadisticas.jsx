@@ -26,7 +26,7 @@ export default function Estadisticas({ stats = {} }) {
     {
       label: "Completadas",
       value: completed,
-      helpText: "Con Check-In / Out",
+      helpText: "Check-In & Out",
       icon: CheckCircle2,
       bg: "emerald.50",
       border: "emerald.200",
@@ -37,7 +37,7 @@ export default function Estadisticas({ stats = {} }) {
     {
       label: "Pendientes",
       value: pending,
-      helpText: "Sin Check-Out registrado",
+      helpText: "Sin Check-Out",
       icon: Clock,
       bg: pending > 0 ? "amber.50" : "gray.50",
       border: pending > 0 ? "amber.300" : "gray.200",
@@ -47,9 +47,9 @@ export default function Estadisticas({ stats = {} }) {
       highlight: pending > 0,
     },
     {
-      label: "Errores / Sin subir",
+      label: "Sin Sincronizar",
       value: errors,
-      helpText: errors > 0 ? "Requiere sincronización" : "Sin errores de red",
+      helpText: errors > 0 ? "Requiere sync" : "Sin errores",
       icon: AlertTriangle,
       bg: errors > 0 ? "red.50" : "gray.50",
       border: errors > 0 ? "red.300" : "gray.200",
@@ -61,7 +61,7 @@ export default function Estadisticas({ stats = {} }) {
   ];
 
   return (
-    <SimpleGrid columns={{ base: 2, md: 4 }} spacing={{ base: 3, md: 4 }} w="full">
+    <SimpleGrid columns={{ base: 2, sm: 4 }} spacing={{ base: 2.5, md: 3.5 }} w="full">
       {cards.map((c, index) => {
         const IconComp = c.icon;
         return (
@@ -70,11 +70,11 @@ export default function Estadisticas({ stats = {} }) {
             whileHover={{ scale: 1.02, y: -2 }}
             whileTap={{ scale: 0.98 }}
             bg={c.bg}
-            borderRadius="2xl"
-            p={{ base: 3, md: 4 }}
+            borderRadius="xl"
+            p={{ base: 2.5, sm: 3, md: 4 }}
             border="1.5px solid"
             borderColor={c.border}
-            boxShadow="0 4px 14px rgba(0,0,0,0.04)"
+            boxShadow="0 4px 14px rgba(0,0,0,0.03)"
             position="relative"
             overflow="hidden"
             transition={{ duration: 0.15 }}
@@ -82,32 +82,32 @@ export default function Estadisticas({ stats = {} }) {
             {c.highlight && (
               <Box
                 position="absolute"
-                top="8px"
-                right="8px"
-                w="8px"
-                h="8px"
+                top="6px"
+                right="6px"
+                w="7px"
+                h="7px"
                 borderRadius="full"
                 bg={c.iconBg}
-                boxShadow={`0 0 10px ${c.iconBg}`}
+                boxShadow={`0 0 8px ${c.iconBg}`}
               />
             )}
-            <Flex justify="space-between" align="flex-start" mb={2}>
-              <Box p={2} borderRadius="xl" bg={c.iconBg} color={c.iconColor}>
-                <Icon as={IconComp} boxSize={{ base: 4, md: 5 }} />
+            <Flex justify="space-between" align="center" mb={1.5}>
+              <Box p={1.5} borderRadius="lg" bg={c.iconBg} color={c.iconColor}>
+                <Icon as={IconComp} boxSize={{ base: 3.5, md: 4.5 }} />
               </Box>
               {c.value > 0 && c.highlight && (
-                <Badge colorScheme={c.label.includes("Errores") ? "red" : "amber"} variant="solid" borderRadius="full" px= {2} fontSize="10px">
-                  ATENCIÓN
+                <Badge colorScheme={c.label.includes("Sin Sincronizar") ? "red" : "amber"} variant="solid" borderRadius="full" px={1.5} fontSize="9px">
+                  ACTIVO
                 </Badge>
               )}
             </Flex>
-            <Text fontSize={{ base: "xs", md: "sm" }} fontWeight="600" color="gray.600" lineHeight="1.2">
+            <Text fontSize={{ base: "11px", sm: "xs", md: "sm" }} fontWeight="700" color="gray.700" lineHeight="1.2" isTruncated>
               {c.label}
             </Text>
-            <Text fontSize={{ base: "2xl", md: "3xl" }} fontWeight="900" color={c.textColor} my={0.5}>
+            <Text fontSize={{ base: "xl", sm: "2xl", md: "3xl" }} fontWeight="900" color={c.textColor} my={0.5}>
               {c.value}
             </Text>
-            <Text fontSize={{ base: "10px", md: "xs" }} color="gray.500" fontWeight="medium">
+            <Text fontSize={{ base: "9px", sm: "10px", md: "xs" }} color="gray.500" fontWeight="medium" isTruncated>
               {c.helpText}
             </Text>
           </MotionBox>
