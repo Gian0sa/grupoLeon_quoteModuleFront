@@ -269,6 +269,10 @@ export default function VisitLogsMapView() {
         const avgMinutes = Math.floor((avgDuration % (1000 * 60 * 60)) / (1000 * 60));
 
         return {
+            total: totalVisits,
+            completed: completedVisits,
+            pending: pendingCheckOut,
+            errors: 0,
             totalVisits,
             completedVisits,
             pendingCheckOut,

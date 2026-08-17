@@ -4,11 +4,17 @@ import { motion } from "framer-motion";
 
 const MotionBox = motion(Box);
 
-export default function Estadisticas({ stats }) {
+export default function Estadisticas({ stats = {} }) {
+  const safeStats = stats || {};
+  const total = safeStats.total ?? safeStats.totalVisits ?? 0;
+  const completed = safeStats.completed ?? safeStats.completedVisits ?? 0;
+  const pending = safeStats.pending ?? safeStats.pendingCheckOut ?? 0;
+  const errors = safeStats.errors ?? safeStats.errorVisits ?? 0;
+
   const cards = [
     {
       label: "Total Visitas",
-      value: stats.total || 0,
+      value: total,
       helpText: "Visitas registradas",
       icon: MapPin,
       bg: "blue.50",
@@ -19,7 +25,7 @@ export default function Estadisticas({ stats }) {
     },
     {
       label: "Completadas",
-      value: stats.completed || 0,
+      value: completed,
       helpText: "Con Check-In / Out",
       icon: CheckCircle2,
       bg: "emerald.50",
@@ -30,27 +36,27 @@ export default function Estadisticas({ stats }) {
     },
     {
       label: "Pendientes",
-      value: stats.pending || 0,
+      value: pending,
       helpText: "Sin Check-Out registrado",
       icon: Clock,
-      bg: stats.pending > 0 ? "amber.50" : "gray.50",
-      border: stats.pending > 0 ? "amber.300" : "gray.200",
-      iconBg: stats.pending > 0 ? "amber.500" : "gray.400",
+      bg: pending > 0 ? "amber.50" : "gray.50",
+      border: pending > 0 ? "amber.300" : "gray.200",
+      iconBg: pending > 0 ? "amber.500" : "gray.400",
       iconColor: "white",
-      textColor: stats.pending > 0 ? "amber.900" : "gray.700",
-      highlight: stats.pending > 0,
+      textColor: pending > 0 ? "amber.900" : "gray.700",
+      highlight: pending > 0,
     },
     {
       label: "Errores / Sin subir",
-      value: stats.errors || 0,
-      helpText: stats.errors > 0 ? "Requiere sincronización" : "Sin errores de red",
+      value: errors,
+      helpText: errors > 0 ? "Requiere sincronización" : "Sin errores de red",
       icon: AlertTriangle,
-      bg: stats.errors > 0 ? "red.50" : "gray.50",
-      border: stats.errors > 0 ? "red.300" : "gray.200",
-      iconBg: stats.errors > 0 ? "red.500" : "gray.400",
+      bg: errors > 0 ? "red.50" : "gray.50",
+      border: errors > 0 ? "red.300" : "gray.200",
+      iconBg: errors > 0 ? "red.500" : "gray.400",
       iconColor: "white",
-      textColor: stats.errors > 0 ? "red.900" : "gray.700",
-      highlight: stats.errors > 0,
+      textColor: errors > 0 ? "red.900" : "gray.700",
+      highlight: errors > 0,
     },
   ];
 
