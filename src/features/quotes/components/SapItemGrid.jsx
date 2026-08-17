@@ -104,18 +104,25 @@ export default function SapItemGrid({
         ) : (
           products.map((item, index) => {
             const qty = Number(item.quantity || 1);
-            const price = Number(item.price || 0);
+            const price = Number(item.price ?? item.unitPrice ?? 0);
             const disc = Number(item.discount || 0);
             const lineTotal = qty * price * (1 - disc / 100);
+            const itemName = item.name || item.productName || item.description || item.ItemName || item.ItemDescription || "Artículo General";
+            const itemCode = item.code || item.productCode || item.itemCode || "";
 
             return (
               <Box key={item.id || index} p={3} bg="white" borderRadius="xl" border="1px solid" borderColor="emerald.200" boxShadow="xs">
                 <Flex align="start" justify="space-between" gap={2} mb={2}>
                   <Box flex="1" minW={0}>
                     <Flex align="center" wrap="wrap" gap={1.5}>
-                      <Text fontSize="xs" fontWeight="900" color="gray.900" lineHeight="tight">
-                        {item.name}
+                      <Text fontSize="xs" fontWeight="900" color="gray.900" lineHeight="tight" title={itemName}>
+                        {itemName}
                       </Text>
+                      {itemCode && (
+                        <Badge colorScheme="gray" fontSize="0.6rem" fontWeight="700" px={1} py={0.2} borderRadius="sm">
+                          {itemCode}
+                        </Badge>
+                      )}
                       <Badge
                         colorScheme={item.stock > 0 ? "green" : "red"}
                         bg={item.stock > 0 ? "#16a34a" : "#dc2626"}
@@ -266,14 +273,27 @@ export default function SapItemGrid({
               ) : (
                 products.map((item, index) => {
                   const qty = Number(item.quantity || 1);
-                  const price = Number(item.price || 0);
+                  const price = Number(item.price ?? item.unitPrice ?? 0);
                   const disc = Number(item.discount || 0);
                   const lineTotal = qty * price * (1 - disc / 100);
                   const netTotal = lineTotal * (1 - (item.lineDiscount || 0) / 100);
+                  const itemName = item.name || item.productName || item.description || item.ItemName || item.ItemDescription || "Artículo General";
+                  const itemCode = item.code || item.productCode || item.itemCode || "";
 
                   return (
                     <Tr key={item.id || index} _hover={{ bg: "emerald.50/40" }}>
-                      <Td px={2} fontSize="xs" color="gray.900" fontWeight="600" maxW="260px" isTruncated title={item.name}>{item.name}</Td>
+                      <Td px={2} fontSize="xs" color="gray.900" fontWeight="600" maxW="260px">
+                        <VStack align="start" spacing={0} maxW="260px">
+                          <Text fontSize="xs" color="gray.900" fontWeight="700" isTruncated title={itemName}>
+                            {itemName}
+                          </Text>
+                          {itemCode && (
+                            <Text fontSize="0.65rem" color="gray.500" fontWeight="600">
+                              {itemCode}
+                            </Text>
+                          )}
+                        </VStack>
+                      </Td>
                       <Td px={2} textAlign="center">
                         <NumberInput
                           size="xs"

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   Box, Grid, GridItem, FormControl, FormLabel, Input, Select as ChakraSelect,
   Text, HStack, VStack, Badge, Divider, Heading, Tooltip, Alert, AlertIcon,
@@ -15,7 +15,7 @@ import { NewSellTerms } from "./NewSellTerms";
 import { SapQuoteDocumentModal } from "./SapQuoteDocumentModal";
 import { useQueryClient } from "@tanstack/react-query";
 import { createQuote, updateQuote } from "../services/quoteService";
-import { useQuoteStore } from "../stores/quoteStore";
+import { useQuoteStore, normalizeQuoteClient } from "../stores/quoteStore";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { useExchangeRate } from "../../dashboard/hooks/queries/dashboardQueries";
 import { axiosInstance } from "../../../shared/lib/axiosInstance";
@@ -48,6 +48,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
   const [docType, setDocType] = useState("OFERTA_VENTA"); // OFERTA_VENTA o PEDIDO_CLIENTE
   const [docNumber, setDocNumber] = useState(`COT-${Date.now().toString().slice(-6)}`);
+  const isExplicitlySubmittingRef = useRef(false);
 
   const {
     quoteId, setQuoteId,
@@ -167,42 +168,50 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   }), [docNumber, client, products, totals, activeSeller, docDate, docDueDate, contactPerson, refNumber, comment, selectedDeliveryForm, selectedTransport, selectedPaymentType]);
 
   // Manejadores de acciones locales
-  const handleSaveAction = (targetStatus) => {
-    if (!client) {
-      toast({
-        title: "Selecciona un cliente",
-        description: "Debes buscar y seleccionar un socio de negocio antes de guardar.",
-        status: "warning",
-        duration: 3000,
-        isClosable: true,
-      });
-      return false;
-    }
-    if (products.length === 0) {
-      toast({
-        title: "Agrega al menos un artículo",
-        description: "La cotización debe tener al menos 1 producto en la grilla.",
-        status: "warning",
-        duration: 3000,
-        isClosable: true,
-      });
+  const handleSaveAction = (targetStatus = "BORRADOR", { silent = false } = {}) => {
+    if (!client || !products || products.length === 0) {
+      if (!silent) {
+        if (!client) {
+          toast({
+            title: "Selecciona un cliente",
+            description: "Debes buscar y seleccionar un socio de negocio antes de guardar.",
+            status: "warning",
+            duration: 3000,
+            isClosable: true,
+          });
+        } else {
+          toast({
+            title: "Agrega al menos un artículo",
+            description: "La cotización debe tener al menos 1 producto en la grilla antes de guardar como borrador.",
+            status: "warning",
+            duration: 3000,
+            isClosable: true,
+          });
+        }
+      }
       return false;
     }
 
     const activeDocNumber = quoteId || docNumber;
     const finalTotals = {
       ...totals,
-      grandTotal: totals.grandTotalUSD,
+      grandTotal: totals?.grandTotalUSD || 0,
     };
 
     // Guardar o actualizar en localStorage sin retroceder de estado
     const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
     const existingDoc = saved.find((q) => (q.id || q.docNumber) === activeDocNumber);
     const existingStatus = existingDoc?.approvalStatus || existingDoc?.state;
-    const isAdvanced = existingStatus && ["ENVIADO", "EN_PROCESO", "APROBADO", "RECHAZADO"].includes(existingStatus);
 
-    // Si ya está avanzada, no retrocede de estado, a menos que estemos enviando un borrador
-    const currentStatus = isAdvanced ? existingStatus : targetStatus;
+    // Si ya existe y no es borrador, nunca degradar a BORRADOR en autoguardado
+    if (targetStatus === "BORRADOR" && existingStatus && !["BORRADOR", "GENERADO", "DRAFT", "draft", "EN_EDICION"].includes(existingStatus)) {
+      return { activeDocNumber };
+    }
+
+    const isAdvanced = existingStatus && ["ENVIADO", "EN_PROCESO", "APROBADO_COMERCIAL", "PENDIENTE_FACTURACION", "APROBADO", "RECHAZADO"].includes(existingStatus);
+
+    // Si ya está avanzada, no retrocede de estado, a menos que estemos enviando formalmente
+    const currentStatus = targetStatus === "ENVIADO" ? "ENVIADO" : (isAdvanced ? existingStatus : targetStatus);
     const nowIso = new Date().toISOString();
     const prevHistory = existingDoc?.historyLog || [];
     
@@ -214,9 +223,11 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       updatedHistory.push({ status: "BORRADOR", timestamp: nowIso, user: activeSeller, note: "Borrador guardado" });
     }
 
-    const clientRucVal = client?.LicTradNum || client?.raw?.LicTradNum || client?.FederalTaxID || client?.raw?.FederalTaxID || client?.cardCode || "";
-    const clientAddressVal = client?.Address || client?.raw?.Address || client?.address || "";
-    const clientNameVal = client?.CardName || client?.name || "CLIENTE GENERAL";
+    const normalizedClient = normalizeQuoteClient(client) || client;
+    const clientCardCodeVal = normalizedClient?.CardCode || "";
+    const clientRucVal = normalizedClient?.LicTradNum || normalizedClient?.clientRuc || normalizedClient?.clientDocument || clientCardCodeVal;
+    const clientAddressVal = normalizedClient?.Address || normalizedClient?.address || "";
+    const clientNameVal = normalizedClient?.CardName || normalizedClient?.name || "CLIENTE GENERAL";
 
     const newDoc = {
       id: activeDocNumber,
@@ -294,19 +305,49 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       window.dispatchEvent(new Event("localNotificationsUpdated"));
     }
 
-    return { isExisting, activeDocNumber, newDoc };
+    return { success: true, activeDocNumber, currentStatus };
   };
+
+  // Autoguardado preventivo (Exit-Safe & Crash-Safe)
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (!isExplicitlySubmittingRef.current && client && products && products.length > 0) {
+        handleSaveAction("BORRADOR", { silent: true });
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (!isExplicitlySubmittingRef.current && document.visibilityState === "hidden" && client && products && products.length > 0) {
+        handleSaveAction("BORRADOR", { silent: true });
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      // Guardar automáticamente al salir de la pantalla solo si no se envió explícitamente y hay datos completos
+      if (!isExplicitlySubmittingRef.current && client && products && products.length > 0) {
+        handleSaveAction("BORRADOR", { silent: true });
+      }
+    };
+  }, [client, products, totals, docNumber, quoteId, comment, selectedDeliveryForm, selectedTransport, selectedPaymentType, opNum]);
 
   const handleSaveDraft = () => {
     const result = handleSaveAction("BORRADOR");
-    if (result) {
+    if (result && result.success) {
+      isExplicitlySubmittingRef.current = true;
       toast({
         title: "📝 Borrador Guardado",
-        description: `Documento ${result.activeDocNumber} guardado exitosamente en el servidor.`,
+        description: `Documento ${result.activeDocNumber} guardado exitosamente. Redirigiendo a Gestión de Cotizaciones...`,
         status: "info",
         duration: 3000,
         isClosable: true,
       });
+      clear();
+      navigate("/historyquotes");
     }
   };
 
@@ -337,6 +378,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   };
 
   const handleConfirmedSend = () => {
+    isExplicitlySubmittingRef.current = true;
     setShowConfirmModal(false);
     const result = handleSaveAction("ENVIADO");
     if (result) {
@@ -347,7 +389,8 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         duration: 5000,
         isClosable: true,
       });
-      handleNewQuote();
+      clear();
+      navigate("/historyquotes");
     }
   };
 
@@ -712,6 +755,19 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
               <Box as="span">
                 Estado: {approvalStatus || "Borrador (Abierto)"}
               </Box>
+            </Badge>
+            <Badge
+              bg="#f5f3ff"
+              color="#6b21a8"
+              border="1px solid"
+              borderColor="#ddd6fe"
+              px={2.5}
+              py={1}
+              borderRadius="md"
+              fontSize="xs"
+              fontWeight="800"
+            >
+              💾 Autoguardado Activo
             </Badge>
           </Flex>
         </Flex>

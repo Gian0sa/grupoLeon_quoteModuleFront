@@ -30,6 +30,18 @@ export function NotificationDrawer({ isOpen, onClose }) {
   const [selectedQuoteForDrawer, setSelectedQuoteForDrawer] = useState(null);
   const [isQuoteDrawerOpen, setIsQuoteDrawerOpen] = useState(false);
 
+  const [localVersion, setLocalVersion] = useState(0);
+
+  useEffect(() => {
+    const handleUpdate = () => setLocalVersion(v => v + 1);
+    window.addEventListener("localNotificationsUpdated", handleUpdate);
+    window.addEventListener("storage", handleUpdate);
+    return () => {
+      window.removeEventListener("localNotificationsUpdated", handleUpdate);
+      window.removeEventListener("storage", handleUpdate);
+    };
+  }, []);
+
   const { data: serverNotifs } = useNotifications(
     role === "ADMIN" ? "FACTURACION" : undefined,
     username
@@ -53,17 +65,26 @@ export function NotificationDrawer({ isOpen, onClose }) {
   };
 
   const myNotifications = React.useMemo(() => {
-    if (serverNotifs && Array.isArray(serverNotifs)) {
-      return filterForCurrentUser(serverNotifs);
-    }
+    let combined = [];
     try {
       const raw = localStorage.getItem("grupoLeon_notifications");
       const saved = raw ? JSON.parse(raw) : [];
-      return filterForCurrentUser(saved);
-    } catch {
-      return [];
+      combined = Array.isArray(saved) ? [...saved] : [];
+    } catch {}
+
+    if (serverNotifs && Array.isArray(serverNotifs) && serverNotifs.length > 0) {
+      serverNotifs.forEach(sn => {
+        const idx = combined.findIndex(c => String(c.id) === String(sn.id) || (c.quoteId === sn.quoteId && c.status === sn.status));
+        if (idx >= 0) {
+          combined[idx] = { ...combined[idx], ...sn };
+        } else {
+          combined.unshift(sn);
+        }
+      });
     }
-  }, [serverNotifs, username, userId, role]);
+
+    return filterForCurrentUser(combined);
+  }, [serverNotifs, username, userId, role, localVersion]);
 
   const handleClearAll = async () => {
     try {

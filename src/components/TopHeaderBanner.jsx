@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   Box,
   Flex,
@@ -37,6 +37,8 @@ export function TopHeaderBanner({
   title,
   subtitle,
   showBack = true,
+  backTo = "/dashboard",
+  onBackClick,
   showExchangeRate = false,
   refreshQueries,
   children,
@@ -49,33 +51,54 @@ export function TopHeaderBanner({
   const todayStr = format(new Date(), "yyyy-MM-dd");
   const { isOpen: isNotifOpen, onOpen: onOpenNotif, onClose: onCloseNotif } = useDisclosure();
 
+  const [localVersion, setLocalVersion] = useState(0);
+
+  useEffect(() => {
+    const handleUpdate = () => setLocalVersion(v => v + 1);
+    window.addEventListener("localNotificationsUpdated", handleUpdate);
+    window.addEventListener("storage", handleUpdate);
+    return () => {
+      window.removeEventListener("localNotificationsUpdated", handleUpdate);
+      window.removeEventListener("storage", handleUpdate);
+    };
+  }, []);
+
   const { data: serverNotifs } = useNotifications(
     role === "ADMIN" ? "FACTURACION" : undefined,
     username
   );
 
   const notifCount = React.useMemo(() => {
-    if (serverNotifs && Array.isArray(serverNotifs)) {
-      return serverNotifs.filter((n) => !n.read).length;
-    }
+    let combined = [];
     try {
       const saved = JSON.parse(localStorage.getItem("grupoLeon_notifications") || "[]");
-      return saved.filter((n) => {
-        if (n.targetUsername && username) {
-          return n.targetUsername.toLowerCase() === username.toLowerCase();
+      combined = Array.isArray(saved) ? [...saved] : [];
+    } catch {}
+
+    if (serverNotifs && Array.isArray(serverNotifs) && serverNotifs.length > 0) {
+      serverNotifs.forEach(sn => {
+        const idx = combined.findIndex(c => String(c.id) === String(sn.id) || (c.quoteId === sn.quoteId && c.status === sn.status));
+        if (idx >= 0) {
+          combined[idx] = { ...combined[idx], ...sn };
+        } else {
+          combined.unshift(sn);
         }
-        if (n.targetRole === "FACTURACION" && (role === "ADMIN" || username?.toLowerCase() === "enrique")) {
-          return true;
-        }
-        if (n.targetUserId && userId) {
-          return String(n.targetUserId) === String(userId);
-        }
-        return false;
-      }).filter((n) => !n.read).length;
-    } catch {
-      return 0;
+      });
     }
-  }, [serverNotifs, username, userId, role]);
+
+    return combined.filter((n) => {
+      if (n.targetUsername && username) {
+        return n.targetUsername.toLowerCase() === username.toLowerCase();
+      }
+      if (n.targetRole === "FACTURACION" && (role === "ADMIN" || username?.toLowerCase() === "enrique")) {
+        return true;
+      }
+      if (n.targetUserId && userId) {
+        return String(n.targetUserId) === String(userId);
+      }
+      return false;
+    }).filter((n) => !n.read).length;
+  }, [serverNotifs, username, userId, role, localVersion]);
 
   const { data: exchangeRate, isLoading: isLoadingExchangeRate } = useExchangeRate(
     {
@@ -180,7 +203,7 @@ export function TopHeaderBanner({
         {/* BARRA SUPERIOR DE UTILIDAD: Botón Volver + USD Rate (solo si showExchangeRate) y Refrescar + Campana + Menú Lateral (der) */}
         <Flex justify="space-between" align="center" gap={2} mb={{ base: 4, md: 6 }}>
           <HStack spacing={{ base: 2, md: 3 }} minW={0} flexShrink={1}>
-            {showBack && <BackButton color="white" />}
+            {showBack && <BackButton color="white" to={backTo} onClick={onBackClick} />}
 
             {/* Badge Tipo de Cambio USD - Solo en vista principal / cuando se habilite */}
             {showExchangeRate && (

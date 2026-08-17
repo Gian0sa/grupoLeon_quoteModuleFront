@@ -93,26 +93,31 @@ export function QuoteApprovalPage() {
   const [pdfQuote, setPdfQuote] = useState(null);
   const [deleteConfirmDoc, setDeleteConfirmDoc] = useState(null);
 
-  // Sincronizar cotizaciones desde el servidor en tiempo real (Polling activo cada 5s)
+  // Sincronizar cotizaciones desde el servidor en tiempo real sin borrar borradores locales
   useEffect(() => {
+    const local = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
     if (serverQuotes && Array.isArray(serverQuotes)) {
-      setQuotes(serverQuotes);
-      // Guardar copia local como respaldo
-      localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(serverQuotes));
+      const serverDocIds = new Set(serverQuotes.map(q => q.docNumber || q.id));
+      const unsyncedLocal = local.filter(q => !serverDocIds.has(q.docNumber || q.id));
+      const merged = [...unsyncedLocal, ...serverQuotes];
+      setQuotes(merged);
+      localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(merged));
+    } else if (local.length > 0) {
+      setQuotes(local);
     }
   }, [serverQuotes]);
 
-  // Cargar cotizaciones iniciales desde localStorage si el servidor tarda
+  // Cargar cotizaciones iniciales desde localStorage y servidor
   const loadQuotes = () => {
     try {
-      if (serverQuotes && serverQuotes.length > 0) {
-        setQuotes(serverQuotes);
-        return;
-      }
       const stored = localStorage.getItem("grupoLeon_local_quotes");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setQuotes(Array.isArray(parsed) ? parsed : []);
+      const local = stored ? JSON.parse(stored) : [];
+      if (serverQuotes && Array.isArray(serverQuotes) && serverQuotes.length > 0) {
+        const serverDocIds = new Set(serverQuotes.map(q => q.docNumber || q.id));
+        const unsyncedLocal = local.filter(q => !serverDocIds.has(q.docNumber || q.id));
+        setQuotes([...unsyncedLocal, ...serverQuotes]);
+      } else {
+        setQuotes(Array.isArray(local) ? local : []);
       }
     } catch (err) {
       console.error("Error al cargar cotizaciones:", err);
@@ -586,8 +591,12 @@ export function QuoteApprovalPage() {
   const renderRowActions = (q, docId, status, { stack = false } = {}) => {
     const isDraft = !status || ["GENERADO", "BORRADOR", "DRAFT", "draft"].includes(status);
     const btnSize = stack ? "sm" : "xs";
+    const halfFlex = stack ? "1 1 calc(50% - 6px)" : undefined;
+    const fullFlex = stack ? "1 1 100%" : undefined;
+    const btnMinW = stack ? "105px" : undefined;
+
     return (
-      <HStack spacing={1.5} justify={stack ? "stretch" : "flex-end"} w="full" flexWrap="nowrap">
+      <Flex gap={2} justify={stack ? "stretch" : "flex-end"} w="full" wrap="wrap" align="center">
         {/* 1. Botón Editar (Para Borradores) */}
         {isDraft && (
           <Button
@@ -603,7 +612,8 @@ export function QuoteApprovalPage() {
             px={2.5}
             whiteSpace="nowrap"
             boxShadow="0 2px 6px rgba(37,99,235,0.2)"
-            flex={stack ? "1" : undefined}
+            flex={halfFlex}
+            minW={btnMinW}
           >
             Editar
           </Button>
@@ -626,7 +636,8 @@ export function QuoteApprovalPage() {
             borderRadius="lg"
             px={2.5}
             whiteSpace="nowrap"
-            flex={stack ? "1" : undefined}
+            flex={halfFlex}
+            minW={btnMinW}
           >
             Borrar
           </Button>
@@ -651,7 +662,8 @@ export function QuoteApprovalPage() {
           borderRadius="lg"
           px={2.5}
           whiteSpace="nowrap"
-          flex={stack ? "1" : undefined}
+          flex={halfFlex}
+          minW={btnMinW}
         >
           Vista
         </Button>
@@ -675,36 +687,31 @@ export function QuoteApprovalPage() {
           borderRadius="lg"
           px={2.5}
           whiteSpace="nowrap"
-          flex={stack ? "1" : undefined}
+          flex={halfFlex}
+          minW={btnMinW}
         >
           PDF
         </Button>
 
-        {/* 3. Acciones de Stepper (Enviar, Procesar, etc.) */}
-        {status === "GENERADO" && (
-          <Button
-            size={btnSize}
-            minH={touchH(stack)}
-            colorScheme="green"
-            bg="#059669"
-            _hover={{ bg: "#047857" }}
-            leftIcon={<Send className="w-3.5 h-3.5" />}
-            onClick={() => handleUpdateStatus(docId, "ENVIADO")}
-            fontWeight="800"
-            borderRadius="lg"
-            px={2.5}
-            whiteSpace="nowrap"
-            flex={stack ? "1" : undefined}
-          >
-            Enviar
-          </Button>
-        )}
-
+        {/* 3. Acciones de Stepper (Validación Admin, etc.) */}
         {(status === "ENVIADO" || status === "EN_PROCESO") && (
           isAdminUser ? (
             <>
               {!q.viewedByAdmin && (
-                <Badge bg="#fee2e2" color="#dc2626" border="1.5px solid #fca5a5" px={2} py={1} borderRadius="lg" fontSize="9px" fontWeight="900" whiteSpace="nowrap">
+                <Badge
+                  w={stack ? "full" : "auto"}
+                  textAlign="center"
+                  bg="#fee2e2"
+                  color="#dc2626"
+                  border="1.5px solid #fca5a5"
+                  px={2}
+                  py={stack ? 1.5 : 1}
+                  borderRadius="lg"
+                  fontSize="9px"
+                  fontWeight="900"
+                  whiteSpace="nowrap"
+                  flex={fullFlex}
+                >
                   🔥 NUEVA SOLICITUD
                 </Badge>
               )}
@@ -720,7 +727,8 @@ export function QuoteApprovalPage() {
                 borderRadius="lg"
                 px={2.5}
                 whiteSpace="nowrap"
-                flex={stack ? "1" : undefined}
+                flex={halfFlex}
+                minW={btnMinW}
               >
                 Aprobar
               </Button>
@@ -734,7 +742,8 @@ export function QuoteApprovalPage() {
                 borderRadius="lg"
                 px={2.5}
                 whiteSpace="nowrap"
-                flex={stack ? "1" : undefined}
+                flex={halfFlex}
+                minW={btnMinW}
               >
                 Rechazar
               </Button>
@@ -754,7 +763,7 @@ export function QuoteApprovalPage() {
                 borderRadius="lg"
                 px={2.5}
                 whiteSpace="nowrap"
-                flex={stack ? "1" : undefined}
+                flex={fullFlex}
               >
                 💬 Observar
               </Button>
@@ -762,12 +771,38 @@ export function QuoteApprovalPage() {
           ) : (
             <>
               {q.viewedByAdmin ? (
-                <Badge bg="#e0f2fe" color="#0284c7" border="1.5px solid #7dd3fc" px={2.5} py={1.5} borderRadius="lg" fontSize="10px" fontWeight="900" whiteSpace="nowrap">
+                <Badge
+                  w={stack ? "full" : "auto"}
+                  textAlign="center"
+                  bg="#e0f2fe"
+                  color="#0284c7"
+                  border="1.5px solid #7dd3fc"
+                  px={2.5}
+                  py={1.5}
+                  borderRadius="lg"
+                  fontSize="10px"
+                  fontWeight="900"
+                  whiteSpace="nowrap"
+                  flex={fullFlex}
+                >
                   💎 Leído por Enrique (Admin) {q.adminViewCount > 1 ? `(${q.adminViewCount}ª lectura)` : ""}
                 </Badge>
               ) : (
                 <>
-                  <Badge bg="#f1f5f9" color="#64748b" border="1.5px solid #cbd5e1" px={2.5} py={1.5} borderRadius="lg" fontSize="10px" fontWeight="800" whiteSpace="nowrap">
+                  <Badge
+                    w={stack ? "full" : "auto"}
+                    textAlign="center"
+                    bg="#f1f5f9"
+                    color="#64748b"
+                    border="1.5px solid #cbd5e1"
+                    px={2.5}
+                    py={1.5}
+                    borderRadius="lg"
+                    fontSize="10px"
+                    fontWeight="800"
+                    whiteSpace="nowrap"
+                    flex={fullFlex}
+                  >
                     📩 Entregado (Sin abrir)
                   </Badge>
                   {/* RECALL: Vendedor puede retirar solicitud si Enrique aún no la abrió */}
@@ -786,7 +821,7 @@ export function QuoteApprovalPage() {
                     borderRadius="lg"
                     px={2.5}
                     whiteSpace="nowrap"
-                    flex={stack ? "1" : undefined}
+                    flex={fullFlex}
                   >
                     ↩️ Retirar y Corregir
                   </Button>
@@ -797,23 +832,25 @@ export function QuoteApprovalPage() {
         )}
 
         {status === "APROBADO_COMERCIAL" && (
-          <Button
-            size={btnSize}
-            minH={touchH(stack)}
-            colorScheme="amber"
-            bg="#d97706"
-            color="white"
-            _hover={{ bg: "#b45309" }}
-            leftIcon={<FileCheck2 className="w-3.5 h-3.5" />}
-            onClick={() => handleLoadQuote(q)}
-            fontWeight="800"
-            borderRadius="lg"
-            px={2.5}
-            whiteSpace="nowrap"
-            flex={stack ? "1" : undefined}
-          >
-            📦 Generar Pedido
-          </Button>
+          isAdminUser ? (
+            <Button
+              size={btnSize}
+              minH={touchH(stack)}
+              colorScheme="amber"
+              bg="#d97706"
+              color="white"
+              _hover={{ bg: "#b45309" }}
+              leftIcon={<FileCheck2 className="w-3.5 h-3.5" />}
+              onClick={() => handleLoadQuote(q)}
+              fontWeight="800"
+              borderRadius="lg"
+              px={2.5}
+              whiteSpace="nowrap"
+              flex={fullFlex}
+            >
+              📦 Generar Pedido
+            </Button>
+          ) : null
         )}
 
         {status === "PENDIENTE_FACTURACION" && (
@@ -831,9 +868,10 @@ export function QuoteApprovalPage() {
                 borderRadius="lg"
                 px={2.5}
                 whiteSpace="nowrap"
-                flex={stack ? "1" : undefined}
+                flex={halfFlex}
+                minW={btnMinW}
               >
-                ⚡ Finalizar y Emitir Pedido
+                ⚡ Emitir Pedido
               </Button>
               <Button
                 size={btnSize}
@@ -845,13 +883,27 @@ export function QuoteApprovalPage() {
                 borderRadius="lg"
                 px={2.5}
                 whiteSpace="nowrap"
-                flex={stack ? "1" : undefined}
+                flex={halfFlex}
+                minW={btnMinW}
               >
                 Rechazar
               </Button>
             </>
           ) : (
-            <Badge bg="#f3e8ff" color="#7c3aed" border="1.5px solid #c084fc" px={2.5} py={1.5} borderRadius="lg" fontSize="10px" fontWeight="900" whiteSpace="nowrap">
+            <Badge
+              w={stack ? "full" : "auto"}
+              textAlign="center"
+              bg="#f3e8ff"
+              color="#7c3aed"
+              border="1.5px solid #c084fc"
+              px={2.5}
+              py={1.5}
+              borderRadius="lg"
+              fontSize="10px"
+              fontWeight="900"
+              whiteSpace="nowrap"
+              flex={fullFlex}
+            >
               🔮 En Validación por Asesora
             </Badge>
           )
@@ -874,7 +926,7 @@ export function QuoteApprovalPage() {
             borderRadius="lg"
             px={2.5}
             whiteSpace="nowrap"
-            flex={stack ? "1" : undefined}
+            flex={fullFlex}
           >
             ✉️ Corregir y Reenviar
           </Button>
@@ -895,35 +947,34 @@ export function QuoteApprovalPage() {
             borderRadius="lg"
             px={2.5}
             whiteSpace="nowrap"
-            flex={stack ? "1" : undefined}
+            flex={fullFlex}
           >
             ✏️ Editar y Reenviar
           </Button>
         )}
 
-        {/* 4. Borrar / Anular / Purgar — Solo Enrique (Admin) */}
-        {isAdminUser && (
+        {/* 4. Borrar / Anular / Purgar — Solo Enrique (Admin) para cotizaciones no borradores */}
+        {isAdminUser && !isDraft && (
           <Tooltip
             label={
               status === "ANULADO"
                 ? "Eliminar permanentemente del historial"
-                : DRAFT_STATUSES.includes(status)
-                ? "Eliminar borrador permanentemente"
                 : "Anular cotización (el estado cambiará a Anulado ❌)"
             }
           >
             <IconButton
               size={btnSize}
-              aria-label={DRAFT_STATUSES.includes(status) || status === "ANULADO" ? "Eliminar" : "Anular cotización"}
+              aria-label={status === "ANULADO" ? "Eliminar" : "Anular cotización"}
               icon={<Trash2 className="w-3.5 h-3.5 text-red-500" />}
               colorScheme="red"
               variant="ghost"
               _hover={{ bg: "#fef2f2" }}
               onClick={() => handleDeleteQuote(docId, status)}
+              flex={stack ? "1 1 100%" : undefined}
             />
           </Tooltip>
         )}
-      </HStack>
+      </Flex>
     );
   };
 
@@ -1043,11 +1094,11 @@ export function QuoteApprovalPage() {
           <Table variant="simple" size="md" style={{ tableLayout: "fixed", width: "100%" }}>
             <Thead bg="#0e572b">
               <Tr>
-                <Th py={4} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" width="28%">DOCUMENTO Y CLIENTE</Th>
+                <Th py={4} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" width="26%">DOCUMENTO Y CLIENTE</Th>
                 <Th fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" width="11%">FECHA</Th>
                 <Th fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="right" width="11%">TOTAL (USD)</Th>
-                <Th fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="center" width="18%">ESTADO DE APROBACIÓN</Th>
-                <Th fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="right" width="32%">ACCIONES DISPONIBLES</Th>
+                <Th fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="center" width="16%">ESTADO DE APROBACIÓN</Th>
+                <Th fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="right" width="36%">ACCIONES DISPONIBLES</Th>
               </Tr>
             </Thead>
             <Tbody>

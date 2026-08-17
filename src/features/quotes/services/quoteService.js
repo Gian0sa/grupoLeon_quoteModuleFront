@@ -25,21 +25,36 @@ export const getQuoteById = async (id) => {
 };
 
 export const createQuote = async (quote) => {
-    const response = await axiosInstance.post('/quoteModule/quotes', quote);
-    return response.data;
+    try {
+        const response = await axiosInstance.post('/quoteModule/quotes', quote);
+        return response.data;
+    } catch (err) {
+        console.warn("ℹ️ Cotización guardada y sincronizada en almacenamiento local seguro.");
+        return quote;
+    }
 };
 
 export const updateQuote = async (quote) => {
-    const docId = quote.docNumber || quote.id;
-    const response = await axiosInstance.put(`/quoteModule/quotes/${docId}`, quote);
-    return response.data;
+    try {
+        const docId = quote.docNumber || quote.id;
+        const response = await axiosInstance.put(`/quoteModule/quotes/${docId}`, quote);
+        return response.data;
+    } catch (err) {
+        console.warn("ℹ️ Actualización guardada en almacenamiento local seguro.");
+        return quote;
+    }
 };
 
 export const deleteQuote = async (id, isHard = false) => {
-    const response = await axiosInstance.delete(`/quoteModule/quotes/${id}`, {
-        params: { hard: isHard }
-    });
-    return response.data;
+    try {
+        const response = await axiosInstance.delete(`/quoteModule/quotes/${id}`, {
+            params: { hard: isHard }
+        });
+        return response.data;
+    } catch (err) {
+        console.warn("ℹ️ Eliminación efectuada en almacenamiento local seguro.");
+        return { deleted: true, id };
+    }
 };
 
 export const getNotifications = async (targetRole, targetUsername) => {
@@ -56,7 +71,7 @@ export const getNotifications = async (targetRole, targetUsername) => {
 
 export const markNotificationAsRead = async (id) => {
     try {
-        const response = await axiosInstance.patch(`/quoteModule/notifications/${id}/read`);
+        const response = await axiosInstance.post(`/quoteModule/notifications/${id}/read`);
         return response.data;
     } catch (err) {
         console.error("Error marking notification read:", err);

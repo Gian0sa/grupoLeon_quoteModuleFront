@@ -56,14 +56,19 @@ import {
   Lock,
   Send,
   RotateCcw,
-  Download
+  Download,
+  Edit3,
+  Trash2
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useQuoteStore } from "../stores/quoteStore";
 import { RejectReasonModal } from "./RejectReasonModal";
 import QuotePdfModal from "./QuotePdfModal";
 import { calculateQuoteTotals } from "../../../shared/utils/quoteCalculator";
 import { useAuthStore } from "../../../features/auth/stores/useAuthStore";
 
 export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
+  const navigate = useNavigate();
   const { username: authUsername, role: authRole } = useAuthStore();
   const isAdminUser = authRole === "ADMIN" || authUsername?.toLowerCase() === "enrique";
   const activeRole = isAdminUser ? "ADMIN" : "SELLER";
@@ -583,7 +588,44 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
                   </Box>
                 </HStack>
               </Box>
-            ) : (
+            ) : (!status || ["GENERADO", "BORRADOR", "DRAFT", "draft"].includes(status)) ? (
+              <Box bg="#eff6ff" p={{ base: 3.5, md: 4 }} borderRadius="xl" border="1.5px solid" borderColor="#bfdbfe" boxShadow="sm" mb={4}>
+                <Flex direction={{ base: "column", sm: "row" }} align={{ base: "flex-start", sm: "center" }} justify="space-between" gap={3}>
+                  <HStack spacing={3} align="center">
+                    <Flex w="36px" h="36px" borderRadius="full" bg="#2563eb" align="center" justify="center" color="white" flexShrink={0}>
+                      <Edit3 className="w-5 h-5 stroke-[2.5]" />
+                    </Flex>
+                    <Box>
+                      <Text fontSize="xs" fontWeight="900" color="#1e3a8a" textTransform="uppercase" letterSpacing="wide">
+                        📝 Cotización en Modo Borrador
+                      </Text>
+                      <Text fontSize="11px" color="#1e40af" fontWeight="600" mt={0.5}>
+                        Este documento es un borrador interno y aún no ha sido enviado a validación comercial.
+                      </Text>
+                    </Box>
+                  </HStack>
+                  <Button
+                    size="sm"
+                    colorScheme="blue"
+                    bg="#2563eb"
+                    _hover={{ bg: "#1d4ed8" }}
+                    leftIcon={<Edit3 className="w-3.5 h-3.5" />}
+                    onClick={() => {
+                      onClose();
+                      if (typeof useQuoteStore.getState().setQuoteData === "function") {
+                        useQuoteStore.getState().setQuoteData(quote);
+                      }
+                      navigate("/newquotes");
+                    }}
+                    fontWeight="800"
+                    borderRadius="lg"
+                    px={3}
+                  >
+                    Abrir y Editar en Formulario
+                  </Button>
+                </Flex>
+              </Box>
+            ) : ((status === "ENVIADO" || status === "EN_PROCESO" || status === "PENDIENTE_FACTURACION") && isAdminUser) ? (
               <Box bg="white" p={{ base: 3.5, md: 4 }} borderRadius="xl" border="2px solid" borderColor="emerald.500" boxShadow="sm" mb={4}>
                 <VStack align="stretch" spacing={3}>
                   <Box minW={0}>
@@ -638,7 +680,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
                   </Flex>
                 </VStack>
               </Box>
-            )}
+            ) : null}
 
             {/* FICHA TÉCNICA RÁPIDA (Optimizada para Celular) */}
             <Grid

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Box,
   Flex,
@@ -21,7 +21,8 @@ import {
 } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 import { useProductsPriceList } from "../../products/hooks/queries/productQueries";
-import { useGetQuotes } from "../../quotes/hooks/queries/quotesQueries";
+import { useTopSelledProducts } from "../hooks/queries/dashboardQueries";
+import { fetchPriceListByItemCodes } from "../../clients/services/clientService";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 
 export function TopProductsCard() {
@@ -29,135 +30,166 @@ export function TopProductsCard() {
   const toast = useToast();
   const [copiedCode, setCopiedCode] = useState(null);
 
-  // Autodetectar usuario logueado y rol
+  // Autodetectar usuario logueado, código de vendedor SAP y rol
   const username = useAuthStore((state) => state.username);
-  const userId = useAuthStore((state) => state.userId);
+  const role = useAuthStore((state) => state.role);
   const salesEmployeeCode = useAuthStore((state) => state.salesEmployeeCode);
-  const isAdmin = username?.toLowerCase() === "enrique" || !salesEmployeeCode;
+
+  const isAdmin = role === "ADMIN" || username?.toLowerCase() === "enrique" || role === "FACTURACION";
   const isSeller = !isAdmin;
 
-  // Consultar cotizaciones reales del servidor (DB)
-  const { data: serverQuotesData, isLoading: isLoadingQuotes } = useGetQuotes();
+  // Venta Mensual (Mes actual en curso)
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1; // 1 a 12
 
-  // Consultar productos reales del catálogo SAP con STOCK disponible ("Y")
-  const { data, isLoading: isLoadingProducts } = useProductsPriceList({
+  // 1. Consultar Reporte de Órdenes SAP para el mes actual
+  const { data: topSelledData, isLoading: isLoadingTopReport } = useTopSelledProducts({
+    yearFrom: currentYear,
+    monthFrom: currentMonth,
+    monthTo: currentMonth,
+    slpCode: isSeller && salesEmployeeCode ? salesEmployeeCode : undefined,
+  });
+
+  // 2. Consultar productos del catálogo SAP general (para fallback si faltan elementos)
+  const { data: catalogData, isLoading: isLoadingCatalog } = useProductsPriceList({
     page: 1,
     stock: "Y",
   });
 
-  const productsList = data?.records || data?.items || data?.products || data?.data || [];
-  const isLoading = isLoadingQuotes || isLoadingProducts;
+  const productsList = catalogData?.records || catalogData?.items || catalogData?.products || catalogData?.data || [];
 
-  // Helper para obtener productos más vendidos DINÁMICAMENTE desde la BD y localStorage
-  const getDynamicTopProducts = () => {
-    try {
-      // 1. Cotizaciones del Servidor BD
-      const apiQuotes = Array.isArray(serverQuotesData)
-        ? serverQuotesData
-        : (serverQuotesData?.data || serverQuotesData?.quotes || serverQuotesData?.records || []);
-
-      // 2. Cotizaciones del LocalStorage (clave real del sistema)
-      const stored = localStorage.getItem("grupoLeon_local_quotes");
-      const localQuotes = stored ? JSON.parse(stored) : [];
-
-      // 3. Fusionar evitando duplicados por ID
-      const allQuotesMap = new Map();
-      [...apiQuotes, ...localQuotes].forEach((q) => {
-        const qId = q.id || q.quoteId || q.docNum || JSON.stringify(q);
-        allQuotesMap.set(qId, q);
-      });
-      const allQuotes = Array.from(allQuotesMap.values());
-
-      // 4. Filtrar cotizaciones según Rol de Usuario
-      const filteredQuotes = allQuotes.filter((q) => {
-        if (!isSeller) return true; // Administrador consolida a nivel empresa
-        if (!userId && !username) return true;
-
-        // Campos reales del objeto guardado en grupoLeon_local_quotes
-        const qUserId = String(q.createdByUserId || q.userId || "");
-        const qVendedorName = String(q.createdByUsername || q.vendedor || q.user?.username || q.createdBy || "").toLowerCase();
-
-        const matchId = userId && qUserId === String(userId);
-        const matchUser = username && qVendedorName.includes(String(username).toLowerCase());
-
-        return matchId || matchUser;
-      });
-
-      // 5. Agrupar ítems y sumar cantidades vendidas
-      const itemCounts = {};
-      filteredQuotes.forEach((q) => {
-        // En localStorage: q.products; en BD (API): q.items
-        const items = q.products || q.items || q.lineItems || q.detalles || [];
-        items.forEach((it) => {
-          // En localStorage: it.code / it.id / it.sigla; en BD: it.productCode / it.sigla
-          const code = it.code || it.id || it.productCode || it.itemCode || it.ITEM_CODE || it.sigla;
-          if (!code) return;
-          // En localStorage: it.name; en BD: it.productName
-          const name = it.name || it.productName || it.itemName || it.ITEM_NAME || it.description || code;
-          const qty = Number(it.quantity || it.cantidad || 1);
-          // En localStorage: it.price / it.importe; en BD: it.unitPrice
-          const price = Number(it.unitPrice || it.price || it.importe || it.precio || 0);
-
-          if (!itemCounts[code]) {
-            itemCounts[code] = {
-              ITEM_CODE: code,
-              ITEM_NAME: name,
-              totalQty: 0,
-              totalRevenue: 0,
-              MARCA: it.marca || "MALCO",
-              price: price,
-            };
-          }
-          itemCounts[code].totalQty += qty;
-          itemCounts[code].totalRevenue += qty * price;
-        });
-      });
-
-      // Ordenar descendente por mayor cantidad vendida, luego por monto $
-      return Object.values(itemCounts).sort((a, b) => {
-        if (b.totalQty !== a.totalQty) return b.totalQty - a.totalQty;
-        return b.totalRevenue - a.totalRevenue;
-      });
-    } catch (err) {
-      return [];
+  // Extractor inteligente de marca
+  const extractBrand = (prod) => {
+    if (!prod) return "GENÉRICO";
+    const rawMarca = prod.Marca || prod.MARCA || prod.marca || prod.brand || prod.BrandName;
+    if (rawMarca && typeof rawMarca === "string") {
+      const clean = rawMarca.trim();
+      if (clean && !["S/N", "N/A", "NA", "NULL", "UNDEFINED"].includes(clean.toUpperCase())) {
+        return clean;
+      }
     }
+
+    const fullName = String(prod.Nombre_Producto || prod.ITEM_NAME || prod.itemName || prod.name || prod.productName || prod.Descripcion || "").toUpperCase();
+    const codeStr = String(prod.Codigo_Producto || prod.ITEM_CODE || prod.itemCode || prod.code || prod.SIGLA || "").toUpperCase();
+
+    const knownBrands = ["WYNNNS", "DARUMA", "MALCO", "BOSCH", "DENSO", "NGK", "MOBIL", "SHELL", "TOTAL", "CASTROL", "MOTUL", "VALVOLINE", "MAHLE", "MANN"];
+    for (const b of knownBrands) {
+      if (fullName.includes(b) || codeStr.includes(b)) return b;
+    }
+
+    const words = fullName.split(/\s+/).filter(w => w.length >= 3 && !/^\d+$/.test(w));
+    if (words.length > 0) return words[words.length - 1];
+    return "GENÉRICO";
   };
 
-  // Construir lista DINÁMICA según el Historial de Cotizaciones
-  const dynamicTop = getDynamicTopProducts();
-  const itemCount = useBreakpointValue({ base: 3, lg: 3 }) || 3;
+  // 3. Extraer los códigos de productos top reportados por SAP
+  const topItemCodes = useMemo(() => {
+    const rawList = Array.isArray(topSelledData)
+      ? topSelledData
+      : (topSelledData?.data || topSelledData?.records || []);
 
-  let displayProducts = [];
+    return rawList
+      .map((item) => item.Codigo_Producto || item.ITEM_CODE || item.itemCode || item.code)
+      .filter(Boolean)
+      .slice(0, 5);
+  }, [topSelledData]);
 
-  if (dynamicTop.length > 0) {
-    // Enriquecer los dinámicos con datos SAP (stock/precio)
-    const enriched = dynamicTop.map((topItem) => {
-      const sapMatch = productsList.find((p) => (p.ITEM_CODE || p.itemCode || p.SIGLA) === topItem.ITEM_CODE);
-      return {
-        ...topItem,
-        STOCK_DISPONIBLE: sapMatch?.STOCK_DISPONIBLE ?? sapMatch?.stock ?? 45,
-        PRECIO_LISTA: sapMatch?.PRECIO_LISTA ?? topItem.price ?? 15.00,
-        SIGLA: sapMatch?.SIGLA || topItem.ITEM_CODE || "",
-      };
-    }).slice(0, itemCount);
+  // 4. Automatización: Enriquecer los códigos consultando `priceListByItemCodes` para obtener Nombres Reales, Siglas y Marcas
+  const [enrichedPriceList, setEnrichedPriceList] = useState([]);
+  const [isEnriching, setIsEnriching] = useState(false);
 
-    // Si hay menos de 3 productos únicos, rellenar con catálogo SAP
-    if (enriched.length < itemCount) {
-      const usedCodes = new Set(enriched.map((p) => p.ITEM_CODE));
-      const sapFill = productsList
-        .filter((p) => {
-          const code = p.ITEM_CODE || p.itemCode || p.SIGLA;
-          return code && !usedCodes.has(code);
-        })
-        .slice(0, itemCount - enriched.length);
-      displayProducts = [...enriched, ...sapFill];
-    } else {
-      displayProducts = enriched;
+  useEffect(() => {
+    if (topItemCodes.length === 0) {
+      setEnrichedPriceList([]);
+      return;
     }
-  } else {
-    // Sin cotizaciones aún → mostrar productos destacados del catálogo SAP
-    displayProducts = productsList.slice(0, itemCount);
-  }
+    let isMounted = true;
+    setIsEnriching(true);
+
+    fetchPriceListByItemCodes({ itemCodes: topItemCodes })
+      .then((res) => {
+        if (!isMounted) return;
+        const list = Array.isArray(res) ? res : (res?.data || res?.items || res?.records || []);
+        setEnrichedPriceList(list);
+      })
+      .catch((err) => {
+        console.warn("⚠️ No se pudo obtener información detallada del catálogo SAP por itemCodes:", err.message);
+        if (isMounted) setEnrichedPriceList([]);
+      })
+      .finally(() => {
+        if (isMounted) setIsEnriching(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [topItemCodes]);
+
+  const itemCount = useBreakpointValue({ base: 3, lg: 3 }) || 3;
+  const isLoading = isLoadingTopReport || isEnriching || isLoadingCatalog;
+
+  // 5. Construir lista final con Nombres Reales (NUNCA el código numérico)
+  const displayProducts = useMemo(() => {
+    const rawList = Array.isArray(topSelledData)
+      ? topSelledData
+      : (topSelledData?.data || topSelledData?.records || []);
+
+    const enrichedMap = new Map();
+    enrichedPriceList.forEach((item) => {
+      const code = item.ITEM_CODE || item.itemCode || item.code || item.Codigo || item.SIGLA;
+      if (code) enrichedMap.set(String(code).trim().toUpperCase(), item);
+    });
+
+    const mapped = rawList.map((topItem) => {
+      const code = String(topItem.Codigo_Producto || topItem.ITEM_CODE || topItem.itemCode || topItem.code || "").trim().toUpperCase();
+      const sapDetail = enrichedMap.get(code) || productsList.find(p => String(p.ITEM_CODE || p.itemCode || p.SIGLA || "").trim().toUpperCase() === code);
+
+      const rawName = sapDetail?.ITEM_NAME || sapDetail?.itemName || sapDetail?.Descripcion || sapDetail?.description || sapDetail?.name || topItem.Nombre_Producto;
+      const cleanName = (rawName && String(rawName).trim().toUpperCase() !== code)
+        ? rawName
+        : (sapDetail?.description || topItem.Nombre_Producto || `Producto ${code}`);
+
+      const sigla = sapDetail?.SIGLA || sapDetail?.sigla || sapDetail?.Sigla || code;
+      const brand = extractBrand(sapDetail || topItem);
+      const stock = Number(sapDetail?.STOCK_DISPONIBLE ?? sapDetail?.stock ?? sapDetail?.Stock ?? topItem.Stock_Actual_Almacen_014 ?? 0);
+      const price = Number(sapDetail?.PRECIO_LISTA ?? sapDetail?.price ?? sapDetail?.Precio ?? topItem.Precio_Unidad ?? topItem.Monto_Total_Vendido ?? 0);
+
+      return {
+        ITEM_CODE: code,
+        ITEM_NAME: cleanName,
+        SIGLA: sigla,
+        MARCA: brand,
+        STOCK_DISPONIBLE: stock,
+        PRECIO_LISTA: price,
+        totalQty: Number(topItem.Cantidad_Total_Pedida || topItem.totalQty || 1),
+      };
+    }).filter(p => p.ITEM_CODE);
+
+    if (mapped.length >= itemCount) {
+      return mapped.slice(0, itemCount);
+    }
+
+    // Rellenar con catálogo general SAP si aún no alcanza 3 ítems
+    const usedCodes = new Set(mapped.map(p => p.ITEM_CODE));
+    const sapFill = productsList
+      .filter(p => {
+        const code = String(p.ITEM_CODE || p.itemCode || p.SIGLA || "").trim().toUpperCase();
+        return code && !usedCodes.has(code);
+      })
+      .slice(0, itemCount - mapped.length)
+      .map(p => ({
+        ITEM_CODE: p.ITEM_CODE || p.itemCode || p.SIGLA,
+        ITEM_NAME: p.ITEM_NAME || p.itemName || p.description,
+        SIGLA: p.SIGLA || p.ITEM_CODE || "",
+        MARCA: extractBrand(p),
+        STOCK_DISPONIBLE: Number(p.STOCK_DISPONIBLE ?? p.stock ?? 0),
+        PRECIO_LISTA: Number(p.PRECIO_LISTA ?? p.price ?? 0),
+        totalQty: 0
+      }));
+
+    return [...mapped, ...sapFill].slice(0, itemCount);
+  }, [topSelledData, enrichedPriceList, productsList, itemCount]);
 
   const handleCopyCode = (code, e) => {
     e.stopPropagation();
@@ -178,15 +210,15 @@ export function TopProductsCard() {
     }, 2500);
   };
 
-  // Medallas de Ranking Visual (🥇 #1, 🥈 #2, 🥉 #3)
-  const getRankBadge = (idx, totalQty) => {
+  // Medallas de Ranking Visual
+  const getRankBadge = (idx) => {
     if (isSeller) {
       const ranks = [
-        { label: "🥇 #1 VENDIDO POR TI", bg: "linear-gradient(135deg, #d97706 0%, #b45309 100%)", color: "white" },
-        { label: "🥈 #2 VENDIDO POR TI", bg: "linear-gradient(135deg, #64748b 0%, #475569 100%)", color: "white" },
-        { label: "🥉 #3 VENDIDO POR TI", bg: "linear-gradient(135deg, #b45309 0%, #78350f 100%)", color: "white" },
+        { label: "🥇 #1 MÁS VENDIDO MES", bg: "linear-gradient(135deg, #d97706 0%, #b45309 100%)", color: "white" },
+        { label: "🥈 #2 MÁS VENDIDO MES", bg: "linear-gradient(135deg, #64748b 0%, #475569 100%)", color: "white" },
+        { label: "🥉 #3 MÁS VENDIDO MES", bg: "linear-gradient(135deg, #b45309 0%, #78350f 100%)", color: "white" },
       ];
-      const rank = ranks[idx] || { label: `#${idx + 1} VENDIDO POR TI`, bg: "gray.500", color: "white" };
+      const rank = ranks[idx] || { label: `#${idx + 1} MÁS VENDIDO`, bg: "gray.500", color: "white" };
       return (
         <Badge
           style={{ background: rank.bg, color: rank.color }}
@@ -201,13 +233,12 @@ export function TopProductsCard() {
       );
     }
 
-    // Administrador (Ranking Empresa)
     const adminRanks = [
       { label: "🥇 #1 MÁS VENDIDO EMPRESA", bg: "linear-gradient(135deg, #059669 0%, #047857 100%)", color: "white" },
       { label: "🥈 #2 MÁS VENDIDO EMPRESA", bg: "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)", color: "white" },
       { label: "🥉 #3 MÁS VENDIDO EMPRESA", bg: "linear-gradient(135deg, #64748b 0%, #475569 100%)", color: "white" },
     ];
-    const rank = adminRanks[idx] || { label: `#${idx + 1} MÁS VENDIDO`, bg: "gray.500", color: "white" };
+    const rank = adminRanks[idx] || { label: `#${idx + 1} MÁS VENDIDO EMPRESA`, bg: "gray.500", color: "white" };
     return (
       <Badge
         style={{ background: rank.bg, color: rank.color }}
@@ -239,7 +270,7 @@ export function TopProductsCard() {
       overflow="hidden"
     >
       <Box flex={1} display="flex" flexDirection="column" justify="space-between">
-        {/* Header de la Tarjeta (Automático por Rol) */}
+        {/* Header de la Tarjeta (Automático por Rol y Periodo Mensual) */}
         <Flex align="center" justify="space-between" mb={2.5} gap={2}>
           <HStack spacing={{ base: 2, sm: 2.5 }} minW={0} flex={1}>
             <Flex
@@ -275,13 +306,13 @@ export function TopProductsCard() {
                   fontWeight="800"
                   flexShrink={0}
                 >
-                  {isSeller ? "🔥 MIS MÁS VENDIDOS" : "🌐 TOP EMPRESA"}
+                  {isSeller ? "🔥 MIS MÁS VENDIDOS (MES)" : "🌐 TOP EMPRESA (MES)"}
                 </Badge>
               </HStack>
               <Text fontSize="11px" color="gray.500" display={{ base: "none", xl: "block" }} noOfLines={1}>
                 {isSeller
-                  ? "Tus productos con mayor volumen de venta acumulado"
-                  : "Los productos más cotizados y demandados a nivel nacional"}
+                  ? "Tus productos con mayor récord de ventas este mes"
+                  : "Los productos más vendidos a nivel empresa este mes"}
               </Text>
             </Box>
           </HStack>
@@ -300,7 +331,7 @@ export function TopProductsCard() {
           </Button>
         </Flex>
 
-        {/* Lista de Productos Automatizada sin Pestañas innecesarias */}
+        {/* Lista de Productos Automatizada */}
         {isLoading ? (
           <VStack spacing={2} align="stretch" w="100%">
             {[...Array(3)].map((_, i) => (
@@ -320,19 +351,19 @@ export function TopProductsCard() {
         ) : displayProducts.length > 0 ? (
           <VStack spacing={2} align="stretch" w="100%">
             {displayProducts.map((prod, idx) => {
-              const itemCode = prod.ITEM_CODE || prod.itemCode || `ITEM-${idx + 1}`;
-              const sigla = prod.SIGLA || "";
-              const fullName = prod.ITEM_NAME || prod.itemName || prod.SIGLA || "Producto sin descripción";
-              const marca = prod.MARCA || prod.marca || "";
-              const stockQty = Number(prod.STOCK_DISPONIBLE ?? prod.onHand ?? prod.stock ?? 0);
-              const priceVal = Number(prod.PRECIO_LISTA || prod.price || 0);
+              const itemCode = prod.ITEM_CODE || `ITEM-${idx + 1}`;
+              const sigla = prod.SIGLA || itemCode;
+              const fullName = prod.ITEM_NAME || "Producto sin descripción";
+              const marca = prod.MARCA || "GENÉRICO";
+              const stockQty = Number(prod.STOCK_DISPONIBLE ?? 0);
+              const priceVal = Number(prod.PRECIO_LISTA ?? 0);
 
               const searchCode = sigla || itemCode;
               const isCopied = copiedCode === searchCode;
 
               return (
                 <Box
-                  key={itemCode}
+                  key={`${itemCode}-${idx}`}
                   py={1.5}
                   px={2.5}
                   borderRadius="xl"
@@ -343,9 +374,9 @@ export function TopProductsCard() {
                   _hover={{ bg: "white", boxShadow: "0 4px 14px rgba(0,0,0,0.05)", borderColor: "green.300" }}
                 >
                   <Flex direction="column" gap={1.5} w="100%">
-                    {/* Fila 1: Badge Automático de Ranking (Medalla) + Marca */}
+                    {/* Fila 1: Badge Automático de Ranking (Medalla) + Marca Real SAP */}
                     <Flex align="center" justify="space-between" flexWrap="wrap" gap={1}>
-                      {getRankBadge(idx, prod.totalQty)}
+                      {getRankBadge(idx)}
 
                       {marca && (
                         <Badge colorScheme="blue" variant="subtle" borderRadius="md" px={1.5} fontSize="9px">
@@ -354,7 +385,7 @@ export function TopProductsCard() {
                       )}
                     </Flex>
 
-                    {/* Fila 2: Nombre Completo del Producto */}
+                    {/* Fila 2: Nombre Completo del Producto (NUNCA el código numérico) */}
                     <Text
                       fontWeight="850"
                       fontSize="xs"
@@ -380,7 +411,7 @@ export function TopProductsCard() {
                           fontSize="10px"
                           fontWeight="700"
                         >
-                          {stockQty} unid.
+                          {stockQty.toLocaleString("es-PE")} unid.
                         </Badge>
                       </HStack>
 
@@ -389,7 +420,7 @@ export function TopProductsCard() {
                       </Text>
                     </HStack>
 
-                    {/* Fila 4: Código de Búsqueda para copiar en 1-clic */}
+                    {/* Fila 4: Código o Sigla de Búsqueda para copiar en 1-clic */}
                     <Flex align="center" justify="flex-start" gap={2} pt={1}>
                       <Button
                         size="xs"

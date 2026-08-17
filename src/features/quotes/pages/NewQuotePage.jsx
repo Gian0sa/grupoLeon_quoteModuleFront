@@ -18,6 +18,7 @@ export function NewQuotesPage() {
         title="Oferta de Ventas SAP"
         subtitle={`Cotización Comercial • ${today.charAt(0).toUpperCase() + today.slice(1)}`}
         showBack={true}
+        backTo="/historyquotes"
         showExchangeRate={true}
         mb={6}
       />
