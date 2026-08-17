@@ -3,7 +3,8 @@ import { useClientQueries, useClientQueriesByName } from "../../clients/hooks/qu
 import { adaptClientFromApi } from "../../clients/adapters/clientAdapter";
 
 export function parseSearchToInitialData(inputString) {
-    const trimmed = (inputString || "").trim();
+    const str = typeof inputString === "string" ? inputString : "";
+    const trimmed = str.trim();
     if (!trimmed) return null;
 
     const isDigitsOnly = /^\d+$/.test(trimmed);
@@ -75,11 +76,17 @@ export function useClientSearch() {
     };
 
     const handleCreateNewClient = (formData) => {
+        const generatedCode = formData.documentNumber
+            ? `CL${formData.documentNumber}`
+            : `CL-TEMP-${Date.now()}`;
+
         setSelectedClient({
             type: "NEW",
-            id: null,
-            firstName: formData.firstName,
-            address: formData.address,
+            id: generatedCode,
+            sapCode: generatedCode,
+            cardCode: generatedCode,
+            firstName: formData.firstName || formData.fullName || "Cliente Nuevo",
+            address: formData.address || "Cliente Nuevo (Sin registrar en SAP)",
 
             personType: formData.personType,
             documentType: formData.documentType,

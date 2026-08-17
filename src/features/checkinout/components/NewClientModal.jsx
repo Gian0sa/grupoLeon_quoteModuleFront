@@ -69,9 +69,15 @@ export function NewClientModal({ isOpen, onClose, onCreate, initialData }) {
 
     switch (field) {
       case "fullName":
-        if (!value.trim()) error = "Campo obligatorio";
-        else if (!/^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$/.test(value))
-          error = "Solo letras";
+        if (!value.trim()) {
+          error = "Campo obligatorio";
+        } else if (value.trim().length < 3) {
+          error = "Mínimo 3 caracteres";
+        } else if (form.personType === "NATURAL" && !/^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s.-]+$/.test(value)) {
+          error = "Solo letras y espacios";
+        } else if (form.personType === "JURIDICO" && !/^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s.&/,-]+$/.test(value)) {
+          error = "Caracteres no válidos para Razón Social";
+        }
         break;
 
       case "documentNumber":
@@ -181,10 +187,7 @@ export function NewClientModal({ isOpen, onClose, onCreate, initialData }) {
               <Input
                 value={form.fullName}
                 onChange={(e) =>
-                  handleChange(
-                    "fullName",
-                    e.target.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, "")
-                  )
+                  handleChange("fullName", e.target.value.toUpperCase())
                 }
               />
               <FormErrorMessage>{errors.fullName}</FormErrorMessage>

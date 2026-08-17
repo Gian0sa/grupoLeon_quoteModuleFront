@@ -89,10 +89,15 @@ export default function VisitLogPage() {
 
     useEffect(() => {
         if (hasActiveCheckIn && activeVisit && !selectedClient) {
+            const sapCodeVal = activeVisit.sapCode || activeVisit.cardCode || activeVisit.clientCode || "";
             setSelectedClient({
+                id: sapCodeVal || "AUTO",
+                sapCode: sapCodeVal,
+                cardCode: sapCodeVal,
+                clientCode: sapCodeVal,
                 firstName: activeVisit.storeName,
-                cardCode: activeVisit.sapCode,
-                address: `Lat: ${activeVisit.latitude}, Lon: ${activeVisit.longitude}`,
+                address: activeVisit.address || `Lat: ${activeVisit.latitude || ""}, Lon: ${activeVisit.longitude || ""}`,
+                type: sapCodeVal ? "SAP" : "NEW",
             });
         }
     }, [hasActiveCheckIn, activeVisit, selectedClient]);
