@@ -24,7 +24,7 @@ import { useVisitLogs } from "../hooks/queries/visitLogQueries";
 import { useSellersData } from "../../auth/hooks/queries/authQueries";
 import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
 import Select from "react-select";
-import { getToday, getYesterday, getLastWeek, getLastMonth, formatDateForInput } from "../utils/datePresets";
+import { getToday, getYesterday, getLastWeek, getFirstDayOfMonth, getLastDayOfMonth, formatDateForInput } from "../utils/datePresets";
 import { formatDateTime, formatDate, formatTime, calculateDuration } from "../utils/dateUtils";
 import MapMarkers from "../components/MapMarkers";
 import "../map/leafletConfig";
@@ -270,8 +270,8 @@ export default function VisitLogsMapView() {
                 setDateTo(formatDateForInput(getToday()));
                 break;
             case "last30days":
-                setDateFrom(formatDateForInput(getLastMonth()));
-                setDateTo(formatDateForInput(getToday()));
+                setDateFrom(formatDateForInput(getFirstDayOfMonth()));
+                setDateTo(formatDateForInput(getLastDayOfMonth()));
                 break;
             case "all":
                 setDateFrom("");
@@ -363,7 +363,7 @@ export default function VisitLogsMapView() {
         const completedVisits = filteredGroups.filter(g => g.in && g.out).length;
         const pendingCheckOut = filteredGroups.filter(g => g.in && !g.out).length;
         const orphanCheckOut = filteredGroups.filter(g => !g.in && g.out).length;
-        const totalVisits = completedVisits + pendingCheckOut + orphanCheckOut;
+        const totalVisits = completedVisits + pendingCheckOut;
 
         let totalDuration = 0;
         let visitCount = 0;
