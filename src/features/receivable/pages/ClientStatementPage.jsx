@@ -120,6 +120,8 @@ export function ClientStatementPage() {
     totalLetrasBancoUSD,
     totalNCUSD,
     totalNDUSD,
+    hasPenDocs,
+    hasUsdDocs,
   } = useMemo(() => {
     if (!statementData) {
       return {
@@ -143,6 +145,8 @@ export function ClientStatementPage() {
         totalLetrasBancoUSD: 0,
         totalNCUSD: 0,
         totalNDUSD: 0,
+        hasPenDocs: false,
+        hasUsdDocs: true,
       };
     }
 
@@ -237,6 +241,8 @@ export function ClientStatementPage() {
       totalLetrasBancoUSD: letBancoUSD,
       totalNCUSD: ncUSD,
       totalNDUSD: ndUSD,
+      hasPenDocs: sumPEN > 0 || parsedDocs.some((d) => (d.sPen || 0) > 0),
+      hasUsdDocs: sumUSD > 0 || parsedDocs.some((d) => (d.sUsd || 0) > 0) || sumPEN === 0,
     };
   }, [statementData]);
 
@@ -676,14 +682,18 @@ export function ClientStatementPage() {
                   <Th py={2} px={2} fontSize="10px" color="gray.900" fontWeight="900">SERIE - DOCUMENTO</Th>
                   <Th py={2} px={2} fontSize="10px" color="gray.900" fontWeight="900">CODIGO UNICO</Th>
                   <Th py={2} px={2} fontSize="10px" color="gray.900" fontWeight="900" textAlign="right">MONTO</Th>
-                  <Th py={2} px={2} fontSize="10px" color="gray.900" fontWeight="900" textAlign="right">SALDO PEN</Th>
-                  <Th py={2} px={2} fontSize="10px" color="gray.900" fontWeight="900" textAlign="right">SALDO USD</Th>
+                  {hasPenDocs && (
+                    <Th py={2} px={2} fontSize="10px" color="gray.900" fontWeight="900" textAlign="right">SALDO PEN</Th>
+                  )}
+                  {hasUsdDocs && (
+                    <Th py={2} px={2} fontSize="10px" color="gray.900" fontWeight="900" textAlign="right">SALDO USD</Th>
+                  )}
                 </Tr>
               </Thead>
               <Tbody>
                 {filteredDocs.length === 0 ? (
                   <Tr>
-                    <Td colSpan={9} textAlign="center" py={6} color="gray.500">
+                    <Td colSpan={7 + (hasPenDocs ? 1 : 0) + (hasUsdDocs ? 1 : 0)} textAlign="center" py={6} color="gray.500">
                       No se encontraron documentos pendientes para el filtro seleccionado.
                     </Td>
                   </Tr>
@@ -728,12 +738,16 @@ export function ClientStatementPage() {
                         <Td px={2} py={1.5} fontSize="11px" textAlign="right" fontFamily="mono">
                           {doc.mon} {formatMoney(doc.tot)}
                         </Td>
-                        <Td px={2} py={1.5} fontSize="11px" textAlign="right" fontFamily="mono" fontWeight="600">
-                          {formatMoney(doc.sPen)}
-                        </Td>
-                        <Td px={2} py={1.5} fontSize="11px" textAlign="right" fontFamily="mono" fontWeight="700" color={doc.sUsd > 0 ? "gray.900" : "gray.400"}>
-                          {formatMoney(doc.sUsd)}
-                        </Td>
+                        {hasPenDocs && (
+                          <Td px={2} py={1.5} fontSize="11px" textAlign="right" fontFamily="mono" fontWeight="600" color={doc.sPen > 0 ? "gray.900" : "gray.400"}>
+                            {doc.sPen > 0 ? formatMoney(doc.sPen) : "—"}
+                          </Td>
+                        )}
+                        {hasUsdDocs && (
+                          <Td px={2} py={1.5} fontSize="11px" textAlign="right" fontFamily="mono" fontWeight="700" color={doc.sUsd > 0 ? "gray.900" : "gray.400"}>
+                            {doc.sUsd > 0 ? formatMoney(doc.sUsd) : "—"}
+                          </Td>
+                        )}
                       </Tr>
                     );
                   })
@@ -745,12 +759,12 @@ export function ClientStatementPage() {
 
         {/* Fila de Totales con Doble Subrayado Contable */}
         <Flex justify="flex-end" mb={6}>
-          <Box minW={{ base: "200px", sm: "260px" }}>
+          <Box minW={{ base: "180px", sm: "240px" }}>
             <Flex justify="space-between" py={1} borderTop="1px solid #0f172a" fontSize="xs" fontWeight="900" color="gray.900" fontFamily="mono">
               <Text>TOTALES:</Text>
               <HStack spacing={{ base: 4, sm: 6 }}>
-                <Text>{formatMoney(totalSaldoPEN)}</Text>
-                <Text>{formatMoney(totalSaldoUSD)}</Text>
+                {hasPenDocs && <Text>{formatMoney(totalSaldoPEN)}</Text>}
+                {hasUsdDocs && <Text>{formatMoney(totalSaldoUSD)}</Text>}
               </HStack>
             </Flex>
             <Divider borderColor="#0f172a" borderWidth="1.5px" mt={0.5} />

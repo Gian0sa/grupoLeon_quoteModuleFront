@@ -496,6 +496,16 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
   const dateLongStr = `${now.getDate()} de ${months[now.getMonth()]} de ${now.getFullYear()}`;
   doc.text(`Estado de Cuenta al ${dateLongStr}`, 105, 27.5, { align: "center" });
 
+  const documents = debt.documents || debt.documentos || debt.docs || [];
+  const hasPen = documents.some((d) => {
+    const mon = (d.moneda || d.TIPOCAMBIO || d.mon || "USD").toUpperCase();
+    return mon.includes("PEN") || mon.includes("SOL") || mon.includes("S/");
+  });
+  const hasUsd = documents.some((d) => {
+    const mon = (d.moneda || d.TIPOCAMBIO || d.mon || "USD").toUpperCase();
+    return !mon.includes("PEN") && !mon.includes("SOL") && !mon.includes("S/");
+  }) || !hasPen;
+
   const headerY = 34;
   doc.setDrawColor(0, 0, 0).setLineWidth(0.5);
   doc.line(10, headerY, 200, headerY);
@@ -506,13 +516,20 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
   doc.text("CONDICIÓN DE PAGO", 50, headerY + 4);
   doc.text("SERIE - DOCUMENTO", 78, headerY + 4);
   doc.text("CODIGO UNICO", 122, headerY + 4);
-  doc.text("MONTO", 162, headerY + 4, { align: "right" });
-  doc.text("SALDO PEN", 181, headerY + 4, { align: "right" });
-  doc.text("SALDO USD", 200, headerY + 4, { align: "right" });
+
+  if (hasPen && hasUsd) {
+    doc.text("MONTO", 162, headerY + 4, { align: "right" });
+    doc.text("SALDO PEN", 181, headerY + 4, { align: "right" });
+    doc.text("SALDO USD", 200, headerY + 4, { align: "right" });
+  } else if (hasPen) {
+    doc.text("MONTO", 175, headerY + 4, { align: "right" });
+    doc.text("SALDO PEN", 200, headerY + 4, { align: "right" });
+  } else {
+    doc.text("MONTO", 175, headerY + 4, { align: "right" });
+    doc.text("SALDO USD", 200, headerY + 4, { align: "right" });
+  }
 
   doc.line(10, headerY + 6, 200, headerY + 6);
-
-  const documents = debt.documents || debt.documentos || debt.docs || [];
   const salesperson = safeText(debt.vendedor || debt.sales || documents[0]?.NOMBVENDEDOR, "No Asignado");
   const rawCode = safeText(debt.clientCode || debt.ruc || debt.cCode || documents[0]?.CARDCODE, "");
   const cleanCode = rawCode ? `CL${rawCode.replace("CL", "")}` : "CL—";
@@ -583,13 +600,13 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
     );
 
     const moneda = (d.moneda || d.TIPOCAMBIO || d.mon || "USD").toUpperCase();
-    const isUSD = moneda === "USD" || moneda === "US$" || moneda === "$";
+    const isDocUSD = !moneda.includes("PEN") && !moneda.includes("SOL") && !moneda.includes("S/");
     const totalOriginal = Number(d.totalDocumento || d.TOTAL_DOC || d.tot || 0);
 
     let saldoPEN = 0;
     let saldoUSD = 0;
 
-    if (isUSD) {
+    if (isDocUSD) {
       saldoUSD = Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? d.sUsd ?? totalOriginal);
       saldoPEN = 0;
     } else {
@@ -611,28 +628,94 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
       isVD,
       serieDocText,
       codigoUnico,
-      montoTexto: `${isUSD ? "USD" : "PEN"}  ${formatMoney(totalOriginal)}`,
-      saldoPENTexto: saldoPEN > 0 ? formatMoney(saldoPEN) : "0.00",
-      saldoUSDTexto: saldoUSD > 0 ? formatMoney(saldoUSD) : "0.00",
+      montoTexto: `${isDocUSD ? "USD" : "PEN"}  ${formatMoney(totalOriginal)}`,
+      saldoPENTexto: formatMoney(saldoPEN),
+      saldoUSDTexto: formatMoney(saldoUSD),
       saldoPEN,
       saldoUSD,
       rawDoc: d,
     };
   });
 
-  const bodyData = tableRows.length > 0
-    ? tableRows.map((r) => [
-        r.emision,
-        r.vence,
-        r.condicion,
-        r.isVD ? "VD" : "",
-        r.serieDocText,
-        r.codigoUnico,
-        r.montoTexto,
-        r.saldoPENTexto,
-        r.saldoUSDTexto,
-      ])
-    : [["—", "—", "Sin documentos pendientes", "", "—", "—", "—", "0.00", "0.00"]];
+  const formatMoney = (amount) =>
+    Number(amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  let bodyData = [];
+  let colStyles = {};
+
+  if (hasPen && hasUsd) {
+    bodyData = tableRows.length > 0
+      ? tableRows.map((r) => [
+          r.emision,
+          r.vence,
+          r.condicion,
+          r.isVD ? "VD" : "",
+          r.serieDocText,
+          r.codigoUnico,
+          r.montoTexto,
+          r.saldoPEN > 0 ? r.saldoPENTexto : "—",
+          r.saldoUSD > 0 ? r.saldoUSDTexto : "—",
+        ])
+      : [["—", "—", "Sin documentos pendientes", "", "—", "—", "—", "0.00", "0.00"]];
+    colStyles = {
+      0: { cellWidth: 19, halign: "left" },
+      1: { cellWidth: 21, halign: "left" },
+      2: { cellWidth: 21, halign: "left" },
+      3: { cellWidth: 7, halign: "center", fontStyle: "bold" },
+      4: { cellWidth: 44, halign: "left" },
+      5: { cellWidth: 20, halign: "left" },
+      6: { cellWidth: 20, halign: "right" },
+      7: { cellWidth: 19, halign: "right" },
+      8: { cellWidth: 19, halign: "right" },
+    };
+  } else if (hasPen) {
+    bodyData = tableRows.length > 0
+      ? tableRows.map((r) => [
+          r.emision,
+          r.vence,
+          r.condicion,
+          r.isVD ? "VD" : "",
+          r.serieDocText,
+          r.codigoUnico,
+          r.montoTexto,
+          r.saldoPENTexto,
+        ])
+      : [["—", "—", "Sin documentos pendientes", "", "—", "—", "—", "0.00"]];
+    colStyles = {
+      0: { cellWidth: 20, halign: "left" },
+      1: { cellWidth: 22, halign: "left" },
+      2: { cellWidth: 22, halign: "left" },
+      3: { cellWidth: 7, halign: "center", fontStyle: "bold" },
+      4: { cellWidth: 50, halign: "left" },
+      5: { cellWidth: 23, halign: "left" },
+      6: { cellWidth: 23, halign: "right" },
+      7: { cellWidth: 23, halign: "right" },
+    };
+  } else {
+    // Solo USD
+    bodyData = tableRows.length > 0
+      ? tableRows.map((r) => [
+          r.emision,
+          r.vence,
+          r.condicion,
+          r.isVD ? "VD" : "",
+          r.serieDocText,
+          r.codigoUnico,
+          r.montoTexto,
+          r.saldoUSDTexto,
+        ])
+      : [["—", "—", "Sin documentos pendientes", "", "—", "—", "—", "0.00"]];
+    colStyles = {
+      0: { cellWidth: 20, halign: "left" },
+      1: { cellWidth: 22, halign: "left" },
+      2: { cellWidth: 22, halign: "left" },
+      3: { cellWidth: 7, halign: "center", fontStyle: "bold" },
+      4: { cellWidth: 50, halign: "left" },
+      5: { cellWidth: 23, halign: "left" },
+      6: { cellWidth: 23, halign: "right" },
+      7: { cellWidth: 23, halign: "right" },
+    };
+  }
 
   autoTable(doc, {
     startY: clientY + 3.5,
@@ -646,17 +729,7 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
       textColor: [0, 0, 0],
       overflow: "linebreak",
     },
-    columnStyles: {
-      0: { cellWidth: 19, halign: "left" },
-      1: { cellWidth: 21, halign: "left" },
-      2: { cellWidth: 21, halign: "left" },
-      3: { cellWidth: 7, halign: "center", fontStyle: "bold" },
-      4: { cellWidth: 44, halign: "left" },
-      5: { cellWidth: 20, halign: "left" },
-      6: { cellWidth: 20, halign: "right" },
-      7: { cellWidth: 19, halign: "right" },
-      8: { cellWidth: 19, halign: "right" },
-    },
+    columnStyles: colStyles,
     margin: { left: 10, right: 10 },
     didParseCell: (data) => {
       if (data.section === "body" && data.column.index === 1 && tableRows[data.row.index]) {
@@ -671,22 +744,26 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
     },
   });
 
-  const formatMoney = (amount) =>
-    Number(amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
   let currentY = (doc.lastAutoTable?.finalY || (clientY + 15)) + 1;
 
+  const totalLineStartX = (hasPen && hasUsd) ? 162 : 175;
   doc.setDrawColor(0, 0, 0).setLineWidth(0.4);
-  doc.line(162, currentY, 200, currentY);
+  doc.line(totalLineStartX, currentY, 200, currentY);
   currentY += 3.5;
 
   doc.setFont("helvetica", "bold").setFontSize(8).setTextColor(0, 0, 0);
-  doc.text(totalSaldoPEN > 0 ? formatMoney(totalSaldoPEN) : "0.00", 181, currentY, { align: "right" });
-  doc.text(formatMoney(totalSaldoUSD), 200, currentY, { align: "right" });
+  if (hasPen && hasUsd) {
+    doc.text(formatMoney(totalSaldoPEN), 181, currentY, { align: "right" });
+    doc.text(formatMoney(totalSaldoUSD), 200, currentY, { align: "right" });
+  } else if (hasPen) {
+    doc.text(formatMoney(totalSaldoPEN), 200, currentY, { align: "right" });
+  } else {
+    doc.text(formatMoney(totalSaldoUSD), 200, currentY, { align: "right" });
+  }
 
   currentY += 1.2;
-  doc.setLineWidth(0.3).line(162, currentY, 200, currentY);
-  doc.line(162, currentY + 0.5, 200, currentY + 0.5);
+  doc.setLineWidth(0.3).line(totalLineStartX, currentY, 200, currentY);
+  doc.line(totalLineStartX, currentY + 0.5, 200, currentY + 0.5);
 
   currentY += 12;
 
