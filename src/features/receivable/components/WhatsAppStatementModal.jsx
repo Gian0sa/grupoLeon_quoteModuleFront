@@ -243,8 +243,8 @@ export function WhatsAppStatementModal({ isOpen, onClose, debt }) {
     });
 
     const saldoText = totalUSD > 0
-      ? `$ ${totalUSD.toLocaleString("es-PE", { minimumFractionDigits: 2 })} USD`
-      : `S/ ${totalPEN.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`;
+      ? `$ ${totalUSD.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`
+      : `S/ ${totalPEN.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
     const estadoBadge = hasOverdue
       ? `⚠️ *Estado:* Pendiente de regularización (Cuotas vencidas)`
@@ -433,7 +433,7 @@ Cualquier consulta estamos a su entera disposición. ¡Que tenga un excelente d�
                   </Text>
                 </HStack>
                 <Text fontSize="sm" fontWeight="900" color="emerald.700" fontFamily="mono">
-                  Saldo: ${totalUSD.toFixed(2)} USD
+                  Saldo: ${totalUSD.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
                 </Text>
               </Flex>
             </Box>

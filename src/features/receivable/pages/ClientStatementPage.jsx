@@ -250,6 +250,13 @@ export function ClientStatementPage() {
     });
   }, [docs, filterType, searchTerm]);
 
+  // Formato monetario con separadores de miles y 2 decimales
+  const formatMoney = (val) =>
+    Number(val || 0).toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
   // Formato de fechas
   const dateObj = new Date(createdAt);
   const dateFormatted = dateObj.toLocaleDateString("es-PE", {
@@ -434,14 +441,14 @@ export function ClientStatementPage() {
               <Box textAlign={{ base: "left", sm: "right" }}>
                 <Text fontSize="10px" color="gray.500" fontWeight="700" textTransform="uppercase">Saldo Total USD</Text>
                 <Text fontSize={{ base: "md", sm: "xl" }} fontWeight="900" color="gray.900" fontFamily="mono">
-                  ${totalSaldoUSD.toFixed(2)}
+                  ${formatMoney(totalSaldoUSD)}
                 </Text>
               </Box>
               {totalSaldoPEN > 0 && (
                 <Box textAlign="right">
                   <Text fontSize="10px" color="gray.500" fontWeight="700" textTransform="uppercase">Saldo PEN</Text>
                   <Text fontSize={{ base: "md", sm: "xl" }} fontWeight="900" color="gray.900" fontFamily="mono">
-                    S/ {totalSaldoPEN.toFixed(2)}
+                    S/ {formatMoney(totalSaldoPEN)}
                   </Text>
                 </Box>
               )}
@@ -615,7 +622,7 @@ export function ClientStatementPage() {
                       </Box>
                       <Box textAlign="right">
                         <Text fontSize="9px" color="gray.500" fontWeight="700">MONTO ORIGINAL</Text>
-                        <Text fontWeight="600" fontFamily="mono">{doc.mon} {doc.tot.toFixed(2)}</Text>
+                        <Text fontWeight="600" fontFamily="mono">{doc.mon} {formatMoney(doc.tot)}</Text>
                       </Box>
                     </Flex>
 
@@ -624,11 +631,11 @@ export function ClientStatementPage() {
                       <HStack spacing={2} fontFamily="mono">
                         {doc.sPen > 0 && (
                           <Text fontSize="xs" fontWeight="700" color="gray.700">
-                            S/ {doc.sPen.toFixed(2)}
+                            S/ {formatMoney(doc.sPen)}
                           </Text>
                         )}
                         <Text fontSize="sm" fontWeight="900" color={doc.sUsd > 0 ? "emerald.800" : "gray.700"}>
-                          ${doc.sUsd.toFixed(2)} USD
+                          ${formatMoney(doc.sUsd)} USD
                         </Text>
                       </HStack>
                     </Flex>
@@ -702,13 +709,13 @@ export function ClientStatementPage() {
                         <Td px={2} py={1.5} fontSize="11px" fontFamily="mono" fontWeight="700">{serieText}</Td>
                         <Td px={2} py={1.5} fontSize="11px" fontFamily="mono">{doc.uni || "—"}</Td>
                         <Td px={2} py={1.5} fontSize="11px" textAlign="right" fontFamily="mono">
-                          {doc.mon} {doc.tot.toFixed(2)}
+                          {doc.mon} {formatMoney(doc.tot)}
                         </Td>
                         <Td px={2} py={1.5} fontSize="11px" textAlign="right" fontFamily="mono" fontWeight="600">
-                          {doc.sPen.toFixed(2)}
+                          {formatMoney(doc.sPen)}
                         </Td>
                         <Td px={2} py={1.5} fontSize="11px" textAlign="right" fontFamily="mono" fontWeight="700" color={doc.sUsd > 0 ? "gray.900" : "gray.400"}>
-                          {doc.sUsd.toFixed(2)}
+                          {formatMoney(doc.sUsd)}
                         </Td>
                       </Tr>
                     );
@@ -725,8 +732,8 @@ export function ClientStatementPage() {
             <Flex justify="space-between" py={1} borderTop="1px solid #0f172a" fontSize="xs" fontWeight="900" color="gray.900" fontFamily="mono">
               <Text>TOTALES:</Text>
               <HStack spacing={{ base: 4, sm: 6 }}>
-                <Text>{totalSaldoPEN.toFixed(2)}</Text>
-                <Text>{totalSaldoUSD.toFixed(2)}</Text>
+                <Text>{formatMoney(totalSaldoPEN)}</Text>
+                <Text>{formatMoney(totalSaldoUSD)}</Text>
               </HStack>
             </Flex>
             <Divider borderColor="#0f172a" borderWidth="1.5px" mt={0.5} />
@@ -752,7 +759,7 @@ export function ClientStatementPage() {
                       {vencidos.length}
                     </Badge>
                     <Text fontWeight="800" color={vencidos.length > 0 ? "red.600" : "gray.700"}>
-                      ${totalVencidosUSD.toFixed(2)}
+                      ${formatMoney(totalVencidosUSD)}
                     </Text>
                   </HStack>
                 </Flex>
@@ -780,7 +787,7 @@ export function ClientStatementPage() {
                       {porVencer.length}
                     </Badge>
                     <Text fontWeight="800" color="green.700">
-                      ${totalPorVencerUSD.toFixed(2)}
+                      ${formatMoney(totalPorVencerUSD)}
                     </Text>
                   </HStack>
                 </Flex>
@@ -790,7 +797,7 @@ export function ClientStatementPage() {
                 <Flex justify="space-between" align="center" fontWeight="900" fontSize="xs">
                   <Text>USD</Text>
                   <Text fontFamily="mono" fontSize="sm" color="gray.900">
-                    ${totalSaldoUSD.toFixed(2)}
+                    ${formatMoney(totalSaldoUSD)}
                   </Text>
                 </Flex>
               </VStack>
@@ -808,7 +815,7 @@ export function ClientStatementPage() {
                     <Text color="gray.600">Total Factura</Text>
                     <Text color="gray.400">:</Text>
                   </HStack>
-                  <Text fontFamily="mono" fontWeight="700">${totalFacturasUSD.toFixed(2)}</Text>
+                  <Text fontFamily="mono" fontWeight="700">${formatMoney(totalFacturasUSD)}</Text>
                 </Flex>
 
                 <Flex justify="space-between" align="center">
@@ -816,7 +823,7 @@ export function ClientStatementPage() {
                     <Text color="gray.600">Total Boleta</Text>
                     <Text color="gray.400">:</Text>
                   </HStack>
-                  <Text fontFamily="mono" fontWeight="700">${totalBoletasUSD.toFixed(2)}</Text>
+                  <Text fontFamily="mono" fontWeight="700">${formatMoney(totalBoletasUSD)}</Text>
                 </Flex>
 
                 <Flex justify="space-between" align="center">
@@ -824,7 +831,7 @@ export function ClientStatementPage() {
                     <Text color="gray.600">Total Nota Cred</Text>
                     <Text color="gray.400">:</Text>
                   </HStack>
-                  <Text fontFamily="mono" fontWeight="700">${totalNCUSD.toFixed(2)}</Text>
+                  <Text fontFamily="mono" fontWeight="700">${formatMoney(totalNCUSD)}</Text>
                 </Flex>
 
                 <Flex justify="space-between" align="center">
@@ -832,7 +839,7 @@ export function ClientStatementPage() {
                     <Text color="gray.600">Total Nota Deb</Text>
                     <Text color="gray.400">:</Text>
                   </HStack>
-                  <Text fontFamily="mono" fontWeight="700">${totalNDUSD.toFixed(2)}</Text>
+                  <Text fontFamily="mono" fontWeight="700">${formatMoney(totalNDUSD)}</Text>
                 </Flex>
 
                 <Flex justify="space-between" align="center" fontWeight="800">
@@ -840,18 +847,18 @@ export function ClientStatementPage() {
                     <Text>Total Letras</Text>
                     <Text color="gray.400">:</Text>
                   </HStack>
-                  <Text fontFamily="mono" color="emerald.800">${totalLetrasUSD.toFixed(2)}</Text>
+                  <Text fontFamily="mono" color="emerald.800">${formatMoney(totalLetrasUSD)}</Text>
                 </Flex>
 
                 {totalLetrasUSD > 0 && (
                   <VStack align="stretch" spacing={1} pl={3} fontSize="11px" color="gray.600" borderLeft="2px solid" borderColor="emerald.300">
                     <Flex justify="space-between">
                       <Text>En Cartera :</Text>
-                      <Text fontFamily="mono" fontWeight="600">${totalLetrasCarteraUSD.toFixed(2)}</Text>
+                      <Text fontFamily="mono" fontWeight="600">${formatMoney(totalLetrasCarteraUSD)}</Text>
                     </Flex>
                     <Flex justify="space-between">
                       <Text>En el Banco :</Text>
-                      <Text fontFamily="mono" fontWeight="600">${totalLetrasBancoUSD.toFixed(2)}</Text>
+                      <Text fontFamily="mono" fontWeight="600">${formatMoney(totalLetrasBancoUSD)}</Text>
                     </Flex>
                   </VStack>
                 )}
@@ -861,7 +868,7 @@ export function ClientStatementPage() {
                 <Flex justify="space-between" align="center" fontWeight="900" fontSize="xs">
                   <Text>USD</Text>
                   <Text fontFamily="mono" fontSize="sm" color="gray.900">
-                    ${totalSaldoUSD.toFixed(2)}
+                    ${formatMoney(totalSaldoUSD)}
                   </Text>
                 </Flex>
               </VStack>
