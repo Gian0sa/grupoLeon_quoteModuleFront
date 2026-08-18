@@ -512,11 +512,11 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
 
   doc.line(10, headerY + 6, 200, headerY + 6);
 
-  const documents = debt.documents || debt.documentos || [];
-  const salesperson = safeText(debt.vendedor || documents[0]?.NOMBVENDEDOR, "No Asignado");
-  const rawCode = safeText(debt.clientCode || debt.ruc || documents[0]?.CARDCODE, "");
+  const documents = debt.documents || debt.documentos || debt.docs || [];
+  const salesperson = safeText(debt.vendedor || debt.sales || documents[0]?.NOMBVENDEDOR, "No Asignado");
+  const rawCode = safeText(debt.clientCode || debt.ruc || debt.cCode || documents[0]?.CARDCODE, "");
   const cleanCode = rawCode ? `CL${rawCode.replace("CL", "")}` : "CL—";
-  const clientName = safeText(debt.nombre || debt.clientName || documents[0]?.CARDNAME, "CLIENTE");
+  const clientName = safeText(debt.nombre || debt.clientName || debt.cName || documents[0]?.CARDNAME, "CLIENTE");
 
   const vendorY = headerY + 11.5;
   doc.setFont("helvetica", "bold").setFontSize(9.5).setTextColor(0, 0, 0);
@@ -533,14 +533,14 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
   let totalSaldoUSD = 0;
 
   const tableRows = documents.map((d) => {
-    const isOverdue = Boolean(d.estaVencido);
-    const emision = formatDate(d.TAXDATE || d.fechaImpuesto || d.FECHA_DOC || d.fechaDocumento);
-    const vence = formatDate(d.REFDATE || d.fechaContable);
-    const condicion = safeText(d.condicionPago || d.CONDICION, "—");
+    const isOverdue = Boolean(d.estaVencido || d.vdStatus === "VENCIDO");
+    const emision = formatDate(d.TAXDATE || d.fechaImpuesto || d.FECHA_DOC || d.fechaDocumento || d.emi);
+    const vence = formatDate(d.REFDATE || d.fechaContable || d.ven);
+    const condicion = safeText(d.condicionPago || d.CONDICION || d.con, "—");
 
-    const numDoc = safeText(d.numeroDocumento || d.NRO_DOC, "");
-    const refMatriz = d.facturaOrigen || (Array.isArray(d.referencia) && d.referencia[0]) || "";
-    const folio = safeText(d.folioNum || d.FOLIONUM || d.docEntry || d.DOCENTRY || "", "");
+    const numDoc = safeText(d.numeroDocumento || d.NRO_DOC || d.num, "");
+    const refMatriz = d.facturaOrigen || (Array.isArray(d.referencia) && d.referencia[0]) || d.ref || "";
+    const folio = safeText(d.folioNum || d.FOLIONUM || d.docEntry || d.DOCENTRY || d.fol || "", "");
 
     let serieDocText = numDoc;
     if (refMatriz && refMatriz !== numDoc) {
@@ -550,20 +550,50 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
       serieDocText += ` ${folio}`;
     }
 
-    const codigoUnico = safeText(d.idUnico || d.ID_UNICO || d.letraSAP, "");
+    const codigoUnico = safeText(d.idUnico || d.ID_UNICO || d.letraSAP || d.uni, "");
 
-    const moneda = (d.moneda || d.TIPOCAMBIO || "USD").toUpperCase();
+    const numDocUpper = numDoc.toUpperCase();
+    const isLetra = Boolean(
+      d.esLetra ||
+      (d.tipoDocumento || "").toLowerCase().includes("letra") ||
+      numDocUpper.startsWith("LC-") ||
+      numDocUpper.startsWith("LT-")
+    );
+    const ubicacion = safeText(d.ubicacion || d.UBICACION || d.ESTADO, "").toUpperCase();
+    const condUpper = condicion.toUpperCase();
+    const enBanco = Boolean(
+      d.enBanco ||
+      (isLetra && (
+        (codigoUnico && codigoUnico.length >= 6) ||
+        ubicacion.includes("BANCO") ||
+        ubicacion.includes("COBRANZA") ||
+        condUpper.includes("BANCO")
+      ))
+    );
+    const isVD = Boolean(
+      d.isVD ||
+      (isLetra && !enBanco && (
+        ubicacion.includes("VD") ||
+        ubicacion.includes("CARTERA") ||
+        condUpper.includes("VD") ||
+        condUpper.includes("CARTERA") ||
+        !codigoUnico ||
+        d.VD === "VD"
+      ))
+    );
+
+    const moneda = (d.moneda || d.TIPOCAMBIO || d.mon || "USD").toUpperCase();
     const isUSD = moneda === "USD" || moneda === "US$" || moneda === "$";
-    const totalOriginal = Number(d.totalDocumento || d.TOTAL_DOC || 0);
+    const totalOriginal = Number(d.totalDocumento || d.TOTAL_DOC || d.tot || 0);
 
     let saldoPEN = 0;
     let saldoUSD = 0;
 
     if (isUSD) {
-      saldoUSD = Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? totalOriginal);
+      saldoUSD = Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? d.sUsd ?? totalOriginal);
       saldoPEN = 0;
     } else {
-      saldoPEN = Number(d.saldoPendiente?.PEN ?? d.SALDO_PEN ?? totalOriginal);
+      saldoPEN = Number(d.saldoPendiente?.PEN ?? d.SALDO_PEN ?? d.sPen ?? totalOriginal);
       saldoUSD = 0;
     }
 
@@ -575,6 +605,7 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
       vence,
       isOverdue,
       condicion,
+      isVD,
       serieDocText,
       codigoUnico,
       montoTexto: `${isUSD ? "USD" : "PEN"}  ${totalOriginal.toFixed(2)}`,
@@ -591,13 +622,14 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
         r.emision,
         r.vence,
         r.condicion,
+        r.isVD ? "VD" : "",
         r.serieDocText,
         r.codigoUnico,
         r.montoTexto,
         r.saldoPENTexto,
         r.saldoUSDTexto,
       ])
-    : [["—", "—", "Sin documentos pendientes", "—", "—", "—", "0.00", "0.00"]];
+    : [["—", "—", "Sin documentos pendientes", "", "—", "—", "—", "0.00", "0.00"]];
 
   autoTable(doc, {
     startY: clientY + 3.5,
@@ -614,12 +646,13 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
     columnStyles: {
       0: { cellWidth: 19, halign: "left" },
       1: { cellWidth: 21, halign: "left" },
-      2: { cellWidth: 28, halign: "left" },
-      3: { cellWidth: 44, halign: "left" },
-      4: { cellWidth: 20, halign: "left" },
-      5: { cellWidth: 20, halign: "right" },
-      6: { cellWidth: 19, halign: "right" },
+      2: { cellWidth: 21, halign: "left" },
+      3: { cellWidth: 7, halign: "center", fontStyle: "bold" },
+      4: { cellWidth: 44, halign: "left" },
+      5: { cellWidth: 20, halign: "left" },
+      6: { cellWidth: 20, halign: "right" },
       7: { cellWidth: 19, halign: "right" },
+      8: { cellWidth: 19, halign: "right" },
     },
     margin: { left: 10, right: 10 },
     didParseCell: (data) => {
@@ -681,6 +714,9 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
   });
 
   const totalLetrasUSD = letras.reduce((acc, r) => acc + r.saldoUSD, 0);
+  const totalLetrasCarteraUSD = letras.filter((r) => r.isVD).reduce((acc, r) => acc + r.saldoUSD, 0);
+  const totalLetrasBancoUSD = letras.filter((r) => !r.isVD).reduce((acc, r) => acc + r.saldoUSD, 0);
+
   const totalFacturasUSD = facturas.reduce((acc, r) => acc + r.saldoUSD, 0);
   const totalBoletasUSD = boletas.reduce((acc, r) => acc + r.saldoUSD, 0);
   const totalNCUSD = notasCred.reduce((acc, r) => acc + r.saldoUSD, 0);
@@ -766,9 +802,9 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
 
   yR += 3.5;
   doc.setFont("helvetica", "normal").setFontSize(7).setTextColor(60, 60, 60);
-  doc.text(`En Cartera : 0.00`, rightX + 16, yR);
+  doc.text(`En Cartera : ${totalLetrasCarteraUSD.toFixed(2)}`, rightX + 16, yR);
   yR += 3.2;
-  doc.text(`En el Banco : ${totalLetrasUSD.toFixed(2)}`, rightX + 16, yR);
+  doc.text(`En el Banco : ${totalLetrasBancoUSD.toFixed(2)}`, rightX + 16, yR);
 
   yR += 2.5;
   doc.setLineWidth(0.3).line(rightX + 34, yR, rightX + 58, yR);

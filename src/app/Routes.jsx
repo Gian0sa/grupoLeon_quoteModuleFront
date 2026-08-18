@@ -34,6 +34,7 @@ import { EntradaPage } from "../features/entrada/pages/EntradaPage.jsx";
 import { AttendanceAdminPage } from "../features/entrada/pages/AttendanceAdminPage.jsx";
 import { NewClientsPage } from "../features/clients/pages/NewClientsPage.jsx";
 import { FAQPage } from "../features/help/pages/FAQPage.jsx";
+import { ClientStatementPage } from "../features/receivable/pages/ClientStatementPage.jsx";
 
 const AppRoutes = () => {
   return (
@@ -41,6 +42,9 @@ const AppRoutes = () => {
       {/* Público */}
       <Route path="/" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/s/:code" element={<ClientStatementPage />} />
+      <Route path="/estado-cuenta/:token" element={<ClientStatementPage />} />
+      <Route path="/statement/:token" element={<ClientStatementPage />} />
 
       {/* Privados */}
       <Route

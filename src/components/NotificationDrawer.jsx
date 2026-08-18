@@ -367,14 +367,16 @@ export function NotificationDrawer({ isOpen, onClose }) {
                           <Button
                             size={{ base: "md", md: "xs" }}
                             w={{ base: "full", sm: "auto" }}
-                            colorScheme={isApproved ? "green" : isRejected ? "red" : "blue"}
+                            colorScheme={isApproved ? "green" : isRejected ? "red" : "teal"}
+                            bg={!isApproved && !isRejected ? "#0f766e" : undefined}
+                            _hover={!isApproved && !isRejected ? { bg: "#115e59" } : undefined}
                             leftIcon={<Icon as={FiEye} />}
                             onClick={() => handleOpenQuote(item.quoteObj, item.quoteId)}
                             fontWeight="800"
                             px={3}
                             boxShadow="xs"
                           >
-                            ⚡ Ver Cotización
+                            🔍 Verificar Cotización
                           </Button>
                         </Flex>
                       </VStack>

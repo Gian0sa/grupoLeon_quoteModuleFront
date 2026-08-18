@@ -273,7 +273,7 @@ export function TopHeaderBanner({
               variant="ghost"
               queries={defaultQueries}
               showToast={true}
-              mode="invalidateAndRefetch"
+              fullReload={true}
             />
 
             <Box position="relative">

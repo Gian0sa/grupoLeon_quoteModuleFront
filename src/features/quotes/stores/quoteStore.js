@@ -29,10 +29,17 @@ export const normalizeQuoteItem = (item) => {
   const discount = Number(item.discount ?? item.Discount ?? 0);
   const lineDiscount = Number(item.lineDiscount ?? item.LineDiscount ?? 0);
   const quantity = parseInt(item.quantity ?? item.Quantity ?? 1, 10);
-  const stock = Number(item.stock ?? item.Stock ?? item.OnHand ?? 0);
+  
+  // Si stock no viene definido en la BD/draft, queda como null para no marcar erróneamente como AGOTADO
+  const rawStock = item.stock ?? item.Stock ?? item.OnHand ?? item.STOCK_DISPONIBLE;
+  const stock = rawStock !== undefined && rawStock !== null && !isNaN(Number(rawStock))
+    ? Number(rawStock)
+    : null;
+    
   const whsCode = item.whsCode || item.WhsCode || "014";
   const sigla = item.sigla || item.Sigla || "";
   const marca = item.marca || item.Marca || "";
+  const isAgotado = Boolean(item.isAgotado || (item.stockChecked && stock === 0));
 
   return {
     ...item,
@@ -51,6 +58,8 @@ export const normalizeQuoteItem = (item) => {
     lineDiscount,
     quantity: isNaN(quantity) || quantity < 1 ? 1 : quantity,
     stock,
+    stockChecked: item.stockChecked !== undefined ? item.stockChecked : (rawStock !== undefined && rawStock !== null),
+    isAgotado,
     whsCode,
     sigla,
     marca,
@@ -219,7 +228,7 @@ export const useQuoteStore = create((set) => ({
 
     set({
       ...initialQuoteState,
-      quoteId: quoteData.id || quoteData.docNumber || null,
+      quoteId: quoteData.docNumber || quoteData.id || null,
       client,
       products,
       opNum: quoteData.opNum || null,

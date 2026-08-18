@@ -93,67 +93,162 @@ export function QuoteApprovalPage() {
   const [pdfQuote, setPdfQuote] = useState(null);
   const [deleteConfirmDoc, setDeleteConfirmDoc] = useState(null);
 
-  // Sincronizar cotizaciones desde el servidor en tiempo real sin borrar borradores locales
-  useEffect(() => {
-    const local = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
-    if (serverQuotes && Array.isArray(serverQuotes)) {
-      const serverDocIds = new Set(serverQuotes.map(q => q.docNumber || q.id));
-      const unsyncedLocal = local.filter(q => !serverDocIds.has(q.docNumber || q.id));
-      const merged = [...unsyncedLocal, ...serverQuotes];
-      setQuotes(merged);
-      localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(merged));
-    } else if (local.length > 0) {
-      setQuotes(local);
-    }
-  }, [serverQuotes]);
-
-  // Cargar cotizaciones iniciales desde localStorage y servidor
-  const loadQuotes = () => {
+  // Sincronizar cotizaciones desde el servidor en tiempo real sin duplicados y sin borrar borradores locales
+  const syncQuotes = () => {
     try {
       const stored = localStorage.getItem("grupoLeon_local_quotes");
       const local = stored ? JSON.parse(stored) : [];
-      if (serverQuotes && Array.isArray(serverQuotes) && serverQuotes.length > 0) {
-        const serverDocIds = new Set(serverQuotes.map(q => q.docNumber || q.id));
-        const unsyncedLocal = local.filter(q => !serverDocIds.has(q.docNumber || q.id));
-        setQuotes([...unsyncedLocal, ...serverQuotes]);
-      } else {
-        setQuotes(Array.isArray(local) ? local : []);
+      if (serverQuotes && Array.isArray(serverQuotes)) {
+        const serverDocIds = new Set();
+        serverQuotes.forEach(q => {
+          if (q.docNumber) serverDocIds.add(String(q.docNumber));
+          if (q.id !== undefined && q.id !== null) serverDocIds.add(String(q.id));
+        });
+
+        const unsyncedLocal = local.filter(q => {
+          const docNum = q.docNumber ? String(q.docNumber) : "";
+          const idVal = q.id !== undefined && q.id !== null ? String(q.id) : "";
+          return (!docNum || !serverDocIds.has(docNum)) && (!idVal || !serverDocIds.has(idVal));
+        });
+
+        // Garantizar unicidad absoluta por docNumber o id
+        const seen = new Set();
+        const merged = [];
+        for (const item of [...serverQuotes, ...unsyncedLocal]) {
+          const key = String(item.docNumber || item.id || "");
+          if (key && !seen.has(key)) {
+            seen.add(key);
+            merged.push(item);
+          }
+        }
+        setQuotes(merged);
+        localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(merged));
+      } else if (local.length > 0) {
+        const seen = new Set();
+        const dedupedLocal = [];
+        for (const item of local) {
+          const key = String(item.docNumber || item.id || "");
+          if (key && !seen.has(key)) {
+            seen.add(key);
+            dedupedLocal.push(item);
+          }
+        }
+        setQuotes(dedupedLocal);
       }
     } catch (err) {
-      console.error("Error al cargar cotizaciones:", err);
+      console.error("Error sincronizando cotizaciones:", err);
     }
   };
+
+  const loadQuotes = () => {
+    if (typeof refetchServerQuotes === "function") {
+      refetchServerQuotes();
+    }
+    syncQuotes();
+  };
+
+  useEffect(() => {
+    syncQuotes();
+  }, [serverQuotes]);
+
+  // Escuchar eventos en vivo de actualización local (CERO necesidad de recargar / F5)
+  useEffect(() => {
+    const handleLocalUpdate = () => {
+      try {
+        const stored = localStorage.getItem("grupoLeon_local_quotes");
+        const local = stored ? JSON.parse(stored) : [];
+        if (serverQuotes && Array.isArray(serverQuotes)) {
+          const serverDocIds = new Set();
+          serverQuotes.forEach(q => {
+            if (q.docNumber) serverDocIds.add(String(q.docNumber));
+            if (q.id !== undefined && q.id !== null) serverDocIds.add(String(q.id));
+          });
+          const unsyncedLocal = local.filter(q => {
+            const docNum = q.docNumber ? String(q.docNumber) : "";
+            const idVal = q.id !== undefined && q.id !== null ? String(q.id) : "";
+            return (!docNum || !serverDocIds.has(docNum)) && (!idVal || !serverDocIds.has(idVal));
+          });
+          const seen = new Set();
+          const merged = [];
+          for (const item of [...serverQuotes, ...unsyncedLocal]) {
+            const key = String(item.docNumber || item.id || "");
+            if (key && !seen.has(key)) {
+              seen.add(key);
+              merged.push(item);
+            }
+          }
+          setQuotes(merged);
+        } else {
+          setQuotes(local);
+        }
+      } catch (err) {
+        console.error("Error en listener localQuotesUpdated:", err);
+      }
+    };
+
+    window.addEventListener("localQuotesUpdated", handleLocalUpdate);
+    return () => window.removeEventListener("localQuotesUpdated", handleLocalUpdate);
+  }, [serverQuotes]);
 
   const DRAFT_STATUSES = ["BORRADOR", "GENERADO"];
 
   const handleDeleteQuote = async (id, currentStatus) => {
     const isHardDelete = !currentStatus || DRAFT_STATUSES.includes(currentStatus) || currentStatus === "ANULADO";
+    const idStr = String(id);
+    const isMatchingItem = (q) => {
+      const qDocNum = q.docNumber ? String(q.docNumber) : "";
+      const qId = q.id !== undefined && q.id !== null ? String(q.id) : "";
+      return qDocNum === idStr || qId === idStr;
+    };
 
-    try {
-      await deleteQuote(id, isHardDelete);
-      queryClient.invalidateQueries({ queryKey: ["quotes"] });
-      queryClient.invalidateQueries({ queryKey: ["notifications"] });
-    } catch (e) {
-      console.error("Error eliminando cotización en el servidor:", e);
-    }
-
-    const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
+    // 1. ACTUALIZACIÓN OPTIMISTA INMEDIATA EN PANTALLA (CERO F5)
     if (isHardDelete) {
-      const updated = saved.filter(q => (q.id || q.docNumber) !== id);
-      localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updated));
-      window.dispatchEvent(new Event("localQuotesUpdated"));
-      toast({
-        title: "🗑️ Cotización Borrada",
-        description: `La cotización ${id} fue borrada permanentemente del sistema.`,
-        status: "info",
-        duration: 3000,
-        isClosable: true
+      setQuotes((prev) => prev.filter((q) => !isMatchingItem(q)));
+      queryClient.setQueryData(["quotes"], (old) => {
+        if (!Array.isArray(old)) return [];
+        return old.filter((q) => !isMatchingItem(q));
       });
     } else {
       const nowIso = new Date().toISOString();
       const adminName = authUsername || "Enrique";
-      const updated = saved.map(q => {
-        if ((q.id || q.docNumber) !== id) return q;
+      setQuotes((prev) =>
+        prev.map((q) => {
+          if (!isMatchingItem(q)) return q;
+          const prevLogs = q.historyLog || [];
+          return {
+            ...q,
+            status: "ANULADO",
+            state: "ANULADO",
+            approvalStatus: "ANULADO",
+            cancelledAt: nowIso,
+            cancelledBy: adminName,
+            historyLog: [
+              { status: "ANULADO", timestamp: nowIso, user: adminName, note: `❌ Cotización anulada por Administrador ${adminName}` },
+              ...prevLogs,
+            ],
+          };
+        })
+      );
+    }
+
+    // 2. Persistir en localStorage
+    const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
+    if (isHardDelete) {
+      const updated = saved.filter((q) => !isMatchingItem(q));
+      localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updated));
+      window.dispatchEvent(new Event("localQuotesUpdated"));
+      toast({
+        title: "🗑️ Cotización Borrada",
+        description: `La cotización ${id} fue borrada permanentemente del sistema al instante.`,
+        status: "info",
+        duration: 3000,
+        isClosable: true,
+      });
+    } else {
+      const nowIso = new Date().toISOString();
+      const adminName = authUsername || "Enrique";
+      const updated = saved.map((q) => {
+        if (!isMatchingItem(q)) return q;
         const prevLogs = q.historyLog || [];
         return {
           ...q,
@@ -164,8 +259,8 @@ export function QuoteApprovalPage() {
           cancelledBy: adminName,
           historyLog: [
             { status: "ANULADO", timestamp: nowIso, user: adminName, note: `❌ Cotización anulada por Administrador ${adminName}` },
-            ...prevLogs
-          ]
+            ...prevLogs,
+          ],
         };
       });
       localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updated));
@@ -175,8 +270,17 @@ export function QuoteApprovalPage() {
         description: `La cotización ${id} cambió su estado a ANULADO. Se muestra el distintivo Anulado ❌ en la tabla.`,
         status: "warning",
         duration: 4000,
-        isClosable: true
+        isClosable: true,
       });
+    }
+
+    // 3. Sincronizar en Backend
+    try {
+      await deleteQuote(id, isHardDelete);
+      queryClient.invalidateQueries({ queryKey: ["quotes"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    } catch (e) {
+      console.error("Error eliminando cotización en el servidor:", e);
     }
   };
 

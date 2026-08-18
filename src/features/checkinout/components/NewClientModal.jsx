@@ -14,6 +14,7 @@ import {
   VStack,
 } from "@chakra-ui/react";
 import { useEffect, useState } from "react";
+import { saveClientPhone } from "../../receivable/utils/clientPhoneDirectory";
 
 export function NewClientModal({ isOpen, onClose, onCreate, initialData }) {
   const [form, setForm] = useState({
@@ -135,6 +136,10 @@ export function NewClientModal({ isOpen, onClose, onCreate, initialData }) {
     const isValid = validateAll();
 
     if (!isValid) return;
+
+    if (form.documentNumber && form.phone) {
+      saveClientPhone(form.documentNumber, form.phone, form.fullName);
+    }
 
     onCreate({
       type: "NEW",

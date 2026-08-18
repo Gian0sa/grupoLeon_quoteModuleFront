@@ -200,7 +200,15 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
     // Guardar o actualizar en localStorage sin retroceder de estado
     const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
-    const existingDoc = saved.find((q) => (q.id || q.docNumber) === activeDocNumber);
+    const isMatchingDoc = (q) => {
+      if (!q) return false;
+      const activeStr = String(activeDocNumber);
+      const qDocNum = q.docNumber ? String(q.docNumber) : "";
+      const qId = q.id !== undefined && q.id !== null ? String(q.id) : "";
+      return (qDocNum && qDocNum === activeStr) || (qId && qId === activeStr);
+    };
+
+    const existingDoc = saved.find(isMatchingDoc);
     const existingStatus = existingDoc?.approvalStatus || existingDoc?.state;
 
     // Si ya existe y no es borrador, nunca degradar a BORRADOR en autoguardado
@@ -230,7 +238,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     const clientNameVal = normalizedClient?.CardName || normalizedClient?.name || "CLIENTE GENERAL";
 
     const newDoc = {
-      id: activeDocNumber,
+      id: existingDoc?.id || activeDocNumber,
       docNumber: activeDocNumber,
       docType,
       client,
@@ -265,8 +273,8 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
     const isExisting = Boolean(existingDoc);
     const updated = isExisting
-      ? saved.map((q) => ((q.id || q.docNumber) === activeDocNumber ? newDoc : q))
-      : [newDoc, ...saved.filter((q) => (q.id || q.docNumber) !== activeDocNumber)];
+      ? saved.map((q) => (isMatchingDoc(q) ? newDoc : q))
+      : [newDoc, ...saved.filter((q) => !isMatchingDoc(q))];
 
     localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updated));
     window.dispatchEvent(new Event("localQuotesUpdated"));
