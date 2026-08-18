@@ -142,8 +142,12 @@ export const buildStatementPayload = (debtData) => {
       uni: idUnico,
       mon: (d.moneda || d.TIPOCAMBIO || "USD").toUpperCase(),
       tot: Number(d.totalDocumento || d.TOTAL_DOC || 0),
-      sPen: Number(d.saldoPendiente?.PEN ?? d.SALDO_PEN ?? 0),
-      sUsd: Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? 0),
+      sPen: (d.moneda || d.TIPOCAMBIO || "USD").toUpperCase().includes("PEN") || (d.moneda || d.TIPOCAMBIO || "USD").toUpperCase().includes("SOL") || (d.moneda || d.TIPOCAMBIO || "USD").toUpperCase().includes("S/")
+        ? Number(d.saldoPendiente?.PEN ?? d.SALDO_PEN ?? d.totalDocumento ?? 0)
+        : 0,
+      sUsd: !(d.moneda || d.TIPOCAMBIO || "USD").toUpperCase().includes("PEN") && !(d.moneda || d.TIPOCAMBIO || "USD").toUpperCase().includes("SOL") && !(d.moneda || d.TIPOCAMBIO || "USD").toUpperCase().includes("S/")
+        ? Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? d.totalDocumento ?? 0)
+        : 0,
       vd: vdInfo.days,
       vdStatus: vdInfo.status,
       isVD: Boolean(isVD),

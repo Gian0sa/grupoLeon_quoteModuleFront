@@ -600,6 +600,9 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
     totalSaldoPEN += saldoPEN;
     totalSaldoUSD += saldoUSD;
 
+    const formatMoney = (amount) =>
+      Number(amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
     return {
       emision,
       vence,
@@ -608,9 +611,9 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
       isVD,
       serieDocText,
       codigoUnico,
-      montoTexto: `${isUSD ? "USD" : "PEN"}  ${totalOriginal.toFixed(2)}`,
-      saldoPENTexto: saldoPEN.toFixed(2),
-      saldoUSDTexto: saldoUSD.toFixed(2),
+      montoTexto: `${isUSD ? "USD" : "PEN"}  ${formatMoney(totalOriginal)}`,
+      saldoPENTexto: saldoPEN > 0 ? formatMoney(saldoPEN) : "0.00",
+      saldoUSDTexto: saldoUSD > 0 ? formatMoney(saldoUSD) : "0.00",
       saldoPEN,
       saldoUSD,
       rawDoc: d,
@@ -668,6 +671,9 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
     },
   });
 
+  const formatMoney = (amount) =>
+    Number(amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
   let currentY = (doc.lastAutoTable?.finalY || (clientY + 15)) + 1;
 
   doc.setDrawColor(0, 0, 0).setLineWidth(0.4);
@@ -675,8 +681,8 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
   currentY += 3.5;
 
   doc.setFont("helvetica", "bold").setFontSize(8).setTextColor(0, 0, 0);
-  doc.text(totalSaldoPEN.toFixed(2), 181, currentY, { align: "right" });
-  doc.text(totalSaldoUSD.toFixed(2), 200, currentY, { align: "right" });
+  doc.text(totalSaldoPEN > 0 ? formatMoney(totalSaldoPEN) : "0.00", 181, currentY, { align: "right" });
+  doc.text(formatMoney(totalSaldoUSD), 200, currentY, { align: "right" });
 
   currentY += 1.2;
   doc.setLineWidth(0.3).line(162, currentY, 200, currentY);
@@ -744,7 +750,7 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
   } else {
     doc.text("0", leftX + 25, yL, { align: "center" });
   }
-  doc.text(totalVencidosUSD.toFixed(2), leftX + 56, yL, { align: "right" });
+  doc.text(formatMoney(totalVencidosUSD), leftX + 56, yL, { align: "right" });
 
   yL += 4.5;
   doc.text("Doc. Vence Hoy", leftX - 8, yL);
@@ -756,14 +762,14 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
   doc.text("Doc. por Vencer", leftX - 8, yL);
   doc.text(":", leftX + 13, yL);
   doc.text(String(porVencer.length), leftX + 25, yL, { align: "center" });
-  doc.text(totalPorVencerUSD.toFixed(2), leftX + 56, yL, { align: "right" });
+  doc.text(formatMoney(totalPorVencerUSD), leftX + 56, yL, { align: "right" });
 
   yL += 3.5;
   doc.setLineWidth(0.4).line(leftX + 32, yL, leftX + 56, yL);
   yL += 4.5;
   doc.setFont("helvetica", "bold").setFontSize(8);
   doc.text("USD", leftX + 24, yL);
-  doc.text(totalSaldoUSD.toFixed(2), leftX + 56, yL, { align: "right" });
+  doc.text(formatMoney(totalSaldoUSD), leftX + 56, yL, { align: "right" });
 
   const rightX = 86;
   doc.setFont("helvetica", "bold").setFontSize(7.5).setTextColor(0, 0, 0);
@@ -778,33 +784,33 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
 
   doc.text("Total Factura", rightX, yR);
   doc.text(":", rightX + 20, yR);
-  doc.text(totalFacturasUSD.toFixed(2), rightX + 58, yR, { align: "right" });
+  doc.text(formatMoney(totalFacturasUSD), rightX + 58, yR, { align: "right" });
 
   yR += 4;
   doc.text("Total Boleta", rightX, yR);
   doc.text(":", rightX + 20, yR);
-  doc.text(totalBoletasUSD.toFixed(2), rightX + 58, yR, { align: "right" });
+  doc.text(formatMoney(totalBoletasUSD), rightX + 58, yR, { align: "right" });
 
   yR += 4;
   doc.text("Total Nota Cred", rightX, yR);
   doc.text(":", rightX + 20, yR);
-  doc.text(totalNCUSD.toFixed(2), rightX + 58, yR, { align: "right" });
+  doc.text(formatMoney(totalNCUSD), rightX + 58, yR, { align: "right" });
 
   yR += 4;
   doc.text("Total Nota Deb", rightX, yR);
   doc.text(":", rightX + 20, yR);
-  doc.text(totalNDUSD.toFixed(2), rightX + 58, yR, { align: "right" });
+  doc.text(formatMoney(totalNDUSD), rightX + 58, yR, { align: "right" });
 
   yR += 4;
   doc.text("Total Letras", rightX, yR);
   doc.text(":", rightX + 20, yR);
-  doc.text(totalLetrasUSD.toFixed(2), rightX + 58, yR, { align: "right" });
+  doc.text(formatMoney(totalLetrasUSD), rightX + 58, yR, { align: "right" });
 
   yR += 3.5;
   doc.setFont("helvetica", "normal").setFontSize(7).setTextColor(60, 60, 60);
-  doc.text(`En Cartera : ${totalLetrasCarteraUSD.toFixed(2)}`, rightX + 16, yR);
+  doc.text(`En Cartera : ${formatMoney(totalLetrasCarteraUSD)}`, rightX + 16, yR);
   yR += 3.2;
-  doc.text(`En el Banco : ${totalLetrasBancoUSD.toFixed(2)}`, rightX + 16, yR);
+  doc.text(`En el Banco : ${formatMoney(totalLetrasBancoUSD)}`, rightX + 16, yR);
 
   yR += 2.5;
   doc.setLineWidth(0.3).line(rightX + 34, yR, rightX + 58, yR);
@@ -813,7 +819,7 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
   yR += 4.5;
   doc.setFont("helvetica", "bold").setFontSize(8).setTextColor(0, 0, 0);
   doc.text("USD", rightX + 26, yR);
-  doc.text(totalSaldoUSD.toFixed(2), rightX + 58, yR, { align: "right" });
+  doc.text(formatMoney(totalSaldoUSD), rightX + 58, yR, { align: "right" });
 
   doc.setLineWidth(0.6).line(77, startSummaryY - 2, 77, yR + 2);
 

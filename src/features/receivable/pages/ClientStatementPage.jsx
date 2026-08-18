@@ -23,6 +23,7 @@ import {
   Input,
   IconButton,
   Tooltip,
+  Image,
 } from "@chakra-ui/react";
 import {
   Printer,
@@ -167,14 +168,21 @@ export function ClientStatementPage() {
     const parsedDocs = rawDocs.map((d) => {
       const isOverdue = d.vdStatus === "VENCIDO";
       const isVenceHoy = d.vdStatus === "VENCE_HOY";
-      const sPen = Number(d.sPen || 0);
-      const sUsd = Number(d.sUsd || 0);
+      
+      const monUpper = (d.mon || d.moneda || "USD").toUpperCase();
+      const isPEN = monUpper.includes("PEN") || monUpper.includes("SOL") || monUpper.includes("S/");
+
+      // Solo asignar saldo a soles si el documento fue emitido en Soles
+      const sPen = isPEN ? Number(d.sPen || d.SALDO_PEN || d.tot || 0) : 0;
+      const sUsd = !isPEN ? Number(d.sUsd || d.SALDO_USD || d.tot || 0) : 0;
 
       sumPEN += sPen;
       sumUSD += sUsd;
 
       const docObj = {
         ...d,
+        sPen,
+        sUsd,
         isOverdue,
         isVenceHoy,
       };
@@ -370,11 +378,20 @@ export function ClientStatementPage() {
         id="statement-printable-sheet"
       >
         {/* Cabecera Oficial Autopartes S.A. */}
-        <Flex justify="space-between" align="flex-start" mb={3}>
+        <Flex justify="space-between" align="center" mb={3} wrap="wrap" gap={2}>
           <Box>
-            <Text fontSize={{ base: "17px", md: "22px" }} fontWeight="900" color="#126C36" letterSpacing="tight">
-              Autopartes s.a.
-            </Text>
+            <Image
+              src="/assets/LogoAutopartes.jpg"
+              alt="Autopartes S.A."
+              h={{ base: "36px", md: "46px" }}
+              maxW="220px"
+              objectFit="contain"
+              fallback={
+                <Text fontSize={{ base: "17px", md: "22px" }} fontWeight="900" color="#126C36" letterSpacing="tight">
+                  Autopartes s.a.
+                </Text>
+              }
+            />
           </Box>
 
           <VStack align="flex-end" spacing={0.5} fontSize={{ base: "10px", md: "xs" }} color="gray.700">
@@ -875,13 +892,6 @@ export function ClientStatementPage() {
             </Box>
           </GridItem>
         </Grid>
-
-        {/* Pie de Página Oficial */}
-        <Box mt={{ base: 6, md: 8 }} pt={4} borderTop="1px solid" borderColor="gray.200" textAlign="center">
-          <Text fontSize="10px" color="gray.500" fontWeight="600">
-            Documento emitido por Autopartes S.A. • Grupo León. Los saldos reflejados corresponden a la fecha de corte oficial de SAP Business One.
-          </Text>
-        </Box>
       </Container>
 
       {/* Estilos CSS @media print para impresión perfecta idéntica a la hoja oficial */}
