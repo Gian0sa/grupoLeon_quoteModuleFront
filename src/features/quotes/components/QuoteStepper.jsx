@@ -10,7 +10,7 @@ export const STAGES = [
 ];
 
 export function getStageIndex(status) {
-  if (status === "RECHAZADO") return -1;
+  if (status === "RECHAZADO" || status === "ANULADO") return -1;
   switch (status) {
     case "GENERADO":
     case "DRAFT":
@@ -18,14 +18,17 @@ export function getStageIndex(status) {
     case "BORRADOR":
     case "borrador":
       return 0;
+    case "PENDIENTE_APROBACION":
     case "ENVIADO":
     case "EN_PROCESO":
       return 1;
     case "APROBADO_COMERCIAL":
       return 1;
     case "PENDIENTE_FACTURACION":
+    case "EN_FACTURACION":
       return 2;
     case "APROBADO":
+    case "FACTURADO":
     case "COMPLETADO":
     case "PEDIDO_EMITIDO":
       return 3;

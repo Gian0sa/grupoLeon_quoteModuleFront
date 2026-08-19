@@ -573,15 +573,15 @@ export function QuoteApprovalPage() {
   // Filtrado de la lista por Pestañas y Buscador
   const filteredQuotes = useMemo(() => {
     return quotes.filter((q) => {
-      const currentStatus = q.approvalStatus || q.state || "GENERADO";
+      const currentStatus = q.approvalStatus || q.state || q.status || "GENERADO";
 
       // Filtro por pestaña
       if (selectedTab === "GENERADO" && !["GENERADO", "DRAFT", "draft", "BORRADOR", "borrador"].includes(currentStatus)) return false;
-      if (selectedTab === "ENVIADO" && currentStatus !== "ENVIADO" && currentStatus !== "EN_PROCESO") return false;
-      if (selectedTab === "APROBADO_COMERCIAL" && currentStatus !== "APROBADO_COMERCIAL") return false;
-      if (selectedTab === "PENDIENTE_FACTURACION" && currentStatus !== "PENDIENTE_FACTURACION") return false;
-      if (selectedTab === "APROBADO" && currentStatus !== "APROBADO") return false;
-      if (selectedTab === "RECHAZADO" && currentStatus !== "RECHAZADO") return false;
+      if (selectedTab === "ENVIADO" && !["ENVIADO", "EN_PROCESO", "PENDIENTE_APROBACION"].includes(currentStatus)) return false;
+      if (selectedTab === "APROBADO_COMERCIAL" && !["APROBADO_COMERCIAL", "APROBADO_CREDITOS"].includes(currentStatus)) return false;
+      if (selectedTab === "PENDIENTE_FACTURACION" && !["PENDIENTE_FACTURACION", "EN_FACTURACION"].includes(currentStatus)) return false;
+      if (selectedTab === "APROBADO" && !["APROBADO", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO"].includes(currentStatus)) return false;
+      if (selectedTab === "RECHAZADO" && !["RECHAZADO", "ANULADO"].includes(currentStatus)) return false;
 
       // Filtro por búsqueda
       if (!searchQuery.trim()) return true;
@@ -605,11 +605,11 @@ export function QuoteApprovalPage() {
         res.GENERADO++;
       } else {
         res.ALL++;
-        if (st === "ENVIADO" || st === "EN_PROCESO") res.ENVIADO++;
-        else if (st === "APROBADO_COMERCIAL") res.APROBADO_COMERCIAL++;
-        else if (st === "PENDIENTE_FACTURACION") res.PENDIENTE_FACTURACION++;
-        else if (st === "APROBADO") res.APROBADO++;
-        else if (st === "RECHAZADO") res.RECHAZADO++;
+        if (["ENVIADO", "EN_PROCESO", "PENDIENTE_APROBACION"].includes(st)) res.ENVIADO++;
+        else if (["APROBADO_COMERCIAL", "APROBADO_CREDITOS"].includes(st)) res.APROBADO_COMERCIAL++;
+        else if (["PENDIENTE_FACTURACION", "EN_FACTURACION"].includes(st)) res.PENDIENTE_FACTURACION++;
+        else if (["APROBADO", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO"].includes(st)) res.APROBADO++;
+        else if (["RECHAZADO", "ANULADO"].includes(st)) res.RECHAZADO++;
       }
     });
     return res;
@@ -627,16 +627,17 @@ export function QuoteApprovalPage() {
             1. Borrador 📝
           </Badge>
         );
+      case "PENDIENTE_APROBACION":
       case "ENVIADO":
         return (
           <Badge bg="#e0f2fe" color="#0369a1" border="1.5px solid #bae6fd" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
-            2. Enviado a Cliente
+            1. Pend. Aprobación ⏳
           </Badge>
         );
       case "EN_PROCESO":
         return (
           <Badge bg="#f3e8ff" color="#6b21a8" border="1.5px solid #e9d5ff" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
-            3. En Revisión
+            En Revisión 🔍
           </Badge>
         );
       case "APROBADO_COMERCIAL":
@@ -645,12 +646,16 @@ export function QuoteApprovalPage() {
             2. Aprob. Comercial 📢
           </Badge>
         );
+      case "EN_FACTURACION":
       case "PENDIENTE_FACTURACION":
         return (
           <Badge bg="#f5f3ff" color="#5b21b6" border="1.5px solid #ddd6fe" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
             3. Pnd. Facturación 💳
           </Badge>
         );
+      case "FACTURADO":
+      case "PEDIDO_EMITIDO":
+      case "COMPLETADO":
       case "APROBADO":
         return (
           <Badge bg="#dcfce7" color="#166534" border="1.5px solid #bbf7d0" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
@@ -798,7 +803,7 @@ export function QuoteApprovalPage() {
         </Button>
 
         {/* 3. Acciones de Stepper (Validación Admin, etc.) */}
-        {(status === "ENVIADO" || status === "EN_PROCESO") && (
+        {(status === "ENVIADO" || status === "EN_PROCESO" || status === "PENDIENTE_APROBACION") && (
           isAdminUser ? (
             <>
               {!q.viewedByAdmin && (

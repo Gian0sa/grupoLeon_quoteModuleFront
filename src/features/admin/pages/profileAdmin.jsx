@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import {
   Box,
   Heading,
@@ -7,7 +7,6 @@ import {
   Spinner,
   VStack,
   Flex,
-  useColorModeValue,
   useToast,
   Center,
   Divider,
@@ -16,6 +15,7 @@ import {
   ModalContent,
   ModalHeader,
   ModalBody,
+  ModalFooter,
   ModalCloseButton,
   useDisclosure,
   Table,
@@ -24,10 +24,12 @@ import {
   Tr,
   Th,
   Td,
+  TableContainer,
   Badge,
   IconButton,
   InputGroup,
   InputLeftElement,
+  InputRightElement,
   Text,
   HStack,
   Stack,
@@ -35,56 +37,119 @@ import {
   Card,
   CardBody,
   Select,
+  Avatar,
+  SimpleGrid,
+  Tooltip
 } from "@chakra-ui/react";
-import { SearchIcon, EditIcon, ChevronLeftIcon, ChevronRightIcon } from "@chakra-ui/icons";
+import {
+  Search,
+  Edit3,
+  ChevronLeft,
+  ChevronRight,
+  UserCheck,
+  UserX,
+  Users,
+  ShieldCheck,
+  X,
+  KeyRound,
+  Mail,
+  Hash,
+  Sparkles,
+  RefreshCw
+} from "lucide-react";
 import { useGetAllUsersAdmin } from "../hooks/queries/authAdminQueries";
 import { useAuthAdminMutations } from "../hooks/mutations/authAdminMutations";
 import { useGetServices } from "../../auth/hooks/queries/authQueries";
-import { BackButton } from "../../../components/BackButton";
-import PermissionsSection from "../components/PermissionsSection";
+import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
+import PermissionsTreeView from "../components/PermissionsTreeView";
 import UserBasicFields from "../components/UserBasicFields";
-import { groupServicesByCategory } from "../../../shared/utils/serviceHelpers";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
 
-// Componente de tarjeta para móvil
-function UserCard({ user, onEdit, hoverBg }) {
+// Componente de tarjeta para vista móvil
+function UserMobileCard({ user, onEdit }) {
+  const permCount = Array.isArray(user.permittedServices) ? user.permittedServices.length : 0;
+
   return (
     <Card
-      cursor="pointer"
-      _hover={{ bg: hoverBg, transform: "translateY(-2px)", boxShadow: "md" }}
-      transition="all 0.2s"
-      onClick={() => onEdit(user)}
+      bg="white"
+      borderRadius="xl"
+      border="1px solid"
+      borderColor={user.active ? "gray.200" : "red.200"}
+      boxShadow="xs"
+      _hover={{ borderColor: "green.400", boxShadow: "sm" }}
+      transition="all 0.15s ease-in-out"
+      p={3.5}
     >
-      <CardBody>
-        <VStack align="stretch" spacing={3}>
-          <HStack justify="space-between">
-            <Text fontWeight="bold" fontSize="lg">{user.username}</Text>
-            <Badge colorScheme={user.active ? "green" : "red"}>
-              {user.active ? "Activo" : "Inactivo"}
-            </Badge>
+      <VStack align="stretch" spacing={2.5}>
+        <Flex justify="space-between" align="center">
+          <HStack spacing={2.5}>
+            <Avatar
+              size="sm"
+              name={user.username}
+              bg={user.active ? "#126C36" : "gray.400"}
+              color="white"
+              fontWeight="800"
+            />
+            <Box>
+              <Text fontWeight="800" fontSize="sm" color="gray.900">
+                {user.username}
+              </Text>
+              <Text fontSize="11px" color="gray.500">
+                {user.email}
+              </Text>
+            </Box>
           </HStack>
-          
-          <Text fontSize="sm" color="gray.600">{user.email}</Text>
-          
-          <Button
-            leftIcon={<EditIcon />}
-            colorScheme="green"
-            size="sm"
-            variant="ghost"
-            onClick={(e) => {
-              e.stopPropagation();
-              onEdit(user);
-            }}
+          <Badge
+            bg={user.active ? "#dcfce7" : "#fee2e2"}
+            color={user.active ? "#15803d" : "#991b1b"}
+            border="1px solid"
+            borderColor={user.active ? "#bbf7d0" : "#fecaca"}
+            px={2.5}
+            py={0.5}
+            borderRadius="full"
+            fontSize="10px"
+            fontWeight="900"
           >
-            Editar
-          </Button>
-        </VStack>
-      </CardBody>
+            {user.active ? "ACTIVO" : "INACTIVO"}
+          </Badge>
+        </Flex>
+
+        <Divider borderColor="gray.100" />
+
+        <Flex justify="space-between" align="center" fontSize="xs">
+          <HStack spacing={1.5} color="gray.600">
+            <Hash className="w-3.5 h-3.5 text-gray-400" />
+            <Text fontWeight="600">
+              Cód. SAP: {user.salesEmployeeCode ? `#${user.salesEmployeeCode}` : "—"}
+            </Text>
+          </HStack>
+          <Badge colorScheme="blue" variant="subtle" fontSize="10px" px={2} borderRadius="md">
+            {permCount} permisos
+          </Badge>
+        </Flex>
+
+        <Button
+          leftIcon={<Edit3 className="w-3.5 h-3.5" />}
+          colorScheme="green"
+          bg="#126C36"
+          _hover={{ bg: "#0e572b" }}
+          size="sm"
+          w="full"
+          borderRadius="lg"
+          fontWeight="800"
+          onClick={() => onEdit(user)}
+          mt={1}
+        >
+          Editar Perfil y Permisos
+        </Button>
+      </VStack>
     </Card>
   );
 }
 
-// Componente de paginación
-function Pagination({ currentPage, totalPages, onPageChange, pageSize, onPageSizeChange }) {
+// Componente de paginación de alta fidelidad
+function ModernPagination({ currentPage, totalPages, onPageChange, pageSize, onPageSizeChange }) {
   const isMobile = useBreakpointValue({ base: true, md: false });
 
   const getPageNumbers = () => {
@@ -92,116 +157,121 @@ function Pagination({ currentPage, totalPages, onPageChange, pageSize, onPageSiz
     const maxVisible = isMobile ? 3 : 5;
 
     if (totalPages <= maxVisible) {
-      for (let i = 1; i <= totalPages; i++) {
-        pages.push(i);
-      }
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
     } else {
       if (currentPage <= 3) {
-        for (let i = 1; i <= Math.min(maxVisible, totalPages); i++) {
-          pages.push(i);
-        }
+        for (let i = 1; i <= Math.min(maxVisible, totalPages); i++) pages.push(i);
         if (totalPages > maxVisible) {
-          pages.push('...');
+          pages.push("...");
           pages.push(totalPages);
         }
       } else if (currentPage >= totalPages - 2) {
         pages.push(1);
-        pages.push('...');
-        for (let i = totalPages - (maxVisible - 2); i <= totalPages; i++) {
-          pages.push(i);
-        }
+        pages.push("...");
+        for (let i = totalPages - (maxVisible - 2); i <= totalPages; i++) pages.push(i);
       } else {
         pages.push(1);
-        pages.push('...');
+        pages.push("...");
         pages.push(currentPage - 1);
         pages.push(currentPage);
         pages.push(currentPage + 1);
-        pages.push('...');
+        pages.push("...");
         pages.push(totalPages);
       }
     }
-
     return pages;
   };
 
   return (
-    <Stack 
-      direction={{ base: "column", md: "row" }}
-      spacing={4}
+    <Stack
+      direction={{ base: "column", sm: "row" }}
+      spacing={3}
       justify="space-between"
       align="center"
-      mt={6}
+      mt={5}
+      pt={3}
+      borderTop="1px solid"
+      borderColor="gray.200"
     >
-      <HStack spacing={2}>
-        <Text fontSize="sm" color="gray.600">Mostrar</Text>
-        <Select 
-          size="sm" 
-          w="70px" 
+      <HStack spacing={2} fontSize="xs" color="gray.600">
+        <Text>Mostrar</Text>
+        <Select
+          size="xs"
+          w="70px"
+          borderRadius="md"
           value={pageSize}
           onChange={(e) => onPageSizeChange(Number(e.target.value))}
+          bg="white"
         >
           <option value={10}>10</option>
           <option value={25}>25</option>
           <option value={50}>50</option>
           <option value={100}>100</option>
         </Select>
-        <Text fontSize="sm" color="gray.600">por página</Text>
+        <Text>por página</Text>
       </HStack>
 
-      <HStack spacing={2}>
+      <HStack spacing={1.5}>
         <IconButton
-          icon={<ChevronLeftIcon />}
-          size="sm"
+          icon={<ChevronLeft className="w-4 h-4" />}
+          size="xs"
+          variant="outline"
           onClick={() => onPageChange(currentPage - 1)}
           isDisabled={currentPage === 1}
           aria-label="Página anterior"
+          borderRadius="md"
         />
 
-        {getPageNumbers().map((page, index) => (
-          page === '...' ? (
-            <Text key={`ellipsis-${index}`} px={2}>...</Text>
+        {getPageNumbers().map((page, index) =>
+          page === "..." ? (
+            <Text key={`ellipsis-${index}`} px={1.5} fontSize="xs" color="gray.400">
+              ...
+            </Text>
           ) : (
             <Button
               key={page}
-              size="sm"
+              size="xs"
               onClick={() => onPageChange(page)}
-              colorScheme={currentPage === page ? "green" : "gray"}
-              variant={currentPage === page ? "solid" : "ghost"}
+              bg={currentPage === page ? "#126C36" : "white"}
+              color={currentPage === page ? "white" : "gray.700"}
+              border="1px solid"
+              borderColor={currentPage === page ? "#126C36" : "gray.200"}
+              _hover={{ bg: currentPage === page ? "#0e572b" : "gray.50" }}
+              fontWeight={currentPage === page ? "800" : "600"}
+              borderRadius="md"
+              minW="28px"
             >
               {page}
             </Button>
           )
-        ))}
-        
+        )}
+
         <IconButton
-          icon={<ChevronRightIcon />}
-          size="sm"
+          icon={<ChevronRight className="w-4 h-4" />}
+          size="xs"
+          variant="outline"
           onClick={() => onPageChange(currentPage + 1)}
-          isDisabled={currentPage === totalPages}
+          isDisabled={currentPage === totalPages || totalPages === 0}
           aria-label="Página siguiente"
+          borderRadius="md"
         />
       </HStack>
 
-      <Text fontSize="sm" color="gray.600">
-        Página {currentPage} de {totalPages}
+      <Text fontSize="xs" color="gray.500" fontWeight="600">
+        Página {currentPage} de {totalPages || 1}
       </Text>
     </Stack>
   );
 }
 
 export function ProfileAdmin() {
-  const { data: users, isLoading } = useGetAllUsersAdmin();
+  const { data: users, isLoading, refetch: refetchUsers } = useGetAllUsersAdmin();
   const { data: services, isLoading: isLoadingServices } = useGetServices();
   const { updateProfileAdmin } = useAuthAdminMutations();
   const { isOpen, onOpen, onClose } = useDisclosure();
 
   const toast = useToast();
-  const pageBg = useColorModeValue("gray.50", "gray.900");
-  const tableBg = useColorModeValue("white", "gray.800");
-  const hoverBg = useColorModeValue("gray.50", "gray.700");
-  const inputBg = useColorModeValue("white", "gray.700");
-
-  // Responsive: mostrar tabla o cards
+  const today = format(new Date(), "EEEE, d 'de' MMMM 'del' yyyy", { locale: es });
   const isMobile = useBreakpointValue({ base: true, md: false });
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -217,60 +287,60 @@ export function ProfileAdmin() {
   });
   const [errors, setErrors] = useState({});
 
-  // Estados de paginación
+  // Paginación y Filtros
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortBy, setSortBy] = useState("username_asc");
 
-  const groupedServices = useMemo(() => {
-    return groupServicesByCategory(services);
-  }, [services]);
+  // Métricas del sistema
+  const stats = useMemo(() => {
+    if (!users || !Array.isArray(users)) return { total: 0, active: 0, inactive: 0, servicesTotal: 0 };
+    const total = users.length;
+    const active = users.filter((u) => u.active).length;
+    const inactive = total - active;
+    const servicesTotal = Array.isArray(services) ? services.length : 0;
+    return { total, active, inactive, servicesTotal };
+  }, [users, services]);
 
   const filteredUsers = useMemo(() => {
-    if (!users) return [];
+    if (!users || !Array.isArray(users)) return [];
 
     let result = users;
 
     // Filtro de búsqueda
-    result = result.filter(u =>
-      `${u.username} ${u.email} ${u.salesEmployeeCode || ''}`
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase())
-    );
+    if (searchTerm.trim()) {
+      const q = searchTerm.toLowerCase();
+      result = result.filter((u) =>
+        `${u.username || ""} ${u.email || ""} ${u.salesEmployeeCode || ""}`.toLowerCase().includes(q)
+      );
+    }
 
     // Filtro de estado
     if (statusFilter === "active") {
-      result = result.filter(u => u.active === true);
+      result = result.filter((u) => u.active === true);
     } else if (statusFilter === "inactive") {
-      result = result.filter(u => u.active === false);
+      result = result.filter((u) => u.active === false);
     }
 
     // Ordenamiento
-    result = [...result]; // copiar array
-
+    result = [...result];
     if (sortBy === "username_asc") {
-      result.sort((a, b) => a.username.localeCompare(b.username));
-    }
-    else if (sortBy === "username_desc") {
-      result.sort((a, b) => b.username.localeCompare(a.username));
-    }
-    else if (sortBy === "email_asc") {
-      result.sort((a, b) => a.email.localeCompare(b.email));
-    }
-    else if (sortBy === "email_desc") {
-      result.sort((a, b) => b.email.localeCompare(a.email));
-    }
-    else if (sortBy === "active_first") {
+      result.sort((a, b) => (a.username || "").localeCompare(b.username || ""));
+    } else if (sortBy === "username_desc") {
+      result.sort((a, b) => (b.username || "").localeCompare(a.username || ""));
+    } else if (sortBy === "email_asc") {
+      result.sort((a, b) => (a.email || "").localeCompare(b.email || ""));
+    } else if (sortBy === "email_desc") {
+      result.sort((a, b) => (b.email || "").localeCompare(a.email || ""));
+    } else if (sortBy === "active_first") {
       result.sort((a, b) => Number(b.active) - Number(a.active));
-    }
-    else if (sortBy === "inactive_first") {
+    } else if (sortBy === "inactive_first") {
       result.sort((a, b) => Number(a.active) - Number(b.active));
     }
 
     return result;
   }, [users, searchTerm, statusFilter, sortBy]);
-
 
   const totalPages = Math.ceil(filteredUsers.length / pageSize);
 
@@ -280,7 +350,6 @@ export function ProfileAdmin() {
     return filteredUsers.slice(start, end);
   }, [filteredUsers, currentPage, pageSize]);
 
-  // Resetear a página 1 cuando cambia el término de búsqueda
   const handleSearchChange = (e) => {
     setSearchTerm(e.target.value);
     setCurrentPage(1);
@@ -291,19 +360,55 @@ export function ProfileAdmin() {
     setCurrentPage(1);
   };
 
+  // Helper robusto para normalizar permisos a lista de IDs numéricos
+  const extractServiceIds = (userPermissionsList, allServicesList = []) => {
+    if (!Array.isArray(userPermissionsList)) return [];
+
+    const serviceKeyToId = new Map();
+    (allServicesList || []).forEach((s) => {
+      serviceKeyToId.set(`${s.method}:${s.path}`.toUpperCase(), s.id);
+      serviceKeyToId.set(`${s.method} ${s.path}`.toUpperCase(), s.id);
+      if (s.name) serviceKeyToId.set(s.name.toUpperCase(), s.id);
+    });
+
+    const ids = new Set();
+
+    userPermissionsList.forEach((item) => {
+      if (typeof item === "number") {
+        ids.add(item);
+      } else if (typeof item === "string") {
+        const num = Number(item);
+        if (!isNaN(num) && num > 0) {
+          ids.add(num);
+        } else {
+          const upper = item.toUpperCase();
+          if (serviceKeyToId.has(upper)) {
+            ids.add(serviceKeyToId.get(upper));
+          }
+        }
+      } else if (typeof item === "object" && item !== null) {
+        if (item.service && typeof item.service.id === "number") {
+          ids.add(item.service.id);
+        } else if (typeof item.serviceId === "number") {
+          ids.add(item.serviceId);
+        } else if (typeof item.id === "number") {
+          ids.add(item.id);
+        } else if (item.service && item.service.method && item.service.path) {
+          const key = `${item.service.method}:${item.service.path}`.toUpperCase();
+          if (serviceKeyToId.has(key)) {
+            ids.add(serviceKeyToId.get(key));
+          }
+        }
+      }
+    });
+
+    return Array.from(ids);
+  };
+
   const handleOpenModal = (user) => {
     setSelectedUser(user);
 
-    let userPermissions = user.permittedServices || [];
-
-    if (services && userPermissions.length > 0 && typeof userPermissions[0] === 'string') {
-      userPermissions = services
-        .filter(service => {
-          const serviceString = `${service.method}:${service.path}`;
-          return userPermissions.includes(serviceString);
-        })
-        .map(service => service.id);
-    }
+    const userPermissions = extractServiceIds(user.permittedServices, services || []);
 
     setFormData({
       userId: user.id,
@@ -315,7 +420,7 @@ export function ProfileAdmin() {
           : Number(user.salesEmployeeCode),
       newPassword: "",
       permittedServices: userPermissions,
-      active: user.active,
+      active: Boolean(user.active),
     });
     setErrors({});
     onOpen();
@@ -338,16 +443,14 @@ export function ProfileAdmin() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-
     if (name === "salesEmployeeCode") {
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
-        salesEmployeeCode: value === "" ? null : Number(value)
+        salesEmployeeCode: value === "" ? null : Number(value),
       }));
       return;
     }
-
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const validate = () => {
@@ -360,41 +463,6 @@ export function ProfileAdmin() {
     return newErrors;
   };
 
-  const handleServiceChange = (serviceId, checked) => {
-    const currentServices = formData.permittedServices || [];
-    const updatedServices = checked
-      ? [...currentServices, serviceId]
-      : currentServices.filter((id) => id !== serviceId);
-
-    setFormData(prev => ({ ...prev, permittedServices: updatedServices }));
-  };
-
-  const handleCategoryChange = (categoryServices, checked) => {
-    const serviceIds = categoryServices.map(service => service.id);
-    const currentServices = formData.permittedServices || [];
-
-    let updatedServices;
-    if (checked) {
-      updatedServices = [...new Set([...currentServices, ...serviceIds])];
-    } else {
-      updatedServices = currentServices.filter(id => !serviceIds.includes(id));
-    }
-
-    setFormData(prev => ({ ...prev, permittedServices: updatedServices }));
-  };
-
-  const isCategoryFullySelected = (categoryServices) => {
-    const serviceIds = categoryServices.map(service => service.id);
-    const permittedServices = formData.permittedServices || [];
-    return serviceIds.every(id => permittedServices.includes(id));
-  };
-
-  const isCategoryPartiallySelected = (categoryServices) => {
-    const serviceIds = categoryServices.map(service => service.id);
-    const permittedServices = formData.permittedServices || [];
-    return serviceIds.some(id => permittedServices.includes(id)) && !isCategoryFullySelected(categoryServices);
-  };
-
   const handleSubmit = () => {
     const validationErrors = validate();
     if (Object.keys(validationErrors).length > 0) {
@@ -404,274 +472,522 @@ export function ProfileAdmin() {
 
     setErrors({});
 
-    updateProfileAdmin.mutate(formData, {
-      onSuccess: () => {
+    // formData.permittedServices ya contiene IDs numéricos gracias al árbol de permisos
+    // Solo aseguramos que sean números enteros limpios y únicos
+    const cleanPermissions = [...new Set(
+      (formData.permittedServices || [])
+        .map((id) => Number(id))
+        .filter((id) => !isNaN(id) && id > 0)
+    )];
+
+    const payload = {
+      ...formData,
+      permittedServices: cleanPermissions,
+    };
+
+    console.log("📤 [ProfileAdmin] Enviando payload al servidor:", {
+      userId: payload.userId,
+      username: payload.username,
+      permittedServices: payload.permittedServices,
+      totalPermisos: payload.permittedServices.length,
+    });
+
+    updateProfileAdmin.mutate(payload, {
+      onSuccess: (data) => {
+        console.log("✅ [ProfileAdmin] Guardado exitoso:", data);
         toast({
-          title: "Cambios guardados",
-          description: "El perfil se actualizó correctamente",
+          title: "Cambios guardados exitosamente",
+          description: `El perfil y permisos de "${formData.username}" fueron actualizados.`,
           status: "success",
           duration: 3000,
           isClosable: true,
+          position: "top-right",
         });
         handleCloseModal();
+        if (typeof refetchUsers === "function") refetchUsers();
       },
       onError: (error) => {
+        console.error("❌ [ProfileAdmin] Error al guardar:", error?.response?.status, error?.response?.data, error?.message);
         toast({
-          title: "Error al guardar",
-          description: error?.message || "Ocurrió un error al actualizar el perfil",
+          title: "Error al guardar cambios",
+          description: error?.response?.data?.message || error?.message || "Ocurrió un error al actualizar el perfil",
           status: "error",
-          duration: 3000,
+          duration: 4000,
           isClosable: true,
+          position: "top-right",
         });
-      }
+      },
     });
   };
 
   if (isLoading || isLoadingServices) {
     return (
-      <Center height="100vh" bg={pageBg}>
-        <Spinner size="xl" color="green.500" thickness="4px" />
-      </Center>
+      <Box w="full" minH="100vh" bg="gray.50">
+        <TopHeaderBanner
+          title="Gestión de Usuarios"
+          subtitle={`Administración de cuentas, perfiles y control de accesos • ${today.charAt(0).toUpperCase() + today.slice(1)}`}
+          showBack={true}
+        />
+        <Center py={20}>
+          <VStack spacing={3}>
+            <Spinner size="xl" color="green.600" thickness="4px" />
+            <Text fontSize="sm" fontWeight="600" color="gray.600">
+              Cargando usuarios y servicios del sistema...
+            </Text>
+          </VStack>
+        </Center>
+      </Box>
     );
   }
 
   return (
-    <Flex direction="column" h="100vh" w="full" bg={pageBg}>
-      {/* Header */}
-      <Flex
-        bg="green.800"
-        color="white"
-        align="center"
-        p={4}
-        borderBottomRadius="2xl"
-        justify="center"
-        position="relative"
-        boxShadow="lg"
-      >
-        <Box position="absolute" left="4">
-          <BackButton color="white" />
-        </Box>
-        <Heading size={{ base: "sm", md: "md" }}>👤 Gestión de Usuarios</Heading>
-      </Flex>
+    <Box w="full" minH="100vh" bg="gray.50" pb="80px">
+      {/* ─── TOP HEADER BANNER ESTÁNDAR ─── */}
+      <TopHeaderBanner
+        title="Gestión de Usuarios"
+        subtitle={`Administración de cuentas, perfiles, asignación de permisos y control de accesos • ${today.charAt(0).toUpperCase() + today.slice(1)}`}
+        showBack={true}
+        backTo="/dashboard"
+        refreshQueries={["adminUsers", "Services"]}
+        mb={6}
+      />
 
-      {/* Contenido Principal */}
-      <Box flex="1" p={{ base: 3, md: 6 }} overflowY="auto">
-        <Box bg={tableBg} borderRadius="xl" boxShadow="lg" p={{ base: 4, md: 6 }}>
-          {/* Buscador */}
-          <Stack
-            direction={{ base: "column", md: "row" }}
-            mb={6}
-            spacing={4}
-            justify="space-between"
-            align={{ base: "stretch", md: "center" }}
-          >
-            <InputGroup maxW={{ base: "100%", md: "400px" }}>
-              <InputLeftElement pointerEvents="none">
-                <SearchIcon color="gray.400" />
-              </InputLeftElement>
-              <Input
-                placeholder="Buscar usuario..."
-                value={searchTerm}
-                onChange={handleSearchChange}
-                focusBorderColor="green.500"
-                bg={inputBg}
-              />
-            </InputGroup>
-            <Stack
+      <Box maxW="1200px" mx="auto" px={{ base: 3, md: 6 }} mt={-6}>
+        <VStack align="stretch" spacing={5}>
+          {/* ─── TARJETAS DE MÉTRICAS RÁPIDAS ─── */}
+          <SimpleGrid columns={{ base: 2, md: 4 }} spacing={3.5}>
+            <Card bg="white" borderRadius="2xl" border="1px solid" borderColor="gray.200" boxShadow="xs">
+              <CardBody p={3.5}>
+                <Flex align="center" justify="space-between">
+                  <Box>
+                    <Text fontSize="11px" fontWeight="800" color="gray.500" textTransform="uppercase">
+                      Total Usuarios
+                    </Text>
+                    <Text fontSize="22px" fontWeight="900" color="gray.900" mt={0.5}>
+                      {stats.total}
+                    </Text>
+                  </Box>
+                  <Flex w="38px" h="38px" borderRadius="xl" bg="blue.50" color="blue.600" align="center" justify="center">
+                    <Users className="w-5 h-5" />
+                  </Flex>
+                </Flex>
+              </CardBody>
+            </Card>
+
+            <Card bg="white" borderRadius="2xl" border="1px solid" borderColor="gray.200" boxShadow="xs">
+              <CardBody p={3.5}>
+                <Flex align="center" justify="space-between">
+                  <Box>
+                    <Text fontSize="11px" fontWeight="800" color="gray.500" textTransform="uppercase">
+                      Usuarios Activos
+                    </Text>
+                    <Text fontSize="22px" fontWeight="900" color="green.700" mt={0.5}>
+                      {stats.active}
+                    </Text>
+                  </Box>
+                  <Flex w="38px" h="38px" borderRadius="xl" bg="green.50" color="green.600" align="center" justify="center">
+                    <UserCheck className="w-5 h-5" />
+                  </Flex>
+                </Flex>
+              </CardBody>
+            </Card>
+
+            <Card bg="white" borderRadius="2xl" border="1px solid" borderColor="gray.200" boxShadow="xs">
+              <CardBody p={3.5}>
+                <Flex align="center" justify="space-between">
+                  <Box>
+                    <Text fontSize="11px" fontWeight="800" color="gray.500" textTransform="uppercase">
+                      Inactivos
+                    </Text>
+                    <Text fontSize="22px" fontWeight="900" color={stats.inactive > 0 ? "red.600" : "gray.600"} mt={0.5}>
+                      {stats.inactive}
+                    </Text>
+                  </Box>
+                  <Flex w="38px" h="38px" borderRadius="xl" bg="red.50" color="red.600" align="center" justify="center">
+                    <UserX className="w-5 h-5" />
+                  </Flex>
+                </Flex>
+              </CardBody>
+            </Card>
+
+            <Card bg="white" borderRadius="2xl" border="1px solid" borderColor="gray.200" boxShadow="xs">
+              <CardBody p={3.5}>
+                <Flex align="center" justify="space-between">
+                  <Box>
+                    <Text fontSize="11px" fontWeight="800" color="gray.500" textTransform="uppercase">
+                      Permisos del Sistema
+                    </Text>
+                    <Text fontSize="22px" fontWeight="900" color="purple.700" mt={0.5}>
+                      {stats.servicesTotal}
+                    </Text>
+                  </Box>
+                  <Flex w="38px" h="38px" borderRadius="xl" bg="purple.50" color="purple.600" align="center" justify="center">
+                    <ShieldCheck className="w-5 h-5" />
+                  </Flex>
+                </Flex>
+              </CardBody>
+            </Card>
+          </SimpleGrid>
+
+          {/* ─── CONTENEDOR PRINCIPAL: BUSCADOR, FILTROS Y TABLA ─── */}
+          <Box bg="white" p={{ base: 3.5, md: 6 }} borderRadius="2xl" border="1px solid" borderColor="gray.200" boxShadow="sm">
+            {/* Barra de Filtros */}
+            <Flex
               direction={{ base: "column", md: "row" }}
-              spacing={4}
+              justify="space-between"
+              align={{ base: "stretch", md: "center" }}
+              gap={3}
+              mb={4}
             >
-              {/* Filtro estado */}
-              <Select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                maxW="200px"
-              >
-                <option value="all">Todos</option>
-                <option value="active">Activos</option>
-                <option value="inactive">Inactivos</option>
-              </Select>
+              {/* Buscador */}
+              <InputGroup size="md" maxW={{ base: "100%", md: "400px" }}>
+                <InputLeftElement pointerEvents="none">
+                  <Search className="w-4 h-4 text-gray-400" />
+                </InputLeftElement>
+                <Input
+                  placeholder="Buscar por usuario, email o cód. SAP..."
+                  value={searchTerm}
+                  onChange={handleSearchChange}
+                  bg="white"
+                  borderRadius="xl"
+                  borderColor="gray.300"
+                  _focus={{ borderColor: "green.500", boxShadow: "0 0 0 1px #16a34a" }}
+                  fontSize="sm"
+                />
+                {searchTerm && (
+                  <InputRightElement>
+                    <IconButton
+                      size="xs"
+                      variant="ghost"
+                      icon={<X className="w-3.5 h-3.5 text-gray-400" />}
+                      onClick={() => setSearchTerm("")}
+                      aria-label="Limpiar"
+                    />
+                  </InputRightElement>
+                )}
+              </InputGroup>
 
-              {/* Ordenamiento */}
-              <Select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                maxW="220px"
-              >
-                <option value="username_asc">Usuario A → Z</option>
-                <option value="username_desc">Usuario Z → A</option>
-                <option value="email_asc">Email A → Z</option>
-                <option value="email_desc">Email Z → A</option>
-                <option value="active_first">Activos primero</option>
-                <option value="inactive_first">Inactivos primero</option>
-              </Select>
-            </Stack>
+              {/* Filtros Dropdowns y Contador */}
+              <HStack spacing={2.5} wrap="wrap">
+                <Select
+                  size="sm"
+                  borderRadius="lg"
+                  w="140px"
+                  bg="white"
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                >
+                  <option value="all">Todos los Estados</option>
+                  <option value="active">Solo Activos</option>
+                  <option value="inactive">Solo Inactivos</option>
+                </Select>
 
-            <Badge colorScheme="blue" fontSize="md" px={3} py={2} alignSelf={{ base: "flex-start", md: "center" }}>
-              {filteredUsers.length} usuario{filteredUsers.length !== 1 ? 's' : ''}
-            </Badge>
-          </Stack>
+                <Select
+                  size="sm"
+                  borderRadius="lg"
+                  w="180px"
+                  bg="white"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                >
+                  <option value="username_asc">Usuario A → Z</option>
+                  <option value="username_desc">Usuario Z → A</option>
+                  <option value="email_asc">Email A → Z</option>
+                  <option value="email_desc">Email Z → A</option>
+                  <option value="active_first">Activos primero</option>
+                  <option value="inactive_first">Inactivos primero</option>
+                </Select>
 
-          {/* Vista Responsive */}
-          {isMobile ? (
-            // Vista Mobile: Cards
-            <VStack spacing={3} align="stretch">
-              {paginatedUsers.length === 0 ? (
-                <Center py={8}>
-                  <VStack spacing={2}>
-                    <Text fontSize="2xl">🔍</Text>
-                    <Text color="gray.500">No se encontraron usuarios</Text>
-                  </VStack>
-                </Center>
-              ) : (
-                paginatedUsers.map((user) => (
-                  <UserCard
-                    key={user.id}
-                    user={user}
-                    onEdit={handleOpenModal}
-                    hoverBg={hoverBg}
-                  />
-                ))
-              )}
-            </VStack>
-          ) : (
-            // Vista Desktop: Tabla
-            <Box overflowX="auto">
-              <Table variant="simple">
-                <Thead>
-                  <Tr>
-                    <Th>Usuario</Th>
-                    <Th>Email</Th>
-                    <Th>Estado</Th>
-                    <Th textAlign="center">Acciones</Th>
-                  </Tr>
-                </Thead>
-                <Tbody>
-                  {paginatedUsers.length === 0 ? (
+                <Badge
+                  bg="#eff6ff"
+                  color="#1d4ed8"
+                  border="1px solid #bfdbfe"
+                  px={3}
+                  py={1.5}
+                  borderRadius="full"
+                  fontSize="11px"
+                  fontWeight="900"
+                  letterSpacing="wider"
+                >
+                  {filteredUsers.length} USUARIOS
+                </Badge>
+              </HStack>
+            </Flex>
+
+            {/* ─── VISTA RESPONSIVE: MÓVIL (CARDS) O ESCRITORIO (TABLA) ─── */}
+            {isMobile ? (
+              <VStack spacing={3} align="stretch">
+                {paginatedUsers.length === 0 ? (
+                  <Center py={10}>
+                    <VStack spacing={2}>
+                      <Users className="w-10 h-10 text-gray-300" />
+                      <Text fontWeight="700" color="gray.600">
+                        No se encontraron usuarios
+                      </Text>
+                      <Text fontSize="xs" color="gray.400">
+                        Prueba con otros términos de búsqueda o filtros.
+                      </Text>
+                    </VStack>
+                  </Center>
+                ) : (
+                  paginatedUsers.map((user) => (
+                    <UserMobileCard key={user.id} user={user} onEdit={handleOpenModal} />
+                  ))
+                )}
+              </VStack>
+            ) : (
+              <TableContainer borderRadius="xl" border="1px solid" borderColor="gray.200" overflowX="auto">
+                <Table size="sm" variant="simple">
+                  <Thead bg="#f8fafc" borderBottom="2px solid #0f172a">
                     <Tr>
-                      <Td colSpan={4} textAlign="center" py={8}>
-                        <VStack spacing={2}>
-                          <Text fontSize="2xl">🔍</Text>
-                          <Text color="gray.500">No se encontraron usuarios</Text>
-                        </VStack>
-                      </Td>
+                      <Th py={3} px={3} fontSize="11px" color="gray.900" fontWeight="900">
+                        USUARIO
+                      </Th>
+                      <Th py={3} px={3} fontSize="11px" color="gray.900" fontWeight="900">
+                        EMAIL
+                      </Th>
+                      <Th py={3} px={3} fontSize="11px" color="gray.900" fontWeight="900">
+                        CÓD. VENDEDOR
+                      </Th>
+                      <Th py={3} px={3} fontSize="11px" color="gray.900" fontWeight="900" textAlign="center">
+                        PERMISOS
+                      </Th>
+                      <Th py={3} px={3} fontSize="11px" color="gray.900" fontWeight="900" textAlign="center">
+                        ESTADO
+                      </Th>
+                      <Th py={3} px={3} fontSize="11px" color="gray.900" fontWeight="900" textAlign="right">
+                        ACCIONES
+                      </Th>
                     </Tr>
-                  ) : (
-                    paginatedUsers.map((user) => (
-                      <Tr
-                        key={user.id}
-                        _hover={{ bg: hoverBg }}
-                        transition="background 0.2s"
-                      >
-                        <Td>
-                          <VStack align="start" spacing={1}>
-                            <Text fontWeight="semibold">{user.username}</Text>
+                  </Thead>
+                  <Tbody>
+                    {paginatedUsers.length === 0 ? (
+                      <Tr>
+                        <Td colSpan={6} textAlign="center" py={10}>
+                          <VStack spacing={2}>
+                            <Users className="w-10 h-10 text-gray-300" />
+                            <Text fontWeight="700" color="gray.600">
+                              No se encontraron usuarios registrados
+                            </Text>
+                            <Text fontSize="xs" color="gray.400">
+                              Prueba modificando los filtros de búsqueda.
+                            </Text>
                           </VStack>
                         </Td>
-                        <Td>{user.email}</Td>
-                        <Td>
-                          <Badge colorScheme={user.active ? "green" : "red"}>
-                            {user.active ? "Activo" : "Inactivo"}
-                          </Badge>
-                        </Td>
-                        <Td textAlign="center">
-                          <IconButton
-                            icon={<EditIcon />}
-                            colorScheme="green"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleOpenModal(user)}
-                            aria-label="Editar usuario"
-                          />
-                        </Td>
                       </Tr>
-                    ))
-                  )}
-                </Tbody>
-              </Table>
-            </Box>
-          )}
+                    ) : (
+                      paginatedUsers.map((user) => {
+                        const permCount = extractServiceIds(user.permittedServices, services || []).length;
 
-          {/* Paginación */}
-          {filteredUsers.length > 0 && (
-            <Pagination
-              currentPage={currentPage}
-              totalPages={totalPages}
-              onPageChange={setCurrentPage}
-              pageSize={pageSize}
-              onPageSizeChange={handlePageSizeChange}
-            />
-          )}
-        </Box>
+                        return (
+                          <Tr key={user.id} _hover={{ bg: "gray.50" }} transition="background 0.15s">
+                            <Td px={3} py={2}>
+                              <HStack spacing={2.5}>
+                                <Avatar
+                                  size="xs"
+                                  name={user.username}
+                                  bg={user.active ? "#126C36" : "gray.400"}
+                                  color="white"
+                                  fontWeight="800"
+                                />
+                                <Box>
+                                  <Text fontWeight="800" fontSize="12.5px" color="gray.900">
+                                    {user.username}
+                                  </Text>
+                                  {user.username?.toLowerCase() === "enrique" && (
+                                    <Badge colorScheme="purple" fontSize="9px" px={1.5} borderRadius="sm">
+                                      Admin
+                                    </Badge>
+                                  )}
+                                </Box>
+                              </HStack>
+                            </Td>
+
+                            <Td px={3} py={2} fontSize="12px" color="gray.600">
+                              {user.email || "—"}
+                            </Td>
+
+                            <Td px={3} py={2} fontSize="12px" fontFamily="mono" fontWeight="600" color="gray.700">
+                              {user.salesEmployeeCode ? (
+                                <Badge bg="gray.100" color="gray.800" fontSize="10px" px={2} borderRadius="md">
+                                  #{user.salesEmployeeCode}
+                                </Badge>
+                              ) : (
+                                "—"
+                              )}
+                            </Td>
+
+                            <Td px={3} py={2} textAlign="center">
+                              <Badge
+                                bg="#eff6ff"
+                                color="#1e40af"
+                                border="1px solid #bfdbfe"
+                                px={2}
+                                py={0.5}
+                                borderRadius="full"
+                                fontSize="10px"
+                                fontWeight="800"
+                              >
+                                {permCount} asignados
+                              </Badge>
+                            </Td>
+
+                            <Td px={3} py={2} textAlign="center">
+                              <Badge
+                                bg={user.active ? "#dcfce7" : "#fee2e2"}
+                                color={user.active ? "#15803d" : "#991b1b"}
+                                border="1px solid"
+                                borderColor={user.active ? "#bbf7d0" : "#fecaca"}
+                                px={2.5}
+                                py={0.5}
+                                borderRadius="full"
+                                fontSize="10.5px"
+                                fontWeight="900"
+                              >
+                                {user.active ? "ACTIVO" : "INACTIVO"}
+                              </Badge>
+                            </Td>
+
+                            <Td px={3} py={2} textAlign="right">
+                              <Button
+                                size="xs"
+                                variant="outline"
+                                borderColor="#126C36"
+                                color="#126C36"
+                                _hover={{ bg: "#f0fdf4" }}
+                                leftIcon={<Edit3 className="w-3.5 h-3.5" />}
+                                onClick={() => handleOpenModal(user)}
+                                fontWeight="800"
+                                borderRadius="lg"
+                                px={3}
+                              >
+                                Editar
+                              </Button>
+                            </Td>
+                          </Tr>
+                        );
+                      })
+                    )}
+                  </Tbody>
+                </Table>
+              </TableContainer>
+            )}
+
+            {/* Paginación */}
+            {filteredUsers.length > 0 && (
+              <ModernPagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
+                pageSize={pageSize}
+                onPageSizeChange={handlePageSizeChange}
+              />
+            )}
+          </Box>
+        </VStack>
       </Box>
 
-      {/* Modal de Edición */}
+      {/* ─── MODAL PREMIUM DE EDICIÓN DE USUARIO Y ÁRBOL DE PERMISOS ─── */}
       <Modal
         isOpen={isOpen}
         onClose={handleCloseModal}
         size={{ base: "full", md: "4xl" }}
         scrollBehavior="inside"
+        isCentered
       >
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>
-            <Stack direction={{ base: "column", sm: "row" }} spacing={2}>
-              <Text>✏️ Editar Usuario</Text>
-              {selectedUser && (
-                <Badge colorScheme="blue" fontSize="sm" alignSelf={{ base: "flex-start", sm: "center" }}>
-                  {selectedUser.username}
-                </Badge>
-              )}
-            </Stack>
+        <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
+        <ModalContent borderRadius={{ base: 0, md: "2xl" }} boxShadow="2xl" maxH="90vh" overflow="hidden">
+          {/* Header del Modal */}
+          <ModalHeader bg="#f8fafc" borderBottom="1px solid" borderColor="gray.200" py={4} px={6}>
+            <Flex justify="space-between" align="center">
+              <HStack spacing={3}>
+                <Avatar
+                  size="md"
+                  name={formData.username}
+                  bg="#126C36"
+                  color="white"
+                  fontWeight="900"
+                />
+                <Box>
+                  <HStack spacing={2}>
+                    <Heading size="sm" color="gray.900" fontWeight="900">
+                      Editar Usuario: {formData.username || "Usuario"}
+                    </Heading>
+                    <Badge
+                      bg={formData.active ? "#dcfce7" : "#fee2e2"}
+                      color={formData.active ? "#15803d" : "#991b1b"}
+                      border="1px solid"
+                      borderColor={formData.active ? "#bbf7d0" : "#fecaca"}
+                      px={2}
+                      py={0.2}
+                      borderRadius="full"
+                      fontSize="10px"
+                      fontWeight="900"
+                    >
+                      {formData.active ? "ACTIVO" : "INACTIVO"}
+                    </Badge>
+                  </HStack>
+                  <Text fontSize="xs" color="gray.500" mt={0.5}>
+                    ID #{formData.userId} • {formData.email}
+                  </Text>
+                </Box>
+              </HStack>
+              <ModalCloseButton position="static" />
+            </Flex>
           </ModalHeader>
-          <ModalCloseButton />
-          <ModalBody pb={6}>
+
+          {/* Cuerpo del Modal */}
+          <ModalBody py={5} px={{ base: 4, md: 6 }}>
             <VStack spacing={6} align="stretch">
-              <UserBasicFields
-                formData={formData}
-                errors={errors}
-                onChange={handleChange}
-              />
+              {/* 1. Datos Básicos del Usuario */}
+              <Box bg="gray.50" p={4} borderRadius="xl" border="1px solid" borderColor="gray.200">
+                <Text fontSize="xs" fontWeight="900" color="gray.700" textTransform="uppercase" letterSpacing="wider" mb={3}>
+                  1. Información de Cuenta y Acceso
+                </Text>
+                <UserBasicFields formData={formData} errors={errors} onChange={handleChange} />
+              </Box>
 
-              <Divider />
-
-              <PermissionsSection
-                groupedServices={groupedServices}
-                permittedServices={formData.permittedServices || []}
-                onServiceChange={handleServiceChange}
-                onCategoryChange={handleCategoryChange}
-                isCategoryFullySelected={isCategoryFullySelected}
-                isCategoryPartiallySelected={isCategoryPartiallySelected}
-              />
-
-              <Stack
-                direction={{ base: "column", sm: "row" }}
-                spacing={3}
-                pt={4}
-              >
-                <Button
-                  onClick={handleSubmit}
-                  colorScheme="green"
-                  flex={1}
-                  size="lg"
-                  isLoading={updateProfileAdmin.isPending || updateProfileAdmin.isLoading}
-                  loadingText="Guardando..."
-                >
-                  💾 Guardar
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={handleCloseModal}
-                  size="lg"
-                  flex={{ base: 1, sm: "initial" }}
-                >
-                  Cancelar
-                </Button>
-              </Stack>
+              {/* 2. Árbol de Permisos y Servicios */}
+              <Box>
+                <Text fontSize="xs" fontWeight="900" color="gray.700" textTransform="uppercase" letterSpacing="wider" mb={2}>
+                  2. Árbol Jerárquico de Permisos y Módulos
+                </Text>
+                <PermissionsTreeView
+                  services={services || []}
+                  permittedServices={formData.permittedServices || []}
+                  onChange={(newPermitted) => setFormData((prev) => ({ ...prev, permittedServices: newPermitted }))}
+                />
+              </Box>
             </VStack>
           </ModalBody>
+
+          {/* Footer del Modal */}
+          <ModalFooter bg="#f8fafc" borderTop="1px solid" borderColor="gray.200" py={3.5} px={6}>
+            <HStack spacing={3} w="full" justify="flex-end">
+              <Button variant="outline" onClick={handleCloseModal} size="md" borderRadius="xl" fontWeight="700">
+                Cancelar
+              </Button>
+              <Button
+                bg="#126C36"
+                color="white"
+                _hover={{ bg: "#0e572b" }}
+                _active={{ bg: "#0a3f1f" }}
+                size="md"
+                borderRadius="xl"
+                fontWeight="800"
+                onClick={handleSubmit}
+                isLoading={updateProfileAdmin.isPending || updateProfileAdmin.isLoading}
+                loadingText="Guardando cambios..."
+                boxShadow="0 4px 14px rgba(18, 108, 54, 0.3)"
+              >
+                💾 Guardar Cambios
+              </Button>
+            </HStack>
+          </ModalFooter>
         </ModalContent>
       </Modal>
-    </Flex>
+    </Box>
   );
 }
+
+export default ProfileAdmin;
