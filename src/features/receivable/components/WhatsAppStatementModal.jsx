@@ -192,11 +192,14 @@ export function WhatsAppStatementModal({ isOpen, onClose, debt }) {
     salesperson,
     totalUSD,
     totalPEN,
+    hasUsd,
+    hasPen,
+    isCreditBalance,
     totalVencidoUSD,
     vencidosCount,
     hasOverdue,
   } = useMemo(() => {
-    if (!debt) return { clientName: "", totalUSD: 0, totalPEN: 0, hasOverdue: false, vencidosCount: 0 };
+    if (!debt) return { clientName: "", totalUSD: 0, totalPEN: 0, hasUsd: false, hasPen: false, isCreditBalance: false, hasOverdue: false, vencidosCount: 0 };
     const docs = debt.documents || debt.documentos || [];
     const name = debt.nombre || debt.clientName || docs[0]?.CARDNAME || "Estimado(a) Cliente";
     const code = debt.clientCode || debt.ruc || docs[0]?.CARDCODE || "";
@@ -205,32 +208,54 @@ export function WhatsAppStatementModal({ isOpen, onClose, debt }) {
     let sUSD = 0;
     let sPEN = 0;
     let vUSD = 0;
+    let vPEN = 0;
     let vCount = 0;
 
     docs.forEach((d) => {
-      const isUSD = (d.moneda || d.TIPOCAMBIO || "USD").toUpperCase() === "USD";
-      const saldoU = Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? 0);
-      const saldoP = Number(d.saldoPendiente?.PEN ?? d.SALDO_PEN ?? 0);
+      const mon = (d.moneda || d.TIPOCAMBIO || d.mon || "USD").toUpperCase();
+      const isPEN = mon.includes("PEN") || mon.includes("SOL") || mon.includes("S/");
+      const saldoU = !isPEN ? Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? d.sUsd ?? d.tot ?? d.totalDocumento ?? d.TOTAL_DOC ?? 0) : 0;
+      const saldoP = isPEN ? Number(d.saldoPendiente?.PEN ?? d.SALDO_PEN ?? d.sPen ?? d.tot ?? d.totalDocumento ?? d.TOTAL_DOC ?? 0) : 0;
       sUSD += saldoU;
       sPEN += saldoP;
 
-      if (d.estaVencido || (d.saldoVencidoUSD && Number(d.saldoVencidoUSD) > 0)) {
+      const isDocOverdue = Boolean(d.estaVencido || d.vdStatus === "VENCIDO" || (d.saldoVencidoUSD && Number(d.saldoVencidoUSD) > 0));
+      if (isDocOverdue && (saldoU > 0 || saldoP > 0)) {
         vUSD += saldoU;
+        vPEN += saldoP;
         vCount++;
       }
     });
+
+    const finalUSD = sUSD || Number(debt.saldoUSD || debt.saldoPrincipal || 0);
+    const finalPEN = sPEN || Number(debt.saldoPEN || 0);
+    const isCredit = finalUSD < -0.001 || finalPEN < -0.001 || debt.tipoDocumento === "Nota de Crédito";
+    const realHasOverdue = !isCredit && (vCount > 0 || (debt.saldoVencidoUSD && Number(debt.saldoVencidoUSD) > 0));
 
     return {
       clientName: name,
       clientCode: code,
       salesperson: sales,
-      totalUSD: sUSD || Number(debt.saldoUSD || debt.saldoPrincipal || 0),
-      totalPEN: sPEN || Number(debt.saldoPEN || 0),
-      totalVencidoUSD: vUSD || Number(debt.saldoVencidoUSD || 0),
-      vencidosCount: vCount,
-      hasOverdue: vCount > 0 || (debt.saldoVencidoUSD && Number(debt.saldoVencidoUSD) > 0),
+      totalUSD: finalUSD,
+      totalPEN: finalPEN,
+      hasUsd: Math.abs(finalUSD) > 0.001,
+      hasPen: Math.abs(finalPEN) > 0.001,
+      isCreditBalance: isCredit,
+      totalVencidoUSD: isCredit ? 0 : (vUSD || Number(debt.saldoVencidoUSD || 0)),
+      totalVencidoPEN: isCredit ? 0 : vPEN,
+      vencidosCount: isCredit ? 0 : vCount,
+      hasOverdue: realHasOverdue,
     };
   }, [debt]);
+
+  // Sincronizar automáticamente tono obligatorio: Si tiene vencimiento, fuerza 'urgent' (Aviso de Vencimiento)
+  React.useEffect(() => {
+    if (hasOverdue) {
+      setMessageTone("urgent");
+    } else {
+      setMessageTone("friendly");
+    }
+  }, [hasOverdue, isOpen]);
 
   // Construir plantilla de mensaje según el tono seleccionado
   const generatedMessage = useMemo(() => {
@@ -242,12 +267,32 @@ export function WhatsAppStatementModal({ isOpen, onClose, debt }) {
       year: "numeric",
     });
 
-    const saldoText = totalUSD > 0
-      ? `$ ${totalUSD.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`
-      : `S/ ${totalPEN.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const formatMoney = (val) =>
+      Number(Math.abs(val) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    let saldoText = "";
+    if (isCreditBalance) {
+      if (hasUsd && hasPen) {
+        saldoText = `$ ${formatMoney(totalUSD)} USD y S/ ${formatMoney(totalPEN)} PEN (A favor del cliente)`;
+      } else if (hasPen) {
+        saldoText = `S/ ${formatMoney(totalPEN)} PEN (A favor del cliente)`;
+      } else {
+        saldoText = `$ ${formatMoney(totalUSD)} USD (A favor del cliente)`;
+      }
+    } else {
+      if (hasUsd && hasPen) {
+        saldoText = `$ ${formatMoney(totalUSD)} USD y S/ ${formatMoney(totalPEN)} PEN`;
+      } else if (hasPen) {
+        saldoText = `S/ ${formatMoney(totalPEN)} PEN`;
+      } else {
+        saldoText = `$ ${formatMoney(totalUSD)} USD`;
+      }
+    }
 
     const estadoBadge = hasOverdue
       ? `⚠️ *Estado:* Pendiente de regularización (Cuotas vencidas)`
+      : isCreditBalance
+      ? `💳 *Estado:* Saldo a favor disponible (Nota de crédito)`
       : `✅ *Estado:* Al día (Sin cuotas vencidas)`;
 
     if (messageTone === "urgent") {
@@ -272,13 +317,13 @@ Por favor, si ya realizó el abono, compártanos su constancia por este medio pa
 Por medio de la presente, *Autopartes S.A.* le hace llegar su *Estado de Cuenta Comercial* actualizado al ${fechaHoy}:
 
 📌 ${estadoBadge}
-💰 *Saldo Actual:* ${saldoText}
+💰 *${isCreditBalance ? "Saldo a Favor" : "Saldo Actual"}:* ${saldoText}
 👤 *Asesor Comercial:* ${salesperson}
 
-🔗 *Puede visualizar sus documentos, cuotas y descargar el reporte oficial en:*
+🔗 *Puede visualizar sus documentos, comprobantes y descargar el reporte oficial en:*
 ${statementUrl}
 
-Quedamos atentos a sus consultas y confirmaciones de pago. Saludos cordiales.`
+Quedamos atentos a sus consultas. Saludos cordiales.`
       );
     } else {
       // Friendly / Estándar
@@ -288,16 +333,16 @@ Quedamos atentos a sus consultas y confirmaciones de pago. Saludos cordiales.`
 Le compartimos su *Estado de Cuenta Comercial* actualizado:
 
 📌 ${estadoBadge}
-💰 *Saldo Total:* ${saldoText}
+💰 *${isCreditBalance ? "Saldo a Favor" : "Saldo Total"}:* ${saldoText}
 📅 *Corte:* ${fechaHoy}
 
-🔗 *Revise sus facturas, letras y fechas de vencimiento en el siguiente enlace:*
+🔗 *Revise el detalle de sus comprobantes en el siguiente enlace:*
 ${statementUrl}
 
 Cualquier consulta estamos a su entera disposición. ¡Que tenga un excelente día!`
       );
     }
-  }, [debt, clientName, salesperson, totalUSD, totalPEN, hasOverdue, statementUrl, messageTone]);
+  }, [debt, clientName, salesperson, totalUSD, totalPEN, isCreditBalance, hasOverdue, statementUrl, messageTone]);
 
   // Guardar teléfono manualmente en el directorio
   const handleSavePhoneManually = () => {
@@ -419,21 +464,37 @@ Cualquier consulta estamos a su entera disposición. ¡Que tenga un excelente d�
               <Flex justify="space-between" align="center" wrap="wrap" gap={2}>
                 <HStack spacing={2}>
                   <Badge
-                    colorScheme={hasOverdue ? "red" : "green"}
+                    colorScheme={hasOverdue ? "red" : isCreditBalance ? "blue" : "green"}
                     fontSize="11px"
                     px={2.5}
                     py={0.8}
                     borderRadius="full"
                     fontWeight="800"
                   >
-                    {hasOverdue ? `⚠️ ${vencidosCount} Cuotas Vencidas` : "✅ Cliente al Día"}
+                    {hasOverdue
+                      ? `⚠️ ${vencidosCount} Cuotas Vencidas`
+                      : isCreditBalance
+                      ? "💳 Saldo a Favor"
+                      : "✅ Cliente al Día"}
                   </Badge>
                   <Text fontSize="xs" fontWeight="700" color="gray.600">
                     Vendedor: <strong>{salesperson}</strong>
                   </Text>
                 </HStack>
-                <Text fontSize="sm" fontWeight="900" color="emerald.700" fontFamily="mono">
-                  Saldo: ${totalUSD.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+                <Text
+                  fontSize="sm"
+                  fontWeight="900"
+                  color={isCreditBalance ? "blue.600" : "emerald.700"}
+                  fontFamily="mono"
+                >
+                  {isCreditBalance ? "Saldo a Favor: " : "Saldo: "}
+                  {hasUsd && hasPen ? (
+                    `$${Math.abs(totalUSD).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD + S/ ${Math.abs(totalPEN).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  ) : hasPen ? (
+                    `S/ ${Math.abs(totalPEN).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  ) : (
+                    `$${Math.abs(totalUSD).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`
+                  )}
                 </Text>
               </Flex>
             </Box>
@@ -564,22 +625,45 @@ Cualquier consulta estamos a su entera disposición. ¡Que tenga un excelente d�
             </Box>
 
             {/* Selector de Tono del Mensaje */}
-            <Box bg="white" p={3.5} borderRadius="xl" border="1px solid" borderColor="gray.200" boxShadow="xs">
-              <Text fontSize="xs" fontWeight="800" color="gray.700" mb={2}>
-                Tipo de Mensaje:
-              </Text>
+            <Box
+              bg="white"
+              p={3.5}
+              borderRadius="xl"
+              border="1px solid"
+              borderColor={hasOverdue ? "red.200" : "gray.200"}
+              boxShadow="xs"
+            >
+              <Flex justify="space-between" align="center" mb={2} wrap="wrap" gap={1}>
+                <Text fontSize="xs" fontWeight="800" color={hasOverdue ? "red.700" : "gray.700"}>
+                  Tipo de Mensaje:
+                </Text>
+                {hasOverdue ? (
+                  <Badge colorScheme="red" variant="subtle" fontSize="10px" px={2} py={0.5} borderRadius="full">
+                    ⚠️ Obligatorio: Cliente con deuda vencida
+                  </Badge>
+                ) : (
+                  <Badge colorScheme="green" variant="subtle" fontSize="10px" px={2} py={0.5} borderRadius="full">
+                    ✅ Cliente al día
+                  </Badge>
+                )}
+              </Flex>
               <RadioGroup value={messageTone} onChange={setMessageTone}>
                 <HStack spacing={4} wrap="wrap">
-                  <Radio value="friendly" colorScheme="green" size="sm">
-                    <Text fontSize="xs" fontWeight="700">Amable y Cercano</Text>
-                  </Radio>
-                  <Radio value="formal" colorScheme="green" size="sm">
-                    <Text fontSize="xs" fontWeight="700">Formal Corporativo</Text>
-                  </Radio>
-                  {hasOverdue && (
+                  {hasOverdue ? (
                     <Radio value="urgent" colorScheme="red" size="sm">
-                      <Text fontSize="xs" fontWeight="700" color="red.600">Aviso de Vencimiento</Text>
+                      <Text fontSize="xs" fontWeight="800" color="red.600">
+                        Aviso de Vencimiento ({vencidosCount} {vencidosCount === 1 ? "Cuota Vencida" : "Cuotas Vencidas"})
+                      </Text>
                     </Radio>
+                  ) : (
+                    <>
+                      <Radio value="friendly" colorScheme="green" size="sm">
+                        <Text fontSize="xs" fontWeight="700">Amable y Cercano</Text>
+                      </Radio>
+                      <Radio value="formal" colorScheme="green" size="sm">
+                        <Text fontSize="xs" fontWeight="700">Formal Corporativo</Text>
+                      </Radio>
+                    </>
                   )}
                 </HStack>
               </RadioGroup>

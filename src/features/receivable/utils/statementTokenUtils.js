@@ -143,13 +143,15 @@ export const buildStatementPayload = (debtData) => {
       mon: (d.moneda || d.TIPOCAMBIO || "USD").toUpperCase(),
       tot: Number(d.totalDocumento || d.TOTAL_DOC || 0),
       sPen: (d.moneda || d.TIPOCAMBIO || "USD").toUpperCase().includes("PEN") || (d.moneda || d.TIPOCAMBIO || "USD").toUpperCase().includes("SOL") || (d.moneda || d.TIPOCAMBIO || "USD").toUpperCase().includes("S/")
-        ? Number(d.saldoPendiente?.PEN ?? d.SALDO_PEN ?? d.totalDocumento ?? 0)
+        ? Number(d.saldoPendiente?.PEN ?? d.SALDO_PEN ?? d.sPen ?? d.totalDocumento ?? d.TOTAL_DOC ?? 0)
         : 0,
       sUsd: !(d.moneda || d.TIPOCAMBIO || "USD").toUpperCase().includes("PEN") && !(d.moneda || d.TIPOCAMBIO || "USD").toUpperCase().includes("SOL") && !(d.moneda || d.TIPOCAMBIO || "USD").toUpperCase().includes("S/")
-        ? Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? d.totalDocumento ?? 0)
+        ? Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? d.sUsd ?? d.totalDocumento ?? d.TOTAL_DOC ?? 0)
         : 0,
       vd: vdInfo.days,
-      vdStatus: vdInfo.status,
+      vdStatus: (Number(d.saldoPendiente?.PEN ?? d.SALDO_PEN ?? d.sPen ?? d.totalDocumento ?? 0) < 0 || Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? d.sUsd ?? d.totalDocumento ?? 0) < 0 || numDocUpper.startsWith("NC-") || numDocUpper.startsWith("ABO-") || numDocUpper.includes("07F") || (d.tipoDocumento || "").toLowerCase().includes("credito") || (d.tipoDocumento || "").toLowerCase().includes("abono"))
+        ? "POR_VENCER"
+        : vdInfo.status,
       isVD: Boolean(isVD),
       esLetra: Boolean(isLetra),
       enBanco: Boolean(enBanco),
