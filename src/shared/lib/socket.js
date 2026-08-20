@@ -22,7 +22,7 @@ const resolveSocketUrl = () => {
 const SOCKET_URL = resolveSocketUrl();
 
 export const socket = io(SOCKET_URL, {
-  path: "/socket.io",
+  path: "/api/socket.io",
   transports: ["websocket", "polling"],
   autoConnect: true,
   reconnection: true,
