@@ -1,4 +1,6 @@
-import { generateReceivablePDF } from "../utils/receivablePDF";
+import React, { useState } from "react";
+import { generateAccountStatementPDF } from "../utils/receivablePDF";
+import { WhatsAppStatementModal } from "./WhatsAppStatementModal";
 import {
   Building2,
   FileText,
@@ -13,6 +15,7 @@ import {
 } from "lucide-react";
 
 export function DebtCard({ debt, onViewInvoices }) {
+  const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
   // Soporte para ambas monedas separadas (saldoPEN/saldoUSD) y el modo legado (saldoPrincipal)
   const saldoPEN = debt.saldoPEN ?? (debt.monedaPrincipal === "PEN" ? debt.saldoPrincipal : 0) ?? 0;
   const saldoUSD = debt.saldoUSD ?? (debt.monedaPrincipal === "USD" ? debt.saldoPrincipal : 0) ?? 0;
@@ -325,7 +328,7 @@ export function DebtCard({ debt, onViewInvoices }) {
               style={{
                 fontSize: "11.5px",
                 fontWeight: "700",
-                color: debt.documentosVencidos > 0 ? "#dc2626" : "#059669",
+                color: statusType !== "credit" && debt.documentosVencidos > 0 ? "#dc2626" : "#059669",
                 textTransform: "uppercase",
                 letterSpacing: "0.4px",
                 marginBottom: "4px",
@@ -334,26 +337,30 @@ export function DebtCard({ debt, onViewInvoices }) {
                 gap: "4px",
               }}
             >
-              <AlertCircle size={13} color={debt.documentosVencidos > 0 ? "#dc2626" : "#059669"} />
+              {statusType !== "credit" && debt.documentosVencidos > 0 ? (
+                <AlertCircle size={13} color="#dc2626" />
+              ) : (
+                <CheckCircle2 size={13} color="#059669" />
+              )}
               <span>
-                {debt.documentosVencidos > 0
+                {statusType !== "credit" && debt.documentosVencidos > 0
                   ? `${debt.documentosVencidos} Vencido(s)`
                   : "Monto Vencido:"}
               </span>
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-              {saldoVencidoPEN !== 0 && (
+              {statusType !== "credit" && saldoVencidoPEN > 0 && (
                 <span style={{ fontSize: "16px", fontWeight: "800", color: "#dc2626" }}>
                   {formatAmount(saldoVencidoPEN, "PEN")}
                 </span>
               )}
-              {saldoVencidoUSD !== 0 && (
+              {statusType !== "credit" && saldoVencidoUSD > 0 && (
                 <span style={{ fontSize: "16px", fontWeight: "800", color: "#dc2626" }}>
                   {formatAmount(saldoVencidoUSD, "USD")}
                 </span>
               )}
-              {saldoVencidoPEN === 0 && saldoVencidoUSD === 0 && (
+              {(statusType === "credit" || (saldoVencidoPEN <= 0 && saldoVencidoUSD <= 0)) && (
                 <span style={{ fontSize: "15px", fontWeight: "800", color: "#059669" }}>
                   $ 0.00
                 </span>
@@ -364,11 +371,13 @@ export function DebtCard({ debt, onViewInvoices }) {
               style={{
                 fontSize: "11px",
                 fontWeight: "600",
-                color: debt.documentosVencidos > 0 ? "#b91c1c" : "#047857",
+                color: statusType !== "credit" && debt.documentosVencidos > 0 ? "#b91c1c" : "#047857",
                 marginTop: "4px",
               }}
             >
-              {debt.documentosVencidos === 0
+              {statusType === "credit"
+                ? "Al día (Saldo a favor)"
+                : debt.documentosVencidos === 0
                 ? "Al día"
                 : `${debt.documentosVencidos} vencido(s)`}
             </div>
@@ -469,19 +478,22 @@ export function DebtCard({ debt, onViewInvoices }) {
               e.currentTarget.style.transform = "scale(1)";
               e.currentTarget.style.filter = "none";
             }}
-            onClick={async (e) => {
+            onClick={(e) => {
               e.stopPropagation();
-              try {
-                await generateReceivablePDF(debt);
-              } catch (error) {
-                console.error("Error al generar Estado de Cuenta:", error);
-              }
+              setIsWhatsAppModalOpen(true);
             }}
           >
             Ver detalles <ChevronRight size={16} />
           </button>
         </div>
       </div>
+
+      {/* Modal de Envío por WhatsApp y Enlace Web */}
+      <WhatsAppStatementModal
+        isOpen={isWhatsAppModalOpen}
+        onClose={() => setIsWhatsAppModalOpen(false)}
+        debt={debt}
+      />
     </div>
   );
 }

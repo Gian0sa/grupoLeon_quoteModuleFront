@@ -45,6 +45,10 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
   const handleChange = (option) => {
     if (!option?.record) return;
     const r = option.record;
+    const rawStock = r.STOCK_DISPONIBLE ?? r.Stock ?? r.OnHand;
+    const hasValidStock = rawStock !== undefined && rawStock !== null && !isNaN(Number(rawStock));
+    const stockVal = hasValidStock ? Number(rawStock) : null;
+    const isAgotado = hasValidStock && stockVal === 0;
 
     onSelect?.({
       id: r.ITEM_CODE,
@@ -54,7 +58,9 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
       // `importe` es el precio unitario con el descuento que ya aplica SAP.
       importe: Number(r.PRECIO_DESCUENTO ?? r.PRECIO_LISTA) || 0,
       discount: Number(r.DESCUENTO_PCT) || 0,
-      stock: Number(r.STOCK_DISPONIBLE) || 0,
+      stock: stockVal,
+      stockChecked: hasValidStock,
+      isAgotado,
       marca: r.MARCA,
       quantity: 1,
       lineDiscount: 0,

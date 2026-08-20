@@ -50,6 +50,25 @@ export function useQuoteSocket() {
     // 2. Escuchar cotizaciones actualizadas (aprobadas, rechazadas, etc.)
     const handleQuoteUpdated = (quote) => {
       console.log("⚡ [WS EVENT] quote:updated recibido:", quote);
+      if (quote && (quote.state === "ANULADO" || quote.approvalStatus === "ANULADO")) {
+        const targetId = quote.docNumber || quote.id || quote.quoteId;
+        const targetStr = String(targetId || "").trim().toUpperCase();
+        if (targetStr) {
+          try {
+            const raw = localStorage.getItem("grupoLeon_notifications");
+            const all = raw ? JSON.parse(raw) : [];
+            const remaining = all.filter(n => {
+              const notifQuoteId = String(n.quoteId || "").trim().toUpperCase();
+              const notifId = String(n.id || "").trim().toUpperCase();
+              return notifQuoteId !== targetStr && notifId !== targetStr;
+            });
+            localStorage.setItem("grupoLeon_notifications", JSON.stringify(remaining));
+          } catch (err) {
+            console.error("Error limpiando notificaciones anuladas:", err);
+          }
+        }
+      }
+
       queryClient.invalidateQueries({ queryKey: ["quotes"] });
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
       window.dispatchEvent(new Event("localQuotesUpdated"));
@@ -59,6 +78,24 @@ export function useQuoteSocket() {
     // 3. Escuchar cotizaciones eliminadas
     const handleQuoteDeleted = (data) => {
       console.log("⚡ [WS EVENT] quote:deleted recibido:", data);
+      const targetId = typeof data === "object" ? (data.quoteId || data.docNumber || data.id) : data;
+      const targetStr = String(targetId || "").trim().toUpperCase();
+
+      if (targetStr) {
+        try {
+          const raw = localStorage.getItem("grupoLeon_notifications");
+          const all = raw ? JSON.parse(raw) : [];
+          const remaining = all.filter(n => {
+            const notifQuoteId = String(n.quoteId || "").trim().toUpperCase();
+            const notifId = String(n.id || "").trim().toUpperCase();
+            return notifQuoteId !== targetStr && notifId !== targetStr;
+          });
+          localStorage.setItem("grupoLeon_notifications", JSON.stringify(remaining));
+        } catch (err) {
+          console.error("Error limpiando notificaciones eliminadas:", err);
+        }
+      }
+
       queryClient.invalidateQueries({ queryKey: ["quotes"] });
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
       window.dispatchEvent(new Event("localQuotesUpdated"));

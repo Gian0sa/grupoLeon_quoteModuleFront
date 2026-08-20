@@ -1,12 +1,13 @@
 import React, { useState } from "react";
 import {
   Box, Table, Thead, Tbody, Tr, Th, Td, TableContainer,
-  IconButton, NumberInput, NumberInputField, Text, Button,
+  IconButton, Input, Text, Button,
   HStack, Badge, Flex, VStack, Divider, Grid
 } from "@chakra-ui/react";
 import { Trash2, Package, Sparkles } from "lucide-react";
 import ItemAutocomplete from "./ItemAutocomplete";
 import { DiscountPopoverModal } from "./DiscountPopoverModal";
+import PackagingHelper from "./PackagingHelper";
 
 const money = (val, currency = "USD") => {
   const num = Number(val || 0);
@@ -17,6 +18,9 @@ const money = (val, currency = "USD") => {
     maximumFractionDigits: 2,
   });
 };
+
+const isItemOutOfStock = (item) => Boolean(item && (item.isAgotado || (item.stockChecked && typeof item.stock === "number" && item.stock === 0)));
+const isQtyExceedingStock = (item, qty) => Boolean(item && item.stockChecked && typeof item.stock === "number" && item.stock > 0 && Number(qty) > item.stock);
 
 export default function SapItemGrid({
   client,
@@ -51,7 +55,9 @@ export default function SapItemGrid({
       discount: selectedItem.discount || 0,
       whsCode: whsCode || "014",
       taxCode: "I18",
-      stock: selectedItem.stock || 0,
+      stock: selectedItem.stock,
+      stockChecked: selectedItem.stockChecked ?? (selectedItem.stock !== null && selectedItem.stock !== undefined),
+      isAgotado: selectedItem.isAgotado || false,
       marca: selectedItem.marca || "",
       sigla: selectedItem.sigla || "",
       importe: selectedItem.importe || selectedItem.price || 0,
@@ -97,9 +103,9 @@ export default function SapItemGrid({
       <VStack display={{ base: "flex", md: "none" }} spacing={3} align="stretch">
         {products.length === 0 ? (
           <VStack py={8} spacing={2} color="gray.500" bg="gray.50" borderRadius="lg" border="1px dashed" borderColor="gray.300">
-            <Package className="w-8 h-8 text-emerald-600" />
-            <Text fontSize="xs" fontWeight="700" color="gray.700">Sin artículos agregados</Text>
-            <Text fontSize="0.65rem" color="gray.500">Busca e incorpora productos arriba</Text>
+            <Package className="w-8 h-8 opacity-40 text-gray-400" />
+            <Text fontSize="xs" fontWeight="700">No hay artículos agregados</Text>
+            <Text fontSize="10px" color="gray.400">Busca artículos en la barra superior para agregarlos</Text>
           </VStack>
         ) : (
           products.map((item, index) => {
@@ -123,20 +129,22 @@ export default function SapItemGrid({
                           {itemCode}
                         </Badge>
                       )}
-                      <Badge
-                        colorScheme={item.stock > 0 ? "green" : "red"}
-                        bg={item.stock > 0 ? "#16a34a" : "#dc2626"}
-                        color="white"
-                        variant="solid"
-                        px={2}
-                        py={0.5}
-                        fontSize="0.65rem"
-                        fontWeight="900"
-                        borderRadius="md"
-                        flexShrink={0}
-                      >
-                        Stk: {item.stock ?? 0}
-                      </Badge>
+                      {item.stock !== null && item.stock !== undefined && (
+                        <Badge
+                          colorScheme={item.stock > 0 ? "green" : "red"}
+                          bg={item.stock > 0 ? "#16a34a" : "#dc2626"}
+                          color="white"
+                          variant="solid"
+                          px={2}
+                          py={0.5}
+                          fontSize="0.65rem"
+                          fontWeight="900"
+                          borderRadius="md"
+                          flexShrink={0}
+                        >
+                          Stk: {item.stock}
+                        </Badge>
+                      )}
                     </Flex>
                   </Box>
                   {!isReadOnly && (
@@ -154,17 +162,29 @@ export default function SapItemGrid({
                 <Grid templateColumns="1fr 1.2fr 1fr 1fr" gap={2} align="center" mb={2.5}>
                   <Box>
                     <Text fontSize="0.6rem" color="gray.500" fontWeight="800" mb={0.5} textAlign="center">CANT.</Text>
-                    <NumberInput
+                    <Input
                       size="xs"
-                      min={1}
-                      value={item.quantity}
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      textAlign="center"
+                      fontWeight="800"
+                      fontSize="xs"
+                      value={item.quantity ?? ""}
                       isDisabled={isReadOnly}
-                      onChange={(valStr) => {
-                        if (valStr === "") {
+                      bg={isQtyExceedingStock(item, qty) ? "orange.50" : isItemOutOfStock(item) ? "red.50" : "gray.50"}
+                      color={isQtyExceedingStock(item, qty) ? "orange.800" : isItemOutOfStock(item) ? "red.600" : "inherit"}
+                      borderColor="gray.300"
+                      borderRadius="md"
+                      px={1}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, "");
+                        if (val === "") {
                           onUpdateProduct(item.id, { quantity: "" });
                         } else {
-                          const parsed = parseInt(valStr, 10);
-                          onUpdateProduct(item.id, { quantity: isNaN(parsed) ? "" : parsed });
+                          const parsed = parseInt(val, 10);
+                          onUpdateProduct(item.id, { quantity: parsed > 0 ? parsed : "" });
                         }
                       }}
                       onBlur={() => {
@@ -172,72 +192,51 @@ export default function SapItemGrid({
                           onUpdateProduct(item.id, { quantity: 1 });
                         }
                       }}
-                    >
-                      <NumberInputField textAlign="center" fontWeight="800" bg={qty >= (item.stock || 0) ? "red.50" : "gray.50"} color={qty >= (item.stock || 0) ? "red.600" : "inherit"} px={1} borderRadius="md" />
-                    </NumberInput>
+                    />
+                    <Flex justify="center" mt={1}>
+                      <PackagingHelper
+                        itemName={itemName}
+                        sigla={item.sigla}
+                        raw={item.raw || item}
+                        currentQuantity={qty}
+                        onQuantityChange={(units) => onUpdateProduct(item.id, { quantity: units })}
+                        isReadOnly={isReadOnly}
+                      />
+                    </Flex>
                   </Box>
                   <Box>
-                    <Text fontSize="0.6rem" color="gray.500" fontWeight="800" mb={0.5} textAlign="right">
-                      P. UNIT ({currency === "PEN" ? "S/" : "$"})
-                    </Text>
-                    <Box
-                      bg="gray.100"
-                      border="1px solid"
-                      borderColor="gray.200"
-                      borderRadius="md"
-                      py={0.5}
-                      px={1.5}
-                      textAlign="right"
-                      fontWeight="800"
-                      fontSize="xs"
-                      color="gray.800"
-                      h="24px"
-                      display="flex"
-                      alignItems="center"
-                      justifyContent="flex-end"
-                    >
-                      {money(item.price, currency)}
-                    </Box>
+                    <Text fontSize="0.6rem" color="gray.500" fontWeight="800" mb={0.5} textAlign="right">PRECIO U.</Text>
+                    <Text fontSize="xs" fontWeight="800" color="gray.900" textAlign="right">{money(price, currency)}</Text>
                   </Box>
                   <Box textAlign="center">
-                    <Text fontSize="0.6rem" color="gray.500" fontWeight="800" mb={0.5}>DESC SAP</Text>
-                    <Badge colorScheme="green" fontSize="0.65rem" fontWeight="800" py={0.5} px={1.5} borderRadius="md">
-                      {item.discount || 0}%
+                    <Text fontSize="0.6rem" color="gray.500" fontWeight="800" mb={0.5}>DESC.</Text>
+                    <Badge colorScheme="green" fontSize="0.65rem" fontWeight="800" px={1.5} py={0.5} borderRadius="md">
+                      {disc}%
                     </Badge>
                   </Box>
-                  <Box textAlign="center" cursor={isReadOnly ? "default" : "pointer"} onClick={isReadOnly ? undefined : () => handleOpenDiscountModal(item)}>
-                    <Text fontSize="0.6rem" color="#1d4ed8" fontWeight="900" mb={0.5}>DESC. ADIC ⚡</Text>
-                    <Box
+                  <Box textAlign="center">
+                    <Text fontSize="0.6rem" color="gray.500" fontWeight="800" mb={0.5}>D. ADIC.</Text>
+                    <Button
+                      size="xs"
+                      h="22px"
                       bg="#eff6ff"
-                      border="1.5px solid"
-                      borderColor="#93c5fd"
-                      borderRadius="md"
-                      py={0.5}
-                      px={1.5}
-                      textAlign="center"
-                      fontWeight="900"
-                      fontSize="xs"
                       color="#1e40af"
-                      boxShadow="xs"
-                      _hover={isReadOnly ? undefined : { bg: "#dbeafe", borderColor: "#2563eb" }}
+                      border="1px solid"
+                      borderColor="#93c5fd"
+                      isDisabled={isReadOnly}
+                      onClick={() => handleOpenDiscountModal(item)}
+                      fontWeight="900"
+                      fontSize="0.65rem"
+                      px={1.5}
+                      borderRadius="md"
                     >
                       {item.lineDiscount || 0}% ⚡
-                    </Box>
+                    </Button>
                   </Box>
                 </Grid>
-                {qty >= (item.stock || 0) && (
-                  <Text fontSize="xs" color="red.500" fontWeight="700" textAlign="center" mb={2}>
-                    ⚠️ Has seleccionado todo el stock disponible o supera la disponibilidad.
-                  </Text>
-                )}
-                {(item.stock || 0) === 0 && (
-                  <Button size="xs" colorScheme="orange" w="full" mb={2} variant="outline" borderStyle="dashed">
-                    📦 Agregar a Pedido por Traer
-                  </Button>
-                )}
-                <Flex align="center" justify="space-between" bg="emerald.50" px={3} py={1.5} borderRadius="lg" border="1px solid" borderColor="emerald.100">
-                  <Text fontSize="0.65rem" fontWeight="800" color="emerald.900" textTransform="uppercase">Total Fila:</Text>
-                  <Text fontSize="xs" fontWeight="900" color="emerald.900">{money(lineTotal * (1 - (item.lineDiscount || 0) / 100), currency)}</Text>
+                <Flex justify="space-between" align="center" bg="gray.50" p={2} borderRadius="lg" border="1px solid" borderColor="gray.100">
+                  <Text fontSize="0.65rem" fontWeight="800" color="gray.600">TOTAL LÍNEA:</Text>
+                  <Text fontSize="xs" fontWeight="900" color="emerald.700">{money(lineTotal, currency)}</Text>
                 </Flex>
               </Box>
             );
@@ -246,27 +245,43 @@ export default function SapItemGrid({
       </VStack>
 
       <Box display={{ base: "none", md: "block" }}>
-        <TableContainer borderRadius="lg" border="1px solid" borderColor="gray.200" overflowX="auto">
-          <Table variant="simple" size="sm">
-            <Thead bg="#0e572b">
+        <TableContainer borderRadius="lg" border="1px solid" borderColor="emerald.100">
+          <Table size="sm" variant="simple">
+            <Thead bg="#166534">
               <Tr>
-                <Th minW="220px" px={2} textTransform="none" fontSize="xs" color="white" fontWeight="800">Descripción del artículo</Th>
-                <Th w="85px" px={2} textAlign="center" textTransform="none" fontSize="xs" color="white" fontWeight="800">Cantidad</Th>
-                <Th w="105px" px={2} textAlign="right" textTransform="none" fontSize="xs" color="white" fontWeight="800">Precio unidad</Th>
-                <Th w="85px" px={2} textAlign="center" textTransform="none" fontSize="xs" color="white" fontWeight="800">% Desc SAP</Th>
-                <Th w="85px" px={2} textAlign="center" textTransform="none" fontSize="xs" color="white" fontWeight="800">% Desc Adic.</Th>
-                <Th w="115px" px={2} textAlign="right" textTransform="none" fontSize="xs" color="white" fontWeight="800">Total (doc.)</Th>
-                {!isReadOnly && <Th w="50px" px={2} textAlign="center" textTransform="none" fontSize="xs" color="white" fontWeight="800">Acción</Th>}
+                <Th color="white" py={3} fontSize="xs" fontWeight="800" textTransform="none" letterSpacing="normal">
+                  Descripción del artículo
+                </Th>
+                <Th color="white" py={3} textAlign="center" fontSize="xs" fontWeight="800" textTransform="none" letterSpacing="normal">
+                  Cantidad
+                </Th>
+                <Th color="white" py={3} textAlign="right" fontSize="xs" fontWeight="800" textTransform="none" letterSpacing="normal">
+                  Precio unidad
+                </Th>
+                <Th color="white" py={3} textAlign="center" fontSize="xs" fontWeight="800" textTransform="none" letterSpacing="normal">
+                  % Desc SAP
+                </Th>
+                <Th color="white" py={3} textAlign="center" fontSize="xs" fontWeight="800" textTransform="none" letterSpacing="normal">
+                  % Desc Adic.
+                </Th>
+                <Th color="white" py={3} textAlign="right" fontSize="xs" fontWeight="800" textTransform="none" letterSpacing="normal">
+                  Total (doc.)
+                </Th>
+                {!isReadOnly && (
+                  <Th color="white" py={3} textAlign="center" fontSize="xs" fontWeight="800" textTransform="none" letterSpacing="normal">
+                    Acción
+                  </Th>
+                )}
               </Tr>
             </Thead>
             <Tbody>
               {products.length === 0 ? (
                 <Tr>
-                  <Td colSpan={isReadOnly ? 6 : 7} textAlign="center" py={10} color="gray.600">
+                  <Td colSpan={7} textAlign="center" py={8} color="gray.500">
                     <VStack spacing={2}>
-                      <Package className="w-10 h-10 text-emerald-600" />
-                      <Text fontSize="sm" fontWeight="700" color="gray.700">Sin artículos agregados a la cotización</Text>
-                      <Text fontSize="xs" color="gray.500">Utiliza el buscador superior para añadir ítems con precios y stock en tiempo real de SAP</Text>
+                      <Package className="w-8 h-8 opacity-40 text-gray-400" />
+                      <Text fontSize="xs" fontWeight="700">No hay artículos agregados en la grilla</Text>
+                      <Text fontSize="xs" color="gray.400">Busca artículos en la barra superior para agregarlos a la cotización</Text>
                     </VStack>
                   </Td>
                 </Tr>
@@ -276,49 +291,83 @@ export default function SapItemGrid({
                   const price = Number(item.price ?? item.unitPrice ?? 0);
                   const disc = Number(item.discount || 0);
                   const lineTotal = qty * price * (1 - disc / 100);
-                  const netTotal = lineTotal * (1 - (item.lineDiscount || 0) / 100);
                   const itemName = item.name || item.productName || item.description || item.ItemName || item.ItemDescription || "Artículo General";
                   const itemCode = item.code || item.productCode || item.itemCode || "";
 
                   return (
-                    <Tr key={item.id || index} _hover={{ bg: "emerald.50/40" }}>
-                      <Td px={2} fontSize="xs" color="gray.900" fontWeight="600" maxW="260px">
-                        <VStack align="start" spacing={0} maxW="260px">
-                          <Text fontSize="xs" color="gray.900" fontWeight="700" isTruncated title={itemName}>
+                    <Tr key={item.id || index} _hover={{ bg: "gray.50" }} transition="background 0.2s">
+                      <Td px={3} py={2.5}>
+                        <VStack align="start" spacing={0.5}>
+                          <Text fontWeight="800" fontSize="xs" color="gray.900" lineHeight="short">
                             {itemName}
                           </Text>
-                          {itemCode && (
-                            <Text fontSize="0.65rem" color="gray.500" fontWeight="600">
-                              {itemCode}
-                            </Text>
-                          )}
+                          <HStack spacing={2}>
+                            {itemCode && (
+                              <Text fontSize="10px" color="gray.500" fontWeight="600">
+                                {itemCode}
+                              </Text>
+                            )}
+                            {item.stock !== null && item.stock !== undefined && (
+                              <Badge
+                                colorScheme={item.stock > 0 ? "green" : "red"}
+                                bg={item.stock > 0 ? "#16a34a" : "#dc2626"}
+                                color="white"
+                                variant="solid"
+                                px={1.5}
+                                py={0.2}
+                                fontSize="10px"
+                                fontWeight="800"
+                                borderRadius="sm"
+                              >
+                                Stock: {item.stock}
+                              </Badge>
+                            )}
+                          </HStack>
                         </VStack>
                       </Td>
                       <Td px={2} textAlign="center">
-                        <NumberInput
-                          size="xs"
-                          maxW="75px"
-                          min={1}
-                          value={item.quantity}
-                          isDisabled={isReadOnly}
-                          onChange={(valStr) => {
-                            if (valStr === "") {
-                              onUpdateProduct(item.id, { quantity: "" });
-                            } else {
-                              const parsed = parseInt(valStr, 10);
-                              onUpdateProduct(item.id, { quantity: isNaN(parsed) ? "" : parsed });
-                            }
-                          }}
-                          onBlur={() => {
-                            if (!item.quantity || Number(item.quantity) < 1) {
-                              onUpdateProduct(item.id, { quantity: 1 });
-                            }
-                          }}
-                        >
-                          <NumberInputField textAlign="center" fontWeight="700" bg="white" px={1} />
-                        </NumberInput>
+                        <VStack spacing={1} align="center">
+                          <Input
+                            size="xs"
+                            maxW="75px"
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            textAlign="center"
+                            fontWeight="700"
+                            value={item.quantity ?? ""}
+                            isDisabled={isReadOnly}
+                            bg={isQtyExceedingStock(item, qty) ? "orange.50" : isItemOutOfStock(item) ? "red.50" : "white"}
+                            borderColor="gray.300"
+                            borderRadius="md"
+                            px={1}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/\D/g, "");
+                              if (val === "") {
+                                onUpdateProduct(item.id, { quantity: "" });
+                              } else {
+                                const parsed = parseInt(val, 10);
+                                onUpdateProduct(item.id, { quantity: parsed > 0 ? parsed : "" });
+                              }
+                            }}
+                            onBlur={() => {
+                              if (!item.quantity || Number(item.quantity) < 1) {
+                                onUpdateProduct(item.id, { quantity: 1 });
+                              }
+                            }}
+                          />
+                          <PackagingHelper
+                            itemName={itemName}
+                            sigla={item.sigla}
+                            raw={item.raw || item}
+                            currentQuantity={qty}
+                            onQuantityChange={(units) => onUpdateProduct(item.id, { quantity: units })}
+                            isReadOnly={isReadOnly}
+                          />
+                        </VStack>
                       </Td>
-                      <Td px={2} textAlign="right" fontWeight="800" fontSize="xs" color="gray.800">
+                      <Td px={3} textAlign="right" fontWeight="800" fontSize="xs" color="gray.800">
                         {money(item.price, currency)}
                       </Td>
                       <Td px={2} textAlign="center">
@@ -331,11 +380,9 @@ export default function SapItemGrid({
                           size="xs"
                           bg="#eff6ff"
                           color="#1e40af"
-                          border="1.5px solid"
+                          border="1px solid"
                           borderColor="#93c5fd"
-                          boxShadow="xs"
                           isDisabled={isReadOnly}
-                          _hover={isReadOnly ? undefined : { bg: "#dbeafe", borderColor: "#2563eb" }}
                           onClick={() => handleOpenDiscountModal(item)}
                           fontWeight="900"
                           fontSize="xs"
@@ -347,14 +394,14 @@ export default function SapItemGrid({
                           {item.lineDiscount || 0}% ⚡
                         </Button>
                       </Td>
-                      <Td px={2} textAlign="right" fontWeight="800" color="gray.900" fontSize="xs">
-                        {money(netTotal, currency)}
+                      <Td px={3} textAlign="right" fontWeight="900" fontSize="xs" color="emerald.700">
+                        {money(lineTotal, currency)}
                       </Td>
                       {!isReadOnly && (
                         <Td px={2} textAlign="center">
                           <IconButton
-                            aria-label="Eliminar fila"
-                            icon={<Trash2 className="w-3.5 h-3.5" />}
+                            aria-label="Eliminar artículo"
+                            icon={<Trash2 className="w-4 h-4" />}
                             size="xs"
                             colorScheme="red"
                             variant="ghost"
@@ -371,8 +418,8 @@ export default function SapItemGrid({
         </TableContainer>
       </Box>
 
-      {/* ── SECCIÓN "CÓDIGOS AGOTADOS" (SI EXISTEN PRODUCTOS SIN STOCK) ── */}
-      {products.some((p) => p.stock === 0 || p.isAgotado) && (
+      {/* ── SECCIÓN "CÓDIGOS AGOTADOS" (SOLO SI EXISTEN PRODUCTOS CON CONFIRMACIÓN DE CERO STOCK) ── */}
+      {products.some(isItemOutOfStock) && (
         <Box mt={4} p={4} bg="#fef2f2" borderRadius="xl" border="1px solid" borderColor="#fecaca">
           <Flex align="center" justify="space-between" mb={2}>
             <HStack spacing={2}>
@@ -387,7 +434,7 @@ export default function SapItemGrid({
 
           <VStack align="stretch" spacing={1.5} pl={2}>
             {products
-              .filter((p) => p.stock === 0 || p.isAgotado)
+              .filter(isItemOutOfStock)
               .map((p, i) => (
                 <Flex key={p.id || i} justify="space-between" align="center" bg="white" p={2} borderRadius="lg" border="1px solid" borderColor="#fee2e2">
                   <HStack spacing={3}>

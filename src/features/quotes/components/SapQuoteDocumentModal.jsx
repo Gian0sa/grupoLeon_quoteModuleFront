@@ -382,7 +382,7 @@ export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) 
 
           <HStack spacing={3}>
             <Button
-              colorScheme="emerald"
+              colorScheme="teal"
               size="sm"
               leftIcon={<Printer className="w-4 h-4" />}
               onClick={handlePrint}

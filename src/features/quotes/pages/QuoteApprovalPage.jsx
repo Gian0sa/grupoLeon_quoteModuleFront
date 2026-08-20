@@ -55,7 +55,7 @@ import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
 import { QuoteStepper, getStageIndex } from "../components/QuoteStepper";
 import { QuoteDetailDrawer } from "../components/QuoteDetailDrawer";
 import QuotePdfModal from "../components/QuotePdfModal";
-import { calculateQuoteTotals } from "../../../shared/utils/quoteCalculator";
+import { calculateQuoteTotals, getQuoteTotalUSD } from "../../../shared/utils/quoteCalculator";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { useGetQuotes } from "../hooks/queries/quotesQueries";
@@ -70,7 +70,9 @@ export function QuoteApprovalPage() {
   const today = format(new Date(), "EEEE, d 'de' MMMM 'del' yyyy", { locale: es });
 
   const { username: authUsername, role: authRole } = useAuthStore();
-  const isAdminUser = authRole === "ADMIN" || authUsername?.toLowerCase() === "enrique";
+  const localUser = (localStorage.getItem("username") || localStorage.getItem("userId") || "").toLowerCase();
+  const localRole = (localStorage.getItem("role") || "").toUpperCase();
+  const isAdminUser = authRole === "ADMIN" || localRole === "ADMIN" || authUsername?.toLowerCase() === "enrique" || localUser === "enrique";
 
   const { data: serverQuotes, isLoading: isServerLoading, refetch: refetchServerQuotes } = useGetQuotes();
 
@@ -93,67 +95,213 @@ export function QuoteApprovalPage() {
   const [pdfQuote, setPdfQuote] = useState(null);
   const [deleteConfirmDoc, setDeleteConfirmDoc] = useState(null);
 
-  // Sincronizar cotizaciones desde el servidor en tiempo real sin borrar borradores locales
-  useEffect(() => {
-    const local = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
-    if (serverQuotes && Array.isArray(serverQuotes)) {
-      const serverDocIds = new Set(serverQuotes.map(q => q.docNumber || q.id));
-      const unsyncedLocal = local.filter(q => !serverDocIds.has(q.docNumber || q.id));
-      const merged = [...unsyncedLocal, ...serverQuotes];
-      setQuotes(merged);
-      localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(merged));
-    } else if (local.length > 0) {
-      setQuotes(local);
-    }
-  }, [serverQuotes]);
-
-  // Cargar cotizaciones iniciales desde localStorage y servidor
-  const loadQuotes = () => {
+  // Sincronizar cotizaciones desde el servidor en tiempo real sin duplicados y sin borrar borradores locales
+  const syncQuotes = () => {
     try {
       const stored = localStorage.getItem("grupoLeon_local_quotes");
       const local = stored ? JSON.parse(stored) : [];
-      if (serverQuotes && Array.isArray(serverQuotes) && serverQuotes.length > 0) {
-        const serverDocIds = new Set(serverQuotes.map(q => q.docNumber || q.id));
-        const unsyncedLocal = local.filter(q => !serverDocIds.has(q.docNumber || q.id));
-        setQuotes([...unsyncedLocal, ...serverQuotes]);
+      if (serverQuotes && Array.isArray(serverQuotes)) {
+        const serverDocIds = new Set();
+        serverQuotes.forEach(q => {
+          if (q.docNumber) serverDocIds.add(String(q.docNumber));
+          if (q.id !== undefined && q.id !== null) serverDocIds.add(String(q.id));
+        });
+
+        // Solo preservar borradores locales legítimos (nunca anuladas, de prueba o eliminadas en servidor)
+        const localDraftsOnly = local.filter(q => {
+          const isDraft = q.approvalStatus === "BORRADOR" || q.state === "BORRADOR";
+          const docNum = q.docNumber ? String(q.docNumber) : "";
+          const idVal = q.id !== undefined && q.id !== null ? String(q.id) : "";
+          return isDraft && (!docNum || !serverDocIds.has(docNum)) && (!idVal || !serverDocIds.has(idVal)) && !docNum.startsWith("TEST-");
+        });
+
+        // Garantizar unicidad absoluta por docNumber o id
+        const seen = new Set();
+        const merged = [];
+        for (const item of [...serverQuotes, ...localDraftsOnly]) {
+          const key = String(item.docNumber || item.id || "");
+          if (key && !seen.has(key)) {
+            seen.add(key);
+            merged.push(item);
+          }
+        }
+        setQuotes(merged);
+        localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(merged));
+      } else if (local.length > 0) {
+        const validLocal = local.filter(q => !String(q.docNumber || "").startsWith("TEST-"));
+        setQuotes(validLocal);
+        localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(validLocal));
       } else {
-        setQuotes(Array.isArray(local) ? local : []);
+        setQuotes([]);
       }
     } catch (err) {
-      console.error("Error al cargar cotizaciones:", err);
+      console.error("Error sincronizando cotizaciones:", err);
     }
   };
+
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await queryClient.invalidateQueries({ queryKey: ["quotes"] });
+      await queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      const refetchResult = await refetchServerQuotes();
+      const freshQuotes = refetchResult?.data || serverQuotes;
+      if (freshQuotes && Array.isArray(freshQuotes)) {
+        const stored = localStorage.getItem("grupoLeon_local_quotes");
+        const local = stored ? JSON.parse(stored) : [];
+        const serverDocIds = new Set();
+        freshQuotes.forEach(q => {
+          if (q.docNumber) serverDocIds.add(String(q.docNumber));
+          if (q.id !== undefined && q.id !== null) serverDocIds.add(String(q.id));
+        });
+
+        const unsyncedLocal = local.filter(q => {
+          const docNum = q.docNumber ? String(q.docNumber) : "";
+          const idVal = q.id !== undefined && q.id !== null ? String(q.id) : "";
+          return (!docNum || !serverDocIds.has(docNum)) && (!idVal || !serverDocIds.has(idVal));
+        });
+
+        const seen = new Set();
+        const merged = [];
+        for (const item of [...freshQuotes, ...unsyncedLocal]) {
+          const key = String(item.docNumber || item.id || "");
+          if (key && !seen.has(key)) {
+            seen.add(key);
+            merged.push(item);
+          }
+        }
+        setQuotes(merged);
+        localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(merged));
+      }
+      toast({
+        title: "Cotizaciones actualizadas",
+        description: "Se han sincronizado las cotizaciones más recientes del servidor.",
+        status: "success",
+        duration: 2500,
+        isClosable: true,
+        position: "top-right",
+      });
+    } catch (err) {
+      console.error("Error al refrescar cotizaciones:", err);
+      toast({
+        title: "Error al actualizar",
+        description: "No se pudo sincronizar con el servidor.",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+        position: "top-right",
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const loadQuotes = handleRefresh;
+
+  useEffect(() => {
+    syncQuotes();
+  }, [serverQuotes]);
+
+  // Escuchar eventos en vivo de actualización local (CERO necesidad de recargar / F5)
+  useEffect(() => {
+    const handleLocalUpdate = () => {
+      try {
+        const stored = localStorage.getItem("grupoLeon_local_quotes");
+        const local = stored ? JSON.parse(stored) : [];
+        if (serverQuotes && Array.isArray(serverQuotes)) {
+          const serverDocIds = new Set();
+          serverQuotes.forEach(q => {
+            if (q.docNumber) serverDocIds.add(String(q.docNumber));
+            if (q.id !== undefined && q.id !== null) serverDocIds.add(String(q.id));
+          });
+          const unsyncedLocal = local.filter(q => {
+            const docNum = q.docNumber ? String(q.docNumber) : "";
+            const idVal = q.id !== undefined && q.id !== null ? String(q.id) : "";
+            return (!docNum || !serverDocIds.has(docNum)) && (!idVal || !serverDocIds.has(idVal));
+          });
+          const seen = new Set();
+          const merged = [];
+          for (const item of [...serverQuotes, ...unsyncedLocal]) {
+            const key = String(item.docNumber || item.id || "");
+            if (key && !seen.has(key)) {
+              seen.add(key);
+              merged.push(item);
+            }
+          }
+          setQuotes(merged);
+        } else {
+          setQuotes(local);
+        }
+      } catch (err) {
+        console.error("Error en listener localQuotesUpdated:", err);
+      }
+    };
+
+    window.addEventListener("localQuotesUpdated", handleLocalUpdate);
+    return () => window.removeEventListener("localQuotesUpdated", handleLocalUpdate);
+  }, [serverQuotes]);
 
   const DRAFT_STATUSES = ["BORRADOR", "GENERADO"];
 
   const handleDeleteQuote = async (id, currentStatus) => {
     const isHardDelete = !currentStatus || DRAFT_STATUSES.includes(currentStatus) || currentStatus === "ANULADO";
+    const idStr = String(id);
+    const isMatchingItem = (q) => {
+      const qDocNum = q.docNumber ? String(q.docNumber) : "";
+      const qId = q.id !== undefined && q.id !== null ? String(q.id) : "";
+      return qDocNum === idStr || qId === idStr;
+    };
 
-    try {
-      await deleteQuote(id, isHardDelete);
-      queryClient.invalidateQueries({ queryKey: ["quotes"] });
-      queryClient.invalidateQueries({ queryKey: ["notifications"] });
-    } catch (e) {
-      console.error("Error eliminando cotización en el servidor:", e);
-    }
-
-    const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
+    // 1. ACTUALIZACIÓN OPTIMISTA INMEDIATA EN PANTALLA (CERO F5)
     if (isHardDelete) {
-      const updated = saved.filter(q => (q.id || q.docNumber) !== id);
-      localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updated));
-      window.dispatchEvent(new Event("localQuotesUpdated"));
-      toast({
-        title: "🗑️ Cotización Borrada",
-        description: `La cotización ${id} fue borrada permanentemente del sistema.`,
-        status: "info",
-        duration: 3000,
-        isClosable: true
+      setQuotes((prev) => prev.filter((q) => !isMatchingItem(q)));
+      queryClient.setQueryData(["quotes"], (old) => {
+        if (!Array.isArray(old)) return [];
+        return old.filter((q) => !isMatchingItem(q));
       });
     } else {
       const nowIso = new Date().toISOString();
       const adminName = authUsername || "Enrique";
-      const updated = saved.map(q => {
-        if ((q.id || q.docNumber) !== id) return q;
+      setQuotes((prev) =>
+        prev.map((q) => {
+          if (!isMatchingItem(q)) return q;
+          const prevLogs = q.historyLog || [];
+          return {
+            ...q,
+            status: "ANULADO",
+            state: "ANULADO",
+            approvalStatus: "ANULADO",
+            cancelledAt: nowIso,
+            cancelledBy: adminName,
+            historyLog: [
+              { status: "ANULADO", timestamp: nowIso, user: adminName, note: `❌ Cotización anulada por Administrador ${adminName}` },
+              ...prevLogs,
+            ],
+          };
+        })
+      );
+    }
+
+    // 2. Persistir en localStorage
+    const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
+    if (isHardDelete) {
+      const updated = saved.filter((q) => !isMatchingItem(q));
+      localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updated));
+      window.dispatchEvent(new Event("localQuotesUpdated"));
+      toast({
+        title: "🗑️ Cotización Borrada",
+        description: `La cotización ${id} fue borrada permanentemente del sistema al instante.`,
+        status: "info",
+        duration: 3000,
+        isClosable: true,
+      });
+    } else {
+      const nowIso = new Date().toISOString();
+      const adminName = authUsername || "Enrique";
+      const updated = saved.map((q) => {
+        if (!isMatchingItem(q)) return q;
         const prevLogs = q.historyLog || [];
         return {
           ...q,
@@ -164,8 +312,8 @@ export function QuoteApprovalPage() {
           cancelledBy: adminName,
           historyLog: [
             { status: "ANULADO", timestamp: nowIso, user: adminName, note: `❌ Cotización anulada por Administrador ${adminName}` },
-            ...prevLogs
-          ]
+            ...prevLogs,
+          ],
         };
       });
       localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updated));
@@ -175,8 +323,32 @@ export function QuoteApprovalPage() {
         description: `La cotización ${id} cambió su estado a ANULADO. Se muestra el distintivo Anulado ❌ en la tabla.`,
         status: "warning",
         duration: 4000,
-        isClosable: true
+        isClosable: true,
       });
+    }
+
+    // 2.5 Limpiar notificaciones asociadas a esta cotización en almacenamiento local
+    try {
+      const rawNotifs = localStorage.getItem("grupoLeon_notifications");
+      const allNotifs = rawNotifs ? JSON.parse(rawNotifs) : [];
+      const remainingNotifs = allNotifs.filter(n => {
+        const nQuoteId = String(n.quoteId || "").trim().toUpperCase();
+        const nId = String(n.id || "").trim().toUpperCase();
+        return nQuoteId !== idStr.toUpperCase() && nId !== idStr.toUpperCase();
+      });
+      localStorage.setItem("grupoLeon_notifications", JSON.stringify(remainingNotifs));
+      window.dispatchEvent(new Event("localNotificationsUpdated"));
+    } catch (notifErr) {
+      console.error("Error limpiando notificaciones locales:", notifErr);
+    }
+
+    // 3. Sincronizar en Backend
+    try {
+      await deleteQuote(id, isHardDelete);
+      queryClient.invalidateQueries({ queryKey: ["quotes"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    } catch (e) {
+      console.error("Error eliminando cotización en el servidor:", e);
     }
   };
 
@@ -197,15 +369,41 @@ export function QuoteApprovalPage() {
   };
 
   // ── RECALL: Vendedor retira solicitud que aún no fue abierta por Enrique ──
-  const handleRecallQuote = async (docId) => {
+  // Recibe el documento completo, no sólo su id: la fila lo identifica por
+  // `docNumber || id` (string "COT-xxxxxx"), mientras que los documentos que
+  // llegan del servidor traen además un `id` numérico. Buscarlos con la
+  // prioridad inversa (`id || docNumber`) comparaba número contra string y no
+  // encontraba nunca el documento, dejando el formulario en blanco.
+  const handleRecallQuote = async (quote) => {
+    const docId = quote?.docNumber || quote?.id;
+    if (!docId) return;
+
+    const idStr = String(docId);
+    const isMatchingDoc = (q) => {
+      if (!q) return false;
+      const qDocNum = q.docNumber ? String(q.docNumber) : "";
+      const qId = q.id !== undefined && q.id !== null ? String(q.id) : "";
+      return (qDocNum && qDocNum === idStr) || (qId && qId === idStr);
+    };
+
     const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
     const nowIso = new Date().toISOString();
     const recallUser = authUsername || "vendedor";
-    const target = quotes.find(q => (q.id || q.docNumber) === docId) || saved.find(q => (q.id || q.docNumber) === docId);
+    const target = quote || quotes.find(isMatchingDoc) || saved.find(isMatchingDoc);
     const prevLogs = target?.historyLog || [];
     const version = (target?.quoteVersion || 1);
     const newLog = { status: "EN_EDICION", timestamp: nowIso, user: recallUser, note: `↩️ Solicitud retirada por el vendedor para corrección (v${version})` };
     const updatedHistory = [newLog, ...prevLogs];
+
+    const recallFields = {
+      status: "EN_EDICION",
+      state: "EN_EDICION",
+      approvalStatus: "EN_EDICION",
+      quoteVersion: version,
+      recalledAt: nowIso,
+      recalledBy: recallUser,
+      historyLog: updatedHistory
+    };
 
     try {
       await updateQuote({
@@ -220,39 +418,37 @@ export function QuoteApprovalPage() {
       console.error("Error retirando cotización:", e);
     }
 
-    const updated = saved.map(q => {
-      if ((q.id || q.docNumber) !== docId) return q;
-      if (q.viewedByAdmin) return q;
-      return {
-        ...q,
-        status: "EN_EDICION",
-        state: "EN_EDICION",
-        approvalStatus: "EN_EDICION",
-        quoteVersion: version,
-        recalledAt: nowIso,
-        recalledBy: recallUser,
-        historyLog: updatedHistory
-      };
-    });
+    // Reflejar el retiro en localStorage. Si el documento sólo existía en el
+    // servidor, se incorpora para que quede disponible como borrador local.
+    const yaEstaba = saved.some(isMatchingDoc);
+    const updated = yaEstaba
+      ? saved.map(q => (isMatchingDoc(q) && !q.viewedByAdmin ? { ...q, ...recallFields } : q))
+      : [{ ...target, ...recallFields }, ...saved];
+
     localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updated));
     window.dispatchEvent(new Event("localQuotesUpdated"));
 
-    const recalledDoc = updated.find(q => (q.id || q.docNumber) === docId) || target;
-    if (recalledDoc) {
-      const store = useQuoteStore.getState();
-      if (typeof store.setQuoteData === "function") {
-        store.setQuoteData(recalledDoc);
-      } else {
-        if (recalledDoc.client) store.setClient(recalledDoc.client);
-        if (recalledDoc.products) store.setProducts(recalledDoc.products);
-        if (recalledDoc.comment) store.setComment(recalledDoc.comment);
-        if (store.setQuoteId) store.setQuoteId(docId);
-      }
+    const recalledDoc = updated.find(isMatchingDoc) || target;
+    const tieneLineas = Boolean(recalledDoc?.products?.length || recalledDoc?.items?.length);
+
+    // No navegar a ciegas: sin artículos el formulario aparecería vacío y el
+    // vendedor perdería de vista la cotización.
+    if (!recalledDoc || !tieneLineas) {
+      toast({
+        title: "No se pudo cargar la cotización",
+        description: `${idStr} quedó marcada como retirada, pero no se encontraron sus artículos para editar. Ábrela desde el historial.`,
+        status: "warning",
+        duration: 6000,
+        isClosable: true
+      });
+      return;
     }
+
+    useQuoteStore.getState().setQuoteData(recalledDoc);
 
     toast({
       title: "↩️ Cotización Retirada para Corrección",
-      description: `La solicitud ${docId} fue retirada antes de que Enrique la abriera. Se cargó en tu formulario para corregir.`,
+      description: `La solicitud ${idStr} fue retirada antes de que Enrique la abriera. Se cargó en tu formulario para corregir.`,
       status: "info",
       duration: 5000,
       isClosable: true
@@ -464,20 +660,24 @@ export function QuoteApprovalPage() {
       duration: 3500,
       isClosable: true
     });
+
+    if (window.location.pathname.includes("approvals")) {
+      navigate("/historyquotes");
+    }
   };
 
   // Filtrado de la lista por Pestañas y Buscador
   const filteredQuotes = useMemo(() => {
     return quotes.filter((q) => {
-      const currentStatus = q.approvalStatus || q.state || "GENERADO";
+      const currentStatus = q.approvalStatus || q.state || q.status || "GENERADO";
 
       // Filtro por pestaña
       if (selectedTab === "GENERADO" && !["GENERADO", "DRAFT", "draft", "BORRADOR", "borrador"].includes(currentStatus)) return false;
-      if (selectedTab === "ENVIADO" && currentStatus !== "ENVIADO" && currentStatus !== "EN_PROCESO") return false;
-      if (selectedTab === "APROBADO_COMERCIAL" && currentStatus !== "APROBADO_COMERCIAL") return false;
-      if (selectedTab === "PENDIENTE_FACTURACION" && currentStatus !== "PENDIENTE_FACTURACION") return false;
-      if (selectedTab === "APROBADO" && currentStatus !== "APROBADO") return false;
-      if (selectedTab === "RECHAZADO" && currentStatus !== "RECHAZADO") return false;
+      if (selectedTab === "ENVIADO" && !["ENVIADO", "EN_PROCESO", "PENDIENTE_APROBACION"].includes(currentStatus)) return false;
+      if (selectedTab === "APROBADO_COMERCIAL" && !["APROBADO_COMERCIAL", "APROBADO_CREDITOS"].includes(currentStatus)) return false;
+      if (selectedTab === "PENDIENTE_FACTURACION" && !["PENDIENTE_FACTURACION", "EN_FACTURACION"].includes(currentStatus)) return false;
+      if (selectedTab === "APROBADO" && !["APROBADO", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO"].includes(currentStatus)) return false;
+      if (selectedTab === "RECHAZADO" && !["RECHAZADO", "ANULADO"].includes(currentStatus)) return false;
 
       // Filtro por búsqueda
       if (!searchQuery.trim()) return true;
@@ -501,11 +701,11 @@ export function QuoteApprovalPage() {
         res.GENERADO++;
       } else {
         res.ALL++;
-        if (st === "ENVIADO" || st === "EN_PROCESO") res.ENVIADO++;
-        else if (st === "APROBADO_COMERCIAL") res.APROBADO_COMERCIAL++;
-        else if (st === "PENDIENTE_FACTURACION") res.PENDIENTE_FACTURACION++;
-        else if (st === "APROBADO") res.APROBADO++;
-        else if (st === "RECHAZADO") res.RECHAZADO++;
+        if (["ENVIADO", "EN_PROCESO", "PENDIENTE_APROBACION"].includes(st)) res.ENVIADO++;
+        else if (["APROBADO_COMERCIAL", "APROBADO_CREDITOS"].includes(st)) res.APROBADO_COMERCIAL++;
+        else if (["PENDIENTE_FACTURACION", "EN_FACTURACION"].includes(st)) res.PENDIENTE_FACTURACION++;
+        else if (["APROBADO", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO"].includes(st)) res.APROBADO++;
+        else if (["RECHAZADO", "ANULADO"].includes(st)) res.RECHAZADO++;
       }
     });
     return res;
@@ -523,16 +723,17 @@ export function QuoteApprovalPage() {
             1. Borrador 📝
           </Badge>
         );
+      case "PENDIENTE_APROBACION":
       case "ENVIADO":
         return (
           <Badge bg="#e0f2fe" color="#0369a1" border="1.5px solid #bae6fd" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
-            2. Enviado a Cliente
+            1. Pend. Aprobación ⏳
           </Badge>
         );
       case "EN_PROCESO":
         return (
           <Badge bg="#f3e8ff" color="#6b21a8" border="1.5px solid #e9d5ff" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
-            3. En Revisión
+            En Revisión 🔍
           </Badge>
         );
       case "APROBADO_COMERCIAL":
@@ -541,12 +742,16 @@ export function QuoteApprovalPage() {
             2. Aprob. Comercial 📢
           </Badge>
         );
+      case "EN_FACTURACION":
       case "PENDIENTE_FACTURACION":
         return (
           <Badge bg="#f5f3ff" color="#5b21b6" border="1.5px solid #ddd6fe" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
             3. Pnd. Facturación 💳
           </Badge>
         );
+      case "FACTURADO":
+      case "PEDIDO_EMITIDO":
+      case "COMPLETADO":
       case "APROBADO":
         return (
           <Badge bg="#dcfce7" color="#166534" border="1.5px solid #bbf7d0" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
@@ -643,30 +848,57 @@ export function QuoteApprovalPage() {
           </Button>
         )}
 
-        {/* 2. Botón Vista Previa / Detalle */}
-        <Button
-          size={btnSize}
-          minH={touchH(stack)}
-          variant="outline"
-          borderColor="#cbd5e1"
-          color="#334155"
-          bg="white"
-          _hover={{ bg: "#f8fafc", borderColor: "#94a3b8" }}
-          leftIcon={<Eye className="w-3.5 h-3.5 text-slate-500" />}
-          onClick={() => {
-            markAsViewedByAdmin(q);
-            setSelectedQuote(q);
-            setIsDetailOpen(true);
-          }}
-          fontWeight="700"
-          borderRadius="lg"
-          px={2.5}
-          whiteSpace="nowrap"
-          flex={halfFlex}
-          minW={btnMinW}
-        >
-          Vista
-        </Button>
+        {/* 2. Botón Principal: Para Administrador en cotizaciones enviadas es VERIFICAR (destacado y más grande) */}
+        {isAdminUser && (status === "ENVIADO" || status === "EN_PROCESO" || status === "PENDIENTE_APROBACION" || status === "PENDIENTE_FACTURACION") ? (
+          <Button
+            size="md"
+            minH={stack ? "44px" : "38px"}
+            colorScheme="teal"
+            bg="#0f766e"
+            color="white"
+            _hover={{ bg: "#115e59", transform: "translateY(-1px)", boxShadow: "md" }}
+            _active={{ bg: "#134e4a" }}
+            leftIcon={<Eye className="w-4 h-4 text-teal-200 stroke-[2.5]" />}
+            onClick={() => {
+              markAsViewedByAdmin(q);
+              setSelectedQuote(q);
+              setIsDetailOpen(true);
+            }}
+            fontWeight="900"
+            fontSize="xs"
+            borderRadius="xl"
+            px={4}
+            boxShadow="sm"
+            whiteSpace="nowrap"
+            flex={stack ? "1 1 100%" : undefined}
+          >
+            🔍 Verificar
+          </Button>
+        ) : (
+          <Button
+            size={btnSize}
+            minH={touchH(stack)}
+            variant="outline"
+            borderColor="#cbd5e1"
+            color="#334155"
+            bg="white"
+            _hover={{ bg: "#f8fafc", borderColor: "#94a3b8" }}
+            leftIcon={<Eye className="w-3.5 h-3.5 text-slate-500" />}
+            onClick={() => {
+              markAsViewedByAdmin(q);
+              setSelectedQuote(q);
+              setIsDetailOpen(true);
+            }}
+            fontWeight="700"
+            borderRadius="lg"
+            px={2.5}
+            whiteSpace="nowrap"
+            flex={halfFlex}
+            minW={btnMinW}
+          >
+            Vista
+          </Button>
+        )}
 
         {/* 2.5 Vista Previa y Descarga PDF */}
         <Button
@@ -694,7 +926,7 @@ export function QuoteApprovalPage() {
         </Button>
 
         {/* 3. Acciones de Stepper (Validación Admin, etc.) */}
-        {(status === "ENVIADO" || status === "EN_PROCESO") && (
+        {(status === "ENVIADO" || status === "EN_PROCESO" || status === "PENDIENTE_APROBACION") && (
           isAdminUser ? (
             <>
               {!q.viewedByAdmin && (
@@ -816,7 +1048,7 @@ export function QuoteApprovalPage() {
                     bg="#ffedd5"
                     _hover={{ bg: "#fed7aa", borderColor: "#f97316" }}
                     leftIcon={<Undo2 className="w-3.5 h-3.5" />}
-                    onClick={() => handleRecallQuote(docId)}
+                    onClick={() => handleRecallQuote(q)}
                     fontWeight="800"
                     borderRadius="lg"
                     px={2.5}
@@ -1056,14 +1288,16 @@ export function QuoteApprovalPage() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </InputGroup>
-            <Tooltip label="Actualizar lista">
+            <Tooltip label="Actualizar cotizaciones del servidor">
               <IconButton
-                icon={<RefreshCw className="w-4 h-4" />}
+                icon={<RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin text-emerald-600" : ""}`} />}
                 size="md"
                 variant="outline"
                 borderRadius="xl"
-                onClick={loadQuotes}
+                isLoading={isRefreshing || isServerLoading}
+                onClick={handleRefresh}
                 aria-label="Actualizar"
+                _hover={{ bg: "emerald.50", borderColor: "emerald.300" }}
               />
             </Tooltip>
             {/* Solo Enrique (Admin) puede limpiar el historial completo */}
@@ -1113,7 +1347,7 @@ export function QuoteApprovalPage() {
                   const docId = q.docNumber || q.id;
                   const status = q.approvalStatus || q.state || "GENERADO";
                   const clientName = q.clientName || q.client?.CardName || "Cliente No Registrado";
-                  const grandTotalUSD = calculateQuoteTotals(q.products || q.items, q.totals?.tc || 3.76).grandTotalUSD;
+                  const grandTotalUSD = getQuoteTotalUSD(q);
 
                   return (
                     <Tr key={docId} _hover={{ bg: "#f8fafc" }} borderBottom="1px solid" borderColor="#e2e8f0">
@@ -1188,7 +1422,7 @@ export function QuoteApprovalPage() {
               const docId = q.docNumber || q.id;
               const status = q.approvalStatus || q.state || "GENERADO";
               const clientName = q.clientName || q.client?.CardName || "Cliente No Registrado";
-              const grandTotalUSD = calculateQuoteTotals(q.products || q.items, q.totals?.tc || 3.76).grandTotalUSD;
+              const grandTotalUSD = getQuoteTotalUSD(q);
 
               return (
                 <Box key={docId} bg="white" borderRadius="2xl" border="1.5px solid" borderColor="#cbd5e1" boxShadow="sm" p={4}>

@@ -99,9 +99,11 @@ export function HistoryQuotesPage() {
   };
 
   const handleDeleteQuote = (id) => {
+    const idStr = String(id);
     const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
-    const updated = saved.filter(q => (q.id || q.docNumber) !== id);
+    const updated = saved.filter(q => String(q.id || "") !== idStr && String(q.docNumber || "") !== idStr);
     localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updated));
+    setLocalQuotes(updated);
     window.dispatchEvent(new Event("localQuotesUpdated"));
   };
 

@@ -66,8 +66,11 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     contactPerson, setContactPerson,
     refNumber, setRefNumber,
     approvalStatus, setApprovalStatus,
+    rejectionReason, observations,
     clear
   } = useQuoteStore();
+
+  const isObservedOrInCorrection = approvalStatus === "OBSERVADO" || approvalStatus === "EN_EDICION";
 
   const [tempImage, setTempImage] = useState(null);
   const [currency] = useState("USD");
@@ -200,11 +203,24 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
     // Guardar o actualizar en localStorage sin retroceder de estado
     const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
-    const existingDoc = saved.find((q) => (q.id || q.docNumber) === activeDocNumber);
+    const isMatchingDoc = (q) => {
+      if (!q) return false;
+      const activeStr = String(activeDocNumber);
+      const qDocNum = q.docNumber ? String(q.docNumber) : "";
+      const qId = q.id !== undefined && q.id !== null ? String(q.id) : "";
+      return (qDocNum && qDocNum === activeStr) || (qId && qId === activeStr);
+    };
+
+    const existingDoc = saved.find(isMatchingDoc);
     const existingStatus = existingDoc?.approvalStatus || existingDoc?.state;
 
+    // Si la cotización está observada o en corrección, no permitir guardarla como BORRADOR
+    if (targetStatus === "BORRADOR" && (isObservedOrInCorrection || existingStatus === "OBSERVADO" || existingStatus === "EN_EDICION")) {
+      return { activeDocNumber, success: true };
+    }
+
     // Si ya existe y no es borrador, nunca degradar a BORRADOR en autoguardado
-    if (targetStatus === "BORRADOR" && existingStatus && !["BORRADOR", "GENERADO", "DRAFT", "draft", "EN_EDICION"].includes(existingStatus)) {
+    if (targetStatus === "BORRADOR" && existingStatus && !["BORRADOR", "GENERADO", "DRAFT", "draft"].includes(existingStatus)) {
       return { activeDocNumber };
     }
 
@@ -230,7 +246,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     const clientNameVal = normalizedClient?.CardName || normalizedClient?.name || "CLIENTE GENERAL";
 
     const newDoc = {
-      id: activeDocNumber,
+      id: existingDoc?.id || activeDocNumber,
       docNumber: activeDocNumber,
       docType,
       client,
@@ -265,8 +281,8 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
     const isExisting = Boolean(existingDoc);
     const updated = isExisting
-      ? saved.map((q) => ((q.id || q.docNumber) === activeDocNumber ? newDoc : q))
-      : [newDoc, ...saved.filter((q) => (q.id || q.docNumber) !== activeDocNumber)];
+      ? saved.map((q) => (isMatchingDoc(q) ? newDoc : q))
+      : [newDoc, ...saved.filter((q) => !isMatchingDoc(q))];
 
     localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updated));
     window.dispatchEvent(new Event("localQuotesUpdated"));
@@ -687,6 +703,34 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
           </Text>
         </Box>
       </Alert>
+
+      {/* ── BANNER COTIZACIÓN OBSERVADA / EN CORRECCIÓN ── */}
+      {isObservedOrInCorrection && (
+        <Alert
+          status="warning"
+          variant="left-accent"
+          borderRadius="xl"
+          p={3.5}
+          bg="#fffbeb"
+          borderColor="#f59e0b"
+          boxShadow="sm"
+        >
+          <AlertIcon color="#d97706" />
+          <Box flex="1">
+            <HStack spacing={2} align="center" mb={0.5}>
+              <Badge colorScheme="orange" fontSize="10px" px={2} py={0.5} borderRadius="md" fontWeight="900">
+                💬 COTIZACIÓN OBSERVADA / EN REVISIÓN
+              </Badge>
+              <Text fontWeight="900" color="#92400e" fontSize="xs">
+                Requiere Corrección y Reenvío
+              </Text>
+            </HStack>
+            <Text fontSize="xs" color="#b45309" fontWeight="600">
+              {rejectionReason || observations || "Esta cotización fue devuelta por el Administrador para corrección. Realice los cambios necesarios y presione 'Guardar y Reenviar a Validación'."}
+            </Text>
+          </Box>
+        </Alert>
+      )}
 
       {/* ── CABECERA PRINCIPAL SAP B1 ── */}
       <Box bg="white" p={{ base: 3, md: 6 }} borderRadius="2xl" border="1px solid" borderColor="gray.200" boxShadow="sm">
@@ -1139,30 +1183,39 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                   onClick={handleSaveAndSend}
                   fontWeight="800"
                 >
-                  Guardar y Enviar a Validación
+                  {isObservedOrInCorrection
+                    ? "Guardar y Reenviar a Validación"
+                    : "Guardar y Enviar a Validación"}
                 </Button>
-                <Button
-                  colorScheme="gray"
-                  size="md"
-                  w={{ base: "full", sm: "auto" }}
-                  leftIcon={<Save className="w-4 h-4 text-gray-500" />}
-                  onClick={handleSaveDraft}
-                  fontWeight="700"
-                >
-                  Guardar como Borrador
-                </Button>
+                {!isObservedOrInCorrection && (
+                  <Button
+                    colorScheme="gray"
+                    size="md"
+                    w={{ base: "full", sm: "auto" }}
+                    leftIcon={<Save className="w-4 h-4 text-gray-500" />}
+                    onClick={handleSaveDraft}
+                    fontWeight="700"
+                  >
+                    Guardar como Borrador
+                  </Button>
+                )}
               </>
             )
           )}
 
           <Button
-            colorScheme="emerald"
-            variant="solid"
+            colorScheme="teal"
+            variant="outline"
+            borderColor="#0d9488"
+            color="#0f766e"
+            bg="#f0fdfa"
+            _hover={{ bg: "#ccfbf1", borderColor: "#0f766e" }}
             size="md"
             w={{ base: "full", sm: "auto" }}
-            leftIcon={<Printer className="w-4 h-4" />}
+            leftIcon={<Printer className="w-4 h-4 text-teal-600" />}
             onClick={() => setIsPreviewOpen(true)}
-            fontWeight="700"
+            fontWeight="800"
+            borderRadius="md"
           >
             Ver Boleta
           </Button>

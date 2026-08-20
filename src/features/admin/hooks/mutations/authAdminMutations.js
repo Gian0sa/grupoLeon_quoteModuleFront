@@ -12,15 +12,8 @@ export function useAuthAdminMutations() {
   const updateProfileAdminMutation = useMutation({
     mutationFn: updateProfileAdmin,
     onSuccess: () => {
-      toast({
-        title: "Perfil actualizado",
-        description: "Los cambios se guardaron correctamente.",
-        status: "success",
-        duration: 5000,
-        isClosable: true,
-      });
       queryClient.invalidateQueries({ queryKey: ["adminUsers"] });
-      navigate("/dashboard");
+      queryClient.invalidateQueries({ queryKey: ["allUsersAdmin"] });
     },
     onError: (error) => {
       console.error("Error completo al actualizar perfil:", error);

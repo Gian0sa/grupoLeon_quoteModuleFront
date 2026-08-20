@@ -2,15 +2,16 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
-// Convierte imagen a base64
+// Convierte imagen a base64 con transparencia PNG
 export const getImageDataURL = (img) => {
   return new Promise((resolve) => {
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
-    canvas.width = img.width;
-    canvas.height = img.height;
+    canvas.width = img.naturalWidth || img.width || 300;
+    canvas.height = img.naturalHeight || img.height || 300;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(img, 0, 0);
-    resolve(canvas.toDataURL("image/jpeg", 0.8));
+    resolve(canvas.toDataURL("image/png"));
   });
 };
 
@@ -26,10 +27,10 @@ const addLogo = async (doc) => {
     await new Promise((resolve, reject) => {
       img.onload = resolve;
       img.onerror = reject;
-      img.src = "/assets/LogoAutopartes.jpg";
+      img.src = "/assets/LogoAutopartes.png";
     });
     const imageDataURL = await getImageDataURL(img);
-    doc.addImage(imageDataURL, 'JPEG', 165, 5, 30, 30);
+    doc.addImage(imageDataURL, 'PNG', 165, 5, 30, 30, undefined, 'FAST');
   } catch (error) {
     console.warn("No se pudo cargar el logo:", error);
     doc.setLineWidth(1);

@@ -24,11 +24,13 @@ import {
 import { useState, useMemo } from "react";
 import { downloadInvoicePDFdirectly } from "../../../features/reports/utils/pdfGenerators";
 import { generateAccountStatementPDF } from "../utils/receivablePDF";
-import { FileText, Download, Landmark, Calendar, DollarSign, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { WhatsAppStatementModal } from "./WhatsAppStatementModal";
+import { FileText, Download, Landmark, Calendar, DollarSign, AlertTriangle, CheckCircle2, MessageSquare } from "lucide-react";
 
 export default function InvoicesModal({ isOpen, onClose, cliente = null, documentos = [] }) {
   const [loadingRef, setLoadingRef] = useState(null);
   const [filterType, setFilterType] = useState("all"); // 'all' | 'facturas' | 'letras' | 'vencidos'
+  const [isWhatsAppOpen, setIsWhatsAppOpen] = useState(false);
   const toast = useToast();
 
   const docList = Array.isArray(documentos) ? documentos : (cliente?.documents || []);
@@ -159,9 +161,10 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
   const salesperson = cliente?.vendedor || docList[0]?.NOMBVENDEDOR || "No asignado";
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
+    <>
+      <Modal
+        isOpen={isOpen}
+        onClose={onClose}
       size={{ base: "full", md: "5xl" }}
       isCentered
       scrollBehavior="inside"
@@ -198,31 +201,20 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
             <HStack spacing={2} wrap="wrap" w={{ base: "full", md: "auto" }}>
               <Button
                 size="xs"
-                colorScheme="green"
-                bg="white"
-                color="#126C36"
-                _hover={{ bg: "green.50", transform: "scale(1.02)" }}
-                _active={{ transform: "scale(0.98)" }}
-                leftIcon={<Download className="w-3.5 h-3.5" />}
-                onClick={() =>
-                  generateAccountStatementPDF(
-                    cliente || {
-                      documents: docList,
-                      nombre: clientName,
-                      vendedor: salesperson,
-                      clientCode,
-                    }
-                  )
-                }
+                colorScheme="whatsapp"
+                bg="#25d366"
+                color="white"
+                _hover={{ bg: "#22c55e" }}
+                leftIcon={<MessageSquare className="w-3.5 h-3.5" />}
+                onClick={() => setIsWhatsAppOpen(true)}
                 fontWeight="800"
                 borderRadius="md"
                 px={3}
                 h="30px"
-                flex={{ base: 1, md: "initial" }}
                 boxShadow="sm"
                 fontSize="11.5px"
               >
-                📄 Descargar Estado de Cuenta (PDF)
+                📲 Enviar WhatsApp / URL
               </Button>
               <Badge
                 colorScheme="emerald"
@@ -232,7 +224,6 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
                 py={1}
                 borderRadius="full"
                 fontSize="xs"
-                display={{ base: "none", sm: "inline-flex" }}
               >
                 {docList.length} {docList.length === 1 ? "doc" : "docs"}
               </Badge>
@@ -653,5 +644,18 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
         </ModalBody>
       </ModalContent>
     </Modal>
+
+    {/* Modal de Envío por WhatsApp y Enlace Web */}
+    <WhatsAppStatementModal
+      isOpen={isWhatsAppOpen}
+      onClose={() => setIsWhatsAppOpen(false)}
+      debt={cliente || {
+        documents: docList,
+        nombre: clientName,
+        vendedor: salesperson,
+        clientCode,
+      }}
+    />
+  </>
   );
 }

@@ -10,7 +10,9 @@ export function RefreshButton({
   showToast = true,
   onRefreshStart,
   onRefreshEnd,
-  mode = "invalidateAndRefetch" 
+  mode = "invalidateAndRefetch",
+  fullReload = false,
+  tooltipLabel
 }) {
   const { refetch, invalidate, invalidateAndRefetch, refetchAll } = useRefetchQueries();
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -21,6 +23,13 @@ export function RefreshButton({
     setIsRefreshing(true);
     onRefreshStart?.();
     
+    if (fullReload) {
+      setTimeout(() => {
+        window.location.reload();
+      }, 120);
+      return;
+    }
+
     try {
       // Timeout de seguridad de 3.5s para evitar que el botón quede bloqueado
       const timeoutPromise = new Promise((_, reject) =>
@@ -77,8 +86,10 @@ export function RefreshButton({
     }
   };
 
+  const defaultLabel = fullReload ? "Reiniciar y recargar página" : "Actualizar datos";
+
   return (
-    <Tooltip hasArrow label={isRefreshing ? "Actualizando..." : "Actualizar datos"}>
+    <Tooltip hasArrow label={isRefreshing ? "Recargando..." : (tooltipLabel || defaultLabel)}>
       <IconButton
         icon={
           isRefreshing 

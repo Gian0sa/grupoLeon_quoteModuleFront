@@ -26,8 +26,8 @@ export const socket = io(SOCKET_URL, {
   transports: ["websocket", "polling"],
   autoConnect: true,
   reconnection: true,
-  reconnectionAttempts: 10,
-  reconnectionDelay: 2000,
+  reconnectionAttempts: Infinity,
+  reconnectionDelay: 1500,
   withCredentials: true,
 });
 
@@ -40,5 +40,5 @@ socket.on("disconnect", (reason) => {
 });
 
 socket.on("connect_error", (err) => {
-  console.warn("⚠️ [WS] Advertencia de conexión WebSocket (activo fallback HTTP):", err.message);
+  console.warn("⚠️ [WS] Reconectando Socket.io en tiempo real...", err.message);
 });

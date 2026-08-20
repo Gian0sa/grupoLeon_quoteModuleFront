@@ -1,37 +1,46 @@
-import { FormControl, FormLabel, Badge, Accordion, AccordionItem, AccordionButton, AccordionPanel, Checkbox, Divider, SimpleGrid } from "@chakra-ui/react";
-import ServiceCategory from "./ServiceCategory";
+import React from "react";
+import { FormControl, FormLabel, Badge } from "@chakra-ui/react";
+import PermissionsTreeView from "./PermissionsTreeView";
 
 export default function PermissionsSection({ 
+  services = [],
   groupedServices, 
-  permittedServices, 
+  permittedServices = [], 
   onServiceChange,
   onCategoryChange,
-  isCategoryFullySelected,
-  isCategoryPartiallySelected
+  onChange,
 }) {
+  // Manejador unificado de cambio de array de permisos
+  const handlePermittedChange = (newPermitted) => {
+    if (typeof onChange === "function") {
+      onChange(newPermitted);
+    } else if (typeof onCategoryChange === "function") {
+      // Fallback para props tradicionales
+      const allServices = services.length > 0
+        ? services
+        : Object.values(groupedServices || {}).flatMap(g => g.services || []);
+      onCategoryChange(allServices, false);
+      const selectedSrvs = allServices.filter(s => newPermitted.includes(s.id));
+      onCategoryChange(selectedSrvs, true);
+    }
+  };
+
+  // Extraer lista plana de servicios si solo viene groupedServices
+  const flatServices = services.length > 0 
+    ? services 
+    : Object.values(groupedServices || {}).flatMap(g => g.services || []);
+
   return (
     <FormControl>
-      <FormLabel fontWeight="semibold" fontSize="lg">
-        Permisos / Servicios
-        <Badge ml={2} colorScheme="blue" fontSize="md">
-          {permittedServices.length} seleccionados
-        </Badge>
+      <FormLabel fontWeight="800" fontSize="md" color="gray.800" mb={3}>
+        Permisos y Servicios del Sistema
       </FormLabel>
       
-      <Accordion allowToggle>
-        {Object.entries(groupedServices).map(([categoryKey, category]) => (
-          <ServiceCategory
-            key={categoryKey}
-            category={category}
-            categoryKey={categoryKey}
-            permittedServices={permittedServices}
-            onServiceChange={onServiceChange}
-            onCategoryChange={onCategoryChange}
-            isCategoryFullySelected={isCategoryFullySelected}
-            isCategoryPartiallySelected={isCategoryPartiallySelected}
-          />
-        ))}
-      </Accordion>
+      <PermissionsTreeView
+        services={flatServices}
+        permittedServices={permittedServices}
+        onChange={handlePermittedChange}
+      />
     </FormControl>
   );
 }
