@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import {
   Box, Table, Thead, Tbody, Tr, Th, Td, TableContainer,
-  IconButton, NumberInput, NumberInputField, Text, Button,
+  IconButton, Input, Text, Button,
   HStack, Badge, Flex, VStack, Divider, Grid
 } from "@chakra-ui/react";
 import { Trash2, Package, Sparkles } from "lucide-react";
@@ -162,17 +162,29 @@ export default function SapItemGrid({
                 <Grid templateColumns="1fr 1.2fr 1fr 1fr" gap={2} align="center" mb={2.5}>
                   <Box>
                     <Text fontSize="0.6rem" color="gray.500" fontWeight="800" mb={0.5} textAlign="center">CANT.</Text>
-                    <NumberInput
+                    <Input
                       size="xs"
-                      min={1}
-                      value={item.quantity}
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      textAlign="center"
+                      fontWeight="800"
+                      fontSize="xs"
+                      value={item.quantity ?? ""}
                       isDisabled={isReadOnly}
-                      onChange={(valStr) => {
-                        if (valStr === "") {
+                      bg={isQtyExceedingStock(item, qty) ? "orange.50" : isItemOutOfStock(item) ? "red.50" : "gray.50"}
+                      color={isQtyExceedingStock(item, qty) ? "orange.800" : isItemOutOfStock(item) ? "red.600" : "inherit"}
+                      borderColor="gray.300"
+                      borderRadius="md"
+                      px={1}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, "");
+                        if (val === "") {
                           onUpdateProduct(item.id, { quantity: "" });
                         } else {
-                          const parsed = parseInt(valStr, 10);
-                          onUpdateProduct(item.id, { quantity: isNaN(parsed) ? "" : parsed });
+                          const parsed = parseInt(val, 10);
+                          onUpdateProduct(item.id, { quantity: parsed > 0 ? parsed : "" });
                         }
                       }}
                       onBlur={() => {
@@ -180,16 +192,7 @@ export default function SapItemGrid({
                           onUpdateProduct(item.id, { quantity: 1 });
                         }
                       }}
-                    >
-                      <NumberInputField 
-                        textAlign="center" 
-                        fontWeight="800" 
-                        bg={isQtyExceedingStock(item, qty) ? "orange.50" : isItemOutOfStock(item) ? "red.50" : "gray.50"} 
-                        color={isQtyExceedingStock(item, qty) ? "orange.800" : isItemOutOfStock(item) ? "red.600" : "inherit"} 
-                        px={1} 
-                        borderRadius="md" 
-                      />
-                    </NumberInput>
+                    />
                     <Flex justify="center" mt={1}>
                       <PackagingHelper
                         itemName={itemName}
@@ -324,18 +327,28 @@ export default function SapItemGrid({
                       </Td>
                       <Td px={2} textAlign="center">
                         <VStack spacing={1} align="center">
-                          <NumberInput
+                          <Input
                             size="xs"
                             maxW="75px"
-                            min={1}
-                            value={item.quantity}
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            textAlign="center"
+                            fontWeight="700"
+                            value={item.quantity ?? ""}
                             isDisabled={isReadOnly}
-                            onChange={(valStr) => {
-                              if (valStr === "") {
+                            bg={isQtyExceedingStock(item, qty) ? "orange.50" : isItemOutOfStock(item) ? "red.50" : "white"}
+                            borderColor="gray.300"
+                            borderRadius="md"
+                            px={1}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/\D/g, "");
+                              if (val === "") {
                                 onUpdateProduct(item.id, { quantity: "" });
                               } else {
-                                const parsed = parseInt(valStr, 10);
-                                onUpdateProduct(item.id, { quantity: isNaN(parsed) ? "" : parsed });
+                                const parsed = parseInt(val, 10);
+                                onUpdateProduct(item.id, { quantity: parsed > 0 ? parsed : "" });
                               }
                             }}
                             onBlur={() => {
@@ -343,14 +356,7 @@ export default function SapItemGrid({
                                 onUpdateProduct(item.id, { quantity: 1 });
                               }
                             }}
-                          >
-                            <NumberInputField 
-                              textAlign="center" 
-                              fontWeight="700" 
-                              bg={isQtyExceedingStock(item, qty) ? "orange.50" : isItemOutOfStock(item) ? "red.50" : "white"} 
-                              px={1} 
-                            />
-                          </NumberInput>
+                          />
                           <PackagingHelper
                             itemName={itemName}
                             sigla={item.sigla}

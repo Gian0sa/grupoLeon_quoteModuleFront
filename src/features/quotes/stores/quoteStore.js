@@ -22,13 +22,24 @@ const cleanDocumentNumber = (value) => {
  */
 export const normalizeQuoteItem = (item) => {
   if (!item || typeof item !== "object") return null;
-  const id = item.id || item.productCode || item.itemCode || item.code || item.ItemCode || String(Date.now());
-  const code = item.productCode || item.itemCode || item.code || item.ItemCode || item.id || "";
+  const rawCode = item.productCode || item.itemCode || item.code || item.ItemCode || item.id || "";
+  const finalCode = String(rawCode).trim();
+  const id = finalCode || String(Date.now());
+  const code = finalCode;
   const name = item.name || item.productName || item.description || item.ItemName || item.ItemDescription || item.Dscription || "Artículo General";
   const price = Number(item.price ?? item.unitPrice ?? item.Price ?? item.importe ?? 0);
   const discount = Number(item.discount ?? item.Discount ?? 0);
   const lineDiscount = Number(item.lineDiscount ?? item.LineDiscount ?? 0);
-  const quantity = parseInt(item.quantity ?? item.Quantity ?? 1, 10);
+
+  // Permitir temporalmente string vacío al tipear para que el usuario pueda borrar y cambiar la cantidad libremente
+  const rawQty = item.quantity ?? item.Quantity;
+  let quantity = 1;
+  if (rawQty === "") {
+    quantity = "";
+  } else if (rawQty !== undefined && rawQty !== null) {
+    const parsed = parseInt(rawQty, 10);
+    quantity = isNaN(parsed) || parsed < 1 ? 1 : parsed;
+  }
   
   // Si stock no viene definido en la BD/draft, queda como null para no marcar erróneamente como AGOTADO
   const rawStock = item.stock ?? item.Stock ?? item.OnHand ?? item.STOCK_DISPONIBLE;
@@ -148,6 +159,8 @@ const initialQuoteState = {
   deliveryDate: null,
   whsCode: "014",
   approvalStatus: null,
+  rejectionReason: null,
+  observations: null,
   contactPerson: "",
   refNumber: "",
 };
@@ -175,74 +188,126 @@ export const useQuoteStore = create((set) => ({
     set((state) => {
       const normalized = normalizeQuoteItem(product);
       if (!normalized) return state;
-      const existe = state.products.find((p) => (p.id === normalized.id || (p.code && p.code === normalized.code)));
-      if (existe) {
-        return {
-          products: state.products.map((p) =>
-            (p.id === normalized.id || (p.code && p.code === normalized.code))
-              ? { ...p, quantity: p.quantity + normalized.quantity }
-              : p
-          ),
+
+      const normCode = String(normalized.code || normalized.id || "").trim().toUpperCase();
+      const index = state.products.findIndex((p) => {
+        const pCode = String(p.code || p.id || "").trim().toUpperCase();
+        return pCode && normCode && pCode === normCode;
+      });
+
+      if (index >= 0) {
+        const updated = [...state.products];
+        updated[index] = {
+          ...updated[index],
+          quantity: updated[index].quantity + normalized.quantity,
         };
+        return { products: updated };
       }
       return { products: [...state.products, normalized] };
     }),
 
   setProducts: (products) =>
-    set({
-      products: Array.isArray(products)
-        ? products.map(normalizeQuoteItem).filter(Boolean)
-        : [],
+    set(() => {
+      if (!Array.isArray(products)) return { products: [] };
+      const normalizedList = products.map(normalizeQuoteItem).filter(Boolean);
+      const uniqueMap = new Map();
+      normalizedList.forEach((item) => {
+        const key = String(item.code || item.id || "").trim().toUpperCase();
+        if (key && !uniqueMap.has(key)) {
+          uniqueMap.set(key, item);
+        }
+      });
+      return { products: Array.from(uniqueMap.values()) };
     }),
 
   removeProduct: (id) =>
-    set((state) => ({
-      products: state.products.filter((p) => p.id !== id && p.code !== id),
-    })),
+    set((state) => {
+      const targetKey = String(id || "").trim().toUpperCase();
+      return {
+        products: state.products.filter((p) => {
+          const pCode = String(p.code || p.id || "").trim().toUpperCase();
+          const pId = String(p.id || "").trim().toUpperCase();
+          return pCode !== targetKey && pId !== targetKey;
+        }),
+      };
+    }),
 
   updateProduct: (id, updatedFields) =>
-    set((state) => ({
-      products: state.products.map((product) =>
-        (product.id === id || product.code === id)
-          ? normalizeQuoteItem({ ...product, ...updatedFields })
-          : product
-      ),
-    })),
+    set((state) => {
+      const targetKey = String(id || "").trim().toUpperCase();
+      return {
+        products: state.products.map((product) => {
+          const pCode = String(product.code || product.id || "").trim().toUpperCase();
+          const pId = String(product.id || "").trim().toUpperCase();
+          if (pCode === targetKey || pId === targetKey) {
+            return normalizeQuoteItem({ ...product, ...updatedFields });
+          }
+          return product;
+        }),
+      };
+    }),
 
   setQuoteData: (quoteData = {}) => {
-    const storedClient = quoteData.client || {};
+    const rawClient = typeof quoteData.client === "object" && quoteData.client !== null ? quoteData.client : {};
+    const clientName = firstMeaningfulValue(
+      rawClient.CardName, rawClient.cardName, rawClient.clientName, rawClient.name,
+      quoteData.clientName, typeof quoteData.client === "string" ? quoteData.client : null
+    );
+    const clientDoc = firstMeaningfulValue(
+      rawClient.LicTradNum, rawClient.licTradNum, rawClient.clientRuc, rawClient.clientDocument,
+      quoteData.clientDocument, quoteData.clientRuc, quoteData.clientRUC, quoteData.LicTradNum
+    );
+    const cardCode = firstMeaningfulValue(
+      rawClient.CardCode, rawClient.cardCode, rawClient.sapCode, rawClient.id,
+      quoteData.CardCode, quoteData.cardCode, quoteData.clientCode,
+      clientDoc ? `CL${cleanDocumentNumber(clientDoc)}` : null
+    );
+    const address = firstMeaningfulValue(
+      rawClient.Address, rawClient.address, rawClient.clientAddress,
+      quoteData.clientAddress, quoteData.address
+    );
+
     const client = normalizeQuoteClient({
-      ...storedClient,
-      CardCode: firstMeaningfulValue(storedClient.CardCode, storedClient.cardCode, quoteData.CardCode, quoteData.cardCode, quoteData.clientCode),
-      LicTradNum: firstMeaningfulValue(storedClient.LicTradNum, storedClient.licTradNum, quoteData.LicTradNum, quoteData.clientRuc, quoteData.clientDocument),
-      CardName: firstMeaningfulValue(storedClient.CardName, storedClient.cardName, quoteData.clientName),
-      Address: firstMeaningfulValue(storedClient.Address, storedClient.address, quoteData.clientAddress),
-      raw: storedClient.raw || quoteData.clientRaw || (Object.keys(storedClient).length ? storedClient : null),
+      ...rawClient,
+      CardCode: cardCode,
+      LicTradNum: clientDoc,
+      CardName: clientName,
+      Address: address,
+      raw: rawClient.raw || (Object.keys(rawClient).length ? rawClient : quoteData),
     });
 
     const rawList = Array.isArray(quoteData.products) && quoteData.products.length > 0
       ? quoteData.products
-      : (quoteData.items || []);
+      : (Array.isArray(quoteData.items) ? quoteData.items : []);
 
-    const products = rawList.map(normalizeQuoteItem).filter(Boolean);
+    const normalizedList = rawList.map(normalizeQuoteItem).filter(Boolean);
+    const uniqueMap = new Map();
+    normalizedList.forEach((item) => {
+      const key = String(item.code || item.id || "").trim().toUpperCase();
+      if (key && !uniqueMap.has(key)) {
+        uniqueMap.set(key, item);
+      }
+    });
 
     set({
       ...initialQuoteState,
       quoteId: quoteData.docNumber || quoteData.id || null,
       client,
-      products,
+      products: Array.from(uniqueMap.values()),
       opNum: quoteData.opNum || null,
       selectedPoint: quoteData.selectedPoint || null,
       selectedTransport: quoteData.selectedTransport || "",
       selectedDeliveryForm: quoteData.selectedDeliveryForm || "",
       selectedPaymentType: quoteData.selectedPaymentType || "",
       paymentImg: quoteData.paymentImg || null,
-      comment: quoteData.comment || null,
+      comment: quoteData.comment || quoteData.comments || null,
       deliveryDate: quoteData.deliveryDate || null,
       whsCode: quoteData.whsCode || "014",
       contactPerson: quoteData.contactPerson || "",
       refNumber: quoteData.refNumber || "",
       approvalStatus: quoteData.approvalStatus || quoteData.state || quoteData.status || null,
+      rejectionReason: quoteData.rejectionReason || quoteData.observations || null,
+      observations: quoteData.observations || quoteData.rejectionReason || null,
     });
   },
 

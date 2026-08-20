@@ -55,7 +55,7 @@ import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
 import { QuoteStepper, getStageIndex } from "../components/QuoteStepper";
 import { QuoteDetailDrawer } from "../components/QuoteDetailDrawer";
 import QuotePdfModal from "../components/QuotePdfModal";
-import { calculateQuoteTotals } from "../../../shared/utils/quoteCalculator";
+import { calculateQuoteTotals, getQuoteTotalUSD } from "../../../shared/utils/quoteCalculator";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { useGetQuotes } from "../hooks/queries/quotesQueries";
@@ -70,7 +70,9 @@ export function QuoteApprovalPage() {
   const today = format(new Date(), "EEEE, d 'de' MMMM 'del' yyyy", { locale: es });
 
   const { username: authUsername, role: authRole } = useAuthStore();
-  const isAdminUser = authRole === "ADMIN" || authUsername?.toLowerCase() === "enrique";
+  const localUser = (localStorage.getItem("username") || localStorage.getItem("userId") || "").toLowerCase();
+  const localRole = (localStorage.getItem("role") || "").toUpperCase();
+  const isAdminUser = authRole === "ADMIN" || localRole === "ADMIN" || authUsername?.toLowerCase() === "enrique" || localUser === "enrique";
 
   const { data: serverQuotes, isLoading: isServerLoading, refetch: refetchServerQuotes } = useGetQuotes();
 
@@ -301,15 +303,41 @@ export function QuoteApprovalPage() {
   };
 
   // ── RECALL: Vendedor retira solicitud que aún no fue abierta por Enrique ──
-  const handleRecallQuote = async (docId) => {
+  // Recibe el documento completo, no sólo su id: la fila lo identifica por
+  // `docNumber || id` (string "COT-xxxxxx"), mientras que los documentos que
+  // llegan del servidor traen además un `id` numérico. Buscarlos con la
+  // prioridad inversa (`id || docNumber`) comparaba número contra string y no
+  // encontraba nunca el documento, dejando el formulario en blanco.
+  const handleRecallQuote = async (quote) => {
+    const docId = quote?.docNumber || quote?.id;
+    if (!docId) return;
+
+    const idStr = String(docId);
+    const isMatchingDoc = (q) => {
+      if (!q) return false;
+      const qDocNum = q.docNumber ? String(q.docNumber) : "";
+      const qId = q.id !== undefined && q.id !== null ? String(q.id) : "";
+      return (qDocNum && qDocNum === idStr) || (qId && qId === idStr);
+    };
+
     const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
     const nowIso = new Date().toISOString();
     const recallUser = authUsername || "vendedor";
-    const target = quotes.find(q => (q.id || q.docNumber) === docId) || saved.find(q => (q.id || q.docNumber) === docId);
+    const target = quote || quotes.find(isMatchingDoc) || saved.find(isMatchingDoc);
     const prevLogs = target?.historyLog || [];
     const version = (target?.quoteVersion || 1);
     const newLog = { status: "EN_EDICION", timestamp: nowIso, user: recallUser, note: `↩️ Solicitud retirada por el vendedor para corrección (v${version})` };
     const updatedHistory = [newLog, ...prevLogs];
+
+    const recallFields = {
+      status: "EN_EDICION",
+      state: "EN_EDICION",
+      approvalStatus: "EN_EDICION",
+      quoteVersion: version,
+      recalledAt: nowIso,
+      recalledBy: recallUser,
+      historyLog: updatedHistory
+    };
 
     try {
       await updateQuote({
@@ -324,39 +352,37 @@ export function QuoteApprovalPage() {
       console.error("Error retirando cotización:", e);
     }
 
-    const updated = saved.map(q => {
-      if ((q.id || q.docNumber) !== docId) return q;
-      if (q.viewedByAdmin) return q;
-      return {
-        ...q,
-        status: "EN_EDICION",
-        state: "EN_EDICION",
-        approvalStatus: "EN_EDICION",
-        quoteVersion: version,
-        recalledAt: nowIso,
-        recalledBy: recallUser,
-        historyLog: updatedHistory
-      };
-    });
+    // Reflejar el retiro en localStorage. Si el documento sólo existía en el
+    // servidor, se incorpora para que quede disponible como borrador local.
+    const yaEstaba = saved.some(isMatchingDoc);
+    const updated = yaEstaba
+      ? saved.map(q => (isMatchingDoc(q) && !q.viewedByAdmin ? { ...q, ...recallFields } : q))
+      : [{ ...target, ...recallFields }, ...saved];
+
     localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updated));
     window.dispatchEvent(new Event("localQuotesUpdated"));
 
-    const recalledDoc = updated.find(q => (q.id || q.docNumber) === docId) || target;
-    if (recalledDoc) {
-      const store = useQuoteStore.getState();
-      if (typeof store.setQuoteData === "function") {
-        store.setQuoteData(recalledDoc);
-      } else {
-        if (recalledDoc.client) store.setClient(recalledDoc.client);
-        if (recalledDoc.products) store.setProducts(recalledDoc.products);
-        if (recalledDoc.comment) store.setComment(recalledDoc.comment);
-        if (store.setQuoteId) store.setQuoteId(docId);
-      }
+    const recalledDoc = updated.find(isMatchingDoc) || target;
+    const tieneLineas = Boolean(recalledDoc?.products?.length || recalledDoc?.items?.length);
+
+    // No navegar a ciegas: sin artículos el formulario aparecería vacío y el
+    // vendedor perdería de vista la cotización.
+    if (!recalledDoc || !tieneLineas) {
+      toast({
+        title: "No se pudo cargar la cotización",
+        description: `${idStr} quedó marcada como retirada, pero no se encontraron sus artículos para editar. Ábrela desde el historial.`,
+        status: "warning",
+        duration: 6000,
+        isClosable: true
+      });
+      return;
     }
+
+    useQuoteStore.getState().setQuoteData(recalledDoc);
 
     toast({
       title: "↩️ Cotización Retirada para Corrección",
-      description: `La solicitud ${docId} fue retirada antes de que Enrique la abriera. Se cargó en tu formulario para corregir.`,
+      description: `La solicitud ${idStr} fue retirada antes de que Enrique la abriera. Se cargó en tu formulario para corregir.`,
       status: "info",
       duration: 5000,
       isClosable: true
@@ -568,6 +594,10 @@ export function QuoteApprovalPage() {
       duration: 3500,
       isClosable: true
     });
+
+    if (window.location.pathname.includes("approvals")) {
+      navigate("/historyquotes");
+    }
   };
 
   // Filtrado de la lista por Pestañas y Buscador
@@ -925,7 +955,7 @@ export function QuoteApprovalPage() {
                     bg="#ffedd5"
                     _hover={{ bg: "#fed7aa", borderColor: "#f97316" }}
                     leftIcon={<Undo2 className="w-3.5 h-3.5" />}
-                    onClick={() => handleRecallQuote(docId)}
+                    onClick={() => handleRecallQuote(q)}
                     fontWeight="800"
                     borderRadius="lg"
                     px={2.5}
@@ -1222,7 +1252,7 @@ export function QuoteApprovalPage() {
                   const docId = q.docNumber || q.id;
                   const status = q.approvalStatus || q.state || "GENERADO";
                   const clientName = q.clientName || q.client?.CardName || "Cliente No Registrado";
-                  const grandTotalUSD = calculateQuoteTotals(q.products || q.items, q.totals?.tc || 3.76).grandTotalUSD;
+                  const grandTotalUSD = getQuoteTotalUSD(q);
 
                   return (
                     <Tr key={docId} _hover={{ bg: "#f8fafc" }} borderBottom="1px solid" borderColor="#e2e8f0">
@@ -1297,7 +1327,7 @@ export function QuoteApprovalPage() {
               const docId = q.docNumber || q.id;
               const status = q.approvalStatus || q.state || "GENERADO";
               const clientName = q.clientName || q.client?.CardName || "Cliente No Registrado";
-              const grandTotalUSD = calculateQuoteTotals(q.products || q.items, q.totals?.tc || 3.76).grandTotalUSD;
+              const grandTotalUSD = getQuoteTotalUSD(q);
 
               return (
                 <Box key={docId} bg="white" borderRadius="2xl" border="1.5px solid" borderColor="#cbd5e1" boxShadow="sm" p={4}>
