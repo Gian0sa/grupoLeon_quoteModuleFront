@@ -132,6 +132,29 @@ export const buildStatementPayload = (debtData) => {
       d.isVD
     );
 
+    const isCredit = numDocUpper.startsWith("NC-") ||
+      numDocUpper.startsWith("ABO-") ||
+      numDocUpper.startsWith("AB0-") ||
+      numDocUpper.startsWith("07F") ||
+      numDocUpper.startsWith("07-") ||
+      numDocUpper.includes("07F") ||
+      (d.tipoDocumento || "").toLowerCase().includes("credito") ||
+      (d.tipoDocumento || "").toLowerCase().includes("abono") ||
+      Number(d.saldoPendiente?.PEN ?? d.SALDO_PEN ?? d.sPen ?? 0) < 0 ||
+      Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? d.sUsd ?? 0) < 0;
+
+    const isPEN = (d.moneda || d.TIPOCAMBIO || "USD").toUpperCase().includes("PEN") ||
+      (d.moneda || d.TIPOCAMBIO || "USD").toUpperCase().includes("SOL") ||
+      (d.moneda || d.TIPOCAMBIO || "USD").toUpperCase().includes("S/");
+
+    let rawPen = isPEN ? Number(d.saldoPendiente?.PEN ?? d.SALDO_PEN ?? d.sPen ?? d.totalDocumento ?? d.TOTAL_DOC ?? 0) : 0;
+    let rawUsd = !isPEN ? Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? d.sUsd ?? d.totalDocumento ?? d.TOTAL_DOC ?? 0) : 0;
+
+    if (isCredit) {
+      if (isPEN) rawPen = -Math.abs(rawPen || d.totalDocumento || d.TOTAL_DOC || 0);
+      else rawUsd = -Math.abs(rawUsd || d.totalDocumento || d.TOTAL_DOC || 0);
+    }
+
     return {
       num: d.numeroDocumento || d.NRO_DOC || "",
       ref: d.facturaOrigen || (Array.isArray(d.referencia) ? d.referencia[0] : "") || "",
@@ -142,16 +165,10 @@ export const buildStatementPayload = (debtData) => {
       uni: idUnico,
       mon: (d.moneda || d.TIPOCAMBIO || "USD").toUpperCase(),
       tot: Number(d.totalDocumento || d.TOTAL_DOC || 0),
-      sPen: (d.moneda || d.TIPOCAMBIO || "USD").toUpperCase().includes("PEN") || (d.moneda || d.TIPOCAMBIO || "USD").toUpperCase().includes("SOL") || (d.moneda || d.TIPOCAMBIO || "USD").toUpperCase().includes("S/")
-        ? Number(d.saldoPendiente?.PEN ?? d.SALDO_PEN ?? d.sPen ?? d.totalDocumento ?? d.TOTAL_DOC ?? 0)
-        : 0,
-      sUsd: !(d.moneda || d.TIPOCAMBIO || "USD").toUpperCase().includes("PEN") && !(d.moneda || d.TIPOCAMBIO || "USD").toUpperCase().includes("SOL") && !(d.moneda || d.TIPOCAMBIO || "USD").toUpperCase().includes("S/")
-        ? Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? d.sUsd ?? d.totalDocumento ?? d.TOTAL_DOC ?? 0)
-        : 0,
+      sPen: rawPen,
+      sUsd: rawUsd,
       vd: vdInfo.days,
-      vdStatus: (Number(d.saldoPendiente?.PEN ?? d.SALDO_PEN ?? d.sPen ?? d.totalDocumento ?? 0) < 0 || Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? d.sUsd ?? d.totalDocumento ?? 0) < 0 || numDocUpper.startsWith("NC-") || numDocUpper.startsWith("ABO-") || numDocUpper.includes("07F") || (d.tipoDocumento || "").toLowerCase().includes("credito") || (d.tipoDocumento || "").toLowerCase().includes("abono"))
-        ? "POR_VENCER"
-        : vdInfo.status,
+      vdStatus: isCredit ? "POR_VENCER" : vdInfo.status,
       isVD: Boolean(isVD),
       esLetra: Boolean(isLetra),
       enBanco: Boolean(enBanco),

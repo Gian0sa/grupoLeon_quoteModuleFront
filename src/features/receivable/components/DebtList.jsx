@@ -32,10 +32,9 @@ export function DebtList({ debts, onViewInvoices, onViewDetails }) {
           estado = porcentajeVencidos === 100 ? "vencido" : "parcialmente_vencido";
         }
 
-        // Determinar tipo de documento (para casos especiales como Notas de Crédito)
-        const tieneNotaCredito = debt.documents?.some(
-          d => d.tipoDocumento === "Nota de Crédito"
-        );
+        // Determinar tipo de documento (solo marcar como crédito si el saldo neto es a favor)
+        const esSaldoFavorNeto = (saldoPEN < 0 || saldoUSD < 0) && saldoPEN <= 0 && saldoUSD <= 0;
+        const tipoDocumento = esSaldoFavorNeto ? "Nota de Crédito" : "";
 
         // Extraer fechas y días de mora del documento más antiguo
         const docs = Array.isArray(debt.documents) ? debt.documents : [];
@@ -74,7 +73,7 @@ export function DebtList({ debts, onViewInvoices, onViewDetails }) {
               estado,
               
               // Tipo de documento especial
-              tipoDocumento: tieneNotaCredito ? "Nota de Crédito" : "",
+              tipoDocumento,
 
               // Data original para acciones (PDF, detalles, etc)
               ...debt

@@ -614,10 +614,15 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
       saldoUSD = 0;
     }
 
+    const isCredit = saldoPEN < 0 || saldoUSD < 0 || (d.tipoDocumento || "").toLowerCase().includes("credito") || (d.tipoDocumento || "").toLowerCase().includes("abono") || numDocUpper.startsWith("NC-") || numDocUpper.startsWith("ABO-") || numDocUpper.startsWith("AB0-") || numDocUpper.includes("07F");
+    if (isCredit) {
+      if (saldoPEN > 0) saldoPEN = -saldoPEN;
+      if (saldoUSD > 0) saldoUSD = -saldoUSD;
+    }
+
     totalSaldoPEN += saldoPEN;
     totalSaldoUSD += saldoUSD;
 
-    const isCredit = saldoPEN < 0 || saldoUSD < 0 || (d.tipoDocumento || "").toLowerCase().includes("credito") || (d.tipoDocumento || "").toLowerCase().includes("abono") || numDocUpper.startsWith("NC-") || numDocUpper.startsWith("ABO-") || numDocUpper.includes("07F");
     const isOverdue = !isCredit && Boolean(d.estaVencido || d.vdStatus === "VENCIDO") && (saldoUSD > 0 || saldoPEN > 0);
 
     const formatMoney = (amount) =>

@@ -35,8 +35,9 @@ export function DebtCard({ debt, onViewInvoices }) {
 
   // Determinar tipo de estado
   const getStatusType = () => {
-    if (debt.tipoDocumento === "Nota de Crédito" || saldoPEN < 0 || saldoUSD < 0) return "credit";
-    if (debt.documentosVencidos > 0 || debt.estado === "vencido" || debt.estado === "parcialmente_vencido") return "overdue";
+    const isCredit = (saldoPEN < 0 || saldoUSD < 0) && saldoPEN <= 0 && saldoUSD <= 0;
+    if (isCredit) return "credit";
+    if (debt.documentosVencidos > 0 || saldoVencidoPEN > 0 || saldoVencidoUSD > 0 || debt.estado === "vencido" || debt.estado === "parcialmente_vencido") return "overdue";
     return "active";
   };
 

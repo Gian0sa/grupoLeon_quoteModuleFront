@@ -20,9 +20,11 @@ const resolveSocketUrl = () => {
 };
 
 const SOCKET_URL = resolveSocketUrl();
+const isLocal = SOCKET_URL.includes("localhost") || SOCKET_URL.includes("127.0.0.1");
+const SOCKET_PATH = import.meta.env.VITE_WS_PATH || (isLocal ? "/socket.io" : "/api/socket.io");
 
 export const socket = io(SOCKET_URL, {
-  path: "/api/socket.io",
+  path: SOCKET_PATH,
   transports: ["websocket", "polling"],
   autoConnect: true,
   reconnection: true,

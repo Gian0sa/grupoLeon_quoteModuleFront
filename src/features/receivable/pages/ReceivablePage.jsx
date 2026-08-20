@@ -148,20 +148,13 @@ export function ReceivablePage() {
     [QUERY_KEYS.accountsReceivable, vendedorNombre, cliente.toUpperCase(), clientecode, lastClient]
   ];
 
-  // 1. Helper para identificar si un cliente es de TARJETA AZUL (Saldo a favor / Nota de crédito / Monto vencido < 0)
+  // 1. Helper para identificar si un cliente es de TARJETA AZUL (Saldo neto a favor del cliente)
   const isClientCredit = (c) => {
-    const overduePEN = Number(c.overdueAmount?.PEN ?? c.saldoVencidoPEN ?? 0);
-    const overdueUSD = Number(c.overdueAmount?.USD ?? c.saldoVencidoUSD ?? 0);
+    const penPending = Number(c.pendingAmount?.PEN ?? c.saldoPEN ?? 0);
+    const usdPending = Number(c.pendingAmount?.USD ?? c.saldoUSD ?? 0);
     
-    // Si el saldo neto es a favor del cliente (negativo), es azul
-    if (overduePEN < 0 || overdueUSD < 0) return true;
-    
-    // Si el saldo neto es deudor (positivo), es MORA REAL (Rojo), sin importar si tiene alguna nota de crédito pequeña
-    if (overduePEN > 0 || overdueUSD > 0) return false;
-    
-    // Si el saldo vencido neto es exactamente 0 pero aún hay documentos de crédito vivos, es azul
-    const hasCreditDoc = c.tipoDocumento === "Nota de Crédito" || c.documents?.some((d) => d.tipoDocumento === "Nota de Crédito");
-    return hasCreditDoc;
+    // Si el saldo neto total es a favor del cliente (negativo) y no tiene deuda positiva, es azul
+    return (penPending < 0 || usdPending < 0) && penPending <= 0 && usdPending <= 0;
   };
 
   // 2. Helper para identificar si un cliente posee MORA REAL (Deuda vencida positiva > 0 y NO es azul)

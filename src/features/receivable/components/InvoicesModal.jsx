@@ -94,8 +94,8 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
     if (numDoc.startsWith("BOL-") || tipo.includes("BOLETA")) {
       return { label: "Boleta", cuotaLabel: "Venta Directa", color: "blue", icon: FileText };
     }
-    if (numDoc.startsWith("NC-") || tipo.includes("CREDITO")) {
-      return { label: "Nota Crédito", cuotaLabel: "Abono / Devolución", color: "cyan", icon: FileText };
+    if (numDoc.startsWith("NC-") || numDoc.startsWith("ABO-") || numDoc.startsWith("AB0-") || tipo.includes("CREDITO") || tipo.includes("ABONO")) {
+      return { label: "Nota Crédito / Abono", cuotaLabel: "Abono / Saldo a Favor", color: "cyan", icon: FileText };
     }
     if (numDoc.startsWith("ND-") || tipo.includes("DEBITO")) {
       return { label: "Nota Débito", cuotaLabel: "Cargo Adicional", color: "orange", icon: FileText };
@@ -109,8 +109,9 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
     const saldo = doc.saldoPendiente
       ? (currency === "PEN" || currency === "SOL" ? doc.saldoPendiente.PEN : doc.saldoPendiente.USD)
       : doc.totalDocumento;
-    const num = Number(saldo || doc.totalDocumento || 0);
-    return `${symbol} ${Math.abs(num).toFixed(2)}`;
+    const num = Number(saldo ?? doc.totalDocumento ?? 0);
+    const prefix = num < 0 ? "-" : "";
+    return `${prefix}${symbol} ${Math.abs(num).toFixed(2)}`;
   };
 
   // Contadores para filtros
