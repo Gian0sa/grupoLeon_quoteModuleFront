@@ -652,14 +652,14 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
                     leftIcon={<ExternalLink className="w-3.5 h-3.5" />}
                     onClick={() => {
                       onClose();
-                      navigate("/approvals");
+                      navigate("/historyquotes");
                     }}
                     fontWeight="800"
                     borderRadius="lg"
                     px={3}
                     flexShrink={0}
                   >
-                    Ir a Panel de Aprobaciones
+                    Ir a Gestión de Cotizaciones
                   </Button>
                 </Flex>
               </Box>
@@ -1146,73 +1146,6 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
                 </Box>
               </GridItem>
             </Grid>
-
-            {/* ── PANEL DE DECISIÓN COMERCIAL TRAS REVISIÓN (ADMIN / FACTURACIÓN) ── */}
-            {((status === "ENVIADO" || status === "EN_PROCESO" || status === "PENDIENTE_FACTURACION") && isAdminUser) && (
-              <Box bg="white" p={{ base: 4, md: 5 }} borderRadius="2xl" border="2px solid" borderColor="emerald.500" boxShadow="md" mt={5}>
-                <VStack align="stretch" spacing={3.5}>
-                  <Flex justify="space-between" align={{ base: "flex-start", sm: "center" }} direction={{ base: "column", sm: "row" }} gap={2}>
-                    <Box minW={0}>
-                      <Text fontSize={{ base: "13px", md: "xs" }} fontWeight="900" color="emerald.900" textTransform="uppercase" letterSpacing="wide">
-                        {status === "PENDIENTE_FACTURACION" 
-                          ? "💳 Panel de Facturación y Emisión SAP" 
-                          : `👑 Panel de Decisión Comercial — Admin / Facturación (${adminUsername || "Enrique"})`}
-                      </Text>
-                      <Text fontSize={{ base: "12px", md: "xs" }} color="gray.600" mt={0.5}>
-                        {status === "PENDIENTE_FACTURACION"
-                          ? `Valida el voucher y depósito ingresados por el vendedor. Aprobar emitirá el Pedido en SAP.`
-                          : `Tras verificar los artículos y montos cotizados, confirma tu decisión comercial:`}
-                      </Text>
-                    </Box>
-                    <Badge colorScheme="emerald" fontSize="10px" px={2.5} py={0.5} borderRadius="full">
-                      Paso Final de Revisión
-                    </Badge>
-                  </Flex>
-
-                  <Flex
-                    direction={{ base: "column", sm: "row" }}
-                    gap={3}
-                    w="full"
-                    pt={1}
-                  >
-                    <Button
-                      size="md"
-                      minH="44px"
-                      w={{ base: "full", sm: "1fr" }}
-                      flex="1"
-                      colorScheme="green"
-                      bg="#16a34a"
-                      color="white"
-                      _hover={{ bg: "#15803d" }}
-                      leftIcon={<CheckCircle2 className="w-4 h-4" />}
-                      onClick={handleApproveByAdmin}
-                      fontWeight="800"
-                      borderRadius="xl"
-                      boxShadow="sm"
-                    >
-                      {status === "PENDIENTE_FACTURACION" ? "⚡ Aprobar y Generar Pedido SAP" : "✓ Aprobar Cotización"}
-                    </Button>
-                    <Button
-                      size="md"
-                      minH="44px"
-                      w={{ base: "full", sm: "1fr" }}
-                      flex="1"
-                      colorScheme="red"
-                      bg="#dc2626"
-                      color="white"
-                      _hover={{ bg: "#b91c1c" }}
-                      leftIcon={<XCircle className="w-4 h-4" />}
-                      onClick={() => setIsRejectModalOpen(true)}
-                      fontWeight="800"
-                      borderRadius="xl"
-                      boxShadow="sm"
-                    >
-                      ✕ Rechazar Cotización
-                    </Button>
-                  </Flex>
-                </VStack>
-              </Box>
-            )}
           </DrawerBody>
           <DrawerFooter bg="gray.50" borderTop="1px solid" borderColor="gray.200" py={3} px={{ base: 4, md: 6 }}>
             <HStack justify="space-between" w="100%">

@@ -70,23 +70,35 @@ export function TopHeaderBanner({
 
   const notifCount = React.useMemo(() => {
     let combined = [];
-    try {
-      const saved = JSON.parse(localStorage.getItem("grupoLeon_notifications") || "[]");
-      combined = Array.isArray(saved) ? [...saved] : [];
-    } catch {}
 
-    if (serverNotifs && Array.isArray(serverNotifs) && serverNotifs.length > 0) {
-      serverNotifs.forEach(sn => {
-        const idx = combined.findIndex(c => String(c.id) === String(sn.id) || (c.quoteId === sn.quoteId && c.status === sn.status));
-        if (idx >= 0) {
-          combined[idx] = { ...combined[idx], ...sn };
-        } else {
-          combined.unshift(sn);
+    if (serverNotifs && Array.isArray(serverNotifs)) {
+      combined = [...serverNotifs];
+      try {
+        const raw = localStorage.getItem("grupoLeon_notifications");
+        const saved = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(saved)) {
+          const now = Date.now();
+          const serverIds = new Set(serverNotifs.map(s => String(s.id)));
+          const serverQuoteIds = new Set(serverNotifs.map(s => String(s.quoteId)));
+          const recentLocal = saved.filter(sn => {
+            const time = sn.createdAt ? new Date(sn.createdAt).getTime() : 0;
+            const isFresh = (now - time) < 30000;
+            return isFresh && !serverIds.has(String(sn.id)) && serverQuoteIds.has(String(sn.quoteId));
+          });
+          combined = [...recentLocal, ...combined];
         }
-      });
+      } catch {}
+    } else {
+      try {
+        const saved = JSON.parse(localStorage.getItem("grupoLeon_notifications") || "[]");
+        combined = Array.isArray(saved) ? [...saved] : [];
+      } catch {}
     }
 
     return combined.filter((n) => {
+      if (n.status === "ANULADO" || String(n.title || "").toLowerCase().includes("anulad")) {
+        return false;
+      }
       if (n.targetUsername && username) {
         return n.targetUsername.toLowerCase() === username.toLowerCase();
       }

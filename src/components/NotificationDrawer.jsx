@@ -66,24 +66,42 @@ export function NotificationDrawer({ isOpen, onClose }) {
 
   const myNotifications = React.useMemo(() => {
     let combined = [];
-    try {
-      const raw = localStorage.getItem("grupoLeon_notifications");
-      const saved = raw ? JSON.parse(raw) : [];
-      combined = Array.isArray(saved) ? [...saved] : [];
-    } catch {}
 
-    if (serverNotifs && Array.isArray(serverNotifs) && serverNotifs.length > 0) {
-      serverNotifs.forEach(sn => {
-        const idx = combined.findIndex(c => String(c.id) === String(sn.id) || (c.quoteId === sn.quoteId && c.status === sn.status));
-        if (idx >= 0) {
-          combined[idx] = { ...combined[idx], ...sn };
-        } else {
-          combined.unshift(sn);
+    if (serverNotifs && Array.isArray(serverNotifs)) {
+      // La base de datos es la fuente de verdad absoluta
+      combined = [...serverNotifs];
+      
+      // Preservar solo notificaciones WebSocket muy recientes (< 30s) que aún no estén en serverNotifs
+      try {
+        const raw = localStorage.getItem("grupoLeon_notifications");
+        const saved = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(saved)) {
+          const now = Date.now();
+          const serverIds = new Set(serverNotifs.map(s => String(s.id)));
+          const serverQuoteIds = new Set(serverNotifs.map(s => String(s.quoteId)));
+          const recentLocal = saved.filter(sn => {
+            const time = sn.createdAt ? new Date(sn.createdAt).getTime() : 0;
+            const isFresh = (now - time) < 30000;
+            return isFresh && !serverIds.has(String(sn.id)) && serverQuoteIds.has(String(sn.quoteId));
+          });
+          combined = [...recentLocal, ...combined];
         }
-      });
+      } catch {}
+      
+      // Mantener sincronizado el almacenamiento local
+      try {
+        localStorage.setItem("grupoLeon_notifications", JSON.stringify(combined));
+      } catch {}
+    } else {
+      try {
+        const raw = localStorage.getItem("grupoLeon_notifications");
+        const saved = raw ? JSON.parse(raw) : [];
+        combined = Array.isArray(saved) ? [...saved] : [];
+      } catch {}
     }
 
-    return filterForCurrentUser(combined);
+    const filteredByUser = filterForCurrentUser(combined);
+    return filteredByUser.filter(n => n.status !== "ANULADO" && !String(n.title || "").toLowerCase().includes("anulad"));
   }, [serverNotifs, username, userId, role, localVersion]);
 
   const handleClearAll = async () => {
@@ -376,7 +394,11 @@ export function NotificationDrawer({ isOpen, onClose }) {
                             px={3}
                             boxShadow="xs"
                           >
-                            🔍 Verificar Cotización
+                            {(role === "ADMIN" || username?.toLowerCase() === "enrique")
+                              ? "🔍 Verificar Cotización"
+                              : (isRejected || item.status === "OBSERVADO")
+                              ? "✏️ Subsanar Cotización"
+                              : "👁️ Ver Cotización"}
                           </Button>
                         </Flex>
                       </VStack>

@@ -107,16 +107,18 @@ export function QuoteApprovalPage() {
           if (q.id !== undefined && q.id !== null) serverDocIds.add(String(q.id));
         });
 
-        const unsyncedLocal = local.filter(q => {
+        // Solo preservar borradores locales legítimos (nunca anuladas, de prueba o eliminadas en servidor)
+        const localDraftsOnly = local.filter(q => {
+          const isDraft = q.approvalStatus === "BORRADOR" || q.state === "BORRADOR";
           const docNum = q.docNumber ? String(q.docNumber) : "";
           const idVal = q.id !== undefined && q.id !== null ? String(q.id) : "";
-          return (!docNum || !serverDocIds.has(docNum)) && (!idVal || !serverDocIds.has(idVal));
+          return isDraft && (!docNum || !serverDocIds.has(docNum)) && (!idVal || !serverDocIds.has(idVal)) && !docNum.startsWith("TEST-");
         });
 
         // Garantizar unicidad absoluta por docNumber o id
         const seen = new Set();
         const merged = [];
-        for (const item of [...serverQuotes, ...unsyncedLocal]) {
+        for (const item of [...serverQuotes, ...localDraftsOnly]) {
           const key = String(item.docNumber || item.id || "");
           if (key && !seen.has(key)) {
             seen.add(key);
@@ -126,28 +128,77 @@ export function QuoteApprovalPage() {
         setQuotes(merged);
         localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(merged));
       } else if (local.length > 0) {
-        const seen = new Set();
-        const dedupedLocal = [];
-        for (const item of local) {
-          const key = String(item.docNumber || item.id || "");
-          if (key && !seen.has(key)) {
-            seen.add(key);
-            dedupedLocal.push(item);
-          }
-        }
-        setQuotes(dedupedLocal);
+        const validLocal = local.filter(q => !String(q.docNumber || "").startsWith("TEST-"));
+        setQuotes(validLocal);
+        localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(validLocal));
+      } else {
+        setQuotes([]);
       }
     } catch (err) {
       console.error("Error sincronizando cotizaciones:", err);
     }
   };
 
-  const loadQuotes = () => {
-    if (typeof refetchServerQuotes === "function") {
-      refetchServerQuotes();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await queryClient.invalidateQueries({ queryKey: ["quotes"] });
+      await queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      const refetchResult = await refetchServerQuotes();
+      const freshQuotes = refetchResult?.data || serverQuotes;
+      if (freshQuotes && Array.isArray(freshQuotes)) {
+        const stored = localStorage.getItem("grupoLeon_local_quotes");
+        const local = stored ? JSON.parse(stored) : [];
+        const serverDocIds = new Set();
+        freshQuotes.forEach(q => {
+          if (q.docNumber) serverDocIds.add(String(q.docNumber));
+          if (q.id !== undefined && q.id !== null) serverDocIds.add(String(q.id));
+        });
+
+        const unsyncedLocal = local.filter(q => {
+          const docNum = q.docNumber ? String(q.docNumber) : "";
+          const idVal = q.id !== undefined && q.id !== null ? String(q.id) : "";
+          return (!docNum || !serverDocIds.has(docNum)) && (!idVal || !serverDocIds.has(idVal));
+        });
+
+        const seen = new Set();
+        const merged = [];
+        for (const item of [...freshQuotes, ...unsyncedLocal]) {
+          const key = String(item.docNumber || item.id || "");
+          if (key && !seen.has(key)) {
+            seen.add(key);
+            merged.push(item);
+          }
+        }
+        setQuotes(merged);
+        localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(merged));
+      }
+      toast({
+        title: "Cotizaciones actualizadas",
+        description: "Se han sincronizado las cotizaciones más recientes del servidor.",
+        status: "success",
+        duration: 2500,
+        isClosable: true,
+        position: "top-right",
+      });
+    } catch (err) {
+      console.error("Error al refrescar cotizaciones:", err);
+      toast({
+        title: "Error al actualizar",
+        description: "No se pudo sincronizar con el servidor.",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+        position: "top-right",
+      });
+    } finally {
+      setIsRefreshing(false);
     }
-    syncQuotes();
   };
+
+  const loadQuotes = handleRefresh;
 
   useEffect(() => {
     syncQuotes();
@@ -274,6 +325,21 @@ export function QuoteApprovalPage() {
         duration: 4000,
         isClosable: true,
       });
+    }
+
+    // 2.5 Limpiar notificaciones asociadas a esta cotización en almacenamiento local
+    try {
+      const rawNotifs = localStorage.getItem("grupoLeon_notifications");
+      const allNotifs = rawNotifs ? JSON.parse(rawNotifs) : [];
+      const remainingNotifs = allNotifs.filter(n => {
+        const nQuoteId = String(n.quoteId || "").trim().toUpperCase();
+        const nId = String(n.id || "").trim().toUpperCase();
+        return nQuoteId !== idStr.toUpperCase() && nId !== idStr.toUpperCase();
+      });
+      localStorage.setItem("grupoLeon_notifications", JSON.stringify(remainingNotifs));
+      window.dispatchEvent(new Event("localNotificationsUpdated"));
+    } catch (notifErr) {
+      console.error("Error limpiando notificaciones locales:", notifErr);
     }
 
     // 3. Sincronizar en Backend
@@ -782,30 +848,57 @@ export function QuoteApprovalPage() {
           </Button>
         )}
 
-        {/* 2. Botón Vista Previa / Detalle */}
-        <Button
-          size={btnSize}
-          minH={touchH(stack)}
-          variant="outline"
-          borderColor="#cbd5e1"
-          color="#334155"
-          bg="white"
-          _hover={{ bg: "#f8fafc", borderColor: "#94a3b8" }}
-          leftIcon={<Eye className="w-3.5 h-3.5 text-slate-500" />}
-          onClick={() => {
-            markAsViewedByAdmin(q);
-            setSelectedQuote(q);
-            setIsDetailOpen(true);
-          }}
-          fontWeight="700"
-          borderRadius="lg"
-          px={2.5}
-          whiteSpace="nowrap"
-          flex={halfFlex}
-          minW={btnMinW}
-        >
-          Vista
-        </Button>
+        {/* 2. Botón Principal: Para Administrador en cotizaciones enviadas es VERIFICAR (destacado y más grande) */}
+        {isAdminUser && (status === "ENVIADO" || status === "EN_PROCESO" || status === "PENDIENTE_APROBACION" || status === "PENDIENTE_FACTURACION") ? (
+          <Button
+            size="md"
+            minH={stack ? "44px" : "38px"}
+            colorScheme="teal"
+            bg="#0f766e"
+            color="white"
+            _hover={{ bg: "#115e59", transform: "translateY(-1px)", boxShadow: "md" }}
+            _active={{ bg: "#134e4a" }}
+            leftIcon={<Eye className="w-4 h-4 text-teal-200 stroke-[2.5]" />}
+            onClick={() => {
+              markAsViewedByAdmin(q);
+              setSelectedQuote(q);
+              setIsDetailOpen(true);
+            }}
+            fontWeight="900"
+            fontSize="xs"
+            borderRadius="xl"
+            px={4}
+            boxShadow="sm"
+            whiteSpace="nowrap"
+            flex={stack ? "1 1 100%" : undefined}
+          >
+            🔍 Verificar
+          </Button>
+        ) : (
+          <Button
+            size={btnSize}
+            minH={touchH(stack)}
+            variant="outline"
+            borderColor="#cbd5e1"
+            color="#334155"
+            bg="white"
+            _hover={{ bg: "#f8fafc", borderColor: "#94a3b8" }}
+            leftIcon={<Eye className="w-3.5 h-3.5 text-slate-500" />}
+            onClick={() => {
+              markAsViewedByAdmin(q);
+              setSelectedQuote(q);
+              setIsDetailOpen(true);
+            }}
+            fontWeight="700"
+            borderRadius="lg"
+            px={2.5}
+            whiteSpace="nowrap"
+            flex={halfFlex}
+            minW={btnMinW}
+          >
+            Vista
+          </Button>
+        )}
 
         {/* 2.5 Vista Previa y Descarga PDF */}
         <Button
@@ -1195,14 +1288,16 @@ export function QuoteApprovalPage() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </InputGroup>
-            <Tooltip label="Actualizar lista">
+            <Tooltip label="Actualizar cotizaciones del servidor">
               <IconButton
-                icon={<RefreshCw className="w-4 h-4" />}
+                icon={<RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin text-emerald-600" : ""}`} />}
                 size="md"
                 variant="outline"
                 borderRadius="xl"
-                onClick={loadQuotes}
+                isLoading={isRefreshing || isServerLoading}
+                onClick={handleRefresh}
                 aria-label="Actualizar"
+                _hover={{ bg: "emerald.50", borderColor: "emerald.300" }}
               />
             </Tooltip>
             {/* Solo Enrique (Admin) puede limpiar el historial completo */}
