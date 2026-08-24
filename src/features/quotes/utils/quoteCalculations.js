@@ -13,14 +13,16 @@ export function round2(value) {
   return Math.round((num + Number.EPSILON) * 100) / 100;
 }
 
-/** Importe neto de una línea: cantidad x precio, menos el % de descuento. */
-export function lineNet(quantity, unitPrice, discountPct = 0) {
+/** Importe neto de una línea: cantidad x precio, con descuento en cascada (SAP + adicional). */
+export function lineNet(quantity, unitPrice, discountPct = 0, addDiscountPct = 0) {
   const qty = Number(quantity) || 0;
   const price = Number(unitPrice) || 0;
-  const discount = clampPercent(discountPct);
+  const discount1 = clampPercent(discountPct);
+  const discount2 = clampPercent(addDiscountPct);
 
   const gross = qty * price;
-  return round2(gross * (1 - discount / 100));
+  const net = gross * (1 - discount1 / 100) * (1 - discount2 / 100);
+  return round2(net);
 }
 
 /** Importe bruto de una línea, sin aplicar descuento. */
@@ -29,20 +31,20 @@ export function lineGross(quantity, unitPrice) {
 }
 
 /** Descuento en dinero de una línea. */
-export function lineDiscountAmount(quantity, unitPrice, discountPct = 0) {
+export function lineDiscountAmount(quantity, unitPrice, discountPct = 0, addDiscountPct = 0) {
   return round2(
-    lineGross(quantity, unitPrice) - lineNet(quantity, unitPrice, discountPct)
+    lineGross(quantity, unitPrice) - lineNet(quantity, unitPrice, discountPct, addDiscountPct)
   );
 }
 
 /**
  * Suma de las líneas ya con descuento aplicado (base imponible, sin IGV).
- * @param {Array<{quantity:number, unitPrice:number, discount:number}>} lines
+ * @param {Array<{quantity:number, unitPrice:number, discount:number, lineDiscount?:number}>} lines
  */
 export function subtotal(lines = []) {
   return round2(
     lines.reduce(
-      (acc, l) => acc + lineNet(l.quantity, l.unitPrice, l.discount),
+      (acc, l) => acc + lineNet(l.quantity, l.unitPrice, l.discount, l.lineDiscount || 0),
       0
     )
   );
@@ -52,7 +54,7 @@ export function subtotal(lines = []) {
 export function discountTotal(lines = []) {
   return round2(
     lines.reduce(
-      (acc, l) => acc + lineDiscountAmount(l.quantity, l.unitPrice, l.discount),
+      (acc, l) => acc + lineDiscountAmount(l.quantity, l.unitPrice, l.discount, l.lineDiscount || 0),
       0
     )
   );

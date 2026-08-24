@@ -14,6 +14,16 @@ export const getQuotes = async (filters = {}) => {
 
 export const getQuote = getQuotes;
 
+export const getNextDocNumber = async () => {
+    try {
+        const response = await axiosInstance.get('/quoteModule/quotes/next-number');
+        return response.data?.docNumber || null;
+    } catch (err) {
+        console.error("Error obteniendo el correlativo de cotización:", err);
+        return null;
+    }
+};
+
 export const getQuoteById = async (id) => {
     try {
         const response = await axiosInstance.get(`/quoteModule/quotes/${id}`);
@@ -92,20 +102,19 @@ export const clearNotifications = async (targetRole, targetUsername) => {
     }
 };
 
+import { SAP_TRANSPORTS_CATALOG } from "../constants/sapTransportsCatalog";
+
 export const getTransports = async () => {
     try {
         const response = await axiosInstance.get(`/quoteModule/clients/transports`);
-        return response.data || [];
+        const list = response.data || [];
+        if (Array.isArray(list) && list.length > 0) {
+            return list;
+        }
+        return SAP_TRANSPORTS_CATALOG;
     } catch (err) {
-        console.warn("Uso de transportes locales (fallback):", err?.message);
-        return [
-            { TrnspCode: 1, TrnspName: "Recojo en Tienda / Almacén Central" },
-            { TrnspCode: 2, TrnspName: "Shalom Empresarial" },
-            { TrnspCode: 3, TrnspName: "Marvisur Cargo" },
-            { TrnspCode: 4, TrnspName: "Flores Cargo" },
-            { TrnspCode: 5, TrnspName: "Cavia Expreso" },
-            { TrnspCode: 6, TrnspName: "Transportes Wari" }
-        ];
+        console.warn("Uso de catálogo completo SAP integrado (207 transportistas):", err?.message);
+        return SAP_TRANSPORTS_CATALOG;
     }
 };
 

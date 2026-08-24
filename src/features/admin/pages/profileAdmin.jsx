@@ -41,6 +41,7 @@ import {
   SimpleGrid,
   Tooltip
 } from "@chakra-ui/react";
+import { useNavigate } from "react-router-dom";
 import {
   Search,
   Edit3,
@@ -49,6 +50,7 @@ import {
   UserCheck,
   UserX,
   Users,
+  UserPlus,
   ShieldCheck,
   X,
   KeyRound,
@@ -265,6 +267,7 @@ function ModernPagination({ currentPage, totalPages, onPageChange, pageSize, onP
 }
 
 export function ProfileAdmin() {
+  const navigate = useNavigate();
   const { data: users, isLoading, refetch: refetchUsers } = useGetAllUsersAdmin();
   const { data: services, isLoading: isLoadingServices } = useGetServices();
   const { updateProfileAdmin } = useAuthAdminMutations();
@@ -711,6 +714,20 @@ export function ProfileAdmin() {
                 >
                   {filteredUsers.length} USUARIOS
                 </Badge>
+
+                <Button
+                  leftIcon={<UserPlus className="w-4 h-4" />}
+                  colorScheme="green"
+                  bg="#126C36"
+                  _hover={{ bg: "#0e572b" }}
+                  size="sm"
+                  borderRadius="xl"
+                  fontWeight="800"
+                  boxShadow="xs"
+                  onClick={() => navigate("/register")}
+                >
+                  Nuevo Usuario
+                </Button>
               </HStack>
             </Flex>
 

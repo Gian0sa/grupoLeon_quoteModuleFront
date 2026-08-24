@@ -39,7 +39,7 @@ import {
 } from "react-icons/md";
 
 import { useDisclosure } from '@chakra-ui/react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 import { useAuthStore } from '../../auth/stores/useAuthStore';
 import { useHasAccess } from '../../../shared/utils/permissions';
@@ -50,8 +50,14 @@ export function LateralMenu() {
   const { isOpen, onOpen, onClose } = useDisclosure();
   const btnRef = useRef();
   const navigate = useNavigate();
+  const location = useLocation();
   const { username, isAuthenticated } = useAuthStore();
   const { logout } = useAuthMutations();
+
+  // Cerrar menú automáticamente al cambiar de página
+  React.useEffect(() => {
+    onClose();
+  }, [location.pathname]);
 
   const hasAccess = useHasAccess();
   const hasAdminAccess = hasAccess("PUT:/profile/admin/:userId");
@@ -83,7 +89,7 @@ export function LateralMenu() {
   ];
 
   const adminOptions = [
-    { label: 'Actualizar usuario', icon: MdPerson, path: '/profileAdmin', access: 'PUT:/profile/admin/:userId' },
+    { label: 'Gestión de Usuarios', icon: MdPerson, path: '/profileAdmin', access: 'PUT:/profile/admin/:userId' },
     { label: 'Actualizar servicios', icon: MdHelp, path: '#', access: 'PUT:/services/:id' },
     { label: 'Gestionar Notificaciones', icon: MdAssignment, path: '/notification', access: 'PUT:/profile/admin/:userId' },
     { label: 'Control de Asistencias (Admin)', icon: MdAccessTime, path: '/admin/attendance', access: 'PUT:/profile/admin/:userId' }
@@ -92,62 +98,89 @@ export function LateralMenu() {
   const renderMenuOptions = (options, accentColor = "green") =>
     options
       .filter(({ access }) => !access || hasAccess(access))
-      .map(({ label, icon, path, external }, index) => (
-        <Button
-          key={index}
-          variant="ghost"
-          justifyContent="flex-start"
-          leftIcon={
-            <Flex
-              w="34px"
-              h="34px"
-              align="center"
-              justify="center"
-              borderRadius="xl"
-              bg={`${accentColor}.50`}
-              flexShrink={0}
-            >
-              <Icon as={icon} color={`${accentColor}.600`} boxSize={4} />
-            </Flex>
-          }
-          rightIcon={<Icon as={MdChevronRight} color="gray.400" boxSize={4} />}
-          onClick={() => {
-            if (external) {
-              window.open(path, '_blank');
-            } else {
-              navigate(path);
+      .map(({ label, icon, path, external }, index) => {
+        const isActive = !external && location.pathname === path;
+
+        return (
+          <Button
+            key={index}
+            variant="ghost"
+            justifyContent="flex-start"
+            leftIcon={
+              <Flex
+                w="34px"
+                h="34px"
+                align="center"
+                justify="center"
+                borderRadius="xl"
+                bg={isActive ? "whiteAlpha.200" : `${accentColor}.50`}
+                flexShrink={0}
+              >
+                <Icon
+                  as={icon}
+                  color={isActive ? "white" : `${accentColor}.600`}
+                  boxSize={4}
+                />
+              </Flex>
             }
-            onClose();
-          }}
-          _hover={{
-            bg: HEADER_MAIN_BG,
-            color: "white",
-            boxShadow: "0 4px 14px rgba(18, 108, 54, 0.25)",
-          }}
-          _active={{
-            bg: "#0e572b",
-            color: "white",
-          }}
-          h="46px"
-          color="gray.700"
-          w="full"
-          borderRadius="xl"
-          px={2}
-        >
-          <Text
-            as="span"
-            fontWeight="500"
-            fontSize="14px"
-            whiteSpace="nowrap"
-            overflow="hidden"
-            textOverflow="ellipsis"
-            flex="1"
-            textAlign="left"
+            rightIcon={
+              <Icon
+                as={MdChevronRight}
+                color={isActive ? "whiteAlpha.800" : "gray.400"}
+                boxSize={4}
+              />
+            }
+            onClick={() => {
+              if (external) {
+                window.open(path, '_blank');
+              } else {
+                navigate(path);
+              }
+              onClose();
+            }}
+            bg={isActive ? HEADER_MAIN_BG : "transparent"}
+            color={isActive ? "white" : "gray.700"}
+            boxShadow={isActive ? "0 4px 14px rgba(18, 108, 54, 0.25)" : "none"}
+            _focus={{
+              boxShadow: "none",
+              bg: isActive ? HEADER_MAIN_BG : "transparent",
+            }}
+            _active={{
+              bg: "#0e572b",
+              color: "white",
+            }}
+            sx={{
+              "@media (hover: hover) and (pointer: fine)": {
+                "&:hover": {
+                  bg: HEADER_MAIN_BG,
+                  color: "white",
+                  boxShadow: "0 4px 14px rgba(18, 108, 54, 0.25)",
+                  "& svg": { color: "white" },
+                  "& span": { color: "white" },
+                  "& .chakra-button__icon > div": { bg: "whiteAlpha.200" },
+                },
+              },
+            }}
+            h="46px"
+            w="full"
+            borderRadius="xl"
+            px={2}
           >
-            {label}
-          </Text>
-        </Button>
-      ));
+            <Text
+              as="span"
+              fontWeight={isActive ? "700" : "500"}
+              fontSize="14px"
+              whiteSpace="nowrap"
+              overflow="hidden"
+              textOverflow="ellipsis"
+              flex="1"
+              textAlign="left"
+            >
+              {label}
+            </Text>
+          </Button>
+        );
+      });
 
   const SectionLabel = ({ children, icon, color = "gray" }) => (
     <HStack spacing={2} px={2} mb={2} mt={1}>

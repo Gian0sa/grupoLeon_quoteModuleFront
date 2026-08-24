@@ -80,7 +80,7 @@ export function NotificationDrawer({ isOpen, onClose }) {
           const serverIds = new Set(serverNotifs.map(s => String(s.id)));
           const serverQuoteIds = new Set(serverNotifs.map(s => String(s.quoteId)));
           const recentLocal = saved.filter(sn => {
-            const time = sn.createdAt ? new Date(sn.createdAt).getTime() : 0;
+            const time = sn.createdAt || sn.timestamp ? new Date(sn.createdAt || sn.timestamp).getTime() : 0;
             const isFresh = (now - time) < 30000;
             return isFresh && !serverIds.has(String(sn.id)) && serverQuoteIds.has(String(sn.quoteId));
           });
@@ -100,8 +100,26 @@ export function NotificationDrawer({ isOpen, onClose }) {
       } catch {}
     }
 
-    const filteredByUser = filterForCurrentUser(combined);
-    return filteredByUser.filter(n => n.status !== "ANULADO" && !String(n.title || "").toLowerCase().includes("anulad"));
+    const filteredByUser = filterForCurrentUser(combined).filter(
+      (n) => n.status !== "ANULADO" && !String(n.title || "").toLowerCase().includes("anulad") && !n.read
+    );
+
+    // Deduplicación inteligente por quoteId (conserva la alerta más reciente por cotización)
+    const uniqueMap = new Map();
+    const sorted = [...filteredByUser].sort((a, b) => {
+      const tA = new Date(a.timestamp || a.createdAt || 0).getTime();
+      const tB = new Date(b.timestamp || b.createdAt || 0).getTime();
+      return tB - tA;
+    });
+
+    for (const notif of sorted) {
+      const key = String(notif.quoteId || notif.id);
+      if (!uniqueMap.has(key)) {
+        uniqueMap.set(key, notif);
+      }
+    }
+
+    return Array.from(uniqueMap.values());
   }, [serverNotifs, username, userId, role, localVersion]);
 
   const handleClearAll = async () => {
@@ -129,9 +147,9 @@ export function NotificationDrawer({ isOpen, onClose }) {
     } catch {}
   };
 
-  const handleDeleteNotif = async (id) => {
+  const handleDeleteNotif = async (id, quoteId) => {
     try {
-      await markNotificationAsRead(id);
+      if (id) await markNotificationAsRead(id);
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
     } catch (e) {
       console.error("Error marking notif read:", e);
@@ -140,7 +158,11 @@ export function NotificationDrawer({ isOpen, onClose }) {
     try {
       const raw = localStorage.getItem("grupoLeon_notifications");
       const all = raw ? JSON.parse(raw) : [];
-      const updated = all.filter((n) => n.id !== id);
+      const updated = all.filter((n) => {
+        if (id && n.id === id) return false;
+        if (quoteId && String(n.quoteId || n.id) === String(quoteId)) return false;
+        return true;
+      });
       localStorage.setItem("grupoLeon_notifications", JSON.stringify(updated));
       window.dispatchEvent(new Event("localNotificationsUpdated"));
     } catch {}
@@ -157,22 +179,32 @@ export function NotificationDrawer({ isOpen, onClose }) {
     return new Date(isoStr).toLocaleDateString();
   };
 
-  const handleOpenQuote = (quoteObj, quoteId) => {
+  const handleOpenQuote = (quoteObj, quoteId, notifId) => {
     let targetDoc = quoteObj;
-    if (!targetDoc && quoteId) {
-      const savedQuotes = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
-      targetDoc = savedQuotes.find((q) => (q.id || q.docNumber) === quoteId);
+    const targetId = quoteId || quoteObj?.docNumber || quoteObj?.id;
+
+    if ((!targetDoc || !targetDoc.products || targetDoc.products.length === 0) && targetId) {
+      try {
+        const savedQuotes = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
+        const found = savedQuotes.find((q) => (q.id || q.docNumber) === targetId);
+        if (found) {
+          targetDoc = found;
+        }
+      } catch {}
     }
+
     if (!targetDoc) {
       targetDoc = {
-        id: quoteId,
-        docNumber: quoteId,
-        clientName: "—",
-        sellerName: username || "—",
-        totals: { grandTotalUSD: 0 },
-        state: "ENVIADO"
+        id: targetId,
+        docNumber: targetId,
+        state: "ENVIADO",
       };
     }
+
+    // Auto-descartar / marcar como leída al abrir (comportamiento smartphone)
+    handleDeleteNotif(notifId, targetId);
+
+    onClose(); // Cierra el panel de notificaciones para liberar el scroll móvil
     setSelectedQuoteForDrawer(targetDoc);
     setIsQuoteDrawerOpen(true);
   };
@@ -308,8 +340,10 @@ export function NotificationDrawer({ isOpen, onClose }) {
                       borderLeftColor={borderLeftColor}
                       bg="white"
                       boxShadow="sm"
-                      _hover={{ boxShadow: "md", transform: "translateY(-1px)" }}
+                      _hover={{ boxShadow: "md", transform: "translateY(-1px)", borderColor: "emerald.300" }}
                       transition="all 0.2s"
+                      cursor="pointer"
+                      onClick={() => handleOpenQuote(item.quoteObj, item.quoteId, item.id)}
                     >
                       <VStack align="stretch" spacing={2.5}>
                         <Flex justify="space-between" align="flex-start" gap={2}>
@@ -336,7 +370,10 @@ export function NotificationDrawer({ isOpen, onClose }) {
                               size={{ base: "sm", md: "xs" }}
                               variant="ghost"
                               colorScheme="gray"
-                              onClick={() => handleDeleteNotif(item.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteNotif(item.id, item.quoteId);
+                              }}
                               aria-label="Eliminar alerta"
                               flexShrink={0}
                               w={{ base: "40px", md: "auto" }}
@@ -389,7 +426,10 @@ export function NotificationDrawer({ isOpen, onClose }) {
                             bg={!isApproved && !isRejected ? "#0f766e" : undefined}
                             _hover={!isApproved && !isRejected ? { bg: "#115e59" } : undefined}
                             leftIcon={<Icon as={FiEye} />}
-                            onClick={() => handleOpenQuote(item.quoteObj, item.quoteId)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenQuote(item.quoteObj, item.quoteId, item.id);
+                            }}
                             fontWeight="800"
                             px={3}
                             boxShadow="xs"

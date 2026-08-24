@@ -45,7 +45,7 @@ export default function SapItemGrid({
   };
 
   const handleItemSelect = (selectedItem) => {
-    if (!selectedItem) return;
+    if (isReadOnly || !selectedItem) return;
     onAddProduct({
       id: selectedItem.id,
       code: selectedItem.id,
@@ -66,7 +66,21 @@ export default function SapItemGrid({
 
   return (
     <Box bg="white" p={{ base: 2, md: 4 }} borderRadius="xl" border="1px solid" borderColor="gray.200" boxShadow="sm">
-      {!client ? (
+      {isReadOnly ? (
+        <Box mb={4} p={3.5} bg="gray.50" borderRadius="xl" border="1.5px solid" borderColor="gray.200">
+          <HStack justify="space-between">
+            <HStack spacing={2}>
+              <Package className="w-4 h-4 text-emerald-800" />
+              <Text fontSize="xs" fontWeight="800" color="gray.800" textTransform="uppercase">
+                📦 Artículos Cotizados ({products.length})
+              </Text>
+            </HStack>
+            <Badge colorScheme="gray" fontSize="10px" px={2.5} py={0.5} borderRadius="md" fontWeight="800">
+              🔒 Grilla Bloqueada (Solo Lectura)
+            </Badge>
+          </HStack>
+        </Box>
+      ) : !client ? (
         <Box
           mb={4}
           p={4}
@@ -94,7 +108,7 @@ export default function SapItemGrid({
           </Flex>
           <ItemAutocomplete 
             onSelect={handleItemSelect} 
-            isDisabled={false}
+            isDisabled={isReadOnly}
             placeholder="Escribe código o nombre del Artículo" 
           />
         </Box>
@@ -111,8 +125,11 @@ export default function SapItemGrid({
           products.map((item, index) => {
             const qty = Number(item.quantity || 1);
             const price = Number(item.price ?? item.unitPrice ?? 0);
-            const disc = Number(item.discount || 0);
-            const lineTotal = qty * price * (1 - disc / 100);
+            const sapDisc = Number(item.discount || 0);
+            const addDisc = Number(item.lineDiscount || 0);
+            const priceAfterSap = price * (1 - sapDisc / 100);
+            const finalUnitPrice = priceAfterSap * (1 - addDisc / 100);
+            const lineTotal = qty * finalUnitPrice;
             const itemName = item.name || item.productName || item.description || item.ItemName || item.ItemDescription || "Artículo General";
             const itemCode = item.code || item.productCode || item.itemCode || "";
 
@@ -211,7 +228,7 @@ export default function SapItemGrid({
                   <Box textAlign="center">
                     <Text fontSize="0.6rem" color="gray.500" fontWeight="800" mb={0.5}>DESC.</Text>
                     <Badge colorScheme="green" fontSize="0.65rem" fontWeight="800" px={1.5} py={0.5} borderRadius="md">
-                      {disc}%
+                      {sapDisc}%
                     </Badge>
                   </Box>
                   <Box textAlign="center">
@@ -230,13 +247,20 @@ export default function SapItemGrid({
                       px={1.5}
                       borderRadius="md"
                     >
-                      {item.lineDiscount || 0}% ⚡
+                      {addDisc}% ⚡
                     </Button>
                   </Box>
                 </Grid>
                 <Flex justify="space-between" align="center" bg="gray.50" p={2} borderRadius="lg" border="1px solid" borderColor="gray.100">
                   <Text fontSize="0.65rem" fontWeight="800" color="gray.600">TOTAL LÍNEA:</Text>
-                  <Text fontSize="xs" fontWeight="900" color="emerald.700">{money(lineTotal, currency)}</Text>
+                  <HStack spacing={1.5}>
+                    <Text fontSize="xs" fontWeight="900" color="emerald.700">{money(lineTotal, currency)}</Text>
+                    {(sapDisc > 0 || addDisc > 0) && (
+                      <Text fontSize="10px" color="gray.500" fontWeight="700">
+                        ({money(finalUnitPrice, currency)}/u)
+                      </Text>
+                    )}
+                  </HStack>
                 </Flex>
               </Box>
             );
@@ -289,8 +313,11 @@ export default function SapItemGrid({
                 products.map((item, index) => {
                   const qty = Number(item.quantity || 1);
                   const price = Number(item.price ?? item.unitPrice ?? 0);
-                  const disc = Number(item.discount || 0);
-                  const lineTotal = qty * price * (1 - disc / 100);
+                  const sapDisc = Number(item.discount || 0);
+                  const addDisc = Number(item.lineDiscount || 0);
+                  const priceAfterSap = price * (1 - sapDisc / 100);
+                  const finalUnitPrice = priceAfterSap * (1 - addDisc / 100);
+                  const lineTotal = qty * finalUnitPrice;
                   const itemName = item.name || item.productName || item.description || item.ItemName || item.ItemDescription || "Artículo General";
                   const itemCode = item.code || item.productCode || item.itemCode || "";
 
@@ -368,11 +395,11 @@ export default function SapItemGrid({
                         </VStack>
                       </Td>
                       <Td px={3} textAlign="right" fontWeight="800" fontSize="xs" color="gray.800">
-                        {money(item.price, currency)}
+                        {money(price, currency)}
                       </Td>
                       <Td px={2} textAlign="center">
                         <Badge colorScheme="green" fontSize="xs" fontWeight="800" px={1.5} py={0.5} borderRadius="md">
-                          {item.discount || 0}%
+                          {sapDisc}%
                         </Badge>
                       </Td>
                       <Td px={2} textAlign="center">
@@ -391,11 +418,16 @@ export default function SapItemGrid({
                           borderRadius="md"
                           title="Toca para desplegar el selector de descuentos"
                         >
-                          {item.lineDiscount || 0}% ⚡
+                          {addDisc}% ⚡
                         </Button>
                       </Td>
                       <Td px={3} textAlign="right" fontWeight="900" fontSize="xs" color="emerald.700">
-                        {money(lineTotal, currency)}
+                        <Text fontWeight="900">{money(lineTotal, currency)}</Text>
+                        {(sapDisc > 0 || addDisc > 0) && (
+                          <Text fontSize="10px" color="gray.500" fontWeight="700">
+                            ({money(finalUnitPrice, currency)}/u)
+                          </Text>
+                        )}
                       </Td>
                       {!isReadOnly && (
                         <Td px={2} textAlign="center">

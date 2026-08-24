@@ -95,8 +95,8 @@ export function TopHeaderBanner({
       } catch {}
     }
 
-    return combined.filter((n) => {
-      if (n.status === "ANULADO" || String(n.title || "").toLowerCase().includes("anulad")) {
+    const filtered = combined.filter((n) => {
+      if (n.status === "ANULADO" || String(n.title || "").toLowerCase().includes("anulad") || n.read) {
         return false;
       }
       if (n.targetUsername && username) {
@@ -109,7 +109,10 @@ export function TopHeaderBanner({
         return String(n.targetUserId) === String(userId);
       }
       return false;
-    }).filter((n) => !n.read).length;
+    });
+
+    const uniqueQuoteKeys = new Set(filtered.map(n => String(n.quoteId || n.id)));
+    return uniqueQuoteKeys.size;
   }, [serverNotifs, username, userId, role, localVersion]);
 
   const { data: exchangeRate, isLoading: isLoadingExchangeRate } = useExchangeRate(

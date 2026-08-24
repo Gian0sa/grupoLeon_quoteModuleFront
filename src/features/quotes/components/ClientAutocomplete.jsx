@@ -5,6 +5,7 @@ import {
 import { FiSearch, FiX, FiCheckCircle } from "react-icons/fi";
 import { useClientQueries, useClientQueriesByName } from "../../clients/hooks/queries/clientQueries";
 import { adaptClientFromApi } from "../../clients/adapters/clientAdapter";
+import { fetchClientByCode } from "../../clients/services/clientService";
 import { axiosInstance } from "../../../shared/lib/axiosInstance";
 import { useDebounce } from "../../../shared/hooks/useDebounce";
 import { normalizeQuoteClient } from "../stores/quoteStore";
@@ -120,21 +121,45 @@ export default function ClientAutocomplete({ client, setClient }) {
     if (e.key === "Enter") triggerSearch();
   };
 
-  const handleSelectClient = (clientData) => {
+  const handleSelectClient = async (clientData) => {
     const adapted = adaptClientFromApi(clientData);
-    const normalizedClient = normalizeQuoteClient({
+    const cardCode = adapted.id || clientData.CardCode || clientData.cardCode;
+
+    // Asignación inmediata para feedback visual rápido
+    const initialClient = normalizeQuoteClient({
       ...clientData,
-      CardCode: adapted.id || clientData.CardCode || clientData.cardCode,
+      CardCode: cardCode,
       CardName: adapted.firstName || clientData.CardName || clientData.clientName,
       Address: adapted.address || clientData.Address || clientData.address,
       raw: clientData,
     });
 
-    setClient(normalizedClient);
-
+    setClient(initialClient);
     setSearchTerm("");
     setSearchInput("");
     setFallbackResults([]);
+
+    // Cargar la ficha completa de SAP por CardCode para obtener ContactEmployees, ContactPerson y BPAddresses
+    if (cardCode) {
+      try {
+        const fullSapData = await fetchClientByCode(cardCode);
+        if (fullSapData) {
+          const fullAdapted = adaptClientFromApi(fullSapData);
+          const fullNormalizedClient = normalizeQuoteClient({
+            ...fullSapData,
+            CardCode: fullAdapted.id || fullSapData.CardCode || cardCode,
+            CardName: fullAdapted.firstName || fullSapData.CardName || initialClient.CardName,
+            Address: fullAdapted.address || fullSapData.Address || initialClient.Address,
+            ContactEmployees: fullSapData.ContactEmployees || fullAdapted.contactEmployees || [],
+            ContactPerson: fullSapData.ContactPerson || fullAdapted.contactPerson || null,
+            raw: fullSapData,
+          });
+          setClient(fullNormalizedClient);
+        }
+      } catch (err) {
+        console.warn("No se pudieron cargar detalles adicionales de SAP:", err);
+      }
+    }
   };
 
   const handleClear = () => {

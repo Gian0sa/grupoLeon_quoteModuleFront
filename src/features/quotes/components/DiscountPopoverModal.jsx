@@ -5,15 +5,13 @@ import {
   ModalContent,
   ModalHeader,
   ModalBody,
-  ModalFooter,
   ModalCloseButton,
   Box,
   Flex,
   Text,
   Button,
   Grid,
-  NumberInput,
-  NumberInputField,
+  Input,
   Badge,
   VStack,
   HStack,
@@ -25,65 +23,160 @@ import {
   Alert,
   AlertIcon
 } from "@chakra-ui/react";
-import { Sparkles, CheckCircle2 } from "lucide-react";
+import { Sparkles, CheckCircle2, ShieldAlert, AlertTriangle, Check } from "lucide-react";
+
+export const MAX_DISCOUNT_CEILING = 55.0; // Tope máximo comercial permitido (%)
 
 export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount }) {
   const [currentDisc, setCurrentDisc] = useState(0);
+  const [discInputStr, setDiscInputStr] = useState("0");
   const [discountType, setDiscountType] = useState("percent"); // "percent" | "amount"
   const [amountValue, setAmountValue] = useState(0);
+  const [amountInputStr, setAmountInputStr] = useState("0.00");
 
-  const basePrice = Number(item?.price || 0);
+  const basePrice = Number(item?.price || item?.unitPrice || 0);
   const sapDisc = Number(item?.discount || 0);
   const priceAfterSap = basePrice * (1 - sapDisc / 100);
   const qty = Number(item?.quantity || 1);
 
+  // Calcular el descuento adicional máximo permitido para no exceder el 55% total
+  const maxAllowedAddDisc = sapDisc >= MAX_DISCOUNT_CEILING
+    ? 0
+    : Number((((MAX_DISCOUNT_CEILING - sapDisc) / (100 - sapDisc)) * 100).toFixed(2));
+
+  const maxAllowedDollarDiscount = Number((priceAfterSap * (maxAllowedAddDisc / 100)).toFixed(2));
+
   useEffect(() => {
     if (item && isOpen) {
-      const initialDisc = Number(item.lineDiscount || 0);
+      const initialDisc = Math.min(maxAllowedAddDisc, Math.max(0, Number(item.lineDiscount || 0)));
       setCurrentDisc(initialDisc);
+      setDiscInputStr(String(initialDisc));
       const dollarsPerUnit = priceAfterSap * (initialDisc / 100);
-      setAmountValue(Number(dollarsPerUnit.toFixed(2)));
+      const roundedDollars = Number(dollarsPerUnit.toFixed(2));
+      setAmountValue(roundedDollars);
+      setAmountInputStr(dollarsPerUnit.toFixed(2));
     }
-  }, [item, isOpen, priceAfterSap]);
+  }, [item, isOpen, priceAfterSap, maxAllowedAddDisc]);
 
   if (!item) return null;
 
-  const handlePercentChange = (valNum) => {
-    const valid = Math.max(0, Math.min(100, isNaN(valNum) ? 0 : valNum));
-    setCurrentDisc(valid);
-    const dollars = priceAfterSap * (valid / 100);
+  // Cálculos de totales y porcentajes en tiempo real
+  const finalUnitPrice = priceAfterSap * (1 - currentDisc / 100);
+  const finalLineTotal = finalUnitPrice * qty;
+  const grossLineTotal = basePrice * qty;
+  const totalDiscountAmount = Math.max(0, grossLineTotal - finalLineTotal);
+  const effectiveTotalDiscPct = grossLineTotal > 0
+    ? Number(((totalDiscountAmount / grossLineTotal) * 100).toFixed(2))
+    : sapDisc;
+
+  const isExceedingCeiling = effectiveTotalDiscPct > MAX_DISCOUNT_CEILING + 0.01;
+  const requiresApproval = currentDisc > 0;
+
+  const handlePercentInputChange = (e) => {
+    let valStr = e.target.value.replace(/,/g, ".");
+    // Permitir solo dígitos y un punto decimal
+    if (!/^[0-9]*\.?[0-9]*$/.test(valStr)) return;
+
+    setDiscInputStr(valStr);
+
+    if (valStr === "" || valStr === ".") {
+      setCurrentDisc(0);
+      setAmountValue(0);
+      setAmountInputStr("0.00");
+      return;
+    }
+
+    let valNum = parseFloat(valStr);
+    if (isNaN(valNum)) valNum = 0;
+
+    if (valNum > maxAllowedAddDisc) {
+      valNum = maxAllowedAddDisc;
+      valStr = String(maxAllowedAddDisc);
+      setDiscInputStr(valStr);
+    }
+
+    setCurrentDisc(valNum);
+    const dollars = priceAfterSap * (valNum / 100);
     setAmountValue(Number(dollars.toFixed(2)));
+    setAmountInputStr(dollars.toFixed(2));
   };
 
-  const handleAmountChange = (valNum) => {
-    const validAmt = Math.max(0, isNaN(valNum) ? 0 : valNum);
-    setAmountValue(validAmt);
-    if (priceAfterSap > 0) {
-      const pct = (validAmt / priceAfterSap) * 100;
-      setCurrentDisc(Number(Math.min(100, pct).toFixed(2)));
+  const handlePercentBlur = () => {
+    if (discInputStr === "" || discInputStr === ".") {
+      setDiscInputStr("0");
+      setCurrentDisc(0);
+      setAmountValue(0);
+      setAmountInputStr("0.00");
+      return;
     }
+    let valNum = parseFloat(discInputStr);
+    if (isNaN(valNum) || valNum < 0) valNum = 0;
+    if (valNum > maxAllowedAddDisc) valNum = maxAllowedAddDisc;
+    setCurrentDisc(valNum);
+    setDiscInputStr(String(valNum));
+  };
+
+  const handleAmountInputChange = (e) => {
+    let valStr = e.target.value.replace(/,/g, ".");
+    if (!/^[0-9]*\.?[0-9]*$/.test(valStr)) return;
+
+    setAmountInputStr(valStr);
+
+    if (valStr === "" || valStr === ".") {
+      setAmountValue(0);
+      setCurrentDisc(0);
+      setDiscInputStr("0");
+      return;
+    }
+
+    let valNum = parseFloat(valStr);
+    if (isNaN(valNum)) valNum = 0;
+
+    if (valNum > maxAllowedDollarDiscount) {
+      valNum = maxAllowedDollarDiscount;
+      valStr = String(maxAllowedDollarDiscount);
+      setAmountInputStr(valStr);
+    }
+
+    setAmountValue(valNum);
+    if (priceAfterSap > 0) {
+      const pct = Number(Math.min(maxAllowedAddDisc, (valNum / priceAfterSap) * 100).toFixed(2));
+      setCurrentDisc(pct);
+      setDiscInputStr(String(pct));
+    }
+  };
+
+  const handleAmountBlur = () => {
+    if (amountInputStr === "" || amountInputStr === ".") {
+      setAmountInputStr("0.00");
+      setAmountValue(0);
+      setCurrentDisc(0);
+      setDiscInputStr("0");
+      return;
+    }
+    let valNum = parseFloat(amountInputStr);
+    if (isNaN(valNum) || valNum < 0) valNum = 0;
+    if (valNum > maxAllowedDollarDiscount) valNum = maxAllowedDollarDiscount;
+    setAmountValue(valNum);
+    setAmountInputStr(valNum.toFixed(2));
+  };
+
+  const handleQuickSelect = (pctVal) => {
+    const valid = Math.max(0, Math.min(maxAllowedAddDisc, Number(pctVal || 0)));
+    setCurrentDisc(valid);
+    setDiscInputStr(String(valid));
+    const dollars = priceAfterSap * (valid / 100);
+    setAmountValue(Number(dollars.toFixed(2)));
+    setAmountInputStr(dollars.toFixed(2));
   };
 
   const handleConfirm = () => {
-    if (onApplyDiscount) {
-      onApplyDiscount(item.id, currentDisc);
+    const targetKey = item.id || item.productCode || item.code || item.itemCode;
+    if (onApplyDiscount && targetKey) {
+      onApplyDiscount(targetKey, currentDisc);
     }
     onClose();
   };
-
-  const finalUnitPrice = priceAfterSap * (1 - currentDisc / 100);
-  const finalLineTotal = finalUnitPrice * qty;
-
-  const quickChips = [
-    { label: "0%", value: 0 },
-    { label: "3%", value: 3 },
-    { label: "5%", value: 5 },
-    { label: "7.5%", value: 7.5 },
-    { label: "10% ⭐️", value: 10 },
-    { label: "12%", value: 12 },
-    { label: "15% ⚠️", value: 15 },
-    { label: "20% 🔒", value: 20 }
-  ];
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} isCentered size={{ base: "full", sm: "md" }} motionPreset="slideInBottom">
@@ -97,7 +190,7 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
               </Flex>
               <Box minW={0}>
                 <Text fontSize="sm" fontWeight="900" isTruncated maxW="240px">
-                  Descuento Adicional
+                  Descuento Adicional (Tope 55%)
                 </Text>
                 <Text fontSize="10px" color="emerald.200" fontWeight="500" isTruncated maxW="240px">
                   {item.name || item.productName || "Artículo"}
@@ -109,58 +202,85 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
         </ModalHeader>
 
         <ModalBody p={4} bg="slate.50">
-          <VStack align="stretch" spacing={4}>
-            {/* Tarjeta de Información de Precio Base */}
+          <VStack align="stretch" spacing={3.5}>
+            {/* Tarjeta de Información de Precios y Descuentos */}
             <Box bg="white" p={3} borderRadius="xl" border="1px solid" borderColor="gray.200" boxShadow="xs">
-              <Grid templateColumns="repeat(3, 1fr)" gap={2} textAlign="center" fontSize="xs">
+              <Grid templateColumns="repeat(4, 1fr)" gap={1.5} textAlign="center" fontSize="xs">
                 <Box>
-                  <Text fontSize="9px" fontWeight="700" color="gray.500" textTransform="uppercase">P. Unitario</Text>
+                  <Text fontSize="9px" fontWeight="700" color="gray.500" textTransform="uppercase">P. Lista</Text>
                   <Text fontWeight="800" color="gray.800">${basePrice.toFixed(2)}</Text>
                 </Box>
-                <Box borderLeft="1px solid" borderRight="1px solid" borderColor="gray.200">
+                <Box borderLeft="1px solid" borderColor="gray.200">
                   <Text fontSize="9px" fontWeight="700" color="gray.500" textTransform="uppercase">Desc. SAP</Text>
                   <Badge colorScheme="green" fontSize="10px" px={1.5}>{sapDisc}%</Badge>
                 </Box>
-                <Box>
-                  <Text fontSize="9px" fontWeight="700" color="gray.500" textTransform="uppercase">P. c/Desc SAP</Text>
-                  <Text fontWeight="800" color="emerald.800">${priceAfterSap.toFixed(2)}</Text>
+                <Box borderLeft="1px solid" borderColor="gray.200">
+                  <Text fontSize="9px" fontWeight="700" color="gray.500" textTransform="uppercase">Desc. Adic.</Text>
+                  <Badge colorScheme={currentDisc > 0 ? "purple" : "gray"} fontSize="10px" px={1.5}>
+                    +{currentDisc}%
+                  </Badge>
+                </Box>
+                <Box borderLeft="1px solid" borderColor="gray.200">
+                  <Text fontSize="9px" fontWeight="700" color="gray.500" textTransform="uppercase">Desc. Total</Text>
+                  <Badge colorScheme={isExceedingCeiling ? "red" : "blue"} fontSize="10px" px={1.5} fontWeight="900">
+                    {effectiveTotalDiscPct}%
+                  </Badge>
                 </Box>
               </Grid>
             </Box>
 
-            {/* Chips de Selección Rápida */}
+            {/* Accesos Rápidos Estratégicos */}
             <Box>
-              <Text fontSize="11px" fontWeight="800" color="gray.700" mb={2} textTransform="uppercase" letterSpacing="wide">
-                ⚡ Selección Rápida (% Porcentaje):
+              <Text fontSize="10px" fontWeight="800" color="gray.600" mb={1.5} textTransform="uppercase" letterSpacing="wide">
+                ⚡ Ajuste Rápido de Descuento:
               </Text>
-              <Grid templateColumns="repeat(4, 1fr)" gap={2}>
-                {quickChips.map((chip) => {
-                  const isSelected = Math.abs(currentDisc - chip.value) < 0.1;
-                  return (
-                    <Button
-                      key={chip.value}
-                      size="sm"
-                      h="38px"
-                      variant={isSelected ? "solid" : "outline"}
-                      colorScheme={isSelected ? "green" : "gray"}
-                      bg={isSelected ? "#126C36" : "white"}
-                      color={isSelected ? "white" : "gray.800"}
-                      borderColor={isSelected ? "#126C36" : "gray.200"}
-                      _hover={{ bg: isSelected ? "#0e572b" : "emerald.50" }}
-                      onClick={() => handlePercentChange(chip.value)}
-                      borderRadius="xl"
-                      fontWeight="800"
-                      fontSize="xs"
-                    >
-                      {chip.label}
-                    </Button>
-                  );
-                })}
+              <Grid templateColumns="repeat(3, 1fr)" gap={2}>
+                <Button
+                  size="xs"
+                  h="32px"
+                  variant={currentDisc === 0 ? "solid" : "outline"}
+                  colorScheme={currentDisc === 0 ? "green" : "gray"}
+                  bg={currentDisc === 0 ? "#126C36" : "white"}
+                  color={currentDisc === 0 ? "white" : "gray.700"}
+                  onClick={() => handleQuickSelect(0)}
+                  borderRadius="lg"
+                  fontWeight="800"
+                >
+                  0% (Solo SAP)
+                </Button>
+                <Button
+                  size="xs"
+                  h="32px"
+                  variant={currentDisc === 5 ? "solid" : "outline"}
+                  colorScheme={currentDisc === 5 ? "purple" : "gray"}
+                  bg={currentDisc === 5 ? "purple.600" : "white"}
+                  color={currentDisc === 5 ? "white" : "gray.700"}
+                  onClick={() => handleQuickSelect(5)}
+                  borderRadius="lg"
+                  fontWeight="800"
+                >
+                  +5% Adicional
+                </Button>
+                <Button
+                  size="xs"
+                  h="32px"
+                  variant={Math.abs(currentDisc - maxAllowedAddDisc) < 0.1 ? "solid" : "outline"}
+                  colorScheme="orange"
+                  bg={Math.abs(currentDisc - maxAllowedAddDisc) < 0.1 ? "orange.600" : "white"}
+                  color={Math.abs(currentDisc - maxAllowedAddDisc) < 0.1 ? "white" : "orange.800"}
+                  borderColor="orange.300"
+                  onClick={() => handleQuickSelect(maxAllowedAddDisc)}
+                  borderRadius="lg"
+                  fontWeight="900"
+                  title={`Aplica el máximo adicional para alcanzar el 55% total (+${maxAllowedAddDisc}%)`}
+                >
+                  🎯 Tope 55%
+                </Button>
               </Grid>
             </Box>
 
             {/* Modo Personalizado: Porcentaje vs Monto Fijo */}
-            <Box bg="white" p={3.5} borderRadius="xl" border="1px solid" borderColor="gray.200" boxShadow="xs">
+            <Box bg="white" p={3} borderRadius="xl" border="1px solid" borderColor="gray.200" boxShadow="xs">
               <Tabs
                 variant="soft-rounded"
                 colorScheme="green"
@@ -168,9 +288,9 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
                 index={discountType === "percent" ? 0 : 1}
                 onChange={(idx) => setDiscountType(idx === 0 ? "percent" : "amount")}
               >
-                <TabList mb={3} bg="gray.100" p={1} borderRadius="xl">
+                <TabList mb={2.5} bg="gray.100" p={1} borderRadius="xl">
                   <Tab w="50%" borderRadius="lg" fontWeight="800" fontSize="11px">
-                    % Porcentaje
+                    % Porcentaje Adicional
                   </Tab>
                   <Tab w="50%" borderRadius="lg" fontWeight="800" fontSize="11px">
                     $ Monto ($ USD)
@@ -179,61 +299,57 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
 
                 <TabPanels>
                   <TabPanel p={0}>
-                    <VStack align="stretch" spacing={2}>
-                      <Text fontSize="11px" fontWeight="700" color="gray.600">
-                        Ingresa el porcentaje de descuento adicional:
-                      </Text>
+                    <VStack align="stretch" spacing={1.5}>
+                      <Flex justify="space-between" fontSize="11px" fontWeight="700" color="gray.600">
+                        <Text>Ingresa % adicional:</Text>
+                        <Text color="gray.500">Tope máx.: <strong>+{maxAllowedAddDisc}%</strong></Text>
+                      </Flex>
                       <HStack spacing={2}>
-                        <NumberInput
+                        <Input
                           size="md"
-                          min={0}
-                          max={100}
-                          step={0.5}
-                          precision={2}
-                          value={currentDisc}
-                          onChange={(valStr, valNum) => handlePercentChange(valNum)}
-                          w="full"
-                        >
-                          <NumberInputField
-                            textAlign="center"
-                            fontWeight="900"
-                            fontSize="lg"
-                            borderRadius="xl"
-                            bg="blue.50"
-                            borderColor="blue.300"
-                          />
-                        </NumberInput>
+                          type="text"
+                          inputMode="decimal"
+                          value={discInputStr}
+                          onChange={handlePercentInputChange}
+                          onBlur={handlePercentBlur}
+                          onFocus={(e) => e.target.select()}
+                          textAlign="center"
+                          fontWeight="900"
+                          fontSize="lg"
+                          borderRadius="xl"
+                          bg={isExceedingCeiling ? "red.50" : "blue.50"}
+                          borderColor={isExceedingCeiling ? "red.400" : "blue.300"}
+                          placeholder="0.00"
+                        />
                         <Text fontSize="lg" fontWeight="900" color="gray.700">%</Text>
                       </HStack>
                     </VStack>
                   </TabPanel>
 
                   <TabPanel p={0}>
-                    <VStack align="stretch" spacing={2}>
-                      <Text fontSize="11px" fontWeight="700" color="gray.600">
-                        Ingresa el descuento en dólares por unidad:
-                      </Text>
+                    <VStack align="stretch" spacing={1.5}>
+                      <Flex justify="space-between" fontSize="11px" fontWeight="700" color="gray.600">
+                        <Text>Ingresa descuento en $ USD:</Text>
+                        <Text color="gray.500">Tope máx.: <strong>${maxAllowedDollarDiscount}</strong></Text>
+                      </Flex>
                       <HStack spacing={2}>
                         <Text fontSize="lg" fontWeight="900" color="gray.700">$</Text>
-                        <NumberInput
+                        <Input
                           size="md"
-                          min={0}
-                          max={priceAfterSap}
-                          step={0.5}
-                          precision={2}
-                          value={amountValue}
-                          onChange={(valStr, valNum) => handleAmountChange(valNum)}
-                          w="full"
-                        >
-                          <NumberInputField
-                            textAlign="center"
-                            fontWeight="900"
-                            fontSize="lg"
-                            borderRadius="xl"
-                            bg="emerald.50"
-                            borderColor="emerald.300"
-                          />
-                        </NumberInput>
+                          type="text"
+                          inputMode="decimal"
+                          value={amountInputStr}
+                          onChange={handleAmountInputChange}
+                          onBlur={handleAmountBlur}
+                          onFocus={(e) => e.target.select()}
+                          textAlign="center"
+                          fontWeight="900"
+                          fontSize="lg"
+                          borderRadius="xl"
+                          bg={isExceedingCeiling ? "red.50" : "emerald.50"}
+                          borderColor={isExceedingCeiling ? "red.400" : "emerald.300"}
+                          placeholder="0.00"
+                        />
                         <Text fontSize="xs" fontWeight="700" color="gray.500">USD</Text>
                       </HStack>
                     </VStack>
@@ -242,9 +358,9 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
               </Tabs>
             </Box>
 
-            {/* Simulación en Tiempo Real & Semáforo Comercial */}
-            <Box bg="#0f2e22" color="white" p={3.5} borderRadius="xl" boxShadow="sm">
-              <VStack align="stretch" spacing={2} fontSize="xs">
+            {/* Simulación en Tiempo Real */}
+            <Box bg="#0f2e22" color="white" p={3} borderRadius="xl" boxShadow="sm">
+              <VStack align="stretch" spacing={1.5} fontSize="xs">
                 <Flex justify="space-between" align="center">
                   <Text color="emerald.200" fontWeight="600">Precio final por unidad:</Text>
                   <Text fontFamily="mono" fontWeight="900" fontSize="sm" color="#6ee7b7">
@@ -257,43 +373,49 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
                     ${finalLineTotal.toFixed(2)} USD
                   </Text>
                 </Flex>
+                <Flex justify="space-between" align="center" pt={1} borderTop="1px dashed" borderColor="whiteAlpha.300">
+                  <Text color="emerald.200" fontSize="10px">Descuento Total Acumulado:</Text>
+                  <Text fontFamily="mono" fontWeight="900" fontSize="11px" color={isExceedingCeiling ? "#fca5a5" : "#a7f3d0"}>
+                    {effectiveTotalDiscPct}% (Tope: {MAX_DISCOUNT_CEILING}%)
+                  </Text>
+                </Flex>
               </VStack>
             </Box>
 
-            {/* Semáforo de Aprobación Comercial */}
-            {currentDisc > 10 ? (
-              <Alert status="error" borderRadius="xl" py={2.5} px={3} bg="red.50" border="1px solid" borderColor="red.200">
-                <AlertIcon />
+            {/* Semáforo de Validación y Aprobación Comercial (Regla del 55%) */}
+            {isExceedingCeiling ? (
+              <Alert status="error" borderRadius="xl" py={2.5} px={3} bg="red.50" border="1.5px solid" borderColor="red.400">
+                <AlertIcon as={ShieldAlert} color="red.600" />
                 <Box fontSize="11px">
                   <Text fontWeight="900" color="red.900">
-                    ⚠️ Requiere Aprobación Comercial
+                    ⛔ BLOQUEADO: Supera el Tope del {MAX_DISCOUNT_CEILING}%
                   </Text>
-                  <Text color="red.800" fontWeight="500">
-                    El descuento adicional es superior al 10%. Pasará a evaluación por Facturación (Enrique).
+                  <Text color="red.800" fontWeight="600">
+                    El descuento total ({effectiveTotalDiscPct}%) supera el límite comercial del {MAX_DISCOUNT_CEILING}%. Reduce el descuento adicional a máximo +{maxAllowedAddDisc}%.
                   </Text>
                 </Box>
               </Alert>
-            ) : currentDisc > 5 ? (
-              <Alert status="warning" borderRadius="xl" py={2.5} px={3} bg="orange.50" border="1px solid" borderColor="orange.200">
-                <AlertIcon />
+            ) : requiresApproval ? (
+              <Alert status="warning" borderRadius="xl" py={2.5} px={3} bg="orange.50" border="1.5px solid" borderColor="orange.300">
+                <AlertIcon as={AlertTriangle} color="orange.600" />
                 <Box fontSize="11px">
                   <Text fontWeight="900" color="orange.900">
-                    🟡 Descuento Especial de Vendedor
+                    ⚠️ Requiere Aprobación Comercial
                   </Text>
-                  <Text color="orange.800" fontWeight="500">
-                    Descuento entre 5.1% y 10%. Permitido con registro comercial.
+                  <Text color="orange.800" fontWeight="600">
+                    Todo descuento adicional (+{currentDisc}%) pasará a revisión y aprobación por Facturación (Enrique).
                   </Text>
                 </Box>
               </Alert>
             ) : (
-              <Alert status="success" borderRadius="xl" py={2.5} px={3} bg="emerald.50" border="1px solid" borderColor="emerald.200">
-                <AlertIcon />
+              <Alert status="success" borderRadius="xl" py={2.5} px={3} bg="emerald.50" border="1.5px solid" borderColor="emerald.300">
+                <AlertIcon as={Check} color="emerald.700" />
                 <Box fontSize="11px">
                   <Text fontWeight="900" color="emerald.900">
-                    🟢 Descuento Estándar Aprobado
+                    🟢 Descuento Estándar SAP ({sapDisc}%)
                   </Text>
-                  <Text color="emerald.800" fontWeight="500">
-                    Aprobación automática directa.
+                  <Text color="emerald.800" fontWeight="600">
+                    No requiere aprobación comercial adicional.
                   </Text>
                 </Box>
               </Alert>
@@ -303,20 +425,21 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
 
         <Box bg="white" py={3} px={4} borderTop="1px solid" borderColor="gray.200">
           <HStack spacing={2.5} w="full">
-            <Button variant="outline" w="50%" onClick={onClose} borderRadius="xl" fontWeight="800">
+            <Button variant="outline" w="45%" onClick={onClose} borderRadius="xl" fontWeight="800">
               Cancelar
             </Button>
             <Button
-              colorScheme="green"
-              bg="#126C36"
-              _hover={{ bg: "#0e572b" }}
-              w="50%"
+              colorScheme={isExceedingCeiling ? "red" : "green"}
+              bg={isExceedingCeiling ? "gray.400" : "#126C36"}
+              _hover={{ bg: isExceedingCeiling ? "gray.400" : "#0e572b" }}
+              isDisabled={isExceedingCeiling}
+              w="55%"
               onClick={handleConfirm}
               borderRadius="xl"
               fontWeight="900"
               leftIcon={<CheckCircle2 className="w-4 h-4" />}
             >
-              Aplicar ({currentDisc}%)
+              {isExceedingCeiling ? "Bloqueado (>55%)" : `Aplicar (+${currentDisc}%)`}
             </Button>
           </HStack>
         </Box>

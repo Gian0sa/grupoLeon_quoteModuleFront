@@ -11,6 +11,8 @@ import {
   Grid,
   FormControl,
   Select as ChakraSelect,
+  Checkbox,
+  Flex,
 } from "@chakra-ui/react";
 import CreatableSelect from "react-select/creatable";
 import { adaptBusinessPartner } from "../adapters/quotesAdapter";
@@ -18,7 +20,8 @@ import { useQuoteMutations } from "../hooks/mutations/quotesMutations";
 import { DatePickerField } from "../../../components/DatePickerField";
 import Tesseract from "tesseract.js";
 import { useState } from "react";
-import { Truck, CreditCard, Paperclip, FileCheck, Upload } from "lucide-react";
+import { Truck, CreditCard, Paperclip, FileCheck, Upload, Shield, Receipt } from "lucide-react";
+import { SAP_TRANSPORTS_CATALOG } from "../constants/sapTransportsCatalog";
 
 // Opciones predeterminadas de resguardo (Fallbacks B2B para boleta de campo)
 const DEFAULT_PAYMENT_TYPES = [
@@ -33,7 +36,7 @@ const DEFAULT_PAYMENT_TYPES = [
 const DEFAULT_DELIVERY_FORMS = [
   { TrnspCode: 1, TrnspName: "RECOJO EN ALMACÉN / TIENDA" },
   { TrnspCode: 2, TrnspName: "ENTREGA CON TRANSPORTE DE AGENCIA (PROVINCIA)" },
-  { TrnspCode: 3, TrnspName: "DESPACHO A DOMICILIO CON MOVILIDAD PROPIA" },
+  { TrnspCode: 3, TrnspName: "DESPACHO LOCAL (LIMA METROPOLITANA)" },
 ];
 
 const DEFAULT_DELIVERY_POINTS = [
@@ -43,10 +46,10 @@ const DEFAULT_DELIVERY_POINTS = [
 ];
 
 const DEFAULT_TRANSPORTS = [
-  { Name: "Cód. 103 - ETTUSA (Emp. Transp. Unidos SA)", U_TQC_DIREC: "San Vicente de Cañete / Provincia" },
-  { Name: "SHALOM EXPRESS", U_TQC_DIREC: "Agencia Principal Shalom" },
-  { Name: "MARVISUR CARGA", U_TQC_DIREC: "Agencia Marvisur Carga" },
-  { Name: "OLVA COURIER", U_TQC_DIREC: "Oficina Olva Express" },
+  { Code: "00103", Name: "EMPRESA DE TRANSPORTES TRANSPORTISTAS UNIDOS S.A. (ETTUSA)", U_TQC_DIREC: "AV. NICOLAS ARRIOLA NRO. 1957 URB. SAN LUIS - LIMA / CAÑETE" },
+  { Code: "00044", Name: "SHALOM EXPRESS S.A.C.", U_TQC_DIREC: "Agencia Principal Shalom" },
+  { Code: "00033", Name: "AREQUIPA EXPRESO MARVISUR EIRL", U_TQC_DIREC: "Agencia Marvisur Carga" },
+  { Code: "00039", Name: "OLVA COURIER", U_TQC_DIREC: "Oficina Olva Express" },
 ];
 
 export function NewSellTerms({
@@ -72,7 +75,18 @@ export function NewSellTerms({
   setTempImage,
   setPaymentImg,
   opNum,
-  setOpNum
+  setOpNum,
+  saleCondition = "CONTADO",
+  setSaleCondition,
+  documentType = "FACTURA",
+  setDocumentType,
+  isLetra = false,
+  setIsLetra,
+  creditTerm = "ANTICIPADO",
+  setCreditTerm,
+  isAdmin = false,
+  isDeliveryLocked = false,
+  isFinanceLocked = false,
 }) {
   const { uploadImageMutation, deleteImageMutation } = useQuoteMutations();
   const [ocrText, setOcrText] = useState("");
@@ -107,7 +121,7 @@ export function NewSellTerms({
   const allPaymentTypes = paymentTypes.length > 0 ? paymentTypes : DEFAULT_PAYMENT_TYPES;
   const allDeliveryForms = deliveryForms.length > 0 ? deliveryForms : DEFAULT_DELIVERY_FORMS;
   const allDeliveryPoints = (deliveryPoints.length > 0 ? deliveryPoints : DEFAULT_DELIVERY_POINTS);
-  const allTransports = transports.length > 0 ? transports : DEFAULT_TRANSPORTS;
+  const allTransports = (transports && transports.length > 10) ? transports : SAP_TRANSPORTS_CATALOG;
 
   // Opciones para CreatableSelect
   const paymentTypesOptions = allPaymentTypes.map((type) => {
@@ -129,13 +143,138 @@ export function NewSellTerms({
     label: `${point.AddressName || 'Punto'} - ${point.Street || point.Address || ''}`,
   }));
 
-  const transportOptions = allTransports.map((transport) => ({
-    value: transport.Name || transport.value,
-    label: `${transport.Name}${transport.U_TQC_DIREC ? ` (${transport.U_TQC_DIREC})` : ''}`,
-  }));
+  const transportOptions = allTransports.map((transport) => {
+    const rawCode = transport.Code || transport.TrnspCode ? String(transport.Code || transport.TrnspCode).replace(/^0+/, "") : "";
+    const codePrefix = rawCode ? `Cód. ${rawCode} - ` : "";
+    const name = transport.Name || transport.TrnspName || transport.value || "";
+    const isEttusa = String(transport.Code || transport.TrnspCode || "").includes("103") || name.toUpperCase().includes("TRANSPORTISTAS UNIDOS");
+    const alias = isEttusa && !name.toUpperCase().includes("ETTUSA") ? " [ETTUSA]" : "";
+    const dir = transport.U_TQC_DIREC ? ` (${transport.U_TQC_DIREC})` : "";
+    const label = `${codePrefix}${name}${alias}${dir}`;
 
-  const isPickupInStoreForm = (form) => Number(form?.TrnspCode) === 1 || String(form?.TrnspName).toLowerCase().includes("recojo");
-  const isOwnPickupInStoreForm = (form) => Number(form?.TrnspCode) === 2;
+    return {
+      value: name,
+      label,
+      raw: transport,
+    };
+  });
+
+  const normalizeDeliveryFormValue = (val) => {
+    if (!val) return null;
+    if (typeof val === "string") {
+      const trimmed = val.trim();
+      if (!trimmed || trimmed === "undefined" || trimmed === "null") return null;
+      if (trimmed.startsWith("{")) {
+        try { val = JSON.parse(trimmed); } catch (e) {}
+      }
+    }
+    if (typeof val === "object" && val !== null) {
+      const code = val.TrnspCode ?? val.value ?? val.code ?? "";
+      const name = val.TrnspName ?? val.label ?? val.name ?? (code ? String(code) : "");
+      if (!name || name === "undefined" || name === "null") return null;
+      return {
+        value: String(code || name),
+        label: name,
+      };
+    }
+    const strVal = String(val);
+    if (!strVal || strVal === "undefined" || strVal === "null") return null;
+    const found = allDeliveryForms.find(
+      (f) => String(f.TrnspCode) === strVal || f.TrnspName === strVal
+    );
+    if (found) {
+      return {
+        value: String(found.TrnspCode || found.TrnspName),
+        label: found.TrnspName || String(found.TrnspCode),
+      };
+    }
+    return { value: strVal, label: strVal };
+  };
+
+  const normalizeDeliveryPointValue = (val) => {
+    if (!val) return null;
+    if (typeof val === "string") {
+      const trimmed = val.trim();
+      if (!trimmed || trimmed === "undefined" || trimmed === "null") return null;
+      if (trimmed.startsWith("{")) {
+        try { val = JSON.parse(trimmed); } catch (e) {}
+      }
+    }
+    if (typeof val === "object" && val !== null) {
+      const name = val.AddressName ?? val.label ?? val.name ?? val.value ?? "";
+      const street = val.Street ?? val.address ?? "";
+      if (!name && !street) return null;
+      return {
+        value: name || street,
+        label: street ? `${name ? name + ' - ' : ''}${street}` : name,
+      };
+    }
+    const strVal = String(val);
+    if (!strVal || strVal === "undefined" || strVal === "null") return null;
+    return { value: strVal, label: strVal };
+  };
+
+  const normalizeTransportValue = (val) => {
+    if (!val) return null;
+    if (typeof val === "string") {
+      const trimmed = val.trim();
+      if (!trimmed || trimmed === "undefined" || trimmed === "null") return null;
+      if (trimmed.startsWith("{")) {
+        try { val = JSON.parse(trimmed); } catch (e) {}
+      }
+    }
+    if (typeof val === "object" && val !== null) {
+      const name = val.Name ?? val.name ?? val.value ?? val.label ?? "";
+      const code = val.Code ?? val.code ?? val.TrnspCode ?? "";
+      const rawCode = code ? String(code).replace(/^0+/, "") : "";
+      const codePrefix = rawCode ? `Cód. ${rawCode} - ` : "";
+      const dir = val.U_TQC_DIREC ? ` (${val.U_TQC_DIREC})` : "";
+      if (!name || name === "undefined" || name === "null") return null;
+      return {
+        value: name,
+        label: `${codePrefix}${name}${dir}`,
+      };
+    }
+    const strVal = String(val);
+    if (!strVal || strVal === "undefined" || strVal === "null") return null;
+    return { value: strVal, label: strVal };
+  };
+
+  const normalizePaymentTypeValue = (val) => {
+    if (!val) return null;
+    if (typeof val === "string") {
+      const trimmed = val.trim();
+      if (!trimmed || trimmed === "undefined" || trimmed === "null") return null;
+      if (trimmed.startsWith("{")) {
+        try { val = JSON.parse(trimmed); } catch (e) {}
+      }
+    }
+    if (typeof val === "object" && val !== null) {
+      const code = String(val.GroupNum ?? val.GroupNumber ?? val.value ?? "");
+      const name = val.PymntGroup ?? val.PaymentTermsGroupName ?? val.label ?? code;
+      if (!name || name === "undefined" || name === "null") return null;
+      return {
+        value: code || name,
+        label: name,
+      };
+    }
+    const strVal = String(val);
+    if (!strVal || strVal === "undefined" || strVal === "null") return null;
+    return { value: strVal, label: strVal };
+  };
+
+  const isPickupInStoreForm = (form) => {
+    if (!form) return false;
+    const code = typeof form === "object" ? form?.TrnspCode : form;
+    const name = typeof form === "object" ? form?.TrnspName : String(form || "");
+    return Number(code) === 1 || String(name).toLowerCase().includes("recojo");
+  };
+
+  const isOwnPickupInStoreForm = (form) => {
+    if (!form) return false;
+    const code = typeof form === "object" ? form?.TrnspCode : form;
+    return Number(code) === 2;
+  };
 
   const isPickupInStore = isPickupInStoreForm(selectedDeliveryForm);
   const isOwnPickupInStore = isOwnPickupInStoreForm(selectedDeliveryForm);
@@ -192,7 +331,17 @@ export function NewSellTerms({
       setSelectedTransport(null);
       return;
     }
-    const found = allTransports.find((t) => t.Name === selected.value);
+    if (selected.raw) {
+      setSelectedTransport(selected.raw);
+      return;
+    }
+    const found = allTransports.find(
+      (t) =>
+        t.Name === selected.value ||
+        t.Code === selected.value ||
+        `${t.Code} - ${t.Name}` === selected.value ||
+        (t.Code && `Cód. ${String(t.Code).replace(/^0+/, '')} - ${t.Name}` === selected.label)
+    );
     setSelectedTransport(found || { Name: selected.value, U_TQC_DIREC: selected.label });
   };
 
@@ -226,75 +375,74 @@ export function NewSellTerms({
 
       {/* TARJETA 1: 📦 LOGÍSTICA Y AGENCIA DE TRANSPORTE */}
       <Box bg="white" p={{ base: 4, md: 5 }} borderRadius="2xl" border="1.5px solid" borderColor="#e2e8f0" boxShadow="xs">
-        <HStack spacing={2.5} mb={4} pb={2.5} borderBottom="1.5px solid" borderColor="emerald.100">
-          <Truck className="w-5 h-5 text-emerald-700 stroke-[2.5]" />
-          <Text fontSize="sm" fontWeight="950" color="emerald.900" textTransform="uppercase" letterSpacing="wide">
-            1. Logística y Agencia de Transporte
-          </Text>
+        <HStack spacing={2.5} mb={4} pb={2.5} borderBottom="1.5px solid" borderColor="emerald.100" justify="space-between">
+          <HStack spacing={2.5}>
+            <Truck className="w-5 h-5 text-emerald-700 stroke-[2.5]" />
+            <Text fontSize="sm" fontWeight="950" color="emerald.900" textTransform="uppercase" letterSpacing="wide">
+              1. Logística y Agencia de Transporte
+            </Text>
+          </HStack>
+          {isDeliveryLocked && (
+            <Badge colorScheme="gray" fontSize="10px" px={2} py={0.5} borderRadius="md">
+              🔒 Bloqueado (Vendedor)
+            </Badge>
+          )}
         </HStack>
 
         <VStack align="stretch" spacing={4}>
           <Box>
-            <FormLabel fontSize="xs" fontWeight="800" color="gray.700">Forma de Entrega</FormLabel>
+            <FormLabel fontSize="xs" fontWeight="800" color="gray.700">
+              Forma de Entrega {isDeliveryLocked && "🔒"}
+            </FormLabel>
             <CreatableSelect
-              isClearable
+              isDisabled={isDeliveryLocked}
+              isClearable={!isDeliveryLocked}
               options={deliveryFormsOptions}
-              value={
-                selectedDeliveryForm
-                  ? {
-                      value: String(selectedDeliveryForm.TrnspCode || selectedDeliveryForm.TrnspName),
-                      label: selectedDeliveryForm.TrnspName || String(selectedDeliveryForm.TrnspCode),
-                    }
-                  : null
-              }
+              value={normalizeDeliveryFormValue(selectedDeliveryForm)}
               onChange={handleDeliveryFormChange}
               placeholder="Selecciona o escribe una forma de entrega..."
               formatCreateLabel={(inputValue) => `Escribir: "${inputValue}"`}
-              styles={{ container: (p) => ({ ...p, maxWidth: "100%", width: "100%", color: "black" }) }}
+              styles={{
+                container: (p) => ({ ...p, maxWidth: "100%", width: "100%", color: "black", opacity: isDeliveryLocked ? 0.75 : 1 }),
+              }}
             />
           </Box>
 
           {!isPickupInStore && (
             <Box>
-              <FormLabel fontSize="xs" fontWeight="800" color="gray.700">Punto de Llegada (Destino de Entrega)</FormLabel>
+              <FormLabel fontSize="xs" fontWeight="800" color="gray.700">
+                Punto de Llegada (Destino de Entrega) {isDeliveryLocked && "🔒"}
+              </FormLabel>
               <CreatableSelect
-                isClearable
+                isDisabled={isDeliveryLocked}
+                isClearable={!isDeliveryLocked}
                 options={deliveryOptions}
-                value={
-                  selectedPoint
-                    ? {
-                        value: selectedPoint.AddressName || selectedPoint.Street,
-                        label: selectedPoint.Street ? `${selectedPoint.AddressName || 'Punto'} - ${selectedPoint.Street}` : selectedPoint.AddressName,
-                      }
-                    : null
-                }
+                value={normalizeDeliveryPointValue(selectedPoint)}
                 onChange={handleDeliveryPointChange}
                 placeholder="Selecciona o escribe un destino (Ej: ENVÍO A PROVINCIA - SAN VICENTE)..."
                 formatCreateLabel={(inputValue) => `Escribir destino libre: "${inputValue}"`}
-                styles={{ container: (p) => ({ ...p, maxWidth: "100%", width: "100%", color: "black" }) }}
+                styles={{
+                  container: (p) => ({ ...p, maxWidth: "100%", width: "100%", color: "black", opacity: isDeliveryLocked ? 0.75 : 1 }),
+                }}
               />
             </Box>
           )}
 
           {!(isPickupInStore || isOwnPickupInStore) && (
             <Box>
-              <FormLabel fontSize="xs" fontWeight="800" color="gray.700">Agencia de Transporte</FormLabel>
+              <FormLabel fontSize="xs" fontWeight="800" color="gray.700">
+                Agencia de Transporte {isDeliveryLocked && "🔒"}
+              </FormLabel>
               <CreatableSelect
-                isClearable
+                isDisabled={isDeliveryLocked}
+                isClearable={!isDeliveryLocked}
                 options={transportOptions}
-                value={
-                  selectedTransport
-                    ? {
-                        value: selectedTransport.Name,
-                        label: `${selectedTransport.Name}${selectedTransport.U_TQC_DIREC ? ` (${selectedTransport.U_TQC_DIREC})` : ''}`,
-                      }
-                    : null
-                }
+                value={normalizeTransportValue(selectedTransport)}
                 onChange={handleTransportChange}
                 placeholder="Selecciona o escribe una agencia (Ej: Cód. 103 - ETTUSA, SHALOM)..."
                 formatCreateLabel={(inputValue) => `Escribir agencia libre: "${inputValue}"`}
                 styles={{
-                  container: (p) => ({ ...p, maxWidth: "100%", width: "100%", color: "black" }),
+                  container: (p) => ({ ...p, maxWidth: "100%", width: "100%", color: "black", opacity: isDeliveryLocked ? 0.75 : 1 }),
                   singleValue: (p) => ({ ...p, whiteSpace: "normal" }),
                   option: (p) => ({ ...p, whiteSpace: "normal" }),
                 }}
@@ -304,220 +452,465 @@ export function NewSellTerms({
 
           <Box>
             <DatePickerField
-              label="Fecha estimada de entrega"
+              label={`Fecha estimada de entrega ${isDeliveryLocked ? "🔒" : ""}`}
               selectedDate={deliveryDate}
               setSelectedDate={setDeliveryDate}
+              isDisabled={isDeliveryLocked}
             />
           </Box>
-        </VStack>
-      </Box>
 
-      {/* TARJETA 2: 💳 CONDICIÓN DE PAGO Y COMPROBANTE (VOUCHER OCR) */}
-      <Box bg="white" p={{ base: 4, md: 5 }} borderRadius="2xl" border="1.5px solid" borderColor="#e2e8f0" boxShadow="xs">
-        <HStack spacing={2.5} mb={4} pb={2.5} borderBottom="1.5px solid" borderColor="emerald.100">
-          <CreditCard className="w-5 h-5 text-emerald-700 stroke-[2.5]" />
-          <Text fontSize="sm" fontWeight="950" color="emerald.900" textTransform="uppercase" letterSpacing="wide">
-            2. Condición de Pago y Abono Bancario (Voucher)
-          </Text>
-        </HStack>
+          {/* ── CUADRO DE CONDICIONES COMERCIALES (TALONARIO / SOLICITUD DE PEDIDO) ── */}
+          <Box
+            p={{ base: 3.5, md: 4 }}
+            bg="#f8fafc"
+            borderRadius="xl"
+            border="1.5px solid"
+            borderColor="#cbd5e1"
+            boxShadow="xs"
+          >
+            <HStack justify="space-between" mb={3}>
+              <HStack spacing={2}>
+                <Receipt className="w-4 h-4 text-emerald-800" />
+                <Text fontSize="xs" fontWeight="900" color="gray.800" textTransform="uppercase" letterSpacing="wider">
+                  Condiciones Comerciales de la Solicitud {isDeliveryLocked && "🔒"}
+                </Text>
+              </HStack>
+              <Badge colorScheme="teal" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="800">
+                TALONARIO DE PEDIDO
+              </Badge>
+            </HStack>
 
-        <VStack align="stretch" spacing={4}>
-          <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={3}>
-            <FormControl>
-              <FormLabel fontSize="xs" fontWeight="800" color="gray.700">Tipo de Pago / Condición Comercial</FormLabel>
-              <CreatableSelect
-                isClearable
-                options={paymentTypesOptions}
-                value={
-                  selectedPaymentType
-                    ? {
-                        value: String(selectedPaymentType.GroupNum ?? selectedPaymentType.GroupNumber ?? selectedPaymentType.value ?? selectedPaymentType.PymntGroup ?? selectedPaymentType.PaymentTermsGroupName ?? ''),
-                        label: selectedPaymentType.PymntGroup || selectedPaymentType.PaymentTermsGroupName || selectedPaymentType.label || String(selectedPaymentType.GroupNum ?? selectedPaymentType.GroupNumber ?? ''),
+            <Grid templateColumns={{ base: "1fr", md: "1fr 1fr 1.4fr" }} gap={3.5}>
+              {/* Casilla 1: Modalidad (CONTADO / CRÉDITO) */}
+              <Box p={3} bg="white" borderRadius="lg" border="1px solid" borderColor="gray.200">
+                <Text fontSize="10px" fontWeight="900" color="gray.500" mb={2} textTransform="uppercase">
+                  Condición de Venta
+                </Text>
+                <HStack spacing={4}>
+                  <Checkbox
+                    isChecked={saleCondition === "CONTADO"}
+                    onChange={() => {
+                      if (!isDeliveryLocked && setSaleCondition) {
+                        setSaleCondition("CONTADO");
+                        if (setCreditTerm && (!creditTerm || creditTerm.includes("DÍAS"))) {
+                          setCreditTerm("ANTICIPADO");
+                        }
                       }
-                    : null
-                }
-                onChange={handlePaymentTypeChange}
-                placeholder="Selecciona condición de pago..."
-                formatCreateLabel={(inputValue) => `Escribir: "${inputValue}"`}
-                styles={{ container: (p) => ({ ...p, maxWidth: "100%", width: "100%", color: "black" }) }}
-              />
-            </FormControl>
-
-            <FormControl>
-              <FormLabel fontSize="xs" fontWeight="800" color="gray.700">Medio de Pago (`PaymentMethod` / SUNAT)</FormLabel>
-              <ChakraSelect
-                size="sm"
-                bg="white"
-                borderRadius="md"
-                value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value)}
-                fontWeight="600"
-              >
-                <option value="DEPOSITO_BANCARIO">001 - Depósito en Cuenta Bancaria</option>
-                <option value="TRANSFERENCIA">003 - Transferencia de Fondos Directa</option>
-                <option value="YAPE_PLIN">008 - Yape / Plin / Pago Móvil</option>
-                <option value="EFECTIVO">009 - Efectivo / Pago Contra Entrega</option>
-                <option value="CHEQUE">002 - Cheque / Abono Diferido</option>
-              </ChakraSelect>
-            </FormControl>
-          </Grid>
-
-          <FormControl>
-            <FormLabel fontSize="xs" fontWeight="800" color="gray.700">Banco de Abono Oficial</FormLabel>
-            <ChakraSelect
-              size="sm"
-              bg="white"
-              borderRadius="md"
-              value={bankAccount}
-              onChange={(e) => setBankAccount(e.target.value)}
-              fontWeight="600"
-            >
-              <option value="BCP_SOLES">BCP (Soles) - Cta: 191-0104153-0-60 (CCI: 002-191-000104153060-52)</option>
-              <option value="BCP_USD">BCP (Dólares) - Cta: 191-0104154-1-71 (CCI: 002-191-000104154171-55)</option>
-              <option value="BBVA_SOLES">BBVA Continental (Soles) - Cta: 0011-0182-0100045231</option>
-              <option value="SCOTIA_USD">Scotiabank (USD) - Cta: 000-1245211</option>
-            </ChakraSelect>
-          </FormControl>
-
-          <Box p={4} bg="gray.50" borderRadius="xl" border="1px solid" borderColor="gray.200">
-            <FormLabel fontSize="xs" fontWeight="800" color="gray.800" mb={2}>
-              Adjuntar Váucher / Comprobante de Abono Bancario
-            </FormLabel>
-            <Input
-              type="file"
-              size="sm"
-              bg="white"
-              accept="image/*"
-              onClick={(e) => {
-                e.target.value = null;
-              }}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  setTempImage(file);
-                  setPaymentImg(URL.createObjectURL(file));
-                  extractOperationNumber(file, setOpNum);
-                }
-              }}
-            />
-
-            <Box mt={3.5}>
-              <FormLabel fontSize="xs" fontWeight="800" color="gray.700">Número de Operación (Váucher)</FormLabel>
-              <Input
-                type="text"
-                size="sm"
-                bg="white"
-                borderRadius="md"
-                placeholder="Ej: 0169944 (Detectado por OCR o digitado)"
-                value={opNum ?? ""}
-                onChange={(e) => setOpNum(e.target.value)}
-              />
-            </Box>
-
-            {paymentImg && (
-              <Box mt={3} p={2.5} bg="white" borderRadius="md" border="1px solid" borderColor="gray.200">
-                <img
-                  style={{ maxHeight: "200px", borderRadius: "8px", objectFit: "contain" }}
-                  src={
-                    typeof paymentImg === 'string' && paymentImg.startsWith('blob:')
-                      ? paymentImg
-                      : `${import.meta.env.VITE_API_URL}/quoteModule/${paymentImg}`
-                  }
-                />
-                <Button
-                  mt={2}
-                  colorScheme="red"
-                  size="xs"
-                  onClick={() => {
-                    setPaymentImg(null);
-                    setTempImage(null);
-                  }}
-                >
-                  Eliminar comprobante
-                </Button>
+                    }}
+                    isDisabled={isDeliveryLocked}
+                    colorScheme="green"
+                    size="sm"
+                    fontWeight="800"
+                    fontSize="xs"
+                  >
+                    CONTADO
+                  </Checkbox>
+                  <Checkbox
+                    isChecked={saleCondition === "CREDITO"}
+                    onChange={() => {
+                      if (!isDeliveryLocked && setSaleCondition) {
+                        setSaleCondition("CREDITO");
+                        if (setCreditTerm && (!creditTerm || creditTerm === "ANTICIPADO")) {
+                          setCreditTerm("30 DÍAS");
+                        }
+                      }
+                    }}
+                    isDisabled={isDeliveryLocked}
+                    colorScheme="green"
+                    size="sm"
+                    fontWeight="800"
+                    fontSize="xs"
+                  >
+                    CRÉDITO
+                  </Checkbox>
+                </HStack>
               </Box>
-            )}
+
+              {/* Casilla 2: Tipo de Comprobante (BOLETA / FACTURA) */}
+              <Box p={3} bg="white" borderRadius="lg" border="1px solid" borderColor="gray.200">
+                <Text fontSize="10px" fontWeight="900" color="gray.500" mb={2} textTransform="uppercase">
+                  Tipo de Comprobante
+                </Text>
+                <HStack spacing={4}>
+                  <Checkbox
+                    isChecked={documentType === "FACTURA"}
+                    onChange={() => !isDeliveryLocked && setDocumentType && setDocumentType("FACTURA")}
+                    isDisabled={isDeliveryLocked}
+                    colorScheme="green"
+                    size="sm"
+                    fontWeight="800"
+                    fontSize="xs"
+                  >
+                    FACTURA
+                  </Checkbox>
+                  <Checkbox
+                    isChecked={documentType === "BOLETA"}
+                    onChange={() => !isDeliveryLocked && setDocumentType && setDocumentType("BOLETA")}
+                    isDisabled={isDeliveryLocked}
+                    colorScheme="green"
+                    size="sm"
+                    fontWeight="800"
+                    fontSize="xs"
+                  >
+                    BOLETA
+                  </Checkbox>
+                </HStack>
+              </Box>
+
+              {/* Casilla 3: Instrumento y Plazo (LETRA / SELECTOR DE PLAZO EXCLUSIVO POR ACCIÓN) */}
+              <Box p={3} bg="white" borderRadius="lg" border="1px solid" borderColor="gray.200">
+                <Flex justify="space-between" align="center" mb={2}>
+                  <Checkbox
+                    isChecked={Boolean(isLetra)}
+                    onChange={(e) => !isDeliveryLocked && setIsLetra && setIsLetra(e.target.checked)}
+                    isDisabled={isDeliveryLocked}
+                    colorScheme="green"
+                    size="sm"
+                    fontWeight="800"
+                    fontSize="xs"
+                  >
+                    LETRA
+                  </Checkbox>
+                  <Text fontSize="10px" fontWeight="900" color="gray.500">
+                    PLAZO / TÉRMINO
+                  </Text>
+                </Flex>
+
+                {/* Visualizador de Plazo Seleccionado (Solo Lectura / Sin teclado) */}
+                <Box
+                  py={2}
+                  px={3}
+                  borderRadius="lg"
+                  bg={isDeliveryLocked ? "gray.100" : "emerald.50"}
+                  border="1.5px solid"
+                  borderColor={isDeliveryLocked ? "gray.300" : "emerald.300"}
+                  textAlign="center"
+                  mb={2.5}
+                  boxShadow="xs"
+                >
+                  <Text fontWeight="900" fontSize="xs" color={isDeliveryLocked ? "gray.700" : "emerald.900"} letterSpacing="wider">
+                    {creditTerm || "ANTICIPADO"}
+                  </Text>
+                </Box>
+
+                {/* Botones de selección rápida exclusivos */}
+                {!isDeliveryLocked && (
+                  <Flex wrap="wrap" gap={1.5} justify="center">
+                    {[
+                      { label: "Anticipado", val: "ANTICIPADO", condition: "CONTADO" },
+                      { label: "Inmediato", val: "CONTADO INMEDIATO", condition: "CONTADO" },
+                      { label: "15 días", val: "15 DÍAS", condition: "CREDITO" },
+                      { label: "30 días", val: "30 DÍAS", condition: "CREDITO" },
+                      { label: "45 días", val: "45 DÍAS", condition: "CREDITO" },
+                      { label: "60 días", val: "60 DÍAS", condition: "CREDITO" },
+                    ].map((opt) => {
+                      const isSelected = creditTerm === opt.val;
+                      return (
+                        <Button
+                          key={opt.val}
+                          size="xs"
+                          h="22px"
+                          fontSize="10px"
+                          fontWeight={isSelected ? "900" : "700"}
+                          px={2}
+                          borderRadius="md"
+                          variant={isSelected ? "solid" : "outline"}
+                          colorScheme={isSelected ? "green" : "gray"}
+                          bg={isSelected ? "#16a34a" : "white"}
+                          color={isSelected ? "white" : "gray.700"}
+                          _hover={{ bg: isSelected ? "#15803d" : "gray.100" }}
+                          onClick={() => {
+                            if (setCreditTerm) setCreditTerm(opt.val);
+                            if (setSaleCondition) setSaleCondition(opt.condition);
+                          }}
+                        >
+                          {opt.label}
+                        </Button>
+                      );
+                    })}
+                  </Flex>
+                )}
+              </Box>
+            </Grid>
           </Box>
-        </VStack>
-      </Box>
-
-      {/* TARJETA 3: 📎 PARÁMETROS SUNAT, OBSERVACIONES Y ANEXOS */}
-      <Box bg="white" p={{ base: 4, md: 5 }} borderRadius="2xl" border="1.5px solid" borderColor="#e2e8f0" boxShadow="xs">
-        <HStack spacing={2.5} mb={4} pb={2.5} borderBottom="1.5px solid" borderColor="emerald.100">
-          <Paperclip className="w-5 h-5 text-emerald-700 stroke-[2.5]" />
-          <Text fontSize="sm" fontWeight="950" color="emerald.900" textTransform="uppercase" letterSpacing="wide">
-            3. Parámetros SUNAT, Observaciones y Anexos
-          </Text>
-        </HStack>
-
-        <VStack align="stretch" spacing={4}>
-          <FormControl>
-            <FormLabel fontSize="xs" fontWeight="800" color="gray.700">Tipo de Operación SUNAT (`U_VS_TIPOPER` / `TIPO_FACT`)</FormLabel>
-            <ChakraSelect
-              size="sm"
-              bg="white"
-              borderRadius="md"
-              value={sunatOpType}
-              onChange={(e) => setSunatOpType(e.target.value)}
-              fontWeight="600"
-            >
-              <option value="0101">0101 - Venta Interna (General / Operación Onerosa)</option>
-              <option value="0102">0102 - Exportación de Bienes</option>
-              <option value="0103">0103 - Venta Inafecta / Exonerada</option>
-            </ChakraSelect>
-          </FormControl>
 
           <Box>
-            <FormLabel fontSize="xs" fontWeight="800" color="gray.700">Comentarios u Observaciones del Documento (`Comments`)</FormLabel>
+            <FormLabel fontSize="xs" fontWeight="800" color="gray.700">
+              Comentarios u Observaciones del Pedido (`Comments`) {isDeliveryLocked && "🔒"}
+            </FormLabel>
             <Textarea
               size="sm"
               borderRadius="md"
-              rows={3}
-              placeholder="Ingrese especificaciones comerciales, vigencia de cotización o acuerdos especiales..."
+              rows={2}
+              placeholder="Ingrese especificaciones comerciales, notas de entrega o acuerdos con el cliente..."
               value={comment || ""}
               onChange={(e) => setComment && setComment(e.target.value)}
+              isReadOnly={isDeliveryLocked}
+              bg={isDeliveryLocked ? "gray.100" : "white"}
+              cursor={isDeliveryLocked ? "not-allowed" : "text"}
             />
-          </Box>
-
-          <Box p={4} bg="gray.50" borderRadius="xl" border="1.5px dashed" borderColor="gray.300">
-            <HStack spacing={2} mb={2}>
-              <Upload className="w-4 h-4 text-emerald-700" />
-              <FormLabel fontSize="xs" fontWeight="800" color="gray.800" m={0}>
-                Anexos y Documentos de Resguardo (PDF / Órdenes de Compra)
-              </FormLabel>
-            </HStack>
-            <Input
-              type="file"
-              multiple
-              size="sm"
-              bg="white"
-              onChange={handleAttachmentUpload}
-            />
-
-            {attachments.length > 0 && (
-              <VStack align="stretch" spacing={1.5} mt={3}>
-                {attachments.map((att, idx) => (
-                  <HStack key={idx} justify="space-between" bg="white" p={2} borderRadius="md" border="1px solid" borderColor="gray.200">
-                    <HStack spacing={2}>
-                      <FileCheck className="w-4 h-4 text-emerald-600" />
-                      <Text fontSize="xs" fontWeight="600" color="gray.700">{att.name}</Text>
-                      <Badge fontSize="10px" colorScheme="gray">{att.size}</Badge>
-                    </HStack>
-                    <Button
-                      size="xs"
-                      colorScheme="red"
-                      variant="ghost"
-                      onClick={() => setAttachments(prev => prev.filter((_, i) => i !== idx))}
-                    >
-                      Quitar
-                    </Button>
-                  </HStack>
-                ))}
-              </VStack>
-            )}
           </Box>
         </VStack>
       </Box>
+
+      {/* AVISO INFORMATIVO PARA ASESOR DE VENTAS */}
+      {!isAdmin && (
+        <Box p={4} bg="#f0fdf4" borderRadius="2xl" border="1.5px solid #86efac" boxShadow="xs">
+          <HStack align="flex-start" spacing={3}>
+            <Shield className="w-5 h-5 text-emerald-700 mt-0.5 flex-shrink-0" />
+            <Box>
+              <Text fontSize="xs" fontWeight="900" color="#166534" textTransform="uppercase" letterSpacing="wider">
+                Validación Financiera y Cierre en Administración
+              </Text>
+              <Text fontSize="0.75rem" color="#15803d" mt={0.5} lineHeight="tall" fontWeight="500">
+                Tu cotización pasará directamente a <b>Validación Comercial y Financiera</b>. La asignación de la condición de pago oficial, verificación del comprobante de abono (váucher) y parámetros de facturación SUNAT serán completados por el <b>Administrador</b> al momento de aprobar el pedido en SAP.
+              </Text>
+            </Box>
+          </HStack>
+        </Box>
+      )}
+
+      {/* TARJETA 2: 💳 CONDICIÓN DE PAGO Y COMPROBANTE (VOUCHER OCR) - EXCLUSIVO ADMINISTRADOR */}
+      {isAdmin && (
+        <Box bg="white" p={{ base: 4, md: 5 }} borderRadius="2xl" border="1.5px solid" borderColor="#e2e8f0" boxShadow="xs">
+          <HStack spacing={2.5} mb={4} pb={2.5} borderBottom="1.5px solid" borderColor="emerald.100" justify="space-between">
+            <HStack spacing={2.5}>
+              <CreditCard className="w-5 h-5 text-emerald-700 stroke-[2.5]" />
+              <Text fontSize="sm" fontWeight="950" color="emerald.900" textTransform="uppercase" letterSpacing="wide">
+                2. Condición de Pago y Abono Bancario (Voucher)
+              </Text>
+            </HStack>
+            {isFinanceLocked ? (
+              <Badge colorScheme="green" fontSize="10px" px={2} py={0.5} borderRadius="md">
+                🔒 Concluido (Aprobado)
+              </Badge>
+            ) : (
+              <Badge colorScheme="purple" fontSize="10px" px={2} py={0.5} borderRadius="md">
+                ✏️ Editable por Administrador
+              </Badge>
+            )}
+          </HStack>
+
+          <VStack align="stretch" spacing={4}>
+            <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={3}>
+              <FormControl>
+                <FormLabel fontSize="xs" fontWeight="800" color="gray.700">
+                  Tipo de Pago / Condición Comercial {isFinanceLocked && "🔒"}
+                </FormLabel>
+                <CreatableSelect
+                  isDisabled={isFinanceLocked}
+                  isClearable={!isFinanceLocked}
+                  options={paymentTypesOptions}
+                  value={
+                    selectedPaymentType
+                      ? {
+                          value: String(selectedPaymentType.GroupNum ?? selectedPaymentType.GroupNumber ?? selectedPaymentType.value ?? selectedPaymentType.PymntGroup ?? selectedPaymentType.PaymentTermsGroupName ?? ''),
+                          label: selectedPaymentType.PymntGroup || selectedPaymentType.PaymentTermsGroupName || selectedPaymentType.label || String(selectedPaymentType.GroupNum ?? selectedPaymentType.GroupNumber ?? ''),
+                        }
+                      : null
+                  }
+                  onChange={handlePaymentTypeChange}
+                  placeholder="Selecciona condición de pago..."
+                  formatCreateLabel={(inputValue) => `Escribir: "${inputValue}"`}
+                  styles={{
+                    container: (p) => ({ ...p, maxWidth: "100%", width: "100%", color: "black", opacity: isFinanceLocked ? 0.75 : 1 }),
+                  }}
+                />
+              </FormControl>
+
+              <FormControl>
+                <FormLabel fontSize="xs" fontWeight="800" color="gray.700">
+                  Medio de Pago (`PaymentMethod` / SUNAT) {isFinanceLocked && "🔒"}
+                </FormLabel>
+                <ChakraSelect
+                  size="sm"
+                  bg={isFinanceLocked ? "gray.100" : "white"}
+                  isDisabled={isFinanceLocked}
+                  borderRadius="md"
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  fontWeight="600"
+                >
+                  <option value="DEPOSITO_BANCARIO">001 - Depósito en Cuenta Bancaria</option>
+                  <option value="TRANSFERENCIA">003 - Transferencia de Fondos Directa</option>
+                  <option value="YAPE_PLIN">008 - Yape / Plin / Pago Móvil</option>
+                  <option value="EFECTIVO">009 - Efectivo / Pago Contra Entrega</option>
+                  <option value="CHEQUE">002 - Cheque / Abono Diferido</option>
+                </ChakraSelect>
+              </FormControl>
+            </Grid>
+
+            <FormControl>
+              <FormLabel fontSize="xs" fontWeight="800" color="gray.700">
+                Banco de Abono Oficial {isFinanceLocked && "🔒"}
+              </FormLabel>
+              <ChakraSelect
+                size="sm"
+                bg={isFinanceLocked ? "gray.100" : "white"}
+                isDisabled={isFinanceLocked}
+                borderRadius="md"
+                value={bankAccount}
+                onChange={(e) => setBankAccount(e.target.value)}
+                fontWeight="600"
+              >
+                <option value="BCP_SOLES">BCP (Soles) - Cta: 191-0104153-0-60 (CCI: 002-191-000104153060-52)</option>
+                <option value="BCP_USD">BCP (Dólares) - Cta: 191-0104154-1-71 (CCI: 002-191-000104154171-55)</option>
+                <option value="BBVA_SOLES">BBVA Continental (Soles) - Cta: 0011-0182-0100045231</option>
+                <option value="SCOTIA_USD">Scotiabank (USD) - Cta: 000-1245211</option>
+              </ChakraSelect>
+            </FormControl>
+
+            <Box p={4} bg="gray.50" borderRadius="xl" border="1px solid" borderColor="gray.200">
+              <FormLabel fontSize="xs" fontWeight="800" color="gray.800" mb={2}>
+                Adjuntar Váucher / Comprobante de Abono Bancario {isFinanceLocked && "🔒"}
+              </FormLabel>
+              <Input
+                type="file"
+                size="sm"
+                bg="white"
+                accept="image/*"
+                isDisabled={isFinanceLocked}
+                onClick={(e) => {
+                  e.target.value = null;
+                }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    setTempImage(file);
+                    setPaymentImg(URL.createObjectURL(file));
+                    extractOperationNumber(file, setOpNum);
+                  }
+                }}
+              />
+
+              <Box mt={3.5}>
+                <FormLabel fontSize="xs" fontWeight="800" color="gray.700">
+                  Número de Operación (Váucher) {isFinanceLocked && "🔒"}
+                </FormLabel>
+                <Input
+                  type="text"
+                  size="sm"
+                  bg={isFinanceLocked ? "gray.100" : "white"}
+                  isReadOnly={isFinanceLocked}
+                  borderRadius="md"
+                  placeholder="Ej: 0169944 (Detectado por OCR o digitado)"
+                  value={opNum ?? ""}
+                  onChange={(e) => setOpNum(e.target.value)}
+                />
+              </Box>
+
+              {paymentImg && (
+                <Box mt={3} p={2.5} bg="white" borderRadius="md" border="1px solid" borderColor="gray.200">
+                  <img
+                    style={{ maxHeight: "200px", borderRadius: "8px", objectFit: "contain" }}
+                    src={
+                      typeof paymentImg === 'string' && paymentImg.startsWith('blob:')
+                        ? paymentImg
+                        : `${import.meta.env.VITE_API_URL}/quoteModule/${paymentImg}`
+                    }
+                  />
+                  {!isFinanceLocked && (
+                    <Button
+                      mt={2}
+                      colorScheme="red"
+                      size="xs"
+                      onClick={() => {
+                        setPaymentImg(null);
+                        setTempImage(null);
+                      }}
+                    >
+                      Eliminar comprobante
+                    </Button>
+                  )}
+                </Box>
+              )}
+            </Box>
+          </VStack>
+        </Box>
+      )}
+
+      {/* TARJETA 3: 📎 PARÁMETROS SUNAT Y ANEXOS - EXCLUSIVO ADMINISTRADOR */}
+      {isAdmin && (
+        <Box bg="white" p={{ base: 4, md: 5 }} borderRadius="2xl" border="1.5px solid" borderColor="#e2e8f0" boxShadow="xs">
+          <HStack spacing={2.5} mb={4} pb={2.5} borderBottom="1.5px solid" borderColor="emerald.100" justify="space-between">
+            <HStack spacing={2.5}>
+              <Paperclip className="w-5 h-5 text-emerald-700 stroke-[2.5]" />
+              <Text fontSize="sm" fontWeight="950" color="emerald.900" textTransform="uppercase" letterSpacing="wide">
+                3. Parámetros SUNAT y Anexos de Resguardo
+              </Text>
+            </HStack>
+            {isFinanceLocked ? (
+              <Badge colorScheme="green" fontSize="10px" px={2} py={0.5} borderRadius="md">
+                🔒 Concluido (Aprobado)
+              </Badge>
+            ) : (
+              <Badge colorScheme="purple" fontSize="10px" px={2} py={0.5} borderRadius="md">
+                ✏️ Editable por Administrador
+              </Badge>
+            )}
+          </HStack>
+
+          <VStack align="stretch" spacing={4}>
+            <FormControl>
+              <FormLabel fontSize="xs" fontWeight="800" color="gray.700">
+                Tipo de Operación SUNAT (`U_VS_TIPOPER` / `TIPO_FACT`) {isFinanceLocked && "🔒"}
+              </FormLabel>
+              <ChakraSelect
+                size="sm"
+                bg={isFinanceLocked ? "gray.100" : "white"}
+                isDisabled={isFinanceLocked}
+                borderRadius="md"
+                value={sunatOpType}
+                onChange={(e) => setSunatOpType(e.target.value)}
+                fontWeight="600"
+              >
+                <option value="0101">0101 - Venta Interna (General / Operación Onerosa)</option>
+                <option value="0102">0102 - Exportación de Bienes</option>
+                <option value="0103">0103 - Venta Inafecta / Exonerada</option>
+              </ChakraSelect>
+            </FormControl>
+
+            <Box p={4} bg="gray.50" borderRadius="xl" border="1.5px dashed" borderColor="gray.300">
+              <HStack spacing={2} mb={2}>
+                <Upload className="w-4 h-4 text-emerald-700" />
+                <FormLabel fontSize="xs" fontWeight="800" color="gray.800" m={0}>
+                  Anexos y Documentos de Resguardo (PDF / Órdenes de Compra) {isFinanceLocked && "🔒"}
+                </FormLabel>
+              </HStack>
+              <Input
+                type="file"
+                multiple
+                size="sm"
+                bg="white"
+                isDisabled={isFinanceLocked}
+                onChange={handleAttachmentUpload}
+              />
+
+              {attachments.length > 0 && (
+                <VStack align="stretch" spacing={1.5} mt={3}>
+                  {attachments.map((att, idx) => (
+                    <HStack key={idx} justify="space-between" bg="white" p={2} borderRadius="md" border="1px solid" borderColor="gray.200">
+                      <HStack spacing={2}>
+                        <FileCheck className="w-4 h-4 text-emerald-600" />
+                        <Text fontSize="xs" fontWeight="600" color="gray.700">{att.name}</Text>
+                        <Badge fontSize="10px" colorScheme="gray">{att.size}</Badge>
+                      </HStack>
+                      <Button
+                        size="xs"
+                        colorScheme="red"
+                        variant="ghost"
+                        onClick={() => setAttachments(prev => prev.filter((_, i) => i !== idx))}
+                      >
+                        Quitar
+                      </Button>
+                    </HStack>
+                  ))}
+                </VStack>
+              )}
+            </Box>
+          </VStack>
+        </Box>
+      )}
     </VStack>
   );
 }

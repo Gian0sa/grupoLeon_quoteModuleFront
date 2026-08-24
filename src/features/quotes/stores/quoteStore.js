@@ -151,9 +151,9 @@ const initialQuoteState = {
   products: [],
   opNum: null,
   selectedPoint: null,
-  selectedTransport: "",
-  selectedDeliveryForm: "",
-  selectedPaymentType: "",
+  selectedTransport: null,
+  selectedDeliveryForm: null,
+  selectedPaymentType: null,
   paymentImg: null,
   comment: null,
   deliveryDate: null,
@@ -163,6 +163,10 @@ const initialQuoteState = {
   observations: null,
   contactPerson: "",
   refNumber: "",
+  saleCondition: "CONTADO", // "CONTADO" | "CREDITO"
+  documentType: "FACTURA",   // "FACTURA" | "BOLETA"
+  isLetra: false,           // boolean
+  creditTerm: "ANTICIPADO", // "ANTICIPADO" | "30 DÍAS" | etc.
 };
 
 export const useQuoteStore = create((set) => ({
@@ -183,6 +187,10 @@ export const useQuoteStore = create((set) => ({
   setWhsCode: (code) => set({ whsCode: code || "014" }),
   setContactPerson: (person) => set({ contactPerson: person }),
   setRefNumber: (ref) => set({ refNumber: ref }),
+  setSaleCondition: (saleCondition) => set({ saleCondition }),
+  setDocumentType: (documentType) => set({ documentType }),
+  setIsLetra: (isLetra) => set({ isLetra }),
+  setCreditTerm: (creditTerm) => set({ creditTerm }),
 
   addProduct: (product) =>
     set((state) => {
@@ -237,9 +245,11 @@ export const useQuoteStore = create((set) => ({
       const targetKey = String(id || "").trim().toUpperCase();
       return {
         products: state.products.map((product) => {
-          const pCode = String(product.code || product.id || "").trim().toUpperCase();
+          const pCode = String(product.code || "").trim().toUpperCase();
           const pId = String(product.id || "").trim().toUpperCase();
-          if (pCode === targetKey || pId === targetKey) {
+          const pProductCode = String(product.productCode || "").trim().toUpperCase();
+          const pItemCode = String(product.itemCode || "").trim().toUpperCase();
+          if (pCode === targetKey || pId === targetKey || pProductCode === targetKey || pItemCode === targetKey) {
             return normalizeQuoteItem({ ...product, ...updatedFields });
           }
           return product;
@@ -289,22 +299,67 @@ export const useQuoteStore = create((set) => ({
       }
     });
 
+    const contactPersonVal = firstMeaningfulValue(
+      quoteData.contactPerson,
+      quoteData.totals?.contactPerson,
+      quoteData.ContactPerson,
+      quoteData.contact_person,
+      rawClient.ContactPerson,
+      rawClient.contactPerson,
+      quoteData.raw?.ContactPerson
+    ) || "";
+
+    const refNumberVal = firstMeaningfulValue(
+      quoteData.refNumber,
+      quoteData.totals?.refNumber,
+      quoteData.NumAtCard,
+      quoteData.numAtCard,
+      quoteData.Reference1,
+      quoteData.reference,
+      quoteData.ref_number,
+      quoteData.ocCliente,
+      quoteData.U_VS_OCCLIENTE
+    ) || "";
+
+    const saleConditionVal = firstMeaningfulValue(
+      quoteData.saleCondition,
+      quoteData.condicionVenta,
+      quoteData.condicionPago
+    ) || (quoteData.paymentType?.isCredit ? "CREDITO" : "CONTADO");
+
+    const documentTypeVal = firstMeaningfulValue(
+      quoteData.documentType,
+      quoteData.tipoComprobante,
+      quoteData.docTypeVenta
+    ) || "FACTURA";
+
+    const isLetraVal = Boolean(quoteData.isLetra || quoteData.hasLetra || quoteData.letra);
+    const creditTermVal = firstMeaningfulValue(
+      quoteData.creditTerm,
+      quoteData.plazo,
+      quoteData.plazoCredito
+    ) || "ANTICIPADO";
+
     set({
       ...initialQuoteState,
       quoteId: quoteData.docNumber || quoteData.id || null,
       client,
       products: Array.from(uniqueMap.values()),
-      opNum: quoteData.opNum || null,
-      selectedPoint: quoteData.selectedPoint || null,
-      selectedTransport: quoteData.selectedTransport || "",
-      selectedDeliveryForm: quoteData.selectedDeliveryForm || "",
-      selectedPaymentType: quoteData.selectedPaymentType || "",
+      opNum: quoteData.opNum || quoteData.U_VS_OPNUM || null,
+      selectedPoint: quoteData.selectedPoint || quoteData.ShipToCode || quoteData.deliveryPoint || null,
+      selectedTransport: quoteData.selectedTransport || quoteData.TransportationCode || quoteData.transport || "",
+      selectedDeliveryForm: quoteData.selectedDeliveryForm || quoteData.deliveryForm || "",
+      selectedPaymentType: quoteData.selectedPaymentType || quoteData.PaymentGroupCode || quoteData.PayTermsGrpCode || quoteData.paymentType || "",
       paymentImg: quoteData.paymentImg || null,
-      comment: quoteData.comment || quoteData.comments || null,
-      deliveryDate: quoteData.deliveryDate || null,
+      comment: quoteData.comment || quoteData.comments || quoteData.Comments || null,
+      deliveryDate: quoteData.deliveryDate || quoteData.DocDueDate || null,
       whsCode: quoteData.whsCode || "014",
-      contactPerson: quoteData.contactPerson || "",
-      refNumber: quoteData.refNumber || "",
+      contactPerson: contactPersonVal,
+      refNumber: refNumberVal,
+      saleCondition: saleConditionVal,
+      documentType: documentTypeVal,
+      isLetra: isLetraVal,
+      creditTerm: creditTermVal,
       approvalStatus: quoteData.approvalStatus || quoteData.state || quoteData.status || null,
       rejectionReason: quoteData.rejectionReason || quoteData.observations || null,
       observations: quoteData.observations || quoteData.rejectionReason || null,

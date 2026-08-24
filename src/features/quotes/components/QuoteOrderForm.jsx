@@ -365,7 +365,7 @@ export default function QuoteOrderForm({ sellerName }) {
 
                       {products.map((p, idx) => {
                         const unitPrice = p.importe ?? p.price ?? 0;
-                        const net = lineNet(p.quantity, unitPrice, p.lineDiscount ?? 0);
+                        const net = lineNet(p.quantity, unitPrice, p.discount ?? 0, p.lineDiscount ?? 0);
                         const exceedsStock = Number(p.quantity) > Number(p.stock ?? 0);
 
                         return (
@@ -469,7 +469,7 @@ export default function QuoteOrderForm({ sellerName }) {
                   <VStack spacing={3} align="stretch">
                     {products.map((p, idx) => {
                       const unitPrice = p.importe ?? p.price ?? 0;
-                      const net = lineNet(p.quantity, unitPrice, p.lineDiscount ?? 0);
+                      const net = lineNet(p.quantity, unitPrice, p.discount ?? 0, p.lineDiscount ?? 0);
                       const exceedsStock = Number(p.quantity) > Number(p.stock ?? 0);
 
                       return (

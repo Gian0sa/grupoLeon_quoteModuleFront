@@ -15,8 +15,8 @@ export function NewQuotesPage() {
   return (
     <Box w="full" minH="100vh" bg="gray.50" pb="100px">
       <TopHeaderBanner
-        title="Oferta de Ventas SAP"
-        subtitle={`Cotización Comercial • ${today.charAt(0).toUpperCase() + today.slice(1)}`}
+        title="Solicitud de Pedido de Venta"
+        subtitle={`Gestión Comercial y Despacho • ${today.charAt(0).toUpperCase() + today.slice(1)}`}
         showBack={true}
         backTo="/historyquotes"
         showExchangeRate={true}

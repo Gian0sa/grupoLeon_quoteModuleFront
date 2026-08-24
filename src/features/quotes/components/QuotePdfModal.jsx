@@ -34,47 +34,47 @@ export default function QuotePdfModal({ isOpen, onClose, quote }) {
   const handleDownloadPdf = async () => {
     try {
       setIsGenerating(true);
-      setIsPrintMode(true); // Activa la tabla oficial A4 de 7 columnas para la captura
+      setIsPrintMode(true);
       
-      // Esperar pequeño tick para que React renderice el estado A4
-      await new Promise((res) => setTimeout(res, 80));
+      await new Promise((res) => setTimeout(res, 100));
 
       const element = pdfRef.current;
       if (!element) return;
 
-      // Guardar estilos responsivos de pantalla
       const origWidth = element.style.width;
       const origMaxW = element.style.maxWidth;
       const origMinH = element.style.minHeight;
+      const origBoxShadow = element.style.boxShadow;
 
-      // Forzar dimensiones A4 impresas exactas para la captura en HD 2k
-      element.style.width = "794px";
-      element.style.maxWidth = "794px";
-      element.style.minHeight = "1122px";
+      // Dimensiones A4 fijas y ultra nítidas
+      element.style.width = "800px";
+      element.style.maxWidth = "800px";
+      element.style.minHeight = "1130px";
+      element.style.boxShadow = "none";
 
       const canvas = await html2canvas(element, {
-        scale: 2,
+        scale: 3.5, // 300+ DPI Ultra High Definition
         useCORS: true,
         logging: false,
-        backgroundColor: "#ffffff",
+        backgroundColor: "#fffdf7",
+        windowWidth: 1200,
       });
 
-      // Restaurar inmediatamente la maquetación responsiva de pantalla
       element.style.width = origWidth;
       element.style.maxWidth = origMaxW;
       element.style.minHeight = origMinH;
+      element.style.boxShadow = origBoxShadow;
       setIsPrintMode(false);
 
-      const imgData = canvas.toDataURL("image/png");
+      const imgData = canvas.toDataURL("image/png", 1.0);
       const pdf = new jsPDF("p", "mm", "a4");
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-
-      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+      
+      // Ajustar perfectamente a 1 página A4 estándar (210mm x 297mm)
+      pdf.addImage(imgData, "PNG", 0, 0, 210, 297, undefined, "FAST");
       pdf.save(`Autopartes_Cotizacion_${docNumber}.pdf`);
 
       toast({
-        title: "✅ PDF Descargado Exitosamente",
+        title: "✅ PDF Descargado en Alta Calidad",
         description: `Se ha guardado Autopartes_Cotizacion_${docNumber}.pdf en tus descargas.`,
         status: "success",
         duration: 3500,
@@ -106,9 +106,93 @@ export default function QuotePdfModal({ isOpen, onClose, quote }) {
       scrollBehavior="inside"
       motionPreset="slideInBottom"
     >
-      <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" />
+      <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" className="no-print" />
       <ModalContent borderRadius={{ base: "none", sm: "2xl" }} overflow="hidden" maxH={{ base: "100vh", md: "92vh" }}>
-        <ModalHeader bg="emerald.900" color="white" py={{ base: 3, md: 3.5 }} px={{ base: 3, md: 6 }}>
+        {/* Estilos de Impresión A4 Profesionales */}
+        <style>{`
+          @media print {
+            @page {
+              size: A4 portrait;
+              margin: 4mm 5mm;
+            }
+            html, body {
+              height: auto !important;
+              min-height: 100% !important;
+              overflow: visible !important;
+              background: white !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            body > *:not(.chakra-portal),
+            .chakra-modal__overlay,
+            .chakra-modal__header,
+            .chakra-modal__footer,
+            .chakra-modal__close-btn,
+            .no-print {
+              display: none !important;
+            }
+            .chakra-portal,
+            .chakra-portal > * {
+              display: block !important;
+              position: static !important;
+              overflow: visible !important;
+              height: auto !important;
+              width: 100% !important;
+            }
+            .chakra-modal__content-container {
+              position: static !important;
+              display: block !important;
+              width: 100% !important;
+              height: auto !important;
+              max-height: none !important;
+              overflow: visible !important;
+              padding: 0 !important;
+              margin: 0 !important;
+            }
+            .chakra-modal__content {
+              position: static !important;
+              display: block !important;
+              width: 100% !important;
+              max-width: 100% !important;
+              height: auto !important;
+              max-height: none !important;
+              overflow: visible !important;
+              box-shadow: none !important;
+              border: none !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              background: transparent !important;
+            }
+            .chakra-modal__body {
+              position: static !important;
+              display: block !important;
+              width: 100% !important;
+              height: auto !important;
+              max-height: none !important;
+              overflow: visible !important;
+              padding: 0 !important;
+              margin: 0 !important;
+              background: transparent !important;
+            }
+            #printable-autopartes-document {
+              width: 100% !important;
+              max-width: 100% !important;
+              min-height: 0 !important;
+              margin: 0 auto !important;
+              padding: 6mm 6mm !important;
+              box-shadow: none !important;
+              border: 1.5px solid #000 !important;
+              background: #fffdf7 !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+              page-break-inside: avoid !important;
+            }
+          }
+        `}</style>
+
+        <ModalHeader bg="emerald.900" color="white" py={{ base: 3, md: 3.5 }} px={{ base: 3, md: 6 }} className="no-print">
           <Flex justify="space-between" align="center" pr={8}>
             <HStack spacing={2}>
               <FileText className="w-5 h-5 text-emerald-400" />
@@ -143,7 +227,7 @@ export default function QuotePdfModal({ isOpen, onClose, quote }) {
           </Box>
         </ModalBody>
 
-        <ModalFooter bg="gray.50" borderTop="1px solid" borderColor="gray.200" py={{ base: 3, md: 3.5 }} px={{ base: 3, md: 6 }}>
+        <ModalFooter bg="gray.50" borderTop="1px solid" borderColor="gray.200" py={{ base: 3, md: 3.5 }} px={{ base: 3, md: 6 }} className="no-print">
           <Stack
             direction={{ base: "column", sm: "row" }}
             justify="space-between"

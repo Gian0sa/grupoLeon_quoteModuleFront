@@ -63,16 +63,55 @@ import { updateQuote, deleteQuote, createQuote } from "../services/quoteService"
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 
+const isDraftState = (status) => {
+  if (!status) return true;
+  const s = String(status).toUpperCase().trim();
+  return ["BORRADOR", "DRAFT", "GENERADO"].includes(s);
+};
+
+const isDraftOwnedByCurrentUser = (q, currentUsername, currentUserId) => {
+  if (!q) return false;
+  const st = q.approvalStatus || q.state || q.status;
+  if (!isDraftState(st)) {
+    // Si la cotización ya fue enviada o procesada (ENVIADO, EN_PROCESO, APROBADO, etc.),
+    // es parte del flujo de pedidos de la empresa y debe ser visible según permisos.
+    return true;
+  }
+
+  // REGLA ESTRICTA DE PRIVACIDAD: Si es un BORRADOR no enviado,
+  // SOLO el usuario que lo creó puede verlo en su sesión.
+  const qCreator = String(q.createdByUsername || "").toLowerCase().trim();
+  const qSeller = String(q.sellerName || "").toLowerCase().trim();
+  const qUser = String(q.user || "").toLowerCase().trim();
+  const qCreatorId = q.createdByUserId !== undefined && q.createdByUserId !== null ? String(q.createdByUserId) : "";
+  const currentIdStr = currentUserId !== undefined && currentUserId !== null ? String(currentUserId) : "";
+  const currentUsernameClean = String(currentUsername || "").toLowerCase().trim();
+
+  if (currentUsernameClean) {
+    if (qCreator && qCreator === currentUsernameClean) return true;
+    if (qSeller && qSeller === currentUsernameClean) return true;
+    if (qUser && qUser === currentUsernameClean) return true;
+  }
+
+  if (currentIdStr && qCreatorId && qCreatorId === currentIdStr) {
+    return true;
+  }
+
+  return false;
+};
+
 export function QuoteApprovalPage() {
   const toast = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const today = format(new Date(), "EEEE, d 'de' MMMM 'del' yyyy", { locale: es });
 
-  const { username: authUsername, role: authRole } = useAuthStore();
+  const { username: authUsername, userId: authUserId, role: authRole } = useAuthStore();
   const localUser = (localStorage.getItem("username") || localStorage.getItem("userId") || "").toLowerCase();
   const localRole = (localStorage.getItem("role") || "").toUpperCase();
   const isAdminUser = authRole === "ADMIN" || localRole === "ADMIN" || authUsername?.toLowerCase() === "enrique" || localUser === "enrique";
+  const activeCurrentUsername = (authUsername || localStorage.getItem("username") || "").toLowerCase().trim();
+  const activeCurrentUserId = authUserId || localStorage.getItem("userId");
 
   const { data: serverQuotes, isLoading: isServerLoading, refetch: refetchServerQuotes } = useGetQuotes();
 
@@ -95,7 +134,7 @@ export function QuoteApprovalPage() {
   const [pdfQuote, setPdfQuote] = useState(null);
   const [deleteConfirmDoc, setDeleteConfirmDoc] = useState(null);
 
-  // Sincronizar cotizaciones desde el servidor en tiempo real sin duplicados y sin borrar borradores locales
+  // Sincronizar cotizaciones desde el servidor en tiempo real sin duplicados y filtrando borradores ajenos
   const syncQuotes = () => {
     try {
       const stored = localStorage.getItem("grupoLeon_local_quotes");
@@ -107,18 +146,23 @@ export function QuoteApprovalPage() {
           if (q.id !== undefined && q.id !== null) serverDocIds.add(String(q.id));
         });
 
-        // Solo preservar borradores locales legítimos (nunca anuladas, de prueba o eliminadas en servidor)
+        // Solo preservar borradores locales legítimos QUE PERTENEZCAN AL USUARIO ACTUAL
         const localDraftsOnly = local.filter(q => {
-          const isDraft = q.approvalStatus === "BORRADOR" || q.state === "BORRADOR";
+          const isDraft = isDraftState(q.approvalStatus || q.state || q.status);
+          if (!isDraft) return false;
           const docNum = q.docNumber ? String(q.docNumber) : "";
           const idVal = q.id !== undefined && q.id !== null ? String(q.id) : "";
-          return isDraft && (!docNum || !serverDocIds.has(docNum)) && (!idVal || !serverDocIds.has(idVal)) && !docNum.startsWith("TEST-");
+          const notInServer = (!docNum || !serverDocIds.has(docNum)) && (!idVal || !serverDocIds.has(idVal));
+          return notInServer && !docNum.startsWith("TEST-") && isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId);
         });
 
-        // Garantizar unicidad absoluta por docNumber o id
+        // Garantizar unicidad absoluta por docNumber o id y filtrar borradores no enviados de otros usuarios
         const seen = new Set();
         const merged = [];
         for (const item of [...serverQuotes, ...localDraftsOnly]) {
+          if (!isDraftOwnedByCurrentUser(item, activeCurrentUsername, activeCurrentUserId)) {
+            continue;
+          }
           const key = String(item.docNumber || item.id || "");
           if (key && !seen.has(key)) {
             seen.add(key);
@@ -128,7 +172,10 @@ export function QuoteApprovalPage() {
         setQuotes(merged);
         localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(merged));
       } else if (local.length > 0) {
-        const validLocal = local.filter(q => !String(q.docNumber || "").startsWith("TEST-"));
+        const validLocal = local.filter(q => {
+          const notTest = !String(q.docNumber || "").startsWith("TEST-");
+          return notTest && isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId);
+        });
         setQuotes(validLocal);
         localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(validLocal));
       } else {
@@ -160,12 +207,15 @@ export function QuoteApprovalPage() {
         const unsyncedLocal = local.filter(q => {
           const docNum = q.docNumber ? String(q.docNumber) : "";
           const idVal = q.id !== undefined && q.id !== null ? String(q.id) : "";
-          return (!docNum || !serverDocIds.has(docNum)) && (!idVal || !serverDocIds.has(idVal));
+          return (!docNum || !serverDocIds.has(docNum)) && (!idVal || !serverDocIds.has(idVal)) && isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId);
         });
 
         const seen = new Set();
         const merged = [];
         for (const item of [...freshQuotes, ...unsyncedLocal]) {
+          if (!isDraftOwnedByCurrentUser(item, activeCurrentUsername, activeCurrentUserId)) {
+            continue;
+          }
           const key = String(item.docNumber || item.id || "");
           if (key && !seen.has(key)) {
             seen.add(key);
@@ -219,11 +269,14 @@ export function QuoteApprovalPage() {
           const unsyncedLocal = local.filter(q => {
             const docNum = q.docNumber ? String(q.docNumber) : "";
             const idVal = q.id !== undefined && q.id !== null ? String(q.id) : "";
-            return (!docNum || !serverDocIds.has(docNum)) && (!idVal || !serverDocIds.has(idVal));
+            return (!docNum || !serverDocIds.has(docNum)) && (!idVal || !serverDocIds.has(idVal)) && isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId);
           });
           const seen = new Set();
           const merged = [];
           for (const item of [...serverQuotes, ...unsyncedLocal]) {
+            if (!isDraftOwnedByCurrentUser(item, activeCurrentUsername, activeCurrentUserId)) {
+              continue;
+            }
             const key = String(item.docNumber || item.id || "");
             if (key && !seen.has(key)) {
               seen.add(key);
@@ -232,7 +285,8 @@ export function QuoteApprovalPage() {
           }
           setQuotes(merged);
         } else {
-          setQuotes(local);
+          const validLocal = local.filter(q => isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId));
+          setQuotes(validLocal);
         }
       } catch (err) {
         console.error("Error en listener localQuotesUpdated:", err);
@@ -241,7 +295,7 @@ export function QuoteApprovalPage() {
 
     window.addEventListener("localQuotesUpdated", handleLocalUpdate);
     return () => window.removeEventListener("localQuotesUpdated", handleLocalUpdate);
-  }, [serverQuotes]);
+  }, [serverQuotes, activeCurrentUsername, activeCurrentUserId]);
 
   const DRAFT_STATUSES = ["BORRADOR", "GENERADO"];
 
@@ -666,13 +720,20 @@ export function QuoteApprovalPage() {
     }
   };
 
-  // Filtrado de la lista por Pestañas y Buscador
+  // Filtrado de la lista por Pestañas y Buscador con REGLA ESTRICTA DE PRIVACIDAD DE BORRADORES
   const filteredQuotes = useMemo(() => {
     return quotes.filter((q) => {
       const currentStatus = q.approvalStatus || q.state || q.status || "GENERADO";
+      const isDraft = isDraftState(currentStatus);
 
-      // Filtro por pestaña
-      if (selectedTab === "GENERADO" && !["GENERADO", "DRAFT", "draft", "BORRADOR", "borrador"].includes(currentStatus)) return false;
+      // REGLA DE PRIVACIDAD ESTRICTA: Los borradores solo son visibles para su propio creador
+      if (isDraft && !isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId)) {
+        return false;
+      }
+
+      // Filtro por pestaña: En "TODAS" (ALL) solo van cotizaciones formales del flujo. Los borradores SOLO van a "GENERADO" (Borradores)
+      if (selectedTab === "ALL" && isDraft) return false;
+      if (selectedTab === "GENERADO" && !isDraft) return false;
       if (selectedTab === "ENVIADO" && !["ENVIADO", "EN_PROCESO", "PENDIENTE_APROBACION"].includes(currentStatus)) return false;
       if (selectedTab === "APROBADO_COMERCIAL" && !["APROBADO_COMERCIAL", "APROBADO_CREDITOS"].includes(currentStatus)) return false;
       if (selectedTab === "PENDIENTE_FACTURACION" && !["PENDIENTE_FACTURACION", "EN_FACTURACION"].includes(currentStatus)) return false;
@@ -685,20 +746,23 @@ export function QuoteApprovalPage() {
       const docNum = (q.docNumber || q.id || "").toLowerCase();
       const clientName = (q.clientName || q.client?.CardName || "").toLowerCase();
       const clientDoc = (q.clientDocument || q.client?.CardCode || "").toLowerCase();
+      const sellerStr = (q.sellerName || q.createdByUsername || "").toLowerCase();
 
-      return docNum.includes(query) || clientName.includes(query) || clientDoc.includes(query);
+      return docNum.includes(query) || clientName.includes(query) || clientDoc.includes(query) || sellerStr.includes(query);
     });
-  }, [quotes, selectedTab, searchQuery]);
+  }, [quotes, selectedTab, searchQuery, activeCurrentUsername, activeCurrentUserId]);
 
-  // Contadores por Estado (TODAS cuenta solo cotizaciones enviadas/comerciales)
+  // Contadores por Estado (Borradores cuenta únicamente los propios del usuario en sesión)
   const counts = useMemo(() => {
     const res = { ALL: 0, GENERADO: 0, ENVIADO: 0, APROBADO_COMERCIAL: 0, PENDIENTE_FACTURACION: 0, APROBADO: 0, RECHAZADO: 0 };
     quotes.forEach((q) => {
       const st = q.approvalStatus || q.state || q.status || "GENERADO";
-      const isDraft = ["GENERADO", "DRAFT", "draft", "BORRADOR", "borrador"].includes(st);
+      const isDraft = isDraftState(st);
       
       if (isDraft) {
-        res.GENERADO++;
+        if (isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId)) {
+          res.GENERADO++;
+        }
       } else {
         res.ALL++;
         if (["ENVIADO", "EN_PROCESO", "PENDIENTE_APROBACION"].includes(st)) res.ENVIADO++;
@@ -709,7 +773,7 @@ export function QuoteApprovalPage() {
       }
     });
     return res;
-  }, [quotes]);
+  }, [quotes, activeCurrentUsername, activeCurrentUserId]);
 
   const renderStatusBadge = (status) => {
     switch (status) {
@@ -1222,7 +1286,7 @@ export function QuoteApprovalPage() {
             {[
               { id: "ALL", label: "Todas", count: counts.ALL, color: "#475569", bgSelected: "#475569", bgGlow: "#f1f5f9" },
               { id: "ENVIADO", label: "1. Pend. Aprobación", count: counts.ENVIADO, color: "#0284c7", bgSelected: "#0284c7", bgGlow: "#e0f2fe" },
-              { id: "APROBADO_COMERCIAL", label: "2. Aprob. Comercial", count: counts.APROBADO_COMERCIAL, color: "#d97706", bgSelected: "#d97706", bgGlow: "#fef9c3" },
+              { id: "APROBADO_COMERCIAL", label: "2. Cotizaciones Aprobadas", count: counts.APROBADO_COMERCIAL, color: "#16a34a", bgSelected: "#16a34a", bgGlow: "#dcfce7" },
               { id: "PENDIENTE_FACTURACION", label: "3. Pnd. Facturación", count: counts.PENDIENTE_FACTURACION, color: "#7c3aed", bgSelected: "#7c3aed", bgGlow: "#f3e8ff" },
               { id: "APROBADO", label: "4. Pedidos Emitidos", count: counts.APROBADO, color: "#16a34a", bgSelected: "#16a34a", bgGlow: "#dcfce7" },
               { id: "GENERADO", label: "Borradores", isTrash: true, count: counts.GENERADO, color: "#dc2626", bgSelected: "#dc2626", bgGlow: "#fef2f2" }

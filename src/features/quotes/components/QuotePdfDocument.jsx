@@ -1,302 +1,532 @@
 import React from "react";
-import { Box, Text, Flex, Grid, Table, Thead, Tbody, Tr, Th, Td, HStack, VStack, TableContainer, useBreakpointValue } from "@chakra-ui/react";
-import { numberToWords } from "../../../shared/utils/numberToWords";
 import { calculateQuoteTotals } from "../../../shared/utils/quoteCalculator";
 
-function formatRucOrDni(val) {
-  if (!val) return "S/R";
-  const str = String(val).trim();
-  const digitsOnly = str.replace(/\D/g, "");
-  if (digitsOnly.length === 11) return digitsOnly;
-  if (digitsOnly.length === 8) return digitsOnly;
-  const clean = str.replace(/^[A-Za-z]+/, "").trim();
-  return clean || str;
-}
+const money = (val) => {
+  const num = Number(val || 0);
+  return num.toFixed(2);
+};
 
 export const QuotePdfDocument = React.forwardRef(({ quote, isPrintMode = false }, ref) => {
-  const isMobile = useBreakpointValue({ base: true, md: false });
-  const showMobileCards = isMobile && !isPrintMode;
-
   if (!quote) return null;
 
-  const docNumber = quote.docNumber || quote.id || quote.docNum || quote.opNum || "COT-000000";
-  const clientName = quote.clientName || quote.client?.CardName || quote.client?.name || quote.cardName || "CLIENTE GENERAL";
-  const clientAddress = quote.clientAddress || quote.client?.Address || quote.client?.address || quote.client?.raw?.Address || quote.address || "CAR.IQUITOS - NAUTA KM. 1 MZA. B LOTE. 9 A.H. INCA MANCO KALI SAN JUAN BAUTISTA MAYNAS - PERU";
-  
-  const rawRuc = quote.clientRuc || quote.client?.LicTradNum || quote.client?.raw?.LicTradNum || quote.client?.FederalTaxID || quote.client?.raw?.FederalTaxID || quote.client?.CardCode || quote.client?.cardCode || quote.cardCode || quote.federalTaxID || "";
-  const cleanRucDni = formatRucOrDni(rawRuc);
-  const rucLabel = cleanRucDni.length === 8 ? "DNI:" : "RUC:";
-
-  const sellerName = quote.sellerName || quote.salesPersonName || quote.createdByUsername || quote.createdByName || quote.user || "Manuel Zapata";
-  const docDate = quote.docDate ? String(quote.docDate).slice(0, 10) : new Date().toISOString().slice(0, 10);
-  const docDueDate = quote.docDueDate ? String(quote.docDueDate).slice(0, 10) : docDate;
-  const currency = quote.docCurrency || quote.currency || "USD";
-  const currencySymbol = currency === "PEN" || currency === "SOLES" ? "S/" : "$";
-  const paymentGroup = typeof quote.selectedPaymentType === 'object' 
-    ? (quote.selectedPaymentType?.PymntGroup || quote.selectedPaymentType?.PaymentTermsGroupName || "CONTADO")
-    : (quote.selectedPaymentType || "CONTADO");
-  const refNumber = quote.refNumber || quote.numAtCard || quote.ocNumber || "-";
-  const transportName = typeof quote.selectedTransport === 'object' ? (quote.selectedTransport?.Name || quote.selectedTransport?.name || "") : (quote.selectedTransport || "");
-  const deliveryFormName = typeof quote.selectedDeliveryForm === 'object' ? (quote.selectedDeliveryForm?.TrnspName || quote.selectedDeliveryForm?.name || "") : (quote.selectedDeliveryForm || "");
-  const guiaRemision = transportName || deliveryFormName || "-";
-
-  // Productos y Totales unificados con calculadora global
-  const items = quote.products || quote.lines || quote.items || [];
+  const client = quote.client || {};
+  const products = quote.products || quote.lines || quote.items || [];
   const tcVal = Number(quote.totals?.tc) || 3.76;
-  const calcRes = calculateQuoteTotals(items, tcVal);
-  const pdfProducts = calcRes.normalizedProducts;
-  const subtotal = calcRes.subtotalUSD;
-  const igv = calcRes.igvUSD;
-  const total = calcRes.grandTotalUSD;
-  const totalInWords = numberToWords(total, currency);
+
+  // Condiciones Comerciales Normalizadas
+  const docType = String(quote.documentType || quote.tipoComprobante || quote.docTypeVenta || "FACTURA").toUpperCase();
+  const saleCond = String(quote.saleCondition || quote.condicionVenta || quote.condicionPago || "CONTADO").toUpperCase();
+  const isLetraDoc = Boolean(quote.isLetra || quote.hasLetra || quote.letra);
+  const creditTermDoc = quote.creditTerm || quote.plazo || "";
+
+  const isContado = saleCond === "CONTADO";
+  const isCredito = saleCond === "CREDITO";
+  const isBoleta = docType === "BOLETA";
+  const isFactura = docType === "FACTURA";
+
+  // Fecha
+  const dateObj = quote.docDate ? new Date(quote.docDate) : new Date();
+  const day = !isNaN(dateObj.getDate()) ? String(dateObj.getDate()).padStart(2, "0") : String(new Date().getDate()).padStart(2, "0");
+  const months = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Setiembre", "Octubre", "Noviembre", "Diciembre"];
+  const monthName = !isNaN(dateObj.getMonth()) ? months[dateObj.getMonth()] : months[new Date().getMonth()];
+  const fullYear = !isNaN(dateObj.getFullYear()) ? String(dateObj.getFullYear()) : String(new Date().getFullYear());
+  const shortYear = fullYear.slice(-2);
+
+  // Cliente y Despacho
+  const clientCardCode = client.CardCode || quote.clientDocument || quote.clientRuc || "CL72435405";
+  const clientName = client.CardName || client.name || quote.clientName || "CLIENTE NO REGISTRADO";
+  const clientRuc = client.LicTradNum || client.FederalTaxID || quote.clientRuc || quote.clientDocument || "10724354051";
+  const clientAddress = client.Address || client.address || quote.clientAddress || "LA VICTORIA - LIMA";
+
+  // Parseo inteligente de Transporte
+  let parsedTransport = quote.selectedTransport || quote.transport;
+  if (typeof parsedTransport === "string" && parsedTransport.trim().startsWith("{")) {
+    try {
+      parsedTransport = JSON.parse(parsedTransport);
+    } catch (e) {}
+  }
+
+  const transportName = typeof parsedTransport === "object" && parsedTransport !== null
+    ? (parsedTransport.Name || parsedTransport.name || parsedTransport.label || "")
+    : (parsedTransport || "Cód. 103 - ETTUSA");
+
+  const transportAddress = typeof parsedTransport === "object" && parsedTransport !== null
+    ? (parsedTransport.U_TQC_DIREC || parsedTransport.address || quote.transportDirection || "")
+    : (quote.transportDirection || "San Vicente de Cañete / Provincia");
+
+  // Parseo inteligente de Punto de Llegada
+  let parsedPoint = quote.selectedPoint || quote.deliveryPoint;
+  if (typeof parsedPoint === "string" && parsedPoint.trim().startsWith("{")) {
+    try {
+      parsedPoint = JSON.parse(parsedPoint);
+    } catch (e) {}
+  }
+
+  const pointOfArrival = typeof parsedPoint === "object" && parsedPoint !== null
+    ? (parsedPoint.AddressName || parsedPoint.Street || parsedPoint.label || clientAddress || "")
+    : (parsedPoint || clientAddress || "LIMA - SAN VICENTE");
+
+  const opNumberVal = quote.opNum || quote.operationNumber || "";
+
+  // Parseo inteligente de Pago
+  let parsedPayment = quote.selectedPaymentType || quote.paymentType;
+  if (typeof parsedPayment === "string" && parsedPayment.trim().startsWith("{")) {
+    try {
+      parsedPayment = JSON.parse(parsedPayment);
+    } catch (e) {}
+  }
+
+  const bankVal = typeof parsedPayment === "object" && parsedPayment !== null
+    ? (parsedPayment.PymntGroup || parsedPayment.PaymentTermsGroupName || parsedPayment.label || "")
+    : (parsedPayment || (isContado ? "BCP SOLES" : ""));
+
+  const sellerDisplayName = quote.sellerName || quote.salesPersonName || "540";
+
+  // Totales
+  const calcRes = calculateQuoteTotals(products, tcVal);
+  const grandTotalUSD = calcRes.grandTotalUSD;
+
+  // Grilla Doble de 30 renglones
+  const col1Items = [];
+  const col2Items = [];
+  for (let i = 0; i < 15; i++) {
+    col1Items.push(products[i] || null);
+  }
+  for (let i = 15; i < 30; i++) {
+    col2Items.push(products[i] || null);
+  }
 
   return (
-    <Box
+    <div
       ref={ref}
-      w="100%"
-      maxW="210mm"
-      minH={{ base: "auto", md: "297mm" }}
-      bg="white"
-      p={{ base: 2.5, sm: 4, md: "12mm" }}
-      fontFamily="'Helvetica Neue', Helvetica, Arial, sans-serif"
-      color="#1e293b"
-      boxSizing="border-box"
       id="printable-autopartes-document"
+      style={{
+        width: "100%",
+        maxWidth: "800px",
+        minHeight: "1120px",
+        backgroundColor: "#fffdf7",
+        padding: "24px 28px",
+        fontFamily: "Arial, Helvetica, sans-serif",
+        color: "#000000",
+        boxSizing: "border-box",
+        margin: "0 auto",
+      }}
     >
-      {/* ── ENCABEZADO PRINCIPAL (LOGO Y RUC) ── */}
-      <Flex direction={{ base: "column", sm: "row" }} justify="space-between" align={{ base: "stretch", sm: "flex-start" }} gap={{ base: 2, sm: 3 }} mb={2.5}>
-        {/* Izquierda: Logo y datos de Autopartes S.A. */}
-        <HStack spacing={2.5} align="flex-start">
-          <VStack align="center" spacing={0} w={{ base: "65px", sm: "90px" }}>
-            <Box textStyle="none">
-              <svg width="55" height="40" viewBox="0 0 100 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M40 10L10 70H30L40 50H60L40 10Z" fill="#0d6334" />
-                <path d="M50 30L80 70H60L50 50L50 30Z" fill="#16a34a" />
-              </svg>
-            </Box>
-            <Text fontSize={{ base: "8.5px", sm: "10px" }} fontWeight="900" color="#0d6334" letterSpacing="tight" mt={-1}>
-              Autopartes s.a.
-            </Text>
-          </VStack>
+      {/* 1. CABECERA: MEMBRETE AUTOPARTES S.A. (IZQUIERDA) + MARCAS DISTRIBUIDAS (DERECHA) */}
+      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "6px" }}>
+        <tbody>
+          <tr>
+            <td style={{ width: "230px", verticalAlign: "top" }}>
+              <img
+                src="/assets/logo.svg"
+                alt="Autopartes S.A."
+                style={{ height: "24px", objectFit: "contain", marginBottom: "4px", display: "block" }}
+              />
+              <div style={{ fontSize: "7px", color: "#166534", fontWeight: "bold", lineHeight: "1.25" }}>
+                <div>Av. De las Torres Nº 261, Urb. Ind. La Aurora,</div>
+                <div>Ate - Lima - Perú</div>
+                <div>Central: (01) 324-2600</div>
+                <div>ventas@autopartes.pe</div>
+                <div>www.autopartes.pe</div>
+              </div>
+            </td>
+            <td style={{ textAlign: "right", verticalAlign: "middle" }}>
+              <img
+                src="/assets/talonario_logos_oficial.png"
+                alt="Marcas Distribuidas"
+                style={{ maxHeight: "82px", maxWidth: "100%", display: "inline-block", objectFit: "contain" }}
+              />
+            </td>
+          </tr>
+        </tbody>
+      </table>
 
-          <VStack align="flex-start" spacing={0.5} pt={0.5}>
-            <Text fontSize={{ base: "11px", sm: "14px" }} fontWeight="900" color="#0d6334" letterSpacing="wide">
-              AUTOPARTES S.A.
-            </Text>
-            <Text fontSize={{ base: "8px", sm: "9px" }} color="#475569" fontWeight="600">
-              AV. LAS TORRES No 261 URB. INDUSTRIAL LA AURORA - ATE
-            </Text>
-            <Text fontSize={{ base: "8px", sm: "9px" }} color="#475569" fontWeight="600">
-              Teléfono: 324-2600 | E-Mail: ventas@autopartes.pe
-            </Text>
-          </VStack>
-        </HStack>
+      {/* 2. TÍTULO Y NUMERACIÓN (ORDEN DE PEDIDO) */}
+      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "8px", marginTop: "2px" }}>
+        <tbody>
+          <tr>
+            <td style={{ width: "120px" }}></td>
+            <td
+              style={{
+                textAlign: "center",
+                color: "#0f5132",
+                fontSize: "20px",
+                fontWeight: "900",
+                fontFamily: "Georgia, 'Times New Roman', serif",
+                letterSpacing: "3px",
+                textTransform: "uppercase",
+              }}
+            >
+              ORDEN DE PEDIDO
+            </td>
+            <td
+              style={{
+                width: "150px",
+                textAlign: "right",
+                color: "#dc2626",
+                fontWeight: "900",
+                fontSize: "14px",
+                fontFamily: "'Courier New', Courier, monospace",
+              }}
+            >
+              Nº {quote.docNumber || quote.id || "065026"}
+            </td>
+          </tr>
+        </tbody>
+      </table>
 
-        {/* Derecha: RUC y Tipo de Documento */}
-        <Box
-          border="1.5px solid #0d6334"
-          borderRadius="md"
-          px={{ base: 3, sm: 5 }}
-          py={{ base: 1.5, sm: 2 }}
-          textAlign="center"
-          minW={{ base: "100%", sm: "200px" }}
-          bg="#f0fdf4"
-        >
-          <Text fontSize={{ base: "10.5px", sm: "12px" }} fontWeight="900" color="#1e293b">
-            RUC: 20144640269
-          </Text>
-          <Text fontSize={{ base: "10.5px", sm: "12px" }} fontWeight="900" color="#0d6334" my={0.5} textTransform="uppercase">
-            COTIZACIÓN ELECTRÓNICA
-          </Text>
-          <Text fontSize={{ base: "11.5px", sm: "13px" }} fontWeight="900" color="#1e293b">
-            N° {docNumber}
-          </Text>
-        </Box>
-      </Flex>
+      {/* 3. FECHA Y CÓDIGO DE CLIENTE */}
+      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "8px", fontSize: "10px", fontWeight: "bold" }}>
+        <tbody>
+          <tr>
+            <td style={{ verticalAlign: "middle" }}>
+              <span style={{ textDecoration: "underline", padding: "0 4px", fontWeight: "900" }}>{day}</span> de{" "}
+              <span style={{ textDecoration: "underline", padding: "0 4px", fontWeight: "900" }}>{monthName}</span> del 20
+              <span style={{ textDecoration: "underline", padding: "0 4px", fontWeight: "900" }}>{shortYear}</span>
+            </td>
+            <td style={{ textAlign: "right", verticalAlign: "middle" }}>
+              <span style={{ marginRight: "6px" }}>CODIGO CLIENTE</span>
+              <span
+                style={{
+                  display: "inline-block",
+                  border: "1.5px solid #000",
+                  backgroundColor: "#ffffff",
+                  padding: "2px 10px",
+                  minWidth: "120px",
+                  textAlign: "center",
+                  fontFamily: "monospace",
+                  fontWeight: "900",
+                  fontSize: "11px",
+                }}
+              >
+                {clientCardCode}
+              </span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
 
-      {/* ── DATOS DEL CLIENTE Y FECHAS ── */}
-      <Box borderTop="1.5px solid #0d6334" borderBottom="1.5px solid #0d6334" py={2} my={2}>
-        <Grid templateColumns={{ base: "1fr", sm: "1.2fr 1fr" }} gap={{ base: 1, sm: 2 }} fontSize={{ base: "8.5px", sm: "10px" }} color="#1e293b">
-          <VStack align="flex-start" spacing={0.5}>
-            <Text><strong>Señores:</strong> {clientName}</Text>
-            <Text><strong>Dirección:</strong> {clientAddress}</Text>
-            <Text><strong>{rucLabel}</strong> {cleanRucDni}</Text>
-            <Text><strong>Forma de Pago:</strong> {paymentGroup}</Text>
-            <Text><strong>Vendedor:</strong> {sellerName}</Text>
-          </VStack>
+      {/* 4. DATOS DEL CLIENTE Y DESPACHO (LÍNEAS DE FORMULARIO SIN TACHADOS) */}
+      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "8px", fontSize: "10px", fontWeight: "bold" }}>
+        <tbody>
+          <tr>
+            <td style={{ width: "50px", padding: "3px 0", verticalAlign: "bottom", color: "#000" }}>Sr.(es):</td>
+            <td style={{ borderBottom: "1px solid #000", padding: "3px 4px", verticalAlign: "bottom", color: "#000", fontWeight: "900", fontSize: "10.5px" }}>
+              {clientName}
+            </td>
+            <td style={{ width: "95px", padding: "3px 4px 3px 12px", textAlign: "right", verticalAlign: "bottom", color: "#000" }}>RUC CLIENTE:</td>
+            <td style={{ width: "130px", borderBottom: "1px solid #000", padding: "3px 4px", verticalAlign: "bottom", color: "#000", fontWeight: "900", fontFamily: "monospace", fontSize: "10.5px" }}>
+              {clientRuc}
+            </td>
+          </tr>
+          <tr>
+            <td style={{ padding: "3px 0", verticalAlign: "bottom", color: "#000" }}>Dirección:</td>
+            <td colSpan={3} style={{ borderBottom: "1px solid #000", padding: "3px 4px", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
+              {clientAddress}
+            </td>
+          </tr>
+          <tr>
+            <td style={{ padding: "3px 0", verticalAlign: "bottom", color: "#000" }}>Punto de Llegada:</td>
+            <td colSpan={3} style={{ borderBottom: "1px solid #000", padding: "3px 4px", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
+              {pointOfArrival}
+            </td>
+          </tr>
+          <tr>
+            <td style={{ padding: "3px 0", verticalAlign: "bottom", color: "#000" }}>Ag. Transportes:</td>
+            <td style={{ borderBottom: "1px solid #000", padding: "3px 4px", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
+              {transportName}
+            </td>
+            <td style={{ padding: "3px 4px 3px 12px", textAlign: "right", verticalAlign: "bottom", color: "#000" }}>Dirección:</td>
+            <td style={{ borderBottom: "1px solid #000", padding: "3px 4px", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
+              {transportAddress}
+            </td>
+          </tr>
+          {(quote.contactPerson || quote.totals?.contactPerson || quote.refNumber || quote.totals?.refNumber) && (
+            <tr>
+              <td style={{ padding: "3px 0", verticalAlign: "bottom", color: "#000" }}>Contacto:</td>
+              <td style={{ borderBottom: "1px solid #000", padding: "3px 4px", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
+                {quote.contactPerson || quote.totals?.contactPerson || quote.ContactPerson || "—"}
+              </td>
+              <td style={{ padding: "3px 4px 3px 12px", textAlign: "right", verticalAlign: "bottom", color: "#000" }}>OC / Ref:</td>
+              <td style={{ borderBottom: "1px solid #000", padding: "3px 4px", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
+                {quote.refNumber || quote.totals?.refNumber || quote.NumAtCard || quote.numAtCard || "—"}
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
 
-          <VStack align="flex-start" spacing={0.5}>
-            <Text><strong>Fecha emisión:</strong> {docDate}</Text>
-            <Text><strong>Fecha Vencimiento:</strong> {docDueDate}</Text>
-            <Text><strong>Moneda:</strong> {currency === "USD" ? "DÓLARES AMERICANOS" : "SOLES"}</Text>
-            <Text><strong>O/C:</strong> {refNumber}</Text>
-            <Text><strong>Guía de Remisión:</strong> {guiaRemision}</Text>
-          </VStack>
-        </Grid>
-      </Box>
+      {/* 5. CASILLAS COMERCIALES (TALONARIO) */}
+      <table style={{ width: "100%", borderCollapse: "collapse", border: "1.5px solid #000", background: "#fefce8", marginBottom: "8px", fontSize: "9.5px", fontWeight: "bold" }}>
+        <tbody>
+          <tr>
+            {/* Columna 1: CONTADO / CREDITO */}
+            <td style={{ padding: "5px 8px", width: "22%", verticalAlign: "middle", borderRight: "1px solid #e5e7eb" }}>
+              <div style={{ display: "flex", alignItems: "center", marginBottom: "4px" }}>
+                <span style={{ width: "60px" }}>CONTADO</span>
+                <span style={{ width: "14px", height: "14px", border: "1.5px solid #000", background: "#ffffff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: "900" }}>
+                  {isContado ? "X" : ""}
+                </span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center" }}>
+                <span style={{ width: "60px" }}>CREDITO</span>
+                <span style={{ width: "14px", height: "14px", border: "1.5px solid #000", background: "#ffffff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: "900" }}>
+                  {isCredito ? "X" : ""}
+                </span>
+              </div>
+            </td>
 
-      {/* LEMA OFICIAL */}
-      <Text fontSize={{ base: "7px", sm: "8px" }} fontWeight="800" textAlign="center" color="#64748b" textTransform="uppercase" mb={2}>
-        AÑO DE LA LUCHA CONTRA LA CORRUPCIÓN Y LA IMPUNIDAD
-      </Text>
+            {/* Columna 2: BOLETA / FACTURA */}
+            <td style={{ padding: "5px 8px", width: "22%", verticalAlign: "middle", borderRight: "1px solid #e5e7eb" }}>
+              <div style={{ display: "flex", alignItems: "center", marginBottom: "4px" }}>
+                <span style={{ width: "60px" }}>BOLETA</span>
+                <span style={{ width: "14px", height: "14px", border: "1.5px solid #000", background: "#ffffff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: "900" }}>
+                  {isBoleta ? "X" : ""}
+                </span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center" }}>
+                <span style={{ width: "60px" }}>FACTURA</span>
+                <span style={{ width: "14px", height: "14px", border: "1.5px solid #000", background: "#ffffff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: "900" }}>
+                  {isFactura ? "X" : ""}
+                </span>
+              </div>
+            </td>
 
-      {/* ── SECCIÓN DE PRODUCTOS Y VALORES ── */}
-      <Box mb={3}>
-        {showMobileCards ? (
-          /* Vista Móvil: Tarjetas compactas de artículos (Fits 100% on ANY smartphone screen size!) */
-          <VStack align="stretch" spacing={1.5}>
-            <Flex justify="space-between" bg="#0d6334" color="white" px={2.5} py={1} borderRadius="xs" fontSize="8.5px" fontWeight="800">
-              <Text>DESCRIPCIÓN DE PRODUCTOS</Text>
-              <Text>VALOR VENTA</Text>
-            </Flex>
-            {pdfProducts.length > 0 ? (
-              pdfProducts.map((it, idx) => {
-                const qty = it.quantity;
-                const price = it.price;
-                const discPercent = it.discountPercent;
-                const discVal = it.discountAmount;
-                const valVenta = it.lineTotal;
+            {/* Columna 3: LETRA / PLAZO */}
+            <td style={{ padding: "5px 8px", width: "22%", verticalAlign: "middle", borderRight: "1px solid #e5e7eb" }}>
+              <div style={{ display: "flex", alignItems: "center", marginBottom: "4px" }}>
+                <span style={{ width: "45px" }}>LETRA</span>
+                <span style={{ width: "14px", height: "14px", border: "1.5px solid #000", background: "#ffffff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: "900" }}>
+                  {isLetraDoc ? "X" : ""}
+                </span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center" }}>
+                <span style={{ width: "45px" }}>PLAZO</span>
+                <span style={{ border: "1px solid #000", background: "#ffffff", padding: "1px 4px", minWidth: "55px", textAlign: "center", fontSize: "8.5px" }}>
+                  {creditTermDoc || (isCredito ? "30 DÍAS" : "—")}
+                </span>
+              </div>
+            </td>
 
-                return (
-                  <Box key={idx} p={2} bg="#f8fafc" border="1px solid #cbd5e1" borderRadius="xs" fontSize="8.5px">
-                    <Flex justify="space-between" align="flex-start" mb={1}>
-                      <Text fontWeight="800" color="#0d6334" maxW="72%" leading="tight">
-                        #{idx + 1} {it.itemCode || it.code ? `${it.itemCode || it.code} ` : ''}{it.description || it.ItemDescription || it.name || "PRODUCTO AUTOPARTES"}
-                      </Text>
-                      <Text fontWeight="900" fontSize="9.5px" color="#0d6334">
-                        {currencySymbol} {valVenta.toFixed(2)}
-                      </Text>
-                    </Flex>
-                    <Grid templateColumns="1fr 1.1fr 1.2fr" gap={1} fontSize="7.5px" color="#475569" borderTop="1px dashed #e2e8f0" pt={1}>
-                      <Text><strong>Cant:</strong> {qty.toFixed(2)} NIU</Text>
-                      <Text><strong>P. Unit:</strong> {currencySymbol}{price.toFixed(2)}</Text>
-                      <Text color={discVal > 0 ? "#dc2626" : "inherit"}>
-                        <strong>Desc:</strong> {discVal > 0 ? `${discVal.toFixed(2)} (${discPercent}%)` : "0.00"}
-                      </Text>
-                    </Grid>
-                  </Box>
-                );
-              })
-            ) : (
-              <Box p={3} textAlign="center" color="#94a3b8" fontSize="8.5px" fontStyle="italic">
-                Sin ítems registrados en el documento.
-              </Box>
-            )}
-          </VStack>
-        ) : (
-          /* Vista Desktop / Impresión PDF: Tabla Oficial A4 de 7 Columnas */
-          <TableContainer overflowX="auto" w="100%">
-            <Table size="xs" variant="simple" style={{ width: "100%" }}>
-              <Thead bg="#0d6334">
-                <Tr>
-                  <Th color="white" fontSize="9px" fontWeight="800" w="5%">ID</Th>
-                  <Th color="white" fontSize="9px" fontWeight="800" w="8%" isNumeric>Cant.</Th>
-                  <Th color="white" fontSize="9px" fontWeight="800" w="10%">Unidad Medida</Th>
-                  <Th color="white" fontSize="9px" fontWeight="800" w="40%">Descripción</Th>
-                  <Th color="white" fontSize="9px" fontWeight="800" w="12%" isNumeric>Valor Unitario</Th>
-                  <Th color="white" fontSize="9px" fontWeight="800" w="12%" isNumeric>Descuento</Th>
-                  <Th color="white" fontSize="9px" fontWeight="800" w="13%" isNumeric>Valor Venta</Th>
-                </Tr>
-              </Thead>
-              <Tbody fontSize="9px">
-                {pdfProducts.length > 0 ? (
-                  pdfProducts.map((it, idx) => {
-                    const qty = it.quantity;
-                    const price = it.price;
-                    const discPercent = it.discountPercent;
-                    const discVal = it.discountAmount;
-                    const valVenta = it.lineTotal;
+            {/* Columna 4: ABONO / BANCO */}
+            <td style={{ padding: "5px 8px", width: "34%", verticalAlign: "middle" }}>
+              <div style={{ display: "flex", alignItems: "center", marginBottom: "4px" }}>
+                <span style={{ fontSize: "8px", whiteSpace: "nowrap", marginRight: "4px" }}>ABONO / TRANSF.</span>
+                <span style={{ flex: 1, border: "1px solid #000", background: "#fef08a", padding: "1px 4px", textAlign: "center", fontSize: "8.5px", fontFamily: "monospace", fontWeight: "900" }}>
+                  {opNumberVal || "—"}
+                </span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center" }}>
+                <span style={{ fontSize: "8px", marginRight: "4px" }}>BCQ</span>
+                <span style={{ flex: 1, border: "1px solid #000", background: "#fef08a", padding: "1px 4px", textAlign: "center", fontSize: "8px", fontWeight: "900", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {bankVal || "—"}
+                </span>
+                <span style={{ fontSize: "8px", margin: "0 4px" }}>CH/</span>
+                <span style={{ width: "30px", border: "1px solid #000", background: "#fef08a", padding: "1px 2px", textAlign: "center", fontSize: "8px" }}>
+                  —
+                </span>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* 6. TABLA DOBLE DE 30 ARTÍCULOS (HTML TABLE PURA PARA CERO DESCUADRES) */}
+      <table style={{ width: "100%", borderCollapse: "collapse", border: "1.5px solid #000", marginBottom: "6px", background: "#ffffff" }}>
+        <tbody>
+          <tr>
+            {/* Mitad Izquierda: Renglones 1 al 15 */}
+            <td style={{ width: "50%", verticalAlign: "top", borderRight: "1.5px solid #000", padding: 0 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    <th colSpan={5} style={{ background: "#e5e7eb", borderBottom: "1.5px solid #000", textAlign: "center", padding: "2px 0", fontSize: "9.5px", fontWeight: "900", letterSpacing: "1px" }}>
+                      ARTICULO
+                    </th>
+                  </tr>
+                  <tr style={{ background: "#f3f4f6", borderBottom: "1.5px solid #000", fontSize: "8px", fontWeight: "900" }}>
+                    <th style={{ width: "24px", textAlign: "center", borderRight: "1px solid #000", padding: "2px 0" }}>ITEM</th>
+                    <th style={{ width: "30px", textAlign: "center", borderRight: "1px solid #000", padding: "2px 0" }}>CANT.</th>
+                    <th style={{ textAlign: "center", borderRight: "1px solid #000", padding: "2px 4px" }}>DESCRIPCION</th>
+                    <th style={{ width: "42px", textAlign: "center", borderRight: "1px solid #000", padding: "2px 0" }}>P. UNIT.</th>
+                    <th style={{ width: "46px", textAlign: "center", padding: "2px 0" }}>P. TOTAL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {col1Items.map((item, idx) => {
+                    const itemNum = idx + 1;
+                    const qty = item ? Number(item.quantity || 1) : "";
+                    const listPrice = item ? Number(item.price || item.unitPrice || 0) : 0;
+                    const sapDisc = item ? Number(item.discount || item.sapDiscount || 0) : 0;
+                    const addDisc = item ? Number(item.lineDiscount || 0) : 0;
+                    const priceAfterSap = listPrice * (1 - sapDisc / 100);
+                    const finalUnitPrice = priceAfterSap * (1 - addDisc / 100);
+                    const lineTotalNum = item ? (Number(item.quantity || 1) * finalUnitPrice) : 0;
+
+                    const rawName = item ? (item.name || item.productName || item.code || "") : "";
+                    let discTag = "";
+                    if (sapDisc > 0 && addDisc > 0) {
+                      discTag = ` (-${sapDisc}% -${addDisc}%)`;
+                    } else if (sapDisc > 0) {
+                      discTag = ` (-${sapDisc}%)`;
+                    } else if (addDisc > 0) {
+                      discTag = ` (-${addDisc}% adic.)`;
+                    }
+                    const name = rawName ? `${rawName}${discTag}` : "";
+                    const price = item ? money(finalUnitPrice) : "";
+                    const lineTotal = item ? money(lineTotalNum) : "";
 
                     return (
-                      <Tr key={idx} _hover={{ bg: "#f8fafc" }}>
-                        <Td py={1.5} color="#475569">{idx + 1}</Td>
-                        <Td py={1.5} isNumeric fontWeight="700">{qty.toFixed(2)}</Td>
-                        <Td py={1.5} color="#475569">NIU</Td>
-                        <Td py={1.5} fontWeight="700">{it.itemCode || it.code ? `${it.itemCode || it.code} ` : ''}{it.description || it.ItemDescription || it.name || "PRODUCTO AUTOPARTES"}</Td>
-                        <Td py={1.5} isNumeric>{price.toFixed(2)}</Td>
-                        <Td py={1.5} isNumeric color="#dc2626">{discVal > 0 ? `${discVal.toFixed(2)} (${discPercent}%)` : "0.00"}</Td>
-                        <Td py={1.5} isNumeric fontWeight="800">{valVenta.toFixed(2)}</Td>
-                      </Tr>
+                      <tr key={idx} style={{ height: "17px", borderBottom: "1px solid #000", fontSize: "8.5px", background: item ? (idx % 2 === 0 ? "#ffffff" : "#fafaf9") : "transparent" }}>
+                        <td style={{ textAlign: "center", borderRight: "1px solid #000", fontWeight: "bold", color: "#000", padding: "0 2px" }}>{itemNum}</td>
+                        <td style={{ textAlign: "center", borderRight: "1px solid #000", fontWeight: "bold", color: "#000", padding: "0 2px" }}>{qty}</td>
+                        <td style={{ borderRight: "1px solid #000", fontWeight: "bold", padding: "0 4px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "160px", fontSize: "7.5px" }} title={name}>{name}</td>
+                        <td style={{ textAlign: "right", borderRight: "1px solid #000", fontFamily: "monospace", padding: "0 3px" }}>{price ? `$${price}` : ""}</td>
+                        <td style={{ textAlign: "right", fontWeight: "bold", fontFamily: "monospace", padding: "0 3px" }}>{lineTotal ? `$${lineTotal}` : ""}</td>
+                      </tr>
                     );
-                  })
-                ) : (
-                  <Tr>
-                    <Td colSpan={7} textAlign="center" py={4} color="#94a3b8" fontStyle="italic">
-                      Sin ítems registrados en el documento.
-                    </Td>
-                  </Tr>
-                )}
-              </Tbody>
-            </Table>
-          </TableContainer>
-        )}
-      </Box>
+                  })}
+                </tbody>
+              </table>
+            </td>
 
-      {/* ── CUADRO MONTO EN LETRAS, OBSERVACIONES Y TOTALES ── */}
-      <Grid templateColumns={{ base: "1fr", md: "1fr 230px" }} gap={{ base: 2, md: 3 }} mb={2.5} align="flex-start">
-        {/* Izquierda: Letras + Observación */}
-        <VStack align="stretch" spacing={1.5}>
-          <Box border="1.5px solid #0d6334" borderRadius="md" p={{ base: 1.5, sm: 2.5 }} bg="#f0fdf4">
-            <Text fontSize={{ base: "8.5px", sm: "10px" }} fontWeight="900" color="#0d6334" textTransform="uppercase">
-              {totalInWords}
-            </Text>
-          </Box>
+            {/* Mitad Derecha: Renglones 16 al 30 */}
+            <td style={{ width: "50%", verticalAlign: "top", padding: 0 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    <th colSpan={5} style={{ background: "#e5e7eb", borderBottom: "1.5px solid #000", textAlign: "center", padding: "2px 0", fontSize: "9.5px", fontWeight: "900", letterSpacing: "1px" }}>
+                      ARTICULO
+                    </th>
+                  </tr>
+                  <tr style={{ background: "#f3f4f6", borderBottom: "1.5px solid #000", fontSize: "8px", fontWeight: "900" }}>
+                    <th style={{ width: "24px", textAlign: "center", borderRight: "1px solid #000", padding: "2px 0" }}>ITEM</th>
+                    <th style={{ width: "30px", textAlign: "center", borderRight: "1px solid #000", padding: "2px 0" }}>CANT.</th>
+                    <th style={{ textAlign: "center", borderRight: "1px solid #000", padding: "2px 4px" }}>DESCRIPCION</th>
+                    <th style={{ width: "42px", textAlign: "center", borderRight: "1px solid #000", padding: "2px 0" }}>P. UNIT.</th>
+                    <th style={{ width: "46px", textAlign: "center", padding: "2px 0" }}>P. TOTAL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {col2Items.map((item, idx) => {
+                    const itemNum = idx + 16;
+                    const qty = item ? Number(item.quantity || 1) : "";
+                    const listPrice = item ? Number(item.price || item.unitPrice || 0) : 0;
+                    const sapDisc = item ? Number(item.discount || item.sapDiscount || 0) : 0;
+                    const addDisc = item ? Number(item.lineDiscount || 0) : 0;
+                    const priceAfterSap = listPrice * (1 - sapDisc / 100);
+                    const finalUnitPrice = priceAfterSap * (1 - addDisc / 100);
+                    const lineTotalNum = item ? (Number(item.quantity || 1) * finalUnitPrice) : 0;
 
-          <Text fontSize={{ base: "8px", sm: "9px" }} color="#334155">
-            <strong>Observación:</strong> {quote.comment || quote.comments || `02) ${paymentGroup} / Anticipado`}
-          </Text>
-        </VStack>
+                    const rawName = item ? (item.name || item.productName || item.code || "") : "";
+                    let discTag = "";
+                    if (sapDisc > 0 && addDisc > 0) {
+                      discTag = ` (-${sapDisc}% -${addDisc}%)`;
+                    } else if (sapDisc > 0) {
+                      discTag = ` (-${sapDisc}%)`;
+                    } else if (addDisc > 0) {
+                      discTag = ` (-${addDisc}% adic.)`;
+                    }
+                    const name = rawName ? `${rawName}${discTag}` : "";
+                    const price = item ? money(finalUnitPrice) : "";
+                    const lineTotal = item ? money(lineTotalNum) : "";
 
-        {/* Derecha: Resumen de Totales */}
-        <VStack align="stretch" spacing={0.5} fontSize={{ base: "8.5px", sm: "10px" }} bg="#f8fafc" p={{ base: 2, sm: 3 }} borderRadius="md" border="1px solid #e2e8f0">
-          <Flex justify="space-between">
-            <Text color="#475569" fontWeight="700">Total Venta Gravada</Text>
-            <Text fontWeight="800">{currencySymbol} {subtotal.toFixed(2)}</Text>
-          </Flex>
-          <Flex justify="space-between">
-            <Text color="#475569" fontWeight="700">Total IGV (18%)</Text>
-            <Text fontWeight="800">{currencySymbol} {igv.toFixed(2)}</Text>
-          </Flex>
-          <Box borderBottom="1.5px solid #0d6334" my={0.5} />
-          <Flex justify="space-between" fontSize={{ base: "9.5px", sm: "11px" }} color="#0d6334">
-            <Text fontWeight="900">Importe Total de la Venta</Text>
-            <Text fontWeight="900">{currencySymbol} {total.toFixed(2)}</Text>
-          </Flex>
-        </VStack>
-      </Grid>
+                    return (
+                      <tr key={idx} style={{ height: "17px", borderBottom: "1px solid #000", fontSize: "8.5px", background: item ? (idx % 2 === 0 ? "#ffffff" : "#fafaf9") : "transparent" }}>
+                        <td style={{ textAlign: "center", borderRight: "1px solid #000", fontWeight: "bold", color: "#000", padding: "0 2px" }}>{itemNum}</td>
+                        <td style={{ textAlign: "center", borderRight: "1px solid #000", fontWeight: "bold", color: "#000", padding: "0 2px" }}>{qty}</td>
+                        <td style={{ borderRight: "1px solid #000", fontWeight: "bold", padding: "0 4px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "160px", fontSize: "7.5px" }} title={name}>{name}</td>
+                        <td style={{ textAlign: "right", borderRight: "1px solid #000", fontFamily: "monospace", padding: "0 3px" }}>{price ? `$${price}` : ""}</td>
+                        <td style={{ textAlign: "right", fontWeight: "bold", fontFamily: "monospace", padding: "0 3px" }}>{lineTotal ? `$${lineTotal}` : ""}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </td>
+          </tr>
 
-      {/* ── PIE DE PÁGINA DOCUMENTO INFORMATIVO PROFORMA ── */}
-      <Box borderTop="1.5px solid #0d6334" pt={2} mt="auto">
-        <Text fontSize={{ base: "7px", sm: "8px" }} color="#475569" textAlign="center" fontWeight="700" mb={1.5}>
-          Documento Informativo — Cotización de Venta previa a la Emisión de Orden de Pedido / Comprobante en SAP B1
-        </Text>
+          {/* Fila del Total Documento en el extremo inferior derecho */}
+          <tr>
+            <td style={{ borderRight: "1.5px solid #000", background: "#fffdf7" }}></td>
+            <td style={{ background: "#fef08a", textAlign: "right", padding: "3px 10px", borderTop: "1.5px solid #000" }}>
+              <span style={{ fontWeight: "900", fontSize: "10px", marginRight: "8px" }}>TOTAL $</span>
+              <span style={{ fontWeight: "900", fontSize: "13px", fontFamily: "monospace", color: "#000" }}>
+                {money(grandTotalUSD)}
+              </span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
 
-        <Flex direction={{ base: "column", sm: "row" }} justify="space-between" align="center" gap={1.5}>
-          {/* Logos de Marcas Representadas */}
-          <HStack spacing={1.5} flexWrap="wrap" justify="center">
-            <Box px={1.5} py={0.5} bg="#dcfce7" border="1px solid #86efac" borderRadius="xs">
-              <Text fontSize="7px" fontWeight="900" color="#166534">DARUMA FILTROS</Text>
-            </Box>
-            <Box px={1.5} py={0.5} bg="#dbeafe" border="1px solid #93c5fd" borderRadius="xs">
-              <Text fontSize="7px" fontWeight="900" color="#1e40af">FilPower</Text>
-            </Box>
-            <Box px={1.5} py={0.5} bg="#ffe4e6" border="1px solid #fecdd3" borderRadius="xs">
-              <Text fontSize="7px" fontWeight="900" color="#9f1239">WYNN'S</Text>
-            </Box>
-            <Box px={1.5} py={0.5} bg="#ccfbf1" border="1px solid #99f6e4" borderRadius="xs">
-              <Text fontSize="7px" fontWeight="900" color="#115e59">SF SURE FILTER</Text>
-            </Box>
-          </HStack>
+      {/* 7. ADVERTENCIA LEGAL Y FIRMAS */}
+      <div style={{ fontSize: "8px", fontWeight: "900", textAlign: "center", margin: "4px 0", letterSpacing: "1px" }}>
+        ANTES DE FIRMAR LEER CONDICIONES AL DORSO
+      </div>
 
-          {/* Sello Corporativo Proforma */}
-          <Box border="1.5px solid #0d6334" px={2.5} py={0.5} borderRadius="xs" bg="#f0fdf4" textAlign="center">
-            <Text fontSize="7.5px" fontWeight="900" color="#0d6334">AUTOPARTES S.A.</Text>
-            <Text fontSize="6.5px" color="#166534" fontWeight="800">COTIZACIÓN / PROFORMA</Text>
-          </Box>
-        </Flex>
-      </Box>
-    </Box>
+      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "8px", textAlign: "center" }}>
+        <tbody>
+          <tr>
+            <td style={{ width: "30%", verticalAlign: "bottom", padding: "0 8px" }}>
+              <div style={{ border: "1.5px solid #000", background: "#ffffff", padding: "2px 8px", fontWeight: "900", fontSize: "11px", marginBottom: "2px" }}>
+                {sellerDisplayName}
+              </div>
+              <div style={{ fontSize: "9px", fontWeight: "900" }}>VENDEDOR</div>
+            </td>
+
+            <td style={{ width: "40%", verticalAlign: "bottom", padding: "0 12px" }}>
+              <div style={{ borderBottom: "1px solid #000", width: "100%", marginBottom: "2px", height: "16px" }}></div>
+              <div style={{ fontSize: "9px", fontWeight: "900" }}>CLIENTE</div>
+              <div style={{ fontSize: "8px", color: "#4b5563" }}>(Firma y Sello)</div>
+            </td>
+
+            <td style={{ width: "30%", verticalAlign: "bottom", padding: "0 8px" }}>
+              <div style={{ border: "1.5px solid #000", background: "#ffffff", padding: "2px 8px", fontWeight: "900", fontSize: "10px", marginBottom: "2px" }}>
+                F/N: {docType}
+              </div>
+              <div style={{ fontSize: "9px", fontWeight: "900" }}>EMISOR</div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* 8. CUENTAS BANCARIAS OFICIALES */}
+      <div style={{ border: "1px solid #000", padding: "4px 6px", fontSize: "7px", lineHeight: "1.25" }}>
+        <div style={{ fontWeight: "900", textDecoration: "underline", textTransform: "uppercase", marginBottom: "2px" }}>
+          CUENTAS PARA DEPOSITOS BANCARIOS:
+        </div>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "6.5px", fontWeight: "600", color: "#000" }}>
+          <tbody>
+            <tr>
+              <td style={{ width: "36%", verticalAlign: "top" }}>
+                <div style={{ fontWeight: "900" }}>Banco de Crédito:</div>
+                <div>MN: 191-0104153-0-50</div>
+                <div>CCI: 002-191-000104153050-50</div>
+                <div>ME: 191-0845766-1-99</div>
+                <div>CCI: 002-191-000845766199-52</div>
+              </td>
+              <td style={{ width: "38%", verticalAlign: "top" }}>
+                <div style={{ fontWeight: "900" }}>Banco Continental:</div>
+                <div>MN: 0011-0136-0100000938-99</div>
+                <div>CCI: 011-136-000100000938-89</div>
+                <div>ME: 0011-0136-0100005190-92</div>
+                <div>CCI: 011-136-000100005190-92</div>
+              </td>
+              <td style={{ width: "26%", verticalAlign: "top" }}>
+                <div style={{ fontWeight: "900" }}>Scotiabank:</div>
+                <div>ME: 000-1245211</div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{ textAlign: "center", fontSize: "8px", color: "#6b7280", fontWeight: "bold", marginTop: "4px" }}>
+        1/1
+      </div>
+    </div>
   );
 });
 
 export default QuotePdfDocument;
+
