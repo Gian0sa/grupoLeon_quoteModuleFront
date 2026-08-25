@@ -38,7 +38,7 @@ export const normalizeQuoteItem = (item) => {
     quantity = "";
   } else if (rawQty !== undefined && rawQty !== null) {
     const parsed = parseInt(rawQty, 10);
-    quantity = isNaN(parsed) || parsed < 1 ? 1 : parsed;
+    quantity = isNaN(parsed) ? "" : parsed;
   }
   
   // Si stock no viene definido en la BD/draft, queda como null para no marcar erróneamente como AGOTADO
@@ -67,7 +67,7 @@ export const normalizeQuoteItem = (item) => {
     unitPrice: price,
     discount,
     lineDiscount,
-    quantity: isNaN(quantity) || quantity < 1 ? 1 : quantity,
+    quantity: quantity === "" ? "" : (isNaN(Number(quantity)) || Number(quantity) < 1 ? 1 : Number(quantity)),
     stock,
     stockChecked: item.stockChecked !== undefined ? item.stockChecked : (rawStock !== undefined && rawStock !== null),
     isAgotado,

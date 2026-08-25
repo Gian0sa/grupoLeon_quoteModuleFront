@@ -4,20 +4,29 @@ import Select from "react-select";
 import { useProductsPriceList } from "../../products/hooks/queries/productQueries";
 import { useDebounce } from "../../../shared/hooks/useDebounce";
 
-const MIN_CHARS = 3;
-const DEBOUNCE_MS = 400;
+const MIN_CHARS = 2;
+const DEBOUNCE_MS = 200;
 
-/** Un término que es puro dígito/guion se trata como código, no como nombre. */
+/** Un término que contiene dígitos o guiones se evalúa con búsqueda inteligente de código y nombre. */
 function isLikelyItemCode(term) {
   return /^[\d\-]+$/.test(term.trim());
 }
 
+/** Normaliza una cadena removiendo tildes, minúsculas y caracteres especiales para comparación insensible a símbolos */
+function normalizeString(str) {
+  if (!str) return "";
+  return String(str)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
 /**
- * Autocompletado de artículos contra la lista de precios de SAP.
- *
- * Exige un mínimo de caracteres y aplica debounce a propósito: el backend
- * ejecuta una escalera de búsquedas de respaldo por término, así que buscar en
- * cada tecla dispara varias llamadas encadenadas a SAP.
+ * Autocompletado inteligente de artículos contra SAP.
+ * 
+ * Inicia la búsqueda desde 2 caracteres con debounce ultrarrápido de 200ms.
+ * Insensible a mayúsculas, minúsculas, tildes, guiones, puntos y espacios.
  */
 export default function ItemAutocomplete({ onSelect, isDisabled = false, placeholder }) {
   const [inputValue, setInputValue] = useState("");
@@ -28,19 +37,59 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
   const asCode = isLikelyItemCode(term);
 
   const { data, isFetching } = useProductsPriceList({
-    itemCode: asCode ? term : "",
-    itemName: asCode ? "" : term,
+    itemCode: asCode ? term : term,
+    itemName: asCode ? term : term,
     enabled: shouldSearch,
   });
 
   const options = useMemo(() => {
     const records = data?.records || [];
-    return records.map((r) => ({
+    if (!records.length) return [];
+
+    const searchRawLower = term.toLowerCase();
+    const searchClean = normalizeString(term);
+    const searchTerms = searchRawLower.split(/[\s\-._/]+/).filter(Boolean);
+    const searchTermsClean = searchTerms.map(normalizeString).filter(Boolean);
+
+    // Ranking e Coincidencias Insensibles a Símbolos y Mayúsculas/Minúsculas
+    const sortedRecords = [...records].sort((a, b) => {
+      const codeRaw = (a.ITEM_CODE || "").toLowerCase();
+      const codeClean = normalizeString(a.ITEM_CODE);
+      const nameRaw = (a.ITEM_NAME || "").toLowerCase();
+      const nameClean = normalizeString(a.ITEM_NAME);
+
+      const codeRawB = (b.ITEM_CODE || "").toLowerCase();
+      const codeCleanB = normalizeString(b.ITEM_CODE);
+      const nameRawB = (b.ITEM_NAME || "").toLowerCase();
+      const nameCleanB = normalizeString(b.ITEM_NAME);
+
+      // 1. Coincidencia exacta de código (limpio de símbolos)
+      if (codeClean === searchClean && codeCleanB !== searchClean) return -1;
+      if (codeCleanB === searchClean && codeClean !== searchClean) return 1;
+
+      // 2. Inicio de código (limpio)
+      if (codeClean.startsWith(searchClean) && !codeCleanB.startsWith(searchClean)) return -1;
+      if (codeCleanB.startsWith(searchClean) && !codeClean.startsWith(searchClean)) return 1;
+
+      // 3. Contiene en código (limpio)
+      if (codeClean.includes(searchClean) && !codeCleanB.includes(searchClean)) return -1;
+      if (codeCleanB.includes(searchClean) && !codeClean.includes(searchClean)) return 1;
+
+      // 4. Coincidencia multi-término en el nombre (insensible a guiones y símbolos)
+      const matchesAllA = searchTermsClean.every(t => nameClean.includes(t) || codeClean.includes(t));
+      const matchesAllB = searchTermsClean.every(t => nameCleanB.includes(t) || codeCleanB.includes(t));
+      if (matchesAllA && !matchesAllB) return -1;
+      if (matchesAllB && !matchesAllA) return 1;
+
+      return 0;
+    });
+
+    return sortedRecords.map((r) => ({
       value: r.ITEM_CODE,
       label: `${r.ITEM_CODE} — ${r.ITEM_NAME}`,
       record: r,
     }));
-  }, [data]);
+  }, [data, term]);
 
   const handleChange = (option) => {
     if (!option?.record) return;
@@ -55,14 +104,13 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
       name: r.ITEM_NAME,
       sigla: r.SIGLA,
       price: Number(r.PRECIO_LISTA) || 0,
-      // `importe` es el precio unitario con el descuento que ya aplica SAP.
       importe: Number(r.PRECIO_DESCUENTO ?? r.PRECIO_LISTA) || 0,
       discount: Number(r.DESCUENTO_PCT) || 0,
       stock: stockVal,
       stockChecked: hasValidStock,
       isAgotado,
       marca: r.MARCA,
-      quantity: 1,
+      quantity: "",
       lineDiscount: 0,
       raw: r,
     });
@@ -71,7 +119,7 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
   };
 
   const noOptionsMessage = () => {
-    if (!shouldSearch) return `Escribe al menos ${MIN_CHARS} caracteres`;
+    if (!shouldSearch) return `Escribe al menos ${MIN_CHARS} caracteres...`;
     if (isFetching) return "Buscando en SAP…";
     return "Sin resultados";
   };
@@ -89,7 +137,7 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
         placeholder={placeholder || "Escribe código o nombre del Artículo"}
         noOptionsMessage={noOptionsMessage}
         loadingMessage={() => "Buscando en SAP…"}
-        filterOption={null} /* el filtrado lo hace SAP, no react-select */
+        filterOption={null}
         formatOptionLabel={(option) => {
           const r = option.record;
           if (!r) return option.label;

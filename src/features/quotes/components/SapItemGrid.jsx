@@ -204,11 +204,6 @@ export default function SapItemGrid({
                           onUpdateProduct(item.id, { quantity: parsed > 0 ? parsed : "" });
                         }
                       }}
-                      onBlur={() => {
-                        if (!item.quantity || Number(item.quantity) < 1) {
-                          onUpdateProduct(item.id, { quantity: 1 });
-                        }
-                      }}
                     />
                     <Flex justify="center" mt={1}>
                       <PackagingHelper
@@ -376,11 +371,6 @@ export default function SapItemGrid({
                               } else {
                                 const parsed = parseInt(val, 10);
                                 onUpdateProduct(item.id, { quantity: parsed > 0 ? parsed : "" });
-                              }
-                            }}
-                            onBlur={() => {
-                              if (!item.quantity || Number(item.quantity) < 1) {
-                                onUpdateProduct(item.id, { quantity: 1 });
                               }
                             }}
                           />
