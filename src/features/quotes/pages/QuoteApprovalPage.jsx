@@ -138,6 +138,7 @@ export function QuoteApprovalPage() {
 
   const { username: authUsername, userId: authUserId, role: authRole } = useAuthStore();
   const localUser = (localStorage.getItem("username") || localStorage.getItem("userId") || "").toLowerCase();
+  const localRole = (localStorage.getItem("role") || "").toUpperCase();
   const hasAccess = useHasAccess();
   const isAdminUser = authRole === "ADMIN" || localRole === "ADMIN" || authUsername?.toLowerCase() === "enrique" || localUser === "enrique" || hasAccess("POST /quotes/approval") || hasAccess("POST /quotations/approve");
   const activeCurrentUsername = (authUsername || localStorage.getItem("username") || "").toLowerCase().trim();
