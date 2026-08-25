@@ -28,6 +28,7 @@ export function useQuoteSocket() {
           title: `📩 Nueva Cotización Recibida - ${quote.docNumber}`,
           description: `Enviada por ${quote.sellerName || "Vendedor"} • Cliente: ${quote.clientName} (${quote.totals?.grandTotalUSD ? `$${Number(quote.totals.grandTotalUSD).toFixed(2)}` : '$0.00'}). Requiere validación comercial.`,
           status: "ENVIADO",
+          createdAt: new Date().toISOString(),
           timestamp: new Date().toISOString(),
           read: false
         };
@@ -135,16 +136,49 @@ export function useQuoteSocket() {
       }
     };
 
+    // 5. Escuchar actualización de permisos en tiempo real a nivel de usuario
+    const handlePermissionsUpdated = (data) => {
+      console.log("⚡ [WS EVENT] user:permissions:updated recibido:", data);
+      const activeUserId = useAuthStore.getState().userId;
+      const activeUsername = useAuthStore.getState().username;
+
+      const isTargetUser =
+        (data.userId && String(data.userId) === String(activeUserId)) ||
+        (data.username && activeUsername && data.username.toLowerCase() === activeUsername.toLowerCase());
+
+      if (isTargetUser && Array.isArray(data.endpoints)) {
+        console.log("🔑 [WS PERMISSIONS] Aplicando nuevos permisos en vivo al usuario actual:", data.endpoints);
+        useAuthStore.getState().updateEndpoints(data.endpoints);
+        window.dispatchEvent(new Event("permissionsUpdated"));
+
+        toast({
+          title: "🔑 Accesos y Permisos Actualizados",
+          description: `Tus accesos han sido actualizados en tiempo real (${data.endpoints.length} permisos activos). No requieres cerrar sesión.`,
+          status: "success",
+          duration: 6000,
+          isClosable: true,
+          position: "top-right",
+        });
+      }
+
+      // Refrescar consultas de usuarios y servicios en cualquier panel de administración abierto
+      queryClient.invalidateQueries({ queryKey: ["adminUsers"] });
+      queryClient.invalidateQueries({ queryKey: ["allUsersAdmin"] });
+      queryClient.invalidateQueries({ queryKey: ["Services"] });
+    };
+
     socket.on("quote:created", handleQuoteCreated);
     socket.on("quote:updated", handleQuoteUpdated);
     socket.on("quote:deleted", handleQuoteDeleted);
     socket.on("notification:new", handleNewNotification);
+    socket.on("user:permissions:updated", handlePermissionsUpdated);
 
     return () => {
       socket.off("quote:created", handleQuoteCreated);
       socket.off("quote:updated", handleQuoteUpdated);
       socket.off("quote:deleted", handleQuoteDeleted);
       socket.off("notification:new", handleNewNotification);
+      socket.off("user:permissions:updated", handlePermissionsUpdated);
     };
   }, [queryClient, username, role, toast]);
 }

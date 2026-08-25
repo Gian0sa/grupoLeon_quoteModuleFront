@@ -23,6 +23,7 @@ import { es } from "date-fns/locale";
 import { Calendar, RotateCcw, UserCheck } from "lucide-react";
 
 import { useAuthStore } from "../../../features/auth/stores/useAuthStore";
+import { useHasAccess } from "../../../shared/utils/permissions";
 import {
   useQuotesSellers,
   useQuotesSellersAdmin,
@@ -62,9 +63,11 @@ export function DashboardPage() {
   const carouselRef = useRef(null);
   const [activeCardIndex, setActiveCardIndex] = useState(0);
 
-  // Roles
+  const hasAccess = useHasAccess();
+  // Roles y Permisos Granulares
   const isVendedor = !!(salesEmployeeCode && Number(salesEmployeeCode) > 0);
   const isAdmin = !salesEmployeeCode || salesEmployeeCode === 0 || salesEmployeeCode === "0" || salesEmployeeCode === "null";
+  const canViewCommercialPeriod = isAdmin || hasAccess("GET /AdminQuotesSellers/:slpCode/:month");
 
   // 🗓️ Años dinámicos que CONTIENEN datos reales en SAP (2024 excluido por no tener registros)
   const currentRealYear = new Date().getFullYear();
@@ -90,10 +93,10 @@ export function DashboardPage() {
     }
   };
 
-  // Derivar año y mes según rol
+  // Derivar año y mes según rol y permisos
   const selectedPeriod = last3Months[selectedPeriodIdx] || last3Months[0];
-  const selectedYear  = isAdmin ? adminYear : selectedPeriod.year;
-  const selectedMonth = isAdmin ? adminMonth : selectedPeriod.month;
+  const selectedYear  = canViewCommercialPeriod ? adminYear : selectedPeriod.year;
+  const selectedMonth = canViewCommercialPeriod ? adminMonth : selectedPeriod.month;
 
   // ⚠️ Siempre monthFrom === monthTo para evitar descuadres con SAP
   const yearFrom  = selectedYear;
@@ -244,8 +247,8 @@ export function DashboardPage() {
 
       {/* Sección Principales Métricas */}
       <Box maxW="1200px" mx="auto" px={4} py={6}>
-        {/* Barra Superior de Filtros y Selección de Período Comercial (Solo visible para Administradores) */}
-        {isAdmin && (
+        {/* Barra Superior de Filtros y Selección de Período Comercial (Concedido por Permisos o Admin) */}
+        {canViewCommercialPeriod && (
           <Flex
             direction={{ base: "column", md: "row" }}
             justify="space-between"

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback, memo } from "react";
 import {
   Box,
   Flex,
@@ -32,9 +32,9 @@ import {
 import { buildPermissionTree, getSelectionState } from "../utils/permissionTreeHelper";
 
 /**
- * Checkbox visual personalizado de alta fidelidad idéntico a la referencia
+ * Checkbox visual personalizado de alta fidelidad memoizado
  */
-function CustomTreeCheckbox({ isChecked, isIndeterminate, onChange }) {
+const CustomTreeCheckbox = memo(function CustomTreeCheckbox({ isChecked, isIndeterminate, onChange }) {
   return (
     <Flex
       as="button"
@@ -63,12 +63,12 @@ function CustomTreeCheckbox({ isChecked, isIndeterminate, onChange }) {
       {!isChecked && isIndeterminate && <Minus className="w-3.5 h-3.5 text-white stroke-[3.5]" />}
     </Flex>
   );
-}
+});
 
 /**
- * Badge de Estado de Selección (ACTIVO / PARCIAL / INACTIVO)
+ * Badge de Estado de Selección memoizado
  */
-function StatusPill({ status }) {
+const StatusPill = memo(function StatusPill({ status }) {
   if (status === "all") {
     return (
       <Badge
@@ -118,12 +118,12 @@ function StatusPill({ status }) {
       INACTIVO
     </Badge>
   );
-}
+});
 
 /**
  * Componente principal del Árbol de Permisos Dinámico de Alta Fidelidad
  */
-export default function PermissionsTreeView({
+const PermissionsTreeView = memo(function PermissionsTreeView({
   services = [],
   permittedServices = [],
   onChange
@@ -517,4 +517,6 @@ export default function PermissionsTreeView({
       </Box>
     </Box>
   );
-}
+});
+
+export default PermissionsTreeView;

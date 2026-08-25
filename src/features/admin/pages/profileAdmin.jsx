@@ -67,6 +67,7 @@ import PermissionsTreeView from "../components/PermissionsTreeView";
 import UserBasicFields from "../components/UserBasicFields";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+import { socket } from "../../../shared/lib/socket";
 
 // Componente de tarjeta para vista móvil
 function UserMobileCard({ user, onEdit }) {
@@ -498,9 +499,21 @@ export function ProfileAdmin() {
     updateProfileAdmin.mutate(payload, {
       onSuccess: (data) => {
         console.log("✅ [ProfileAdmin] Guardado exitoso:", data);
+
+        // Emitir evento WebSocket en tiempo real para actualización inmediata sin recargar ni cerrar sesión
+        if (socket) {
+          const updatedEndpoints = data?.user?.endpoints || [];
+          socket.emit("user:permissions:updated", {
+            userId: payload.userId,
+            username: payload.username,
+            endpoints: updatedEndpoints,
+            permittedServices: payload.permittedServices,
+          });
+        }
+
         toast({
           title: "Cambios guardados exitosamente",
-          description: `El perfil y permisos de "${formData.username}" fueron actualizados.`,
+          description: `El perfil y permisos de "${formData.username}" fueron actualizados en tiempo real.`,
           status: "success",
           duration: 3000,
           isClosable: true,

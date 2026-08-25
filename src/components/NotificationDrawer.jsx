@@ -22,7 +22,7 @@ import { QuoteDetailDrawer } from "../features/quotes/components/QuoteDetailDraw
 import { useAuthStore } from "../features/auth/stores/useAuthStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNotifications } from "../features/quotes/hooks/queries/quotesQueries";
-import { markNotificationAsRead, clearNotifications } from "../features/quotes/services/quoteService";
+import { markNotificationAsRead, clearNotifications, updateQuote } from "../features/quotes/services/quoteService";
 
 export function NotificationDrawer({ isOpen, onClose }) {
   const { username, userId, role } = useAuthStore();
@@ -107,8 +107,8 @@ export function NotificationDrawer({ isOpen, onClose }) {
     // Deduplicación inteligente por quoteId (conserva la alerta más reciente por cotización)
     const uniqueMap = new Map();
     const sorted = [...filteredByUser].sort((a, b) => {
-      const tA = new Date(a.timestamp || a.createdAt || 0).getTime();
-      const tB = new Date(b.timestamp || b.createdAt || 0).getTime();
+      const tA = new Date(a.createdAt || a.timestamp || a.created_at || a.date || 0).getTime();
+      const tB = new Date(b.createdAt || b.timestamp || b.created_at || b.date || 0).getTime();
       return tB - tA;
     });
 
@@ -168,29 +168,90 @@ export function NotificationDrawer({ isOpen, onClose }) {
     } catch {}
   };
 
-  const formatTimeAgo = (isoStr) => {
-    if (!isoStr) return "Hace un momento";
-    const diffMs = Date.now() - new Date(isoStr).getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    if (diffMins < 1) return "Justo ahora";
-    if (diffMins < 60) return `Hace ${diffMins} min`;
+  const formatTimeAgo = (rawDate) => {
+    if (!rawDate) return "Reciente";
+    const date = new Date(rawDate);
+    if (isNaN(date.getTime())) return "Reciente";
+
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+
+    if (diffMs < 0) return "Justo ahora";
+
+    const diffSecs = Math.floor(diffMs / 1000);
+    const diffMins = Math.floor(diffSecs / 60);
     const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `Hace ${diffHours} h`;
-    return new Date(isoStr).toLocaleDateString();
+    const diffDays = Math.floor(diffHours / 24);
+
+    const timeStr = date.toLocaleTimeString("es-PE", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+
+    if (diffMins < 1) return `Justo ahora (${timeStr})`;
+    if (diffMins < 60) return `Hace ${diffMins} min (${timeStr})`;
+
+    const isToday = now.toDateString() === date.toDateString();
+    if (isToday) {
+      return `Hoy a las ${timeStr} • Hace ${diffHours} h`;
+    }
+
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    const isYesterday = yesterday.toDateString() === date.toDateString();
+    if (isYesterday) {
+      return `Ayer a las ${timeStr}`;
+    }
+
+    if (diffDays < 7) {
+      const dayNum = date.toLocaleDateString("es-PE", { day: "2-digit", month: "short" });
+      return `Hace ${diffDays} días • ${dayNum} (${timeStr})`;
+    }
+
+    return `${date.toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit", year: "numeric" })} • ${timeStr}`;
   };
 
   const handleOpenQuote = (quoteObj, quoteId, notifId) => {
-    let targetDoc = quoteObj;
+    let targetDoc = quoteObj ? { ...quoteObj } : null;
     const targetId = quoteId || quoteObj?.docNumber || quoteObj?.id;
 
-    if ((!targetDoc || !targetDoc.products || targetDoc.products.length === 0) && targetId) {
+    const extractItems = (doc) => {
+      if (!doc) return [];
+      if (Array.isArray(doc.products) && doc.products.length > 0) return doc.products;
+      if (Array.isArray(doc.items) && doc.items.length > 0) return doc.items;
+      if (Array.isArray(doc.lines) && doc.lines.length > 0) return doc.lines;
+      if (doc.totals && Array.isArray(doc.totals.normalizedProducts) && doc.totals.normalizedProducts.length > 0) return doc.totals.normalizedProducts;
+      if (doc.totals && Array.isArray(doc.totals.products) && doc.totals.products.length > 0) return doc.totals.products;
+      return [];
+    };
+
+    let items = extractItems(targetDoc);
+
+    if (items.length === 0 && targetId) {
+      // 1. Buscar en caché de React Query
       try {
-        const savedQuotes = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
-        const found = savedQuotes.find((q) => (q.id || q.docNumber) === targetId);
-        if (found) {
-          targetDoc = found;
+        const cachedQuotes = queryClient.getQueryData(["quotes"]);
+        if (Array.isArray(cachedQuotes)) {
+          const found = cachedQuotes.find((q) => String(q.id || q.docNumber) === String(targetId));
+          if (found) {
+            targetDoc = { ...found, ...(targetDoc || {}) };
+            items = extractItems(found);
+          }
         }
       } catch {}
+
+      // 2. Buscar en localStorage
+      if (items.length === 0) {
+        try {
+          const savedQuotes = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
+          const found = savedQuotes.find((q) => String(q.id || q.docNumber) === String(targetId));
+          if (found) {
+            targetDoc = { ...found, ...(targetDoc || {}) };
+            items = extractItems(found);
+          }
+        } catch {}
+      }
     }
 
     if (!targetDoc) {
@@ -200,6 +261,8 @@ export function NotificationDrawer({ isOpen, onClose }) {
         state: "ENVIADO",
       };
     }
+
+    targetDoc.products = items;
 
     // Auto-descartar / marcar como leída al abrir (comportamiento smartphone)
     handleDeleteNotif(notifId, targetId);
@@ -382,9 +445,11 @@ export function NotificationDrawer({ isOpen, onClose }) {
                           </Tooltip>
                         </Flex>
 
-                        <HStack spacing={1} fontSize={{ base: "11px", md: "10px" }} color="gray.500">
-                          <Icon as={FiClock} boxSize={3} />
-                          <Text fontWeight="600">{formatTimeAgo(item.timestamp)}</Text>
+                        <HStack spacing={1.5} fontSize={{ base: "11px", md: "10px" }} color="gray.600">
+                          <Icon as={FiClock} boxSize={3} color="emerald.600" />
+                          <Text fontWeight="700">
+                            {formatTimeAgo(item.createdAt || item.timestamp || item.created_at || item.date)}
+                          </Text>
                         </HStack>
 
                         <Text
@@ -409,6 +474,22 @@ export function NotificationDrawer({ isOpen, onClose }) {
                               De: {item.fromUsername}
                             </Text>
                           </HStack>
+                        )}
+
+                        {(item.hasDiscount || String(item.title || "").includes("Descuento") || String(item.description || "").includes("DESCUENTO")) && (
+                          <Badge
+                            colorScheme="purple"
+                            variant="solid"
+                            fontSize="10px"
+                            px={2.5}
+                            py={1}
+                            borderRadius="md"
+                            fontWeight="900"
+                            w="fit-content"
+                            boxShadow="xs"
+                          >
+                            ⚡ REQUIERE APROBACIÓN DE DESCUENTO
+                          </Badge>
                         )}
 
                         <Flex
@@ -456,31 +537,58 @@ export function NotificationDrawer({ isOpen, onClose }) {
         isOpen={isQuoteDrawerOpen}
         onClose={() => setIsQuoteDrawerOpen(false)}
         quote={selectedQuoteForDrawer}
-        onUpdateStatus={(quoteId, newStatus, reasonNote) => {
+        onUpdateStatus={async (quoteId, newStatus, reasonNote) => {
           const savedQuotes = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
+          const idStr = String(quoteId || "").trim();
+          const cleanId = idStr.replace(/^COT-0*/i, "");
+          const nowIso = new Date().toISOString();
+
+          let targetDoc = null;
           const updated = savedQuotes.map((q) => {
-            if ((q.id || q.docNumber) === quoteId) {
+            const qDoc = String(q.docNumber || "").trim();
+            const qId = String(q.id !== undefined && q.id !== null ? q.id : "").trim();
+            const cleanDoc = qDoc.replace(/^COT-0*/i, "");
+            const cleanQId = qId.replace(/^COT-0*/i, "");
+
+            const isMatch = (qDoc && qDoc === idStr) || (qId && qId === idStr) || (cleanId && (cleanDoc === cleanId || cleanQId === cleanId));
+            if (isMatch) {
               const currentHistory = q.historyLog || [];
-              return {
+              const doc = {
                 ...q,
                 approvalStatus: newStatus,
+                status: newStatus,
                 state: newStatus,
-                rejectionReason: newStatus === "RECHAZADO" ? reasonNote : q.rejectionReason,
+                rejectionReason: newStatus === "RECHAZADO" || newStatus === "OBSERVADO" ? reasonNote : q.rejectionReason,
+                observationReason: newStatus === "OBSERVADO" ? reasonNote : q.observationReason,
+                observedAt: newStatus === "OBSERVADO" ? nowIso : q.observedAt,
+                observedBy: newStatus === "OBSERVADO" ? (username || "Administrador") : q.observedBy,
+                updatedAt: nowIso,
                 historyLog: [
-                  ...currentHistory,
                   {
                     status: newStatus,
-                    timestamp: new Date().toISOString(),
+                    timestamp: nowIso,
                     user: username || "Administrador",
                     note: reasonNote || `Cambio de estado a ${newStatus}`
-                  }
+                  },
+                  ...currentHistory
                 ]
               };
+              targetDoc = doc;
+              return doc;
             }
             return q;
           });
+
           localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updated));
           window.dispatchEvent(new Event("localQuotesUpdated"));
+
+          if (targetDoc) {
+            try {
+              await updateQuote(targetDoc);
+            } catch (e) {
+              console.error("Error sincronizando estado desde NotificationDrawer:", e);
+            }
+          }
         }}
       />
     </>

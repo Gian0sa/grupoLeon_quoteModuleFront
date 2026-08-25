@@ -27,13 +27,61 @@ const money = (val) => {
   return num.toFixed(2);
 };
 
+const extractProducts = (q) => {
+  if (!q) return [];
+  if (Array.isArray(q.products) && q.products.length > 0) return q.products;
+  if (Array.isArray(q.items) && q.items.length > 0) return q.items;
+  if (Array.isArray(q.lines) && q.lines.length > 0) return q.lines;
+  if (Array.isArray(q.DocumentLines) && q.DocumentLines.length > 0) return q.DocumentLines;
+  if (q.totals && Array.isArray(q.totals.normalizedProducts) && q.totals.normalizedProducts.length > 0) return q.totals.normalizedProducts;
+  if (q.totals && Array.isArray(q.totals.products) && q.totals.products.length > 0) return q.totals.products;
+  if (typeof q.products === "string") {
+    try { const p = JSON.parse(q.products); if (Array.isArray(p)) return p; } catch (e) {}
+  }
+  if (typeof q.items === "string") {
+    try { const p = JSON.parse(q.items); if (Array.isArray(p)) return p; } catch (e) {}
+  }
+  return [];
+};
+
+const normalizeItem = (item) => {
+  if (!item) return null;
+  const qty = Number(item.quantity ?? item.Quantity ?? item.Cant ?? item.cant ?? 1);
+  const listPrice = Number(item.price ?? item.unitPrice ?? item.Price ?? item.UnitPrice ?? item.importe ?? 0);
+  const sapDisc = Number(item.discount ?? item.Discount ?? item.sapDiscount ?? item.DiscountPercent ?? 0);
+  const addDisc = Number(item.lineDiscount ?? item.LineDiscount ?? item.addDiscount ?? 0);
+  const priceAfterSap = listPrice * (1 - sapDisc / 100);
+  const finalUnitPrice = priceAfterSap * (1 - addDisc / 100);
+  const lineTotalNum = Number((qty * finalUnitPrice).toFixed(2));
+
+  const code = item.code || item.itemCode || item.ItemCode || item.productCode || item.id || "";
+  const desc = item.description || item.Description || item.ItemDescription || item.ItemName || item.productName || item.name || item.Dscription || code || "Artículo";
+
+  let discTag = "";
+  if (sapDisc > 0 && addDisc > 0) {
+    discTag = ` (-${sapDisc}% -${addDisc}%)`;
+  } else if (sapDisc > 0) {
+    discTag = ` (-${sapDisc}%)`;
+  } else if (addDisc > 0) {
+    discTag = ` (-${addDisc}% adic.)`;
+  }
+
+  return {
+    qty: isNaN(qty) || qty < 1 ? 1 : qty,
+    code,
+    desc: `${desc}${discTag}`,
+    finalUnitPrice,
+    lineTotalNum,
+  };
+};
+
 export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) {
   const printRef = useRef(null);
 
   if (!quote) return null;
 
   const client = quote.client || {};
-  const products = quote.products || quote.items || [];
+  const products = extractProducts(quote);
   const tc = Number(quote.totals?.tc || 3.76);
   const calcTotals = calculateQuoteTotals(products, tc);
 
@@ -108,14 +156,14 @@ export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) 
   const grandTotalUSD = quote.totals?.grandTotalUSD || quote.totals?.grandTotal || calcTotals.grandTotalUSD;
   const grandTotalSOL = quote.totals?.grandTotalSOL || calcTotals.grandTotalSOL;
 
-  // División de ítems para Grilla Doble de 30 renglones (1-15 y 16-30)
+  // División de ítems normalizados para Grilla Doble de 30 renglones (1-15 y 16-30)
   const col1Items = [];
   const col2Items = [];
   for (let i = 0; i < 15; i++) {
-    col1Items.push(products[i] || null);
+    col1Items.push(products[i] ? normalizeItem(products[i]) : null);
   }
   for (let i = 15; i < 30; i++) {
-    col2Items.push(products[i] || null);
+    col2Items.push(products[i] ? normalizeItem(products[i]) : null);
   }
 
   const handlePrint = () => {
@@ -474,26 +522,10 @@ export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) 
                       <tbody>
                         {col1Items.map((item, idx) => {
                           const itemNum = idx + 1;
-                          const qty = item ? Number(item.quantity || 1) : "";
-                          const listPrice = item ? Number(item.price || item.unitPrice || 0) : 0;
-                          const sapDisc = item ? Number(item.discount || item.sapDiscount || 0) : 0;
-                          const addDisc = item ? Number(item.lineDiscount || 0) : 0;
-                          const priceAfterSap = listPrice * (1 - sapDisc / 100);
-                          const finalUnitPrice = priceAfterSap * (1 - addDisc / 100);
-                          const lineTotalNum = item ? (Number(item.quantity || 1) * finalUnitPrice) : 0;
-
-                          const rawName = item ? (item.name || item.productName || item.code || "") : "";
-                          let discTag = "";
-                          if (sapDisc > 0 && addDisc > 0) {
-                            discTag = ` (-${sapDisc}% -${addDisc}%)`;
-                          } else if (sapDisc > 0) {
-                            discTag = ` (-${sapDisc}%)`;
-                          } else if (addDisc > 0) {
-                            discTag = ` (-${addDisc}% adic.)`;
-                          }
-                          const name = rawName ? `${rawName}${discTag}` : "";
-                          const price = item ? money(finalUnitPrice) : "";
-                          const lineTotal = item ? money(lineTotalNum) : "";
+                          const qty = item ? item.qty : "";
+                          const name = item ? item.desc : "";
+                          const price = item ? money(item.finalUnitPrice) : "";
+                          const lineTotal = item ? money(item.lineTotalNum) : "";
 
                           return (
                             <tr key={idx} style={{ height: "18px", borderBottom: "1px solid #000", fontSize: "9px", background: item ? (idx % 2 === 0 ? "#ffffff" : "#fafaf9") : "transparent" }}>
@@ -529,26 +561,10 @@ export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) 
                       <tbody>
                         {col2Items.map((item, idx) => {
                           const itemNum = idx + 16;
-                          const qty = item ? Number(item.quantity || 1) : "";
-                          const listPrice = item ? Number(item.price || item.unitPrice || 0) : 0;
-                          const sapDisc = item ? Number(item.discount || item.sapDiscount || 0) : 0;
-                          const addDisc = item ? Number(item.lineDiscount || 0) : 0;
-                          const priceAfterSap = listPrice * (1 - sapDisc / 100);
-                          const finalUnitPrice = priceAfterSap * (1 - addDisc / 100);
-                          const lineTotalNum = item ? (Number(item.quantity || 1) * finalUnitPrice) : 0;
-
-                          const rawName = item ? (item.name || item.productName || item.code || "") : "";
-                          let discTag = "";
-                          if (sapDisc > 0 && addDisc > 0) {
-                            discTag = ` (-${sapDisc}% -${addDisc}%)`;
-                          } else if (sapDisc > 0) {
-                            discTag = ` (-${sapDisc}%)`;
-                          } else if (addDisc > 0) {
-                            discTag = ` (-${addDisc}% adic.)`;
-                          }
-                          const name = rawName ? `${rawName}${discTag}` : "";
-                          const price = item ? money(finalUnitPrice) : "";
-                          const lineTotal = item ? money(lineTotalNum) : "";
+                          const qty = item ? item.qty : "";
+                          const name = item ? item.desc : "";
+                          const price = item ? money(item.finalUnitPrice) : "";
+                          const lineTotal = item ? money(item.lineTotalNum) : "";
 
                           return (
                             <tr key={idx} style={{ height: "18px", borderBottom: "1px solid #000", fontSize: "9px", background: item ? (idx % 2 === 0 ? "#ffffff" : "#fafaf9") : "transparent" }}>

@@ -48,6 +48,13 @@ export const useAuthStore = create((set) => ({
     });
   },
 
+  updateEndpoints: (newEndpoints) => {
+    if (Array.isArray(newEndpoints)) {
+      localStorage.setItem("endpoints", JSON.stringify(newEndpoints));
+      set({ endpoints: newEndpoints });
+    }
+  },
+
   logout: () => {
     ['userId', 'username', 'salesEmployeeCode', 'endpoints'].forEach((key) =>
       localStorage.removeItem(key)

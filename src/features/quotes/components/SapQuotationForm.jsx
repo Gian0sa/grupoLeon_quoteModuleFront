@@ -13,6 +13,7 @@ import ClientAutocomplete from "./ClientAutocomplete";
 import SapItemGrid from "./SapItemGrid";
 import { NewSellTerms } from "./NewSellTerms";
 import { SapQuoteDocumentModal } from "./SapQuoteDocumentModal";
+import { OrderTimelineBar, OrderChecklist } from "./OrderProgressTracker";
 import { useQueryClient } from "@tanstack/react-query";
 import { createQuote, updateQuote, getNextDocNumber } from "../services/quoteService";
 import { useQuoteStore, normalizeQuoteClient } from "../stores/quoteStore";
@@ -23,6 +24,7 @@ import { useGetTransports, useGetPaymentType, useGetDeliveryForms } from "../hoo
 import { calculateQuoteTotals } from "../../../shared/utils/quoteCalculator";
 import { useNavigate } from "react-router-dom";
 import QuoteSubmitConfirmModal from "./QuoteSubmitConfirmModal";
+import { isPickupInStoreForm } from "./NewSellTerms";
 
 const money = (val, currency = "USD") => {
   const num = Number(val || 0);
@@ -72,6 +74,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     creditTerm, setCreditTerm,
     approvalStatus, setApprovalStatus,
     rejectionReason, observations,
+    historyLog,
     clear
   } = useQuoteStore();
 
@@ -96,7 +99,13 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   const isSubmittedQuote = Boolean(
     quoteId &&
     approvalStatus &&
-    ["ENVIADO", "EN_PROCESO", "PENDIENTE_FACTURACION"].includes(approvalStatus)
+    ["ENVIADO", "EN_PROCESO", "PENDIENTE_FACTURACION", "APROBADO_COMERCIAL", "APROBADO", "RECHAZADO", "OBSERVADO", "EN_EDICION", "ANULADO"].includes(approvalStatus)
+  );
+
+  // La línea de tiempo y checklist solo se muestran cuando la solicitud ya fue enviada / está en seguimiento
+  const isQuoteAlreadySentOrInReview = Boolean(
+    isTracking ||
+    (approvalStatus && !["BORRADOR", "GENERADO", "DRAFT", "draft"].includes(approvalStatus))
   );
 
   // Estado que permite al Administrador desbloquear/editar cualquier cotización si necesita corregir ítems/precios
@@ -291,6 +300,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     sellerName: activeSeller,
     docDate,
     docDueDate,
+    deliveryDate: deliveryDate ? (deliveryDate instanceof Date ? deliveryDate.toISOString().split("T")[0] : deliveryDate) : null,
     contactPerson,
     refNumber,
     comment,
@@ -312,6 +322,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     activeSeller,
     docDate,
     docDueDate,
+    deliveryDate,
     contactPerson,
     refNumber,
     comment,
@@ -428,10 +439,15 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       creditTerm,
       docDate,
       docDueDate,
+      deliveryDate: deliveryDate ? (deliveryDate instanceof Date ? deliveryDate.toISOString().split("T")[0] : deliveryDate) : (existingDoc?.deliveryDate || null),
       comment,
+      deliveryForm: selectedDeliveryForm,
       selectedDeliveryForm,
+      transport: selectedTransport,
       selectedTransport,
+      paymentType: selectedPaymentType,
       selectedPaymentType,
+      deliveryPoint: selectedPoint,
       selectedPoint,
       sellerName: activeSeller,
       createdByUsername: username || localSeller || "vendedor",
@@ -470,6 +486,13 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       const totalUsdStr = finalTotals?.grandTotalUSD ? `$${finalTotals.grandTotalUSD.toFixed(2)}` : "$0.00";
       const ADMIN_FACTURACION_USERNAME = "enrique";
       const senderUsername = username || localSeller || "vendedor";
+
+      const maxAdic = (products || []).reduce((max, it) => Math.max(max, Number(it.lineDiscount || it.LineDiscount || 0)), 0);
+      const discountNotice = maxAdic > 0 ? ' • ⚠️ CON DESCUENTO ADICIONAL APLICADO' : '';
+      const notifTitle = maxAdic > 0
+        ? `🔥 Cotización con Descuento Adicional - ${activeDocNumber}`
+        : `📩 Nueva Cotización Recibida - ${activeDocNumber}`;
+
       const notifObj = {
         id: `NOTIF-${Date.now()}`,
         targetRole: "FACTURACION",
@@ -478,9 +501,12 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         fromUserId: userId || null,
         quoteId: activeDocNumber,
         quoteObj: newDoc,
-        title: `📩 Nueva Cotización Recibida - ${activeDocNumber}`,
-        description: `Enviada por ${activeSeller} • Cliente: ${clientName} (${totalUsdStr}) ${opNum ? `• Váucher BCP: N° ${opNum}` : ''}. Requiere validación.`,
+        title: notifTitle,
+        description: `Enviada por ${activeSeller} • Cliente: ${clientName} (${totalUsdStr})${discountNotice} ${opNum ? `• Váucher BCP: N° ${opNum}` : ''}. Requiere aprobación comercial.`,
         status: "ENVIADO",
+        hasDiscount: maxAdic > 0,
+        maxDiscount: maxAdic,
+        createdAt: new Date().toISOString(),
         timestamp: new Date().toISOString(),
         read: false
       };
@@ -597,6 +623,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       title: `✅ Cotización ${activeDocNumber} Aprobada`,
       description: `El administrador ${adminName} aprobó la cotización y asignó la condición comercial. El pedido está listo.`,
       status: "APROBADO",
+      createdAt: nowIso,
       timestamp: nowIso,
       read: false
     };
@@ -636,9 +663,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       setActiveTabIndex(1);
       return false;
     }
-    const isPickup =
-      Number(selectedDeliveryForm?.TrnspCode) === 1 ||
-      String(selectedDeliveryForm?.TrnspName || "").toLowerCase().includes("recojo");
+    const isPickup = isPickupInStoreForm(selectedDeliveryForm);
     if (!isPickup && !selectedPoint && !selectedTransport) {
       toast({
         title: "⚠️ Destino o Agencia requerida",
@@ -722,7 +747,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       });
       return;
     }
-    const isPickup = Number(selectedDeliveryForm?.TrnspCode) === 1 || String(selectedDeliveryForm?.TrnspName || '').toLowerCase().includes("recojo");
+    const isPickup = isPickupInStoreForm(selectedDeliveryForm);
     if (!isPickup && !selectedPoint) {
       toast({
         title: "Punto de llegada requerido",
@@ -818,6 +843,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       title: `💳 Cotización con Abono Listo - ${activeDocNumber}`,
       description: `El vendedor ${activeSeller} adjuntó abono para ${clientName} (${totalUsdStr}) • N° Op: ${opNum}. Listo para emitir en SAP.`,
       status: "PENDIENTE_FACTURACION",
+      createdAt: new Date().toISOString(),
       timestamp: new Date().toISOString(),
       read: false
     };
@@ -1021,6 +1047,15 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
             </Text>
           </Box>
         </Alert>
+      )}
+
+      {/* ── LÍNEA DE TIEMPO / SEGUIMIENTO EN TIEMPO REAL (Solo al enviar / revisar cotización) ── */}
+      {isQuoteAlreadySentOrInReview && (
+        <OrderTimelineBar
+          status={approvalStatus || (isSubmittedQuote ? "ENVIADO" : "GENERADO")}
+          historyLog={historyLog}
+          createdIso={docDate}
+        />
       )}
 
       {/* ── CABECERA PRINCIPAL SAP B1 ── */}
@@ -1451,18 +1486,24 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                 USD {totals.grandTotalUSD.toFixed(2)}
               </Text>
             </Flex>
-
-            {/* Equivalente en Soles (referencia informativa) */}
-            <Flex justify="flex-end">
-              <Text fontSize="0.65rem" color="rgba(255,255,255,0.5)" fontFamily="mono">
-                ≈ SOL {totals.grandTotalSOL.toFixed(2)} (TC {totals.tc.toFixed(2)})
-              </Text>
-            </Flex>
-
-
           </VStack>
         </Box>
       </Grid>
+
+      {/* ── LISTADO CON CHECKS DE AVANCE COMERCIAL (Solo al enviar / revisar cotización) ── */}
+      {isQuoteAlreadySentOrInReview && (
+        <OrderChecklist
+          client={client}
+          products={products}
+          saleCondition={saleCondition}
+          creditTerm={creditTerm}
+          selectedTransport={selectedTransport}
+          selectedPoint={selectedPoint}
+          opNum={opNum}
+          paymentImg={paymentImg}
+          approvalStatus={approvalStatus || (isSubmittedQuote ? "ENVIADO" : "GENERADO")}
+        />
+      )}
 
       {/* ── BARRA DE ACCIÓN Y MENÚ "COPIAR A" ESTILO SAP NATIVO ── */}
       <Flex

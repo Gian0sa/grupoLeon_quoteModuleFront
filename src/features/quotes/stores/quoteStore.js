@@ -163,10 +163,11 @@ const initialQuoteState = {
   observations: null,
   contactPerson: "",
   refNumber: "",
-  saleCondition: "CONTADO", // "CONTADO" | "CREDITO"
-  documentType: "FACTURA",   // "FACTURA" | "BOLETA"
+  saleCondition: "", // Sin pre-marcar (el usuario elige CONTADO o CRÉDITO)
+  documentType: "",   // Sin pre-marcar (el usuario elige FACTURA o BOLETA)
   isLetra: false,           // boolean
-  creditTerm: "ANTICIPADO", // "ANTICIPADO" | "30 DÍAS" | etc.
+  creditTerm: "", // Sin pre-marcar
+  historyLog: [],
 };
 
 export const useQuoteStore = create((set) => ({
@@ -325,20 +326,47 @@ export const useQuoteStore = create((set) => ({
       quoteData.saleCondition,
       quoteData.condicionVenta,
       quoteData.condicionPago
-    ) || (quoteData.paymentType?.isCredit ? "CREDITO" : "CONTADO");
+    ) || (quoteData.paymentType?.isCredit ? "CREDITO" : (quoteData.paymentType ? "CONTADO" : ""));
 
     const documentTypeVal = firstMeaningfulValue(
       quoteData.documentType,
       quoteData.tipoComprobante,
       quoteData.docTypeVenta
-    ) || "FACTURA";
+    ) || "";
 
     const isLetraVal = Boolean(quoteData.isLetra || quoteData.hasLetra || quoteData.letra);
     const creditTermVal = firstMeaningfulValue(
       quoteData.creditTerm,
       quoteData.plazo,
       quoteData.plazoCredito
-    ) || "ANTICIPADO";
+    ) || "";
+
+    let deliveryFormVal = quoteData.selectedDeliveryForm || quoteData.deliveryForm || "";
+    if (typeof deliveryFormVal === "string" && deliveryFormVal.trim().startsWith("{")) {
+      try { deliveryFormVal = JSON.parse(deliveryFormVal); } catch (e) {}
+    }
+
+    let transportVal = quoteData.selectedTransport || quoteData.TransportationCode || quoteData.transport || "";
+    if (typeof transportVal === "string" && transportVal.trim().startsWith("{")) {
+      try { transportVal = JSON.parse(transportVal); } catch (e) {}
+    }
+
+    let pointVal = quoteData.selectedPoint || quoteData.ShipToCode || quoteData.deliveryPoint || null;
+    if (typeof pointVal === "string" && pointVal.trim().startsWith("{")) {
+      try { pointVal = JSON.parse(pointVal); } catch (e) {}
+    }
+
+    let paymentTypeVal = quoteData.selectedPaymentType || quoteData.PaymentGroupCode || quoteData.PayTermsGrpCode || quoteData.paymentType || "";
+    if (typeof paymentTypeVal === "string" && paymentTypeVal.trim().startsWith("{")) {
+      try { paymentTypeVal = JSON.parse(paymentTypeVal); } catch (e) {}
+    }
+
+    const rawDeliveryDate = quoteData.deliveryDate || quoteData.DocDueDate || quoteData.docDueDate || quoteData.fechaEntrega || null;
+    let validDeliveryDate = null;
+    if (rawDeliveryDate) {
+      const d = rawDeliveryDate instanceof Date ? rawDeliveryDate : new Date(rawDeliveryDate);
+      validDeliveryDate = !isNaN(d.getTime()) ? d : rawDeliveryDate;
+    }
 
     set({
       ...initialQuoteState,
@@ -346,13 +374,13 @@ export const useQuoteStore = create((set) => ({
       client,
       products: Array.from(uniqueMap.values()),
       opNum: quoteData.opNum || quoteData.U_VS_OPNUM || null,
-      selectedPoint: quoteData.selectedPoint || quoteData.ShipToCode || quoteData.deliveryPoint || null,
-      selectedTransport: quoteData.selectedTransport || quoteData.TransportationCode || quoteData.transport || "",
-      selectedDeliveryForm: quoteData.selectedDeliveryForm || quoteData.deliveryForm || "",
-      selectedPaymentType: quoteData.selectedPaymentType || quoteData.PaymentGroupCode || quoteData.PayTermsGrpCode || quoteData.paymentType || "",
+      selectedPoint: pointVal,
+      selectedTransport: transportVal,
+      selectedDeliveryForm: deliveryFormVal,
+      selectedPaymentType: paymentTypeVal,
       paymentImg: quoteData.paymentImg || null,
       comment: quoteData.comment || quoteData.comments || quoteData.Comments || null,
-      deliveryDate: quoteData.deliveryDate || quoteData.DocDueDate || null,
+      deliveryDate: validDeliveryDate,
       whsCode: quoteData.whsCode || "014",
       contactPerson: contactPersonVal,
       refNumber: refNumberVal,
@@ -363,6 +391,7 @@ export const useQuoteStore = create((set) => ({
       approvalStatus: quoteData.approvalStatus || quoteData.state || quoteData.status || null,
       rejectionReason: quoteData.rejectionReason || quoteData.observations || null,
       observations: quoteData.observations || quoteData.rejectionReason || null,
+      historyLog: quoteData.historyLog || [],
     });
   },
 

@@ -72,7 +72,7 @@ export function LateralMenu() {
     { label: 'Solicitudes', icon: MdAssignmentTurnedIn, path: '#', access: 'GET:/requests' },
     { label: 'Pedidos', icon: MdLocalShipping, path: '/reports', access: 'GET:/reports' },
     { label: 'Cuentas por cobrar', icon: MdAccountBalanceWallet, path: '/receivable', access: 'GET:/receivable' },
-    { label: 'Lista de precios', icon: MdPriceChange, path: '/productsPriceList', access: 'GET:/receivable' },
+    { label: 'Lista de precios', icon: MdPriceChange, path: '/productsPriceList', access: 'GET:/priceList' },
     { label: 'Catálogo de productos', icon: MdInventory2, path: '/catalog', access: 'GET:/catalogProducts' },
     { label: 'Importaciones', icon: MdFileUpload, path: '/importaciones', access: 'GET:/purchaseOrdersImportacion' },
     { label: 'Registro de visitas', icon: MdLocationOn, path: '/visitLog', access: 'POST:/visit-logs' },

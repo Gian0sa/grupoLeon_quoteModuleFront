@@ -51,6 +51,65 @@ const DEFAULT_TRANSPORTS = [
   { Code: "00033", Name: "AREQUIPA EXPRESO MARVISUR EIRL", U_TQC_DIREC: "Agencia Marvisur Carga" },
   { Code: "00039", Name: "OLVA COURIER", U_TQC_DIREC: "Oficina Olva Express" },
 ];
+export const isPickupInStoreForm = (form) => {
+  if (!form) return false;
+  let parsed = form;
+  if (typeof form === "string") {
+    const trimmed = form.trim();
+    if (trimmed.startsWith("{")) {
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch (e) {}
+    }
+  }
+  if (typeof parsed === "object" && parsed !== null) {
+    const code = String(parsed.TrnspCode ?? parsed.code ?? parsed.value ?? "");
+    const name = String(parsed.TrnspName ?? parsed.name ?? parsed.label ?? "");
+    const combined = `${code} ${name}`.toLowerCase();
+    return (
+      combined.includes("recojo") ||
+      combined.includes("tienda") ||
+      combined.includes("almacen") ||
+      combined.includes("almacén") ||
+      combined.includes("recoge") ||
+      code === "1" ||
+      code === "4" ||
+      code === "04"
+    );
+  }
+  const str = String(parsed).toLowerCase();
+  return (
+    str.includes("recojo") ||
+    str.includes("tienda") ||
+    str.includes("almacen") ||
+    str.includes("almacén") ||
+    str.includes("recoge") ||
+    str === "1" ||
+    str === "4" ||
+    str === "04"
+  );
+};
+
+export const isOwnPickupInStoreForm = (form) => {
+  if (!form) return false;
+  let parsed = form;
+  if (typeof form === "string") {
+    const trimmed = form.trim();
+    if (trimmed.startsWith("{")) {
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch (e) {}
+    }
+  }
+  if (typeof parsed === "object" && parsed !== null) {
+    const code = String(parsed.TrnspCode ?? parsed.code ?? parsed.value ?? "");
+    const name = String(parsed.TrnspName ?? parsed.name ?? parsed.label ?? "");
+    const combined = `${code} ${name}`.toLowerCase();
+    return combined.includes("reparto propio") || combined.includes("motorizado propio") || combined.includes("propio") || code === "2" || code === "02";
+  }
+  const str = String(parsed).toLowerCase();
+  return str.includes("reparto propio") || str.includes("motorizado propio") || str.includes("propio") || str === "2" || str === "02";
+};
 
 export function NewSellTerms({
   client,
@@ -76,13 +135,13 @@ export function NewSellTerms({
   setPaymentImg,
   opNum,
   setOpNum,
-  saleCondition = "CONTADO",
+  saleCondition = "",
   setSaleCondition,
-  documentType = "FACTURA",
+  documentType = "",
   setDocumentType,
   isLetra = false,
   setIsLetra,
-  creditTerm = "ANTICIPADO",
+  creditTerm = "",
   setCreditTerm,
   isAdmin = false,
   isDeliveryLocked = false,
@@ -263,18 +322,7 @@ export function NewSellTerms({
     return { value: strVal, label: strVal };
   };
 
-  const isPickupInStoreForm = (form) => {
-    if (!form) return false;
-    const code = typeof form === "object" ? form?.TrnspCode : form;
-    const name = typeof form === "object" ? form?.TrnspName : String(form || "");
-    return Number(code) === 1 || String(name).toLowerCase().includes("recojo");
-  };
 
-  const isOwnPickupInStoreForm = (form) => {
-    if (!form) return false;
-    const code = typeof form === "object" ? form?.TrnspCode : form;
-    return Number(code) === 2;
-  };
 
   const isPickupInStore = isPickupInStoreForm(selectedDeliveryForm);
   const isOwnPickupInStore = isOwnPickupInStoreForm(selectedDeliveryForm);
@@ -491,8 +539,9 @@ export function NewSellTerms({
                     isChecked={saleCondition === "CONTADO"}
                     onChange={() => {
                       if (!isDeliveryLocked && setSaleCondition) {
-                        setSaleCondition("CONTADO");
-                        if (setCreditTerm && (!creditTerm || creditTerm.includes("DÍAS"))) {
+                        const nextVal = saleCondition === "CONTADO" ? "" : "CONTADO";
+                        setSaleCondition(nextVal);
+                        if (setCreditTerm && nextVal === "CONTADO" && (!creditTerm || creditTerm.includes("DÍAS"))) {
                           setCreditTerm("ANTICIPADO");
                         }
                       }
@@ -509,8 +558,9 @@ export function NewSellTerms({
                     isChecked={saleCondition === "CREDITO"}
                     onChange={() => {
                       if (!isDeliveryLocked && setSaleCondition) {
-                        setSaleCondition("CREDITO");
-                        if (setCreditTerm && (!creditTerm || creditTerm === "ANTICIPADO")) {
+                        const nextVal = saleCondition === "CREDITO" ? "" : "CREDITO";
+                        setSaleCondition(nextVal);
+                        if (setCreditTerm && nextVal === "CREDITO" && (!creditTerm || creditTerm === "ANTICIPADO")) {
                           setCreditTerm("30 DÍAS");
                         }
                       }
@@ -534,7 +584,11 @@ export function NewSellTerms({
                 <HStack spacing={4}>
                   <Checkbox
                     isChecked={documentType === "FACTURA"}
-                    onChange={() => !isDeliveryLocked && setDocumentType && setDocumentType("FACTURA")}
+                    onChange={() => {
+                      if (!isDeliveryLocked && setDocumentType) {
+                        setDocumentType(documentType === "FACTURA" ? "" : "FACTURA");
+                      }
+                    }}
                     isDisabled={isDeliveryLocked}
                     colorScheme="green"
                     size="sm"
@@ -545,7 +599,11 @@ export function NewSellTerms({
                   </Checkbox>
                   <Checkbox
                     isChecked={documentType === "BOLETA"}
-                    onChange={() => !isDeliveryLocked && setDocumentType && setDocumentType("BOLETA")}
+                    onChange={() => {
+                      if (!isDeliveryLocked && setDocumentType) {
+                        setDocumentType(documentType === "BOLETA" ? "" : "BOLETA");
+                      }
+                    }}
                     isDisabled={isDeliveryLocked}
                     colorScheme="green"
                     size="sm"
@@ -581,15 +639,15 @@ export function NewSellTerms({
                   py={2}
                   px={3}
                   borderRadius="lg"
-                  bg={isDeliveryLocked ? "gray.100" : "emerald.50"}
+                  bg={creditTerm ? (isDeliveryLocked ? "gray.100" : "emerald.50") : "gray.50"}
                   border="1.5px solid"
-                  borderColor={isDeliveryLocked ? "gray.300" : "emerald.300"}
+                  borderColor={creditTerm ? (isDeliveryLocked ? "gray.300" : "emerald.300") : "gray.200"}
                   textAlign="center"
                   mb={2.5}
                   boxShadow="xs"
                 >
-                  <Text fontWeight="900" fontSize="xs" color={isDeliveryLocked ? "gray.700" : "emerald.900"} letterSpacing="wider">
-                    {creditTerm || "ANTICIPADO"}
+                  <Text fontWeight="900" fontSize="xs" color={creditTerm ? (isDeliveryLocked ? "gray.700" : "emerald.900") : "gray.400"} letterSpacing="wider">
+                    {creditTerm || "(Seleccionar Plazo / Término)"}
                   </Text>
                 </Box>
 

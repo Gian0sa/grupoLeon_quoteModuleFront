@@ -59,24 +59,29 @@ import {
   Download,
   Edit3,
   Trash2,
-  ExternalLink
+  ExternalLink,
+  MessageSquare
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useQuoteStore } from "../stores/quoteStore";
 import { RejectReasonModal } from "./RejectReasonModal";
+import { ObserveReasonModal } from "./ObserveReasonModal";
 import QuotePdfModal from "./QuotePdfModal";
 import { calculateQuoteTotals } from "../../../shared/utils/quoteCalculator";
 import { useAuthStore } from "../../../features/auth/stores/useAuthStore";
 import { useGetQuoteById } from "../hooks/queries/quotesQueries";
+import { useQueryClient } from "@tanstack/react-query";
 
 export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { username: authUsername, role: authRole } = useAuthStore();
   const isAdminUser = authRole === "ADMIN" || authUsername?.toLowerCase() === "enrique";
   const activeRole = isAdminUser ? "ADMIN" : "SELLER";
   const adminUsername = isAdminUser ? (authUsername || "Enrique") : "Enrique";
 
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
+  const [isObserveModalOpen, setIsObserveModalOpen] = useState(false);
   const [isResubmitModalOpen, setIsResubmitModalOpen] = useState(false);
   const [resubmitNote, setResubmitNote] = useState("");
   const [pdfQuote, setPdfQuote] = useState(null);
@@ -85,15 +90,28 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
   const quoteId = quote?.docNumber || quote?.id;
   const { data: serverQuote } = useGetQuoteById(quoteId);
 
-  // Unificación inteligente de la cotización (Prioriza datos completos de servidor/local)
+  // Extractor exhaustivo de ítems desde cualquier estructura
+  const extractItems = (doc) => {
+    if (!doc) return [];
+    if (Array.isArray(doc.products) && doc.products.length > 0) return doc.products;
+    if (Array.isArray(doc.items) && doc.items.length > 0) return doc.items;
+    if (Array.isArray(doc.lines) && doc.lines.length > 0) return doc.lines;
+    if (Array.isArray(doc.DocumentLines) && doc.DocumentLines.length > 0) return doc.DocumentLines;
+    if (doc.totals && Array.isArray(doc.totals.normalizedProducts) && doc.totals.normalizedProducts.length > 0) return doc.totals.normalizedProducts;
+    if (doc.totals && Array.isArray(doc.totals.products) && doc.totals.products.length > 0) return doc.totals.products;
+    return [];
+  };
+
+  // Unificación inteligente de la cotización (Prioriza datos completos de servidor/local/caché)
   const effectiveQuote = React.useMemo(() => {
     if (!quote) return null;
     let full = { ...quote };
 
     if (serverQuote) {
       full = { ...serverQuote, ...full };
-      if (serverQuote.products && serverQuote.products.length > 0 && (!full.products || full.products.length === 0)) {
-        full.products = serverQuote.products;
+      const serverItems = extractItems(serverQuote);
+      if (serverItems.length > 0) {
+        full.products = serverItems;
       }
       if (serverQuote.client && (!full.client || Object.keys(full.client).length === 0)) {
         full.client = serverQuote.client;
@@ -121,15 +139,29 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
       }
     }
 
-    if (!full.products || full.products.length === 0 || !full.clientName || full.clientName === "—") {
+    // Si aún no tiene productos, buscar en caché de React Query
+    let currentItems = extractItems(full);
+    if (currentItems.length === 0 && quoteId) {
+      try {
+        const cachedQuotes = queryClient.getQueryData(["quotes"]);
+        if (Array.isArray(cachedQuotes)) {
+          const foundInCache = cachedQuotes.find(q => String(q.id || q.docNumber) === String(quoteId));
+          if (foundInCache) {
+            full = { ...foundInCache, ...full };
+            currentItems = extractItems(foundInCache);
+          }
+        }
+      } catch {}
+    }
+
+    // Si aún no tiene productos, buscar en localStorage
+    if (currentItems.length === 0 && quoteId) {
       try {
         const localQuotes = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
         const found = localQuotes.find(q => String(q.id || q.docNumber) === String(quoteId));
         if (found) {
           full = { ...found, ...full };
-          if (found.products && found.products.length > 0 && (!full.products || full.products.length === 0)) {
-            full.products = found.products;
-          }
+          currentItems = extractItems(found);
           if (found.client && (!full.client || Object.keys(full.client).length === 0)) {
             full.client = found.client;
           }
@@ -146,8 +178,9 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
       } catch {}
     }
 
+    full.products = currentItems;
     return full;
-  }, [quote, serverQuote, quoteId]);
+  }, [quote, serverQuote, quoteId, queryClient]);
 
   if (!effectiveQuote) return null;
 
@@ -204,15 +237,17 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
   };
 
   const createdIso = effectiveQuote.createdAt || historyLog[0]?.timestamp || new Date().toISOString();
-  const solicitudIso = findLogIso(["ENVIADO", "EN_PROCESO", "PENDIENTE_FACTURACION", "APROBADO", "APROBADO_COMERCIAL", "RECHAZADO"]);
-  const revisionIso = findLogIso(["EN_PROCESO", "PENDIENTE_FACTURACION", "APROBADO", "APROBADO_COMERCIAL", "RECHAZADO"]);
-  const finalIso = findLogIso(["APROBADO", "APROBADO_COMERCIAL", "RECHAZADO"]);
+  const solicitudIso = findLogIso(["ENVIADO", "EN_PROCESO", "PENDIENTE_FACTURACION", "APROBADO", "APROBADO_COMERCIAL", "RECHAZADO", "OBSERVADO", "EN_EDICION"]);
+  const revisionIso = findLogIso(["EN_PROCESO", "PENDIENTE_FACTURACION", "APROBADO", "APROBADO_COMERCIAL", "RECHAZADO", "OBSERVADO", "EN_EDICION", "VISTO"]);
+  const finalIso = findLogIso(["APROBADO", "APROBADO_COMERCIAL", "RECHAZADO", "OBSERVADO", "FACTURADO"]);
+  const observedIso = effectiveQuote.observedAt || findLogIso(["OBSERVADO", "EN_EDICION"]);
 
   // Estados de etapas del Stepper con colores vibrantes
-  const isSolSent = ["ENVIADO", "EN_PROCESO", "PENDIENTE_FACTURACION", "APROBADO", "APROBADO_COMERCIAL", "RECHAZADO"].includes(status);
-  const isFinalDone = ["APROBADO", "APROBADO_COMERCIAL", "RECHAZADO"].includes(status);
-  const isFinalApproved = status === "APROBADO" || status === "APROBADO_COMERCIAL";
-  const isFinalRejected = status === "RECHAZADO";
+  const isSolSent = ["ENVIADO", "EN_PROCESO", "PENDIENTE_FACTURACION", "APROBADO", "APROBADO_COMERCIAL", "RECHAZADO", "OBSERVADO", "EN_EDICION"].includes(status);
+  const isObserved = status === "OBSERVADO" || status === "EN_EDICION";
+  const isFinalApproved = status === "APROBADO" || status === "APROBADO_COMERCIAL" || status === "FACTURADO";
+  const isFinalRejected = status === "RECHAZADO" || status === "ANULADO";
+  const isFinalDone = isFinalApproved || isFinalRejected || isObserved;
   const isInReview = ["ENVIADO", "EN_PROCESO", "PENDIENTE_FACTURACION"].includes(status);
 
   const stepCotizado = {
@@ -226,25 +261,41 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
   };
 
   const stepRevision = {
-    state: isFinalDone ? (isFinalRejected ? "rejected" : "completed") : (isInReview ? "active" : "pending"),
-    time: revisionIso ? formatTimeStr(revisionIso) : (isInReview ? "En curso" : "—")
+    state: isFinalDone ? (isFinalRejected ? "rejected" : isObserved ? "observed" : "completed") : (isInReview ? "active" : "pending"),
+    time: (isObserved && observedIso) ? formatTimeStr(observedIso) : (revisionIso ? formatTimeStr(revisionIso) : (isInReview ? "En curso" : "—"))
   };
 
   const stepFinal = {
-    state: isFinalApproved ? "completed" : (isFinalRejected ? "rejected" : "pending"),
-    time: finalIso ? formatTimeStr(finalIso) : "—",
+    state: isFinalApproved ? "completed" : (isObserved ? "observed" : isFinalRejected ? "rejected" : "pending"),
+    time: (isObserved && observedIso) ? formatTimeStr(observedIso) : (finalIso ? formatTimeStr(finalIso) : "—"),
     isApproved: isFinalApproved,
-    isRejected: isFinalRejected
+    isRejected: isFinalRejected,
+    isObserved: isObserved
   };
 
   const dur1To2 = calculateDurationStr(createdIso, solicitudIso);
-  const dur2To3 = calculateDurationStr(solicitudIso, revisionIso);
-  const dur3To4 = calculateDurationStr(revisionIso, finalIso);
-  const totalCiclo = calculateDurationStr(createdIso, finalIso || new Date().toISOString());
+  const dur2To3 = calculateDurationStr(solicitudIso, revisionIso || observedIso);
+  const dur3To4 = calculateDurationStr(revisionIso || solicitudIso, finalIso || observedIso);
+  const totalCiclo = calculateDurationStr(createdIso, finalIso || observedIso || new Date().toISOString());
 
   // Definición del banner de alerta de estado
   const getStatusAlert = () => {
     switch (status) {
+      case "OBSERVADO":
+      case "EN_EDICION":
+        return {
+          bg: "amber.50",
+          border: "amber.300",
+          color: "amber.900",
+          titleColor: "amber.900",
+          iconColor: "amber.600",
+          icon: MessageSquare,
+          title: "Cotización Devuelta con Observación",
+          subtitle: "FASE 3: DEVUELTO AL VENDEDOR PARA CORRECCIÓN",
+          desc: effectiveQuote.observationReason || effectiveQuote.rejectionReason || "La cotización fue observada por el Administrador/Facturación y devuelta al vendedor para corrección de datos.",
+          subdesc: "El vendedor debe realizar las correcciones indicadas y reenviarla a validación.",
+          timeInStage: "Observado"
+        };
       case "RECHAZADO":
         return {
           bg: "red.50",
@@ -347,6 +398,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
         ? `Cotización ${quote.docNumber || quote.id} aprobada y validada por el administrador. Lista para atención.`
         : `El pedido ${quote.docNumber || quote.id} fue emitido y registrado oficialmente en SAP Business One.`,
       status: nextStatus,
+      createdAt: new Date().toISOString(),
       timestamp: new Date().toISOString(),
       read: false
     };
@@ -425,6 +477,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
       title: `🔄 Cotización ${quoteId} Subsanada y Reenviada`,
       description: `${sellerUsername || "El vendedor"} ha subsanado la cotización y la reenvía para nueva revisión. Nota: "${resubmitNote.trim()}".`,
       status: "ENVIADO",
+      createdAt: nowIso,
       timestamp: nowIso,
       read: false
     };
@@ -439,6 +492,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
       title: `📤 Reenvío Registrado — ${quoteId}`,
       description: `Tu cotización fue subsanada y reenviada exitosamente. Facturación (${ADMIN_FACTURACION_USERNAME}) revisará nuevamente.`,
       status: "ENVIADO",
+      createdAt: nowIso,
       timestamp: nowIso,
       read: false
     };
@@ -484,6 +538,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
       title: `❌ Cotización ${quote.docNumber || quote.id} Rechazada`,
       description: `Rechazada por ${adminUsername || "Administrador"}. Motivo: "${reasonText}"`,
       status: "RECHAZADO",
+      createdAt: new Date().toISOString(),
       timestamp: new Date().toISOString(),
       read: false
     };
@@ -610,6 +665,61 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
                     </Button>
                   </VStack>
                 </Box>
+              ) : (status === "OBSERVADO" || status === "EN_EDICION") ? (
+                /* ── Panel de Observación (Vendedor + Observado) ── */
+                <Box bg="#fffbeb" p={4} borderRadius="xl" border="2px solid" borderColor="#f59e0b" boxShadow="sm" mb={5}>
+                  <VStack align="stretch" spacing={3}>
+                    <Flex justify="space-between" align={{ base: "flex-start", sm: "center" }} wrap="wrap" gap={2}>
+                      <HStack spacing={2.5}>
+                        <Flex w="36px" h="36px" borderRadius="full" bg="#d97706" align="center" justify="center" color="white" flexShrink={0}>
+                          <MessageSquare className="w-5 h-5 stroke-[2.5]" />
+                        </Flex>
+                        <Box minW={0}>
+                          <Text fontSize={{ base: "14px", md: "sm" }} fontWeight="900" color="#92400e" textTransform="uppercase" letterSpacing="wide">
+                            💬 Cotización Devuelta con Observaciones
+                          </Text>
+                          <Text fontSize={{ base: "12px", md: "xs" }} color="#b45309" fontWeight="600">
+                            Evaluada por {adminUsername || "Enrique"} • Requiere corrección y reenvío
+                          </Text>
+                        </Box>
+                      </HStack>
+                      <Badge colorScheme="orange" variant="solid" px={3} py={1} borderRadius="full" fontSize="xs">
+                        OBSERVADO / EN CORRECCIÓN
+                      </Badge>
+                    </Flex>
+
+                    {/* Motivo de la observación */}
+                    <Box bg="white" border="1px solid" borderColor="#fcd34d" p={3} borderRadius="lg">
+                      <Text fontSize="10px" fontWeight="800" color="#92400e" textTransform="uppercase" mb={1}>
+                        Indicación de Facturación / Administración:
+                      </Text>
+                      <Text fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="#78350f" fontStyle="italic" overflowWrap="anywhere">
+                        "{effectiveQuote.observationReason || effectiveQuote.rejectionReason || "Por favor revisa y corrige los datos observados antes de reenviar."}"
+                      </Text>
+                    </Box>
+
+                    <Button
+                      size={{ base: "md", md: "sm" }}
+                      w={{ base: "full", sm: "auto" }}
+                      alignSelf={{ base: "stretch", sm: "flex-start" }}
+                      colorScheme="orange"
+                      bg="#ea580c"
+                      _hover={{ bg: "#c2410c" }}
+                      leftIcon={<Edit3 className="w-4 h-4" />}
+                      onClick={() => {
+                        onClose();
+                        if (typeof useQuoteStore.getState().setQuoteData === "function") {
+                          useQuoteStore.getState().setQuoteData(effectiveQuote);
+                        }
+                        navigate("/newquotes");
+                      }}
+                      fontWeight="800"
+                      boxShadow="sm"
+                    >
+                      ✏️ Abrir y Corregir en Formulario
+                    </Button>
+                  </VStack>
+                </Box>
               ) : (
                 /* ── Panel estático para otros estados en modo SELLER ── */
                 <Box p={3.5} bg="blue.50" borderRadius="xl" border="1px solid" borderColor="blue.200" mb={5}>
@@ -730,30 +840,45 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
                       <Text fontSize="11px" color="gray.700" fontWeight="600" mt={0.5}>
                         {status === "PENDIENTE_FACTURACION"
                           ? `Valida el voucher y depósito ingresados por ${sellerName} antes de emitir en SAP.`
-                          : `Cotización enviada por ${sellerName}. Revisa los ítems, precios y totales abajo antes de decidir.`}
+                          : `Cotización enviada por ${sellerName}. Puedes aprobarla, devolverla con observaciones o rechazarla.`}
                       </Text>
                     </Box>
                   </HStack>
-                  <Button
-                    size="sm"
-                    colorScheme="teal"
-                    bg="#0f766e"
-                    _hover={{ bg: "#115e59" }}
-                    leftIcon={<Edit3 className="w-3.5 h-3.5" />}
-                    onClick={() => {
-                      onClose();
-                      if (typeof useQuoteStore.getState().setQuoteData === "function") {
-                        useQuoteStore.getState().setQuoteData(effectiveQuote);
-                      }
-                      navigate("/newquotes");
-                    }}
-                    fontWeight="800"
-                    borderRadius="lg"
-                    px={3}
-                    flexShrink={0}
-                  >
-                    Revisar y Asignar Condiciones
-                  </Button>
+                  <HStack spacing={2} wrap="wrap">
+                    <Button
+                      size="sm"
+                      colorScheme="amber"
+                      bg="#d97706"
+                      _hover={{ bg: "#b45309" }}
+                      color="white"
+                      leftIcon={<MessageSquare className="w-3.5 h-3.5" />}
+                      onClick={() => setIsObserveModalOpen(true)}
+                      fontWeight="800"
+                      borderRadius="lg"
+                      px={3}
+                    >
+                      Observar
+                    </Button>
+                    <Button
+                      size="sm"
+                      colorScheme="teal"
+                      bg="#0f766e"
+                      _hover={{ bg: "#115e59" }}
+                      leftIcon={<Edit3 className="w-3.5 h-3.5" />}
+                      onClick={() => {
+                        onClose();
+                        if (typeof useQuoteStore.getState().setQuoteData === "function") {
+                          useQuoteStore.getState().setQuoteData(effectiveQuote);
+                        }
+                        navigate("/newquotes");
+                      }}
+                      fontWeight="800"
+                      borderRadius="lg"
+                      px={3}
+                    >
+                      Revisar Formulario
+                    </Button>
+                  </HStack>
                 </Flex>
               </Box>
             ) : null}
@@ -879,15 +1004,15 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
                       w="30px"
                       h="30px"
                       borderRadius="full"
-                      bg={isFinalDone ? (isFinalRejected ? "#dc2626" : "#059669") : (isInReview ? "#2563eb" : "#e2e8f0")}
+                      bg={isFinalDone ? (isFinalRejected ? "#dc2626" : isObserved ? "#d97706" : "#059669") : (isInReview ? "#2563eb" : "#e2e8f0")}
                       align="center"
                       justify="center"
                       color="white"
-                      boxShadow={isInReview ? "0 0 0 4px rgba(37,99,235,0.3)" : (isFinalDone ? "0 2px 8px rgba(5,150,105,0.4)" : "none")}
+                      boxShadow={isInReview ? "0 0 0 4px rgba(37,99,235,0.3)" : isObserved ? "0 2px 8px rgba(217,119,6,0.4)" : (isFinalDone ? "0 2px 8px rgba(5,150,105,0.4)" : "none")}
                       flexShrink={0}
                     >
                       {isFinalDone ? (
-                        isFinalRejected ? <XCircle className="w-4 h-4 stroke-[3]" /> : <Check className="w-4 h-4 stroke-[3]" />
+                        isFinalRejected ? <XCircle className="w-4 h-4 stroke-[3]" /> : isObserved ? <MessageSquare className="w-4 h-4 stroke-[2.5]" /> : <Check className="w-4 h-4 stroke-[3]" />
                       ) : isInReview ? (
                         <Clock className="w-4 h-4 stroke-[2.5]" />
                       ) : (
@@ -895,22 +1020,24 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
                       )}
                     </Flex>
                     <Box
-                      bg={isFinalDone ? (isFinalRejected ? "red.50" : "emerald.50") : (isInReview ? "blue.50" : "white")}
+                      bg={isFinalDone ? (isFinalRejected ? "red.50" : isObserved ? "amber.50" : "emerald.50") : (isInReview ? "blue.50" : "white")}
                       p={2.5}
                       borderRadius="xl"
                       border="1.5px solid"
-                      borderColor={isFinalDone ? (isFinalRejected ? "red.300" : "emerald.300") : (isInReview ? "blue.300" : "gray.200")}
+                      borderColor={isFinalDone ? (isFinalRejected ? "red.300" : isObserved ? "amber.300" : "emerald.300") : (isInReview ? "blue.300" : "gray.200")}
                       flex="1"
                     >
                       <Flex justify="space-between" align="center">
-                        <Text fontSize="11px" fontWeight="900" color={isFinalDone ? (isFinalRejected ? "red.900" : "emerald.900") : (isInReview ? "blue.900" : "gray.500")}>
-                          3. EN REVISIÓN
+                        <Text fontSize="11px" fontWeight="900" color={isFinalDone ? (isFinalRejected ? "red.900" : isObserved ? "amber.900" : "emerald.900") : (isInReview ? "blue.900" : "gray.500")}>
+                          3. {isObserved ? "OBSERVADO" : "EN REVISIÓN"}
                         </Text>
-                        <Badge colorScheme={isFinalDone ? (isFinalRejected ? "red" : "green") : (isInReview ? "blue" : "gray")} variant="solid" fontSize="9px">
+                        <Badge colorScheme={isFinalDone ? (isFinalRejected ? "red" : isObserved ? "orange" : "green") : (isInReview ? "blue" : "gray")} variant="solid" fontSize="9px">
                           {stepRevision.time}
                         </Badge>
                       </Flex>
-                      <Text fontSize="10px" color="gray.600" mt={0.5}>Evaluación por Asesora de Facturación</Text>
+                      <Text fontSize="10px" color="gray.600" mt={0.5}>
+                        {isObserved ? "Devuelto con observaciones al vendedor" : "Evaluación por Asesora de Facturación"}
+                      </Text>
                     </Box>
                   </Flex>
 
@@ -926,15 +1053,17 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
                       w="30px"
                       h="30px"
                       borderRadius="full"
-                      bg={isFinalApproved ? "#059669" : isFinalRejected ? "#dc2626" : "#e2e8f0"}
+                      bg={isFinalApproved ? "#059669" : isObserved ? "#d97706" : isFinalRejected ? "#dc2626" : "#e2e8f0"}
                       align="center"
                       justify="center"
                       color="white"
-                      boxShadow={isFinalApproved ? "0 2px 8px rgba(5,150,105,0.4)" : (isFinalRejected ? "0 2px 8px rgba(220,38,38,0.4)" : "none")}
+                      boxShadow={isFinalApproved ? "0 2px 8px rgba(5,150,105,0.4)" : isObserved ? "0 2px 8px rgba(217,119,6,0.4)" : (isFinalRejected ? "0 2px 8px rgba(220,38,38,0.4)" : "none")}
                       flexShrink={0}
                     >
                       {isFinalApproved ? (
                         <Check className="w-4 h-4 stroke-[3]" />
+                      ) : isObserved ? (
+                        <MessageSquare className="w-4 h-4 stroke-[2.5]" />
                       ) : isFinalRejected ? (
                         <XCircle className="w-4 h-4 stroke-[3]" />
                       ) : (
@@ -942,23 +1071,23 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
                       )}
                     </Flex>
                     <Box
-                      bg={isFinalApproved ? "emerald.50" : isFinalRejected ? "red.50" : "white"}
+                      bg={isFinalApproved ? "emerald.50" : isObserved ? "amber.50" : isFinalRejected ? "red.50" : "white"}
                       p={2.5}
                       borderRadius="xl"
                       border="1.5px solid"
-                      borderColor={isFinalApproved ? "emerald.300" : isFinalRejected ? "red.300" : "gray.200"}
+                      borderColor={isFinalApproved ? "emerald.300" : isObserved ? "amber.300" : isFinalRejected ? "red.300" : "gray.200"}
                       flex="1"
                     >
                       <Flex justify="space-between" align="center">
-                        <Text fontSize="11px" fontWeight="900" color={isFinalApproved ? "emerald.900" : isFinalRejected ? "red.900" : "gray.500"}>
-                          4. RESULTADO: {isFinalApproved ? "APROBADO" : isFinalRejected ? "RECHAZADO" : "PENDIENTE"}
+                        <Text fontSize="11px" fontWeight="900" color={isFinalApproved ? "emerald.900" : isObserved ? "amber.900" : isFinalRejected ? "red.900" : "gray.500"}>
+                          4. RESULTADO: {isFinalApproved ? "APROBADO" : isObserved ? "OBSERVADO" : isFinalRejected ? "RECHAZADO" : "PENDIENTE"}
                         </Text>
-                        <Badge colorScheme={isFinalApproved ? "green" : isFinalRejected ? "red" : "gray"} variant="solid" fontSize="9px">
+                        <Badge colorScheme={isFinalApproved ? "green" : isObserved ? "orange" : isFinalRejected ? "red" : "gray"} variant="solid" fontSize="9px">
                           {stepFinal.time}
                         </Badge>
                       </Flex>
                       <Text fontSize="10px" color="gray.600" mt={0.5}>
-                        {isFinalApproved ? "Cotización lista para emitir en SAP" : isFinalRejected ? "Documento observado/rechazado" : "Esperando resolución final"}
+                        {isFinalApproved ? "Cotización lista para emitir en SAP" : isObserved ? "Documento devuelto para corrección" : isFinalRejected ? "Documento rechazado" : "Esperando resolución final"}
                       </Text>
                     </Box>
                   </Flex>
@@ -977,7 +1106,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
                     top="37px"
                     left="65px"
                     h="4px"
-                    bg={isFinalRejected ? "#dc2626" : isFinalApproved ? "#059669" : isInReview ? "#2563eb" : "#059669"}
+                    bg={isFinalRejected ? "#dc2626" : isObserved ? "#d97706" : isFinalApproved ? "#059669" : isInReview ? "#2563eb" : "#059669"}
                     borderRadius="full"
                     zIndex={0}
                     transition="all 0.5s ease"
@@ -1028,72 +1157,74 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
 
                     {/* Tiempo 2 a 3 */}
                     <Flex align="center" justify="center" h="76px">
-                      <Badge variant="solid" bg="white" color={isInReview ? "#1e40af" : "#065f46"} border={isInReview ? "1.5px solid #93c5fd" : "1.5px solid #a7f3d0"} fontSize="10px" px={2.5} py={0.5} borderRadius="full" boxShadow="xs" fontWeight="800">
-                        {dur2To3 !== "—" ? `⏱️ ${dur2To3}` : (isInReview ? "En Proceso" : "—")}
+                      <Badge variant="solid" bg="white" color={isObserved ? "#b45309" : isInReview ? "#1e40af" : "#065f46"} border={isObserved ? "1.5px solid #fcd34d" : isInReview ? "1.5px solid #93c5fd" : "1.5px solid #a7f3d0"} fontSize="10px" px={2.5} py={0.5} borderRadius="full" boxShadow="xs" fontWeight="800">
+                        {dur2To3 !== "—" ? `⏱️ ${dur2To3}` : (isInReview ? "En Proceso" : isObserved ? "Observado" : "—")}
                       </Badge>
                     </Flex>
 
                     {/* Paso 3: REVISIÓN */}
                     <VStack spacing={1.5} align="center" minW="0" flex="1">
-                      <Text fontSize="11px" fontWeight="900" color={isFinalDone ? (isFinalRejected ? "#991b1b" : "#065f46") : (isInReview ? "#1e40af" : "#64748b")} isTruncated>
-                        REVISIÓN
+                      <Text fontSize="11px" fontWeight="900" color={isFinalDone ? (isFinalRejected ? "#991b1b" : isObserved ? "#b45309" : "#065f46") : (isInReview ? "#1e40af" : "#64748b")} isTruncated>
+                        {isObserved ? "OBSERVADO" : "REVISIÓN"}
                       </Text>
                       <Flex
                         w="38px"
                         h="38px"
                         borderRadius="full"
-                        bg={isFinalDone ? (isFinalRejected ? "#dc2626" : "#059669") : (isInReview ? "#2563eb" : "#e2e8f0")}
+                        bg={isFinalDone ? (isFinalRejected ? "#dc2626" : isObserved ? "#d97706" : "#059669") : (isInReview ? "#2563eb" : "#e2e8f0")}
                         align="center"
                         justify="center"
                         color="white"
-                        boxShadow={isInReview ? "0 0 0 5px rgba(37,99,235,0.25)" : (isFinalDone ? (isFinalRejected ? "0 2px 10px rgba(220,38,38,0.4)" : "0 2px 10px rgba(5,150,105,0.4)") : "none")}
+                        boxShadow={isInReview ? "0 0 0 5px rgba(37,99,235,0.25)" : isObserved ? "0 2px 10px rgba(217,119,6,0.4)" : (isFinalDone ? (isFinalRejected ? "0 2px 10px rgba(220,38,38,0.4)" : "0 2px 10px rgba(5,150,105,0.4)") : "none")}
                         border={isFinalDone || isInReview ? "none" : "2px solid #cbd5e1"}
                       >
                         {isFinalDone ? (
-                          isFinalRejected ? <XCircle className="w-4 h-4 stroke-[3]" /> : <Check className="w-4 h-4 stroke-[3]" />
+                          isFinalRejected ? <XCircle className="w-4 h-4 stroke-[3]" /> : isObserved ? <MessageSquare className="w-4 h-4 stroke-[2.5]" /> : <Check className="w-4 h-4 stroke-[3]" />
                         ) : isInReview ? (
                           <Clock className="w-4 h-4 stroke-[2.5]" />
                         ) : (
                           <Circle className="w-4 h-4 text-gray-400" />
                         )}
                       </Flex>
-                      <Badge colorScheme={isFinalDone ? (isFinalRejected ? "red" : "green") : (isInReview ? "blue" : "gray")} variant={isFinalDone || isInReview ? "solid" : "subtle"} fontSize="10px" borderRadius="full" px={2}>
+                      <Badge colorScheme={isFinalDone ? (isFinalRejected ? "red" : isObserved ? "orange" : "green") : (isInReview ? "blue" : "gray")} variant={isFinalDone || isInReview ? "solid" : "subtle"} fontSize="10px" borderRadius="full" px={2}>
                         {stepRevision.time}
                       </Badge>
                     </VStack>
 
                     {/* Tiempo 3 a 4 */}
                     <Flex align="center" justify="center" h="76px">
-                      <Badge variant="solid" bg="white" color={isFinalRejected ? "#991b1b" : "#065f46"} border={isFinalRejected ? "1.5px solid #fca5a5" : "1.5px solid #a7f3d0"} fontSize="10px" px={2.5} py={0.5} borderRadius="full" boxShadow="xs" fontWeight="800">
-                        {dur3To4 !== "—" ? `⏱️ ${dur3To4}` : (isFinalDone ? "Finalizado" : "—")}
+                      <Badge variant="solid" bg="white" color={isFinalRejected ? "#991b1b" : isObserved ? "#b45309" : "#065f46"} border={isFinalRejected ? "1.5px solid #fca5a5" : isObserved ? "1.5px solid #fcd34d" : "1.5px solid #a7f3d0"} fontSize="10px" px={2.5} py={0.5} borderRadius="full" boxShadow="xs" fontWeight="800">
+                        {dur3To4 !== "—" ? `⏱️ ${dur3To4}` : (isObserved ? "Devuelto" : isFinalDone ? "Finalizado" : "—")}
                       </Badge>
                     </Flex>
 
                     {/* Paso 4: FINAL */}
                     <VStack spacing={1.5} align="center" minW="0" flex="1">
-                      <Text fontSize="11px" fontWeight="900" color={isFinalApproved ? "#065f46" : isFinalRejected ? "#991b1b" : "#64748b"} isTruncated>
-                        {isFinalApproved ? "APROBADO" : isFinalRejected ? "RECHAZADO" : "FINAL"}
+                      <Text fontSize="11px" fontWeight="900" color={isFinalApproved ? "#065f46" : isObserved ? "#b45309" : isFinalRejected ? "#991b1b" : "#64748b"} isTruncated>
+                        {isFinalApproved ? "APROBADO" : isObserved ? "OBSERVADO" : isFinalRejected ? "RECHAZADO" : "FINAL"}
                       </Text>
                       <Flex
                         w="38px"
                         h="38px"
                         borderRadius="full"
-                        bg={isFinalApproved ? "#059669" : isFinalRejected ? "#dc2626" : "#e2e8f0"}
+                        bg={isFinalApproved ? "#059669" : isObserved ? "#d97706" : isFinalRejected ? "#dc2626" : "#e2e8f0"}
                         align="center"
                         justify="center"
                         color="white"
-                        boxShadow={isFinalApproved ? "0 2px 10px rgba(5,150,105,0.4)" : (isFinalRejected ? "0 2px 10px rgba(220,38,38,0.4)" : "none")}
+                        boxShadow={isFinalApproved ? "0 2px 10px rgba(5,150,105,0.4)" : isObserved ? "0 2px 10px rgba(217,119,6,0.4)" : (isFinalRejected ? "0 2px 10px rgba(220,38,38,0.4)" : "none")}
                         border={isFinalDone ? "none" : "2px dashed #94a3b8"}
                       >
                         {isFinalApproved ? (
                           <Check className="w-4 h-4 stroke-[3]" />
+                        ) : isObserved ? (
+                          <MessageSquare className="w-4 h-4 stroke-[2.5]" />
                         ) : isFinalRejected ? (
                           <XCircle className="w-4 h-4 stroke-[3]" />
                         ) : (
                           <Circle className="w-4 h-4 text-gray-400" />
                         )}
                       </Flex>
-                      <Badge colorScheme={isFinalApproved ? "green" : isFinalRejected ? "red" : "gray"} variant={isFinalDone ? "solid" : "subtle"} fontSize="10px" borderRadius="full" px={2}>
+                      <Badge colorScheme={isFinalApproved ? "green" : isObserved ? "orange" : isFinalRejected ? "red" : "gray"} variant={isFinalDone ? "solid" : "subtle"} fontSize="10px" borderRadius="full" px={2}>
                         {stepFinal.time}
                       </Badge>
                     </VStack>
@@ -1158,6 +1289,46 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
             </Box>
 
             {/* PARTE INFERIOR: ARTÍCULOS COTIZADOS (IZQ) E HISTORIAL DE ACTIVIDAD (DER) */}
+            {(() => {
+              const quoteProducts = quote?.products || quote?.items || quote?.totals?.products || quote?.totals?.normalizedProducts || [];
+              const maxAdicDiscount = quoteProducts.reduce((max, it) => {
+                const adic = Number(it.lineDiscount ?? it.LineDiscount ?? 0);
+                return Math.max(max, adic);
+              }, Number(quote?.totals?.maxDiscount || 0));
+              const hasAdditionalDiscount = maxAdicDiscount > 0 || Boolean(quote?.totals?.hasDiscount);
+
+              if (!hasAdditionalDiscount) return null;
+
+              return (
+                <Box
+                  p={4}
+                  bg="purple.50"
+                  border="2px solid"
+                  borderColor="purple.300"
+                  borderRadius="2xl"
+                  boxShadow="sm"
+                  mb={2}
+                >
+                  <HStack spacing={3.5} align="flex-start">
+                    <Box fontSize="24px" lineHeight="1">⚡</Box>
+                    <VStack align="stretch" spacing={1}>
+                      <HStack spacing={2} wrap="wrap">
+                        <Text fontSize="13px" fontWeight="900" color="purple.900" textTransform="uppercase">
+                          Cotización con Descuento Adicional Aplicado
+                        </Text>
+                        <Badge colorScheme="purple" variant="solid" fontSize="10px" px={2.5} py={0.5} borderRadius="full">
+                          ⚠️ Requiere Aprobación Comercial
+                        </Badge>
+                      </HStack>
+                      <Text fontSize="12px" color="purple.800" fontWeight="600">
+                        El asesor de ventas aplicó descuentos especiales por encima de la tarifa de lista SAP. Revise los porcentajes individuales por artículo en la grilla inferior antes de emitir la aprobación en SAP.
+                      </Text>
+                    </VStack>
+                  </HStack>
+                </Box>
+              );
+            })()}
+
             <Grid templateColumns={{ base: "1fr", lg: "1.2fr 1fr" }} gap={5}>
               {/* Columna Izquierda: Artículos Cotizados */}
               <GridItem>
@@ -1312,10 +1483,6 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
                           <Text fontWeight="900" fontSize="xs">TOTAL COTIZACIÓN (USD):</Text>
                           <Text fontFamily="mono" fontWeight="950" fontSize="md" color="#6ee7b7">${grandTotalUSD.toFixed(2)}</Text>
                         </Flex>
-                        <Flex justify="space-between" align="center" pt={1.5} borderTop="1px dashed" borderColor="whiteAlpha.200">
-                          <Text fontSize="10px" color="emerald.200">Equivalente en Soles (TC S/ 3.43):</Text>
-                          <Text fontFamily="mono" fontWeight="900" fontSize="xs" color="#facc15">S/ {grandTotalSOL.toFixed(2)}</Text>
-                        </Flex>
                       </VStack>
                     </Box>
                   </Box>
@@ -1414,7 +1581,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
                 variant="outline"
                 size="sm"
                 leftIcon={<Download className="w-4 h-4 text-teal-600" />}
-                onClick={() => setPdfQuote(quote)}
+                onClick={() => setPdfQuote(effectiveQuote)}
                 fontWeight="800"
               >
                 Descargar Documento PDF
@@ -1439,6 +1606,27 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus }) {
         onClose={() => setIsRejectModalOpen(false)}
         quoteId={quote.docNumber || quote.id}
         onConfirmReject={handleConfirmReject}
+      />
+
+      {/* Modal de Devolución con Observación */}
+      <ObserveReasonModal
+        isOpen={isObserveModalOpen}
+        onClose={() => setIsObserveModalOpen(false)}
+        quote={effectiveQuote}
+        onConfirmObserve={(targetQuote, reason) => {
+          if (onUpdateStatus) {
+            onUpdateStatus(effectiveQuote, "OBSERVADO", reason);
+          }
+          toast({
+            title: "💬 Cotización Devuelta con Observación",
+            description: `Se notificó al vendedor para que corrija: ${reason}`,
+            status: "warning",
+            duration: 5000,
+            isClosable: true,
+            position: "top-right"
+          });
+          onClose();
+        }}
       />
 
       {/* Modal de Subsanación y Reenvío (RN-03: nota obligatoria mín 10 chars) */}

@@ -47,14 +47,19 @@ import {
   Edit3,
   Download,
   Undo2,
-  MessageSquareWarning
+  MessageSquareWarning,
+  FileText,
+  MessageSquare,
+  X
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useQuoteStore } from "../stores/quoteStore";
+import { useHasAccess } from "../../../shared/utils/permissions";
 import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
 import { QuoteStepper, getStageIndex } from "../components/QuoteStepper";
 import { QuoteDetailDrawer } from "../components/QuoteDetailDrawer";
 import QuotePdfModal from "../components/QuotePdfModal";
+import { ObserveReasonModal } from "../components/ObserveReasonModal";
 import { calculateQuoteTotals, getQuoteTotalUSD } from "../../../shared/utils/quoteCalculator";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { useQueryClient } from "@tanstack/react-query";
@@ -100,6 +105,31 @@ const isDraftOwnedByCurrentUser = (q, currentUsername, currentUserId) => {
   return false;
 };
 
+export const isMatchingDoc = (q, docIdentifier) => {
+  if (!q || !docIdentifier) return false;
+  const idStr = String(
+    typeof docIdentifier === "object"
+      ? (docIdentifier.docNumber || docIdentifier.id || "")
+      : docIdentifier
+  ).trim();
+  if (!idStr) return false;
+
+  const qDocNum = String(q.docNumber || "").trim();
+  const qId = String(q.id !== undefined && q.id !== null ? q.id : "").trim();
+
+  if (qDocNum && qDocNum.toLowerCase() === idStr.toLowerCase()) return true;
+  if (qId && qId.toLowerCase() === idStr.toLowerCase()) return true;
+
+  const cleanIdStr = idStr.replace(/^COT-0*/i, "");
+  const cleanQDocNum = qDocNum.replace(/^COT-0*/i, "");
+  const cleanQId = qId.replace(/^COT-0*/i, "");
+
+  if (cleanIdStr && (cleanIdStr === cleanQDocNum || cleanIdStr === cleanQId)) {
+    return true;
+  }
+  return false;
+};
+
 export function QuoteApprovalPage() {
   const toast = useToast();
   const navigate = useNavigate();
@@ -108,8 +138,8 @@ export function QuoteApprovalPage() {
 
   const { username: authUsername, userId: authUserId, role: authRole } = useAuthStore();
   const localUser = (localStorage.getItem("username") || localStorage.getItem("userId") || "").toLowerCase();
-  const localRole = (localStorage.getItem("role") || "").toUpperCase();
-  const isAdminUser = authRole === "ADMIN" || localRole === "ADMIN" || authUsername?.toLowerCase() === "enrique" || localUser === "enrique";
+  const hasAccess = useHasAccess();
+  const isAdminUser = authRole === "ADMIN" || localRole === "ADMIN" || authUsername?.toLowerCase() === "enrique" || localUser === "enrique" || hasAccess("POST /quotes/approval") || hasAccess("POST /quotations/approve");
   const activeCurrentUsername = (authUsername || localStorage.getItem("username") || "").toLowerCase().trim();
   const activeCurrentUserId = authUserId || localStorage.getItem("userId");
 
@@ -133,33 +163,106 @@ export function QuoteApprovalPage() {
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [pdfQuote, setPdfQuote] = useState(null);
   const [deleteConfirmDoc, setDeleteConfirmDoc] = useState(null);
+  const [observeQuoteTarget, setObserveQuoteTarget] = useState(null);
 
-  // Sincronizar cotizaciones desde el servidor en tiempo real sin duplicados y filtrando borradores ajenos
+  // Jerarquía de estados: el mayor índice tiene mayor prioridad (más avanzado en el flujo)
+  const STATUS_PRIORITY = [
+    "BORRADOR", "GENERADO", "ENVIADO", "EN_PROCESO", "EN_EDICION",
+    "OBSERVADO", "RECHAZADO", "APROBADO_COMERCIAL", "EN_FACTURACION", "ANULADO", "FACTURADO", "APROBADO"
+  ];
+  const getStatusPriority = (s) => STATUS_PRIORITY.indexOf(String(s || "BORRADOR").toUpperCase());
+
   const syncQuotes = () => {
     try {
       const stored = localStorage.getItem("grupoLeon_local_quotes");
       const local = stored ? JSON.parse(stored) : [];
+
+      // Limpiar documentos fantasma vacíos (COT-000000 o sin items ni cliente)
+      const cleanLocal = local.filter(q => {
+        const isPhantom = String(q.docNumber || "").trim() === "COT-000000" && (!q.products || q.products.length === 0) && Number(q.totals?.grandTotalUSD || 0) === 0;
+        return !isPhantom;
+      });
+
+      if (cleanLocal.length !== local.length) {
+        localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(cleanLocal));
+      }
+
       if (serverQuotes && Array.isArray(serverQuotes)) {
-        const serverDocIds = new Set();
-        serverQuotes.forEach(q => {
-          if (q.docNumber) serverDocIds.add(String(q.docNumber));
-          if (q.id !== undefined && q.id !== null) serverDocIds.add(String(q.id));
+        const validServerQuotes = serverQuotes.filter(q => {
+          const isPhantom = String(q.docNumber || "").trim() === "COT-000000" && (!q.products || q.products.length === 0) && Number(q.totals?.grandTotalUSD || 0) === 0;
+          return !isPhantom;
         });
 
         // Solo preservar borradores locales legítimos QUE PERTENEZCAN AL USUARIO ACTUAL
-        const localDraftsOnly = local.filter(q => {
+        const localDraftsOnly = cleanLocal.filter(q => {
           const isDraft = isDraftState(q.approvalStatus || q.state || q.status);
           if (!isDraft) return false;
-          const docNum = q.docNumber ? String(q.docNumber) : "";
-          const idVal = q.id !== undefined && q.id !== null ? String(q.id) : "";
-          const notInServer = (!docNum || !serverDocIds.has(docNum)) && (!idVal || !serverDocIds.has(idVal));
-          return notInServer && !docNum.startsWith("TEST-") && isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId);
+          const notInServer = !validServerQuotes.some(sq => isMatchingDoc(sq, q));
+          return notInServer && !String(q.docNumber || "").startsWith("TEST-") && isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId);
         });
 
-        // Garantizar unicidad absoluta por docNumber o id y filtrar borradores no enviados de otros usuarios
+        // Enriquecer cotizaciones del servidor con datos locales
+        // REGLA DE PRIORIDAD DE ESTADO: si el localStorage tiene un estado más reciente
+        // (por updatedAt) o más avanzado (por jerarquía de estados), el local prevalece.
+        // Esto protege actualizaciones optimistas (OBSERVADO, RECHAZADO, etc.) del refresco del servidor.
+        const enrichedServerQuotes = validServerQuotes.map(sq => {
+          const matchedLocal = cleanLocal.find(lq => isMatchingDoc(lq, sq));
+          if (matchedLocal) {
+            const sqItems = (sq.products && sq.products.length > 0) ? sq.products : (sq.items || []);
+            const lqItems = (matchedLocal.products && matchedLocal.products.length > 0) ? matchedLocal.products : (matchedLocal.items || []);
+
+            const sqStatus = sq.approvalStatus || sq.state || sq.status || "BORRADOR";
+            const lqStatus = matchedLocal.approvalStatus || matchedLocal.state || matchedLocal.status || "BORRADOR";
+            const sqUpdatedAt = sq.updatedAt ? new Date(sq.updatedAt).getTime() : 0;
+            const lqUpdatedAt = matchedLocal.updatedAt ? new Date(matchedLocal.updatedAt).getTime() : 0;
+
+            // REGLA DE MEZCLA DE ESTADO REALTIME:
+            // 1. Si el servidor indica ENVIADO/APROBADO/RECHAZADO/etc. y el local tenía OBSERVADO,
+            //    significa que la observación fue corregida y se envió a validación. Prevalece la versión del servidor.
+            // 2. Solo usar estado local si fue actualizado optimistamente en la sesión actual de forma muy reciente (>2s).
+            const isObservationCorrected = lqStatus === "OBSERVADO" && (sqStatus === "ENVIADO" || sqStatus === "APROBADO_COMERCIAL" || sqStatus === "APROBADO");
+            const localIsMoreRecent = lqUpdatedAt > (sqUpdatedAt + 3000);
+            
+            // Si la observación fue levantada/corregida, NUNCA bloquear con la jerarquía local de OBSERVADO
+            const useLocalStatus = localIsMoreRecent && !isObservationCorrected;
+            const finalStatus = useLocalStatus ? lqStatus : sqStatus;
+
+            return {
+              ...matchedLocal,
+              ...sq,
+              // Estado: usa la fuente más reciente/confiable
+              status: finalStatus,
+              state: finalStatus,
+              approvalStatus: finalStatus,
+              // Campos de observación: si ya fue levantada (ENVIADO), limpiar la razón de observación antigua
+              observationReason: (finalStatus === "ENVIADO" || finalStatus === "APROBADO_COMERCIAL" || finalStatus === "APROBADO")
+                ? null
+                : (matchedLocal.observationReason || sq.observationReason || sq.rejectionReason),
+              rejectionReason: (finalStatus === "ENVIADO" || finalStatus === "APROBADO_COMERCIAL" || finalStatus === "APROBADO")
+                ? null
+                : (matchedLocal.rejectionReason || sq.rejectionReason),
+              observedAt: (finalStatus === "ENVIADO" || finalStatus === "APROBADO_COMERCIAL" || finalStatus === "APROBADO")
+                ? null
+                : (matchedLocal.observedAt || sq.observedAt),
+              observedBy: (finalStatus === "ENVIADO" || finalStatus === "APROBADO_COMERCIAL" || finalStatus === "APROBADO")
+                ? null
+                : (matchedLocal.observedBy || sq.observedBy),
+              // Historial: combinar o usar el del servidor si trae registros nuevos
+              historyLog: (sq.historyLog && sq.historyLog.length >= (matchedLocal.historyLog?.length || 0))
+                ? sq.historyLog
+                : (matchedLocal.historyLog && matchedLocal.historyLog.length > 0 ? matchedLocal.historyLog : (sq.historyLog || [])),
+              products: sqItems.length > 0 ? sqItems : lqItems,
+              client: sq.client || matchedLocal.client,
+              clientName: sq.clientName || matchedLocal.clientName,
+              totals: (sq.totals && sq.totals.grandTotalUSD) ? sq.totals : matchedLocal.totals,
+            };
+          }
+          return sq;
+        });
+
         const seen = new Set();
         const merged = [];
-        for (const item of [...serverQuotes, ...localDraftsOnly]) {
+        for (const item of [...enrichedServerQuotes, ...localDraftsOnly]) {
           if (!isDraftOwnedByCurrentUser(item, activeCurrentUsername, activeCurrentUserId)) {
             continue;
           }
@@ -171,8 +274,8 @@ export function QuoteApprovalPage() {
         }
         setQuotes(merged);
         localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(merged));
-      } else if (local.length > 0) {
-        const validLocal = local.filter(q => {
+      } else if (cleanLocal.length > 0) {
+        const validLocal = cleanLocal.filter(q => {
           const notTest = !String(q.docNumber || "").startsWith("TEST-");
           return notTest && isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId);
         });
@@ -260,7 +363,36 @@ export function QuoteApprovalPage() {
       try {
         const stored = localStorage.getItem("grupoLeon_local_quotes");
         const local = stored ? JSON.parse(stored) : [];
+
         if (serverQuotes && Array.isArray(serverQuotes)) {
+          // CORRECCIÓN CRÍTICA: Cuando el localStorage se actualiza optimistamente,
+          // el estado local DEBE prevalecer sobre el caché viejo del servidor.
+          // Construir un mapa de datos locales para hacer el merge.
+          const localMap = new Map();
+          local.forEach(q => {
+            if (q.docNumber) localMap.set(String(q.docNumber), q);
+            if (q.id !== undefined && q.id !== null) localMap.set(String(q.id), q);
+          });
+
+          // Combinar: para cada cotización del servidor, si existe localmente, usar estado local (actualizado)
+          const mergedWithLocal = serverQuotes.map(sq => {
+            const localMatch = localMap.get(String(sq.docNumber || "")) || localMap.get(String(sq.id ?? ""));
+            if (localMatch) {
+              // Estado local prevalece (es el actualizado optimistamente)
+              return {
+                ...sq,
+                ...localMatch,
+                // Mantener datos ricos del servidor que no estén en local
+                products: (localMatch.products && localMatch.products.length > 0) ? localMatch.products : (sq.products || sq.items || []),
+                client: localMatch.client || sq.client,
+                clientName: localMatch.clientName || sq.clientName,
+                totals: (localMatch.totals && localMatch.totals.grandTotalUSD) ? localMatch.totals : sq.totals,
+              };
+            }
+            return sq;
+          });
+
+          // Agregar docs locales que no estén en servidor (borradores nuevos)
           const serverDocIds = new Set();
           serverQuotes.forEach(q => {
             if (q.docNumber) serverDocIds.add(String(q.docNumber));
@@ -271,9 +403,10 @@ export function QuoteApprovalPage() {
             const idVal = q.id !== undefined && q.id !== null ? String(q.id) : "";
             return (!docNum || !serverDocIds.has(docNum)) && (!idVal || !serverDocIds.has(idVal)) && isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId);
           });
+
           const seen = new Set();
           const merged = [];
-          for (const item of [...serverQuotes, ...unsyncedLocal]) {
+          for (const item of [...mergedWithLocal, ...unsyncedLocal]) {
             if (!isDraftOwnedByCurrentUser(item, activeCurrentUsername, activeCurrentUserId)) {
               continue;
             }
@@ -423,27 +556,15 @@ export function QuoteApprovalPage() {
   };
 
   // ── RECALL: Vendedor retira solicitud que aún no fue abierta por Enrique ──
-  // Recibe el documento completo, no sólo su id: la fila lo identifica por
-  // `docNumber || id` (string "COT-xxxxxx"), mientras que los documentos que
-  // llegan del servidor traen además un `id` numérico. Buscarlos con la
-  // prioridad inversa (`id || docNumber`) comparaba número contra string y no
-  // encontraba nunca el documento, dejando el formulario en blanco.
   const handleRecallQuote = async (quote) => {
     const docId = quote?.docNumber || quote?.id;
     if (!docId) return;
 
     const idStr = String(docId);
-    const isMatchingDoc = (q) => {
-      if (!q) return false;
-      const qDocNum = q.docNumber ? String(q.docNumber) : "";
-      const qId = q.id !== undefined && q.id !== null ? String(q.id) : "";
-      return (qDocNum && qDocNum === idStr) || (qId && qId === idStr);
-    };
-
     const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
     const nowIso = new Date().toISOString();
     const recallUser = authUsername || "vendedor";
-    const target = quote || quotes.find(isMatchingDoc) || saved.find(isMatchingDoc);
+    const target = quote || quotes.find(q => isMatchingDoc(q, docId)) || saved.find(q => isMatchingDoc(q, docId));
     const prevLogs = target?.historyLog || [];
     const version = (target?.quoteVersion || 1);
     const newLog = { status: "EN_EDICION", timestamp: nowIso, user: recallUser, note: `↩️ Solicitud retirada por el vendedor para corrección (v${version})` };
@@ -459,34 +580,30 @@ export function QuoteApprovalPage() {
       historyLog: updatedHistory
     };
 
+    const fullRecallDoc = {
+      ...(target || {}),
+      id: target?.id || docId,
+      docNumber: target?.docNumber || (String(docId).startsWith("COT-") ? docId : `COT-${String(docId).padStart(6, '0')}`),
+      ...recallFields
+    };
+
     try {
-      await updateQuote({
-        id: docId,
-        docNumber: docId,
-        state: "EN_EDICION",
-        approvalStatus: "EN_EDICION",
-        historyLog: updatedHistory,
-      });
+      await updateQuote(fullRecallDoc);
       queryClient.invalidateQueries({ queryKey: ["quotes"] });
     } catch (e) {
       console.error("Error retirando cotización:", e);
     }
 
-    // Reflejar el retiro en localStorage. Si el documento sólo existía en el
-    // servidor, se incorpora para que quede disponible como borrador local.
-    const yaEstaba = saved.some(isMatchingDoc);
-    const updated = yaEstaba
-      ? saved.map(q => (isMatchingDoc(q) && !q.viewedByAdmin ? { ...q, ...recallFields } : q))
-      : [{ ...target, ...recallFields }, ...saved];
+    const updated = saved.some(q => isMatchingDoc(q, docId))
+      ? saved.map(q => (isMatchingDoc(q, docId) && !q.viewedByAdmin ? { ...q, ...recallFields } : q))
+      : [fullRecallDoc, ...saved];
 
     localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updated));
     window.dispatchEvent(new Event("localQuotesUpdated"));
 
-    const recalledDoc = updated.find(isMatchingDoc) || target;
+    const recalledDoc = updated.find(q => isMatchingDoc(q, docId)) || fullRecallDoc;
     const tieneLineas = Boolean(recalledDoc?.products?.length || recalledDoc?.items?.length);
 
-    // No navegar a ciegas: sin artículos el formulario aparecería vacío y el
-    // vendedor perdería de vista la cotización.
     if (!recalledDoc || !tieneLineas) {
       toast({
         title: "No se pudo cargar la cotización",
@@ -510,76 +627,290 @@ export function QuoteApprovalPage() {
     navigate("/newquotes");
   };
 
-  // ── OBSERVE: Enrique devuelve con observación al vendedor ──
-  const handleObserveQuote = async (docId) => {
-    const reason = window.prompt("💬 Escribe la observación o motivo de devolución al vendedor:");
-    if (!reason || !reason.trim()) return;
+  // ── OBSERVE: Enrique abre modal para devolver con observación al vendedor ──
+  const handleObserveQuote = (quoteOrDocId) => {
+    let quoteObj = quoteOrDocId;
+    if (typeof quoteOrDocId === "string") {
+      const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
+      quoteObj = quotes.find(q => isMatchingDoc(q, quoteOrDocId)) ||
+        saved.find(q => isMatchingDoc(q, quoteOrDocId)) ||
+        (selectedQuote && isMatchingDoc(selectedQuote, quoteOrDocId) ? selectedQuote : null) ||
+        { id: quoteOrDocId, docNumber: quoteOrDocId };
+    }
+    setObserveQuoteTarget(quoteObj);
+  };
 
+  const handleConfirmObserve = async (docIdOrQuote, reason) => {
     const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
     const nowIso = new Date().toISOString();
     const adminName = authUsername || "Enrique";
-    const target = quotes.find(q => (q.id || q.docNumber) === docId) || saved.find(q => (q.id || q.docNumber) === docId);
+    
+    const docId = typeof docIdOrQuote === "object" ? (docIdOrQuote.docNumber || docIdOrQuote.id) : docIdOrQuote;
+
+    // Buscar la cotización completa objetivo en quotes, en saved o en observeQuoteTarget
+    const target =
+      (typeof docIdOrQuote === "object" && docIdOrQuote ? docIdOrQuote : null) ||
+      (observeQuoteTarget && isMatchingDoc(observeQuoteTarget, docId) ? observeQuoteTarget : null) ||
+      quotes.find(q => isMatchingDoc(q, docId)) ||
+      saved.find(q => isMatchingDoc(q, docId)) ||
+      (selectedQuote && isMatchingDoc(selectedQuote, docId) ? selectedQuote : null) ||
+      observeQuoteTarget;
+
     const prevLogs = target?.historyLog || [];
-    const newLog = { status: "OBSERVADO", timestamp: nowIso, user: adminName, note: `💬 Devuelto por ${adminName}: ${reason.trim()}` };
+    const newLog = {
+      status: "OBSERVADO",
+      timestamp: nowIso,
+      user: adminName,
+      note: `💬 Devuelto por ${adminName}: ${reason}`
+    };
     const updatedHistory = [newLog, ...prevLogs];
 
-    try {
-      await updateQuote({
-        id: docId,
-        docNumber: docId,
-        state: "OBSERVADO",
-        approvalStatus: "OBSERVADO",
-        rejectionReason: reason.trim(),
-        historyLog: updatedHistory,
-      });
-      queryClient.invalidateQueries({ queryKey: ["quotes"] });
-      queryClient.invalidateQueries({ queryKey: ["notifications"] });
-    } catch (e) {
-      console.error("Error observando cotización:", e);
+    const finalDocNumber = target?.docNumber || (String(docId).startsWith("COT-") ? docId : `COT-${String(docId).padStart(6, '0')}`);
+
+    const fullObservedDoc = {
+      ...(target || {}),
+      id: target?.id || docId,
+      docNumber: finalDocNumber,
+      status: "OBSERVADO",
+      state: "OBSERVADO",
+      approvalStatus: "OBSERVADO",
+      updatedAt: nowIso,
+      observedAt: nowIso,
+      observedBy: adminName,
+      observationReason: reason,
+      rejectionReason: reason,
+      historyLog: updatedHistory
+    };
+
+    // 1. Actualizar estado reactivo local de React inmediatamente (actualización optimista)
+    setQuotes(prev => prev.map(q => isMatchingDoc(q, docId) ? fullObservedDoc : q));
+    if (selectedQuote && isMatchingDoc(selectedQuote, docId)) {
+      setSelectedQuote(fullObservedDoc);
     }
 
-    const updated = saved.map(q => {
-      if ((q.id || q.docNumber) !== docId) return q;
-      return {
-        ...q,
-        status: "OBSERVADO",
-        state: "OBSERVADO",
-        approvalStatus: "OBSERVADO",
-        observedAt: nowIso,
-        observedBy: adminName,
-        observationReason: reason.trim(),
-        historyLog: updatedHistory
-      };
-    });
-    localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updated));
+    // 2. Persistir en localStorage ANTES del backend (para que el listener local no sobrescriba)
+    const updatedSaved = saved.some(q => isMatchingDoc(q, docId))
+      ? saved.map(q => (isMatchingDoc(q, docId) ? fullObservedDoc : q))
+      : [fullObservedDoc, ...saved];
+    localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updatedSaved));
+    // Notificar a otros listeners locales (sin relanzar syncQuotes)
     window.dispatchEvent(new Event("localQuotesUpdated"));
 
-    const observedDoc = updated.find(q => (q.id || q.docNumber) === docId);
+    // 3. Notificación para el vendedor
+    const sellerUser = fullObservedDoc.createdByUsername || fullObservedDoc.sellerName || "vendedor";
     const existingNotifs = JSON.parse(localStorage.getItem("grupoLeon_notifications") || "[]");
     const notifObj = {
       id: `NOTIF-OBS-${Date.now()}`,
       targetRole: "VENDEDOR",
-      targetUsername: observedDoc?.createdByUsername || "vendedor",
+      targetUsername: sellerUser,
       fromUsername: adminName,
-      quoteId: docId,
-      title: `💬 Cotización Observada - ${docId}`,
-      description: `${adminName} solicita corrección: ${reason.trim()}`,
+      quoteId: finalDocNumber,
+      quoteObj: fullObservedDoc,
+      title: `💬 Cotización Observada - ${finalDocNumber}`,
+      description: `${adminName} solicita corrección: ${reason}`,
       status: "OBSERVADO",
+      createdAt: nowIso,
       timestamp: nowIso,
       read: false
     };
-    localStorage.setItem("grupoLeon_notifications", JSON.stringify([notifObj, ...existingNotifs.filter(n => n.quoteId !== docId || n.status !== "OBSERVADO")]));
+    localStorage.setItem(
+      "grupoLeon_notifications",
+      JSON.stringify([
+        notifObj,
+        ...existingNotifs.filter(n => !isMatchingDoc({ docNumber: n.quoteId, id: n.quoteId }, docId) || n.status !== "OBSERVADO")
+      ])
+    );
     window.dispatchEvent(new Event("localNotificationsUpdated"));
-    localStorage.setItem("grupoLeon_notifications", JSON.stringify([notifObj, ...existingNotifs]));
-    window.dispatchEvent(new Event("localNotificationsUpdated"));
+
+    setObserveQuoteTarget(null);
+
+    // 4. Persistir en Backend + actualizar caché de React Query optimistamente
+    // CLAVE: actualizar setQueriesData ANTES de invalidar para que todas las variantes de queryKey (ej. ["quotes", {}]) tengan el estado OBSERVADO
+    queryClient.setQueriesData({ queryKey: ["quotes"] }, (old) => {
+      if (!Array.isArray(old)) return old;
+      return old.map(q => isMatchingDoc(q, docId) ? { ...q, ...fullObservedDoc } : q);
+    });
+
+    try {
+      await updateQuote(fullObservedDoc);
+      // La invalidación traerá los datos frescos del servidor (ya OBSERVADO)
+      queryClient.invalidateQueries({ queryKey: ["quotes"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    } catch (e) {
+      console.error("Error observando cotización en servidor:", e);
+    }
 
     toast({
       title: "💬 Cotización Devuelta con Observación",
-      description: `Se notificó al vendedor para que corrija: ${reason.trim()}`,
+      description: `Se notificó al vendedor (${sellerUser}) para que corrija: ${reason}`,
       status: "warning",
       duration: 5000,
-      isClosable: true
+      isClosable: true,
+      position: "top-right"
     });
+  };
+
+  const handleConfirmReject = async (docId, reason) => {
+    const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
+    const nowIso = new Date().toISOString();
+    const adminName = authUsername || "Enrique";
+    const target =
+      quotes.find(q => isMatchingDoc(q, docId)) ||
+      saved.find(q => isMatchingDoc(q, docId));
+
+    const prevLogs = target?.historyLog || [];
+    const newLog = {
+      status: "RECHAZADO",
+      timestamp: nowIso,
+      user: adminName,
+      note: `❌ Rechazado por ${adminName}: ${reason}`
+    };
+    const updatedHistory = [newLog, ...prevLogs];
+
+    const finalDocNumber = target?.docNumber || (String(docId).startsWith("COT-") ? docId : `COT-${String(docId).padStart(6, '0')}`);
+
+    const fullRejectedDoc = {
+      ...(target || {}),
+      id: target?.id || docId,
+      docNumber: finalDocNumber,
+      status: "RECHAZADO",
+      state: "RECHAZADO",
+      approvalStatus: "RECHAZADO",
+      updatedAt: nowIso,
+      rejectedAt: nowIso,
+      rejectedBy: adminName,
+      rejectionReason: reason,
+      historyLog: updatedHistory
+    };
+
+    // Persistir en localStorage ANTES del backend
+    const updatedSaved = saved.some(q => isMatchingDoc(q, docId))
+      ? saved.map(q => (isMatchingDoc(q, docId) ? fullRejectedDoc : q))
+      : [fullRejectedDoc, ...saved];
+    localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updatedSaved));
+    // Notificar a otros listeners locales
+    window.dispatchEvent(new Event("localQuotesUpdated"));
+
+    const sellerUser = fullRejectedDoc.createdByUsername || fullRejectedDoc.sellerName || "vendedor";
+    const existingNotifs = JSON.parse(localStorage.getItem("grupoLeon_notifications") || "[]");
+    const notifObj = {
+      id: `NOTIF-REJ-${Date.now()}`,
+      targetRole: "VENDEDOR",
+      targetUsername: sellerUser,
+      fromUsername: adminName,
+      quoteId: finalDocNumber,
+      quoteObj: fullRejectedDoc,
+      title: `❌ Cotización Rechazada - ${finalDocNumber}`,
+      description: `Rechazada por ${adminName}: ${reason}`,
+      status: "RECHAZADO",
+      createdAt: nowIso,
+      timestamp: nowIso,
+      read: false
+    };
+    localStorage.setItem(
+      "grupoLeon_notifications",
+      JSON.stringify([
+        notifObj,
+        ...existingNotifs.filter(n => !isMatchingDoc({ docNumber: n.quoteId, id: n.quoteId }, docId) || n.status !== "RECHAZADO")
+      ])
+    );
+    window.dispatchEvent(new Event("localNotificationsUpdated"));
+
+    // Actualizar caché de React Query optimistamente (antes de invalidar)
+    queryClient.setQueriesData({ queryKey: ["quotes"] }, (old) => {
+      if (!Array.isArray(old)) return old;
+      return old.map(q => isMatchingDoc(q, docId) ? { ...q, ...fullRejectedDoc } : q);
+    });
+
+    // Persistir en Backend (NO llamar syncQuotes() — sobreescribiría el estado optimista)
+    try {
+      await updateQuote(fullRejectedDoc);
+      queryClient.invalidateQueries({ queryKey: ["quotes"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    } catch (e) {
+      console.error("Error rechazando cotización en servidor:", e);
+    }
+
+    toast({
+      title: "❌ Cotización Rechazada",
+      description: `Se registró el rechazo y se notificó al vendedor (${sellerUser}).`,
+      status: "info",
+      duration: 5000,
+      isClosable: true,
+      position: "top-right"
+    });
+  };
+
+  const handleUpdateStatus = async (docIdOrQuote, nextStatus, note = "") => {
+    // Normalizar: el Drawer puede pasar el objeto completo o un ID string
+    const docId = typeof docIdOrQuote === "object" && docIdOrQuote !== null
+      ? (docIdOrQuote.docNumber || docIdOrQuote.id)
+      : docIdOrQuote;
+
+    if (nextStatus === "OBSERVADO") {
+      await handleConfirmObserve(docIdOrQuote, note);
+      return;
+    }
+    if (nextStatus === "RECHAZADO") {
+      await handleConfirmReject(docId, note);
+      return;
+    }
+    const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
+    const nowIso = new Date().toISOString();
+    const adminName = authUsername || "Enrique";
+    const target =
+      (typeof docIdOrQuote === "object" && docIdOrQuote ? docIdOrQuote : null) ||
+      quotes.find(q => isMatchingDoc(q, docId)) ||
+      saved.find(q => isMatchingDoc(q, docId));
+    const prevLogs = target?.historyLog || [];
+    const newLog = {
+      status: nextStatus,
+      timestamp: nowIso,
+      user: adminName,
+      note: note || `Estado actualizado a ${nextStatus}`
+    };
+    const updatedHistory = [newLog, ...prevLogs];
+    const finalDocNumber = target?.docNumber || (String(docId).startsWith("COT-") ? docId : `COT-${String(docId).padStart(6, '0')}`);
+    const fullDoc = {
+      ...(target || {}),
+      id: target?.id || docId,
+      docNumber: finalDocNumber,
+      status: nextStatus,
+      state: nextStatus,
+      approvalStatus: nextStatus,
+      updatedAt: nowIso,
+      historyLog: updatedHistory
+    };
+
+    // Actualizar estado reactivo optimistamente
+    setQuotes(prev => prev.map(q => isMatchingDoc(q, docId) ? fullDoc : q));
+    if (selectedQuote && isMatchingDoc(selectedQuote, docId)) {
+      setSelectedQuote(fullDoc);
+    }
+
+    // Persistir en localStorage ANTES del backend
+    const updatedSaved = saved.some(q => isMatchingDoc(q, docId))
+      ? saved.map(q => (isMatchingDoc(q, docId) ? fullDoc : q))
+      : [fullDoc, ...saved];
+    localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updatedSaved));
+    // Notificar a otros listeners locales
+    window.dispatchEvent(new Event("localQuotesUpdated"));
+
+    // Actualizar caché de React Query optimistamente ANTES de invalidar
+    // Esto garantiza que syncQuotes() vea el estado correcto cuando serverQuotes cambie
+    queryClient.setQueriesData({ queryKey: ["quotes"] }, (old) => {
+      if (!Array.isArray(old)) return old;
+      return old.map(q => isMatchingDoc(q, docId) ? { ...q, ...fullDoc } : q);
+    });
+
+    // Persistir en Backend (NO llamar syncQuotes() — sobreescribiría el estado optimista)
+    try {
+      await updateQuote(fullDoc);
+      queryClient.invalidateQueries({ queryKey: ["quotes"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    } catch (e) {
+      console.error("Error actualizando cotización:", e);
+    }
   };
 
   const markAsViewedByAdmin = (q) => {
@@ -640,85 +971,6 @@ export function QuoteApprovalPage() {
     };
   }, []);
 
-  // Transición de Estado del Workflow (Stepper)
-  const handleUpdateStatus = async (docId, newStatus) => {
-    const target = quotes.find(q => (q.id || q.docNumber) === docId);
-    const currentLog = target?.historyLog || [];
-    const newLogEntry = {
-      status: newStatus,
-      timestamp: new Date().toISOString(),
-      user: authUsername || "Enrique",
-      note:
-        newStatus === "ENVIADO"
-          ? "Enviado a Cliente / Aprobador"
-          : newStatus === "EN_PROCESO"
-          ? "Puesto En Proceso de Revisión"
-          : newStatus === "APROBADO_COMERCIAL"
-          ? "Aprobado Comercial por Administrador"
-          : newStatus === "APROBADO"
-          ? "Aprobado exitosamente — Listo para facturar"
-          : "Rechazado"
-    };
-    const updatedHistory = [newLogEntry, ...currentLog];
-
-    try {
-      await updateQuote({
-        id: docId,
-        docNumber: docId,
-        state: newStatus,
-        approvalStatus: newStatus,
-        historyLog: updatedHistory,
-      });
-      queryClient.invalidateQueries({ queryKey: ["quotes"] });
-      queryClient.invalidateQueries({ queryKey: ["notifications"] });
-    } catch (err) {
-      console.error("Error actualizando estado de cotización en servidor:", err);
-    }
-
-    const updated = quotes.map((q) => {
-      if (q.id === docId || q.docNumber === docId) {
-        return {
-          ...q,
-          state: newStatus,
-          approvalStatus: newStatus,
-          historyLog: updatedHistory
-        };
-      }
-      return q;
-    });
-
-    setQuotes(updated);
-    localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updated));
-
-    if (selectedQuote && (selectedQuote.id === docId || selectedQuote.docNumber === docId)) {
-      setSelectedQuote((prev) => ({
-        ...prev,
-        state: newStatus,
-        approvalStatus: newStatus,
-        historyLog: [
-          {
-            status: newStatus,
-            timestamp: new Date().toISOString(),
-            user: authUsername || "Enrique",
-            note: "Actualización desde detalle"
-          },
-          ...(prev.historyLog || [])
-        ]
-      }));
-    }
-
-    toast({
-      title: `Estado Actualizado: ${newStatus}`,
-      description: `La cotización ${docId} avanzó en el flujo comercial.`,
-      status: newStatus === "APROBADO" || newStatus === "APROBADO_COMERCIAL" ? "success" : newStatus === "RECHAZADO" ? "error" : "info",
-      duration: 3500,
-      isClosable: true
-    });
-
-    if (window.location.pathname.includes("approvals")) {
-      navigate("/historyquotes");
-    }
-  };
 
   // Filtrado de la lista por Pestañas y Buscador con REGLA ESTRICTA DE PRIVACIDAD DE BORRADORES
   const filteredQuotes = useMemo(() => {
@@ -738,7 +990,7 @@ export function QuoteApprovalPage() {
       if (selectedTab === "APROBADO_COMERCIAL" && !["APROBADO_COMERCIAL", "APROBADO_CREDITOS"].includes(currentStatus)) return false;
       if (selectedTab === "PENDIENTE_FACTURACION" && !["PENDIENTE_FACTURACION", "EN_FACTURACION"].includes(currentStatus)) return false;
       if (selectedTab === "APROBADO" && !["APROBADO", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO"].includes(currentStatus)) return false;
-      if (selectedTab === "RECHAZADO" && !["RECHAZADO", "ANULADO"].includes(currentStatus)) return false;
+      if (selectedTab === "RECHAZADO" && !["RECHAZADO", "ANULADO", "OBSERVADO", "EN_EDICION"].includes(currentStatus)) return false;
 
       // Filtro por búsqueda
       if (!searchQuery.trim()) return true;
@@ -769,7 +1021,7 @@ export function QuoteApprovalPage() {
         else if (["APROBADO_COMERCIAL", "APROBADO_CREDITOS"].includes(st)) res.APROBADO_COMERCIAL++;
         else if (["PENDIENTE_FACTURACION", "EN_FACTURACION"].includes(st)) res.PENDIENTE_FACTURACION++;
         else if (["APROBADO", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO"].includes(st)) res.APROBADO++;
-        else if (["RECHAZADO", "ANULADO"].includes(st)) res.RECHAZADO++;
+        else if (["RECHAZADO", "ANULADO", "OBSERVADO", "EN_EDICION"].includes(st)) res.RECHAZADO++;
       }
     });
     return res;
@@ -851,426 +1103,527 @@ export function QuoteApprovalPage() {
     }
   };
 
-  // Botones de acción por fila, compartidos entre la tabla (escritorio) y las
-  // tarjetas (móvil). `stack` apila los botones a ancho completo en móvil.
-  // En modo tarjeta (stack) los botones mantienen 42px táctiles aunque el
-  // breakpoint `md` reduzca las escalas, porque las tarjetas se muestran hasta
-  // `lg`; en la tabla de escritorio conservan el tamaño compacto original.
-  const touchH = stack => (stack ? "42px" : undefined);
+  // Botones de acción por fila, con diseño ultra elegante y optimizado para móvil y escritorio
   const renderRowActions = (q, docId, status, { stack = false } = {}) => {
     const isDraft = !status || ["GENERADO", "BORRADOR", "DRAFT", "draft"].includes(status);
-    const btnSize = stack ? "sm" : "xs";
-    const halfFlex = stack ? "1 1 calc(50% - 6px)" : undefined;
-    const fullFlex = stack ? "1 1 100%" : undefined;
-    const btnMinW = stack ? "105px" : undefined;
+    const isPendingApproval = status === "ENVIADO" || status === "EN_PROCESO" || status === "PENDIENTE_APROBACION";
+    const isPendingBilling = status === "PENDIENTE_FACTURACION";
 
-    return (
-      <Flex gap={2} justify={stack ? "stretch" : "flex-end"} w="full" wrap="wrap" align="center">
-        {/* 1. Botón Editar (Para Borradores) */}
-        {isDraft && (
-          <Button
-            size={btnSize}
-            minH={touchH(stack)}
-            colorScheme="blue"
-            bg="#2563eb"
-            _hover={{ bg: "#1d4ed8" }}
-            leftIcon={<Edit3 className="w-3.5 h-3.5" />}
-            onClick={() => handleLoadQuote(q)}
-            fontWeight="800"
-            borderRadius="lg"
-            px={2.5}
-            whiteSpace="nowrap"
-            boxShadow="0 2px 6px rgba(37,99,235,0.2)"
-            flex={halfFlex}
-            minW={btnMinW}
-          >
-            Editar
-          </Button>
-        )}
+    // ─────────────────────────────────────────────────────────────
+    // VISTA ESCRITORIO (Fila de Tabla compacta, ordenada y elegante)
+    // ─────────────────────────────────────────────────────────────
+    if (!stack) {
+      return (
+        <Flex gap={1.5} justify="flex-end" align="center" wrap="wrap">
+          {/* Si es Borrador: Editar y Borrar */}
+          {isDraft && (
+            <>
+              <Button
+                size="xs"
+                h="32px"
+                bg="#2563eb"
+                color="white"
+                _hover={{ bg: "#1d4ed8", transform: "translateY(-1px)", boxShadow: "0 2px 8px rgba(37,99,235,0.3)" }}
+                _active={{ bg: "#1e40af" }}
+                leftIcon={<Edit3 className="w-3.5 h-3.5" />}
+                onClick={() => handleLoadQuote(q)}
+                fontWeight="700"
+                borderRadius="lg"
+                px={3}
+                boxShadow="xs"
+              >
+                Editar
+              </Button>
+              <IconButton
+                size="xs"
+                h="32px"
+                w="32px"
+                variant="ghost"
+                colorScheme="red"
+                color="#dc2626"
+                _hover={{ bg: "#fee2e2" }}
+                icon={<Trash2 className="w-3.5 h-3.5" />}
+                onClick={() => setDeleteConfirmDoc({ docId, status })}
+                aria-label="Borrar borrador"
+                borderRadius="lg"
+              />
+            </>
+          )}
 
-        {/* 1.1 Botón Borrar (Exclusivo para Borradores) */}
-        {isDraft && (
+          {/* Botón Principal: Verificar / Ver Detalle */}
+          {!isDraft && (
+            <Button
+              size="xs"
+              h="32px"
+              bg={isAdminUser && (isPendingApproval || isPendingBilling) ? "#0f766e" : "white"}
+              color={isAdminUser && (isPendingApproval || isPendingBilling) ? "white" : "#334155"}
+              variant={isAdminUser && (isPendingApproval || isPendingBilling) ? "solid" : "outline"}
+              borderColor="#cbd5e1"
+              _hover={
+                isAdminUser && (isPendingApproval || isPendingBilling)
+                  ? { bg: "#115e59", transform: "translateY(-1px)", boxShadow: "0 4px 12px rgba(15,118,110,0.3)" }
+                  : { bg: "#f8fafc", borderColor: "#94a3b8", transform: "translateY(-1px)" }
+              }
+              _active={{ bg: isAdminUser ? "#134e4a" : "#f1f5f9" }}
+              leftIcon={<Eye className="w-3.5 h-3.5" />}
+              onClick={() => {
+                markAsViewedByAdmin(q);
+                setSelectedQuote(q);
+                setIsDetailOpen(true);
+              }}
+              fontWeight="700"
+              borderRadius="lg"
+              px={3}
+              boxShadow="xs"
+            >
+              {isAdminUser && (isPendingApproval || isPendingBilling) ? "Verificar" : "Vista"}
+            </Button>
+          )}
+
+          {/* Botón PDF */}
           <Button
-            size={btnSize}
-            minH={touchH(stack)}
-            colorScheme="red"
+            size="xs"
+            h="32px"
             variant="outline"
-            borderColor="#fecaca"
-            color="#dc2626"
-            bg="#fff5f5"
-            _hover={{ bg: "#fee2e2", borderColor: "#fca5a5" }}
-            leftIcon={<Trash2 className="w-3.5 h-3.5 text-red-600" />}
-            onClick={() => setDeleteConfirmDoc({ docId, status })}
-            fontWeight="800"
+            borderColor="#e2e8f0"
+            color="#0f766e"
+            bg="#f0fdfa"
+            _hover={{ bg: "#ccfbf1", borderColor: "#5eead4", transform: "translateY(-1px)" }}
+            leftIcon={<FileText className="w-3.5 h-3.5 text-teal-600" />}
+            onClick={() => {
+              markAsViewedByAdmin(q);
+              setPdfQuote(q);
+            }}
+            fontWeight="700"
             borderRadius="lg"
             px={2.5}
-            whiteSpace="nowrap"
-            flex={halfFlex}
-            minW={btnMinW}
           >
-            Borrar
+            PDF
           </Button>
-        )}
 
-        {/* 2. Botón Principal: Para Administrador en cotizaciones enviadas es VERIFICAR (destacado y más grande) */}
-        {isAdminUser && (status === "ENVIADO" || status === "EN_PROCESO" || status === "PENDIENTE_APROBACION" || status === "PENDIENTE_FACTURACION") ? (
+          {/* Acciones de Validación para Administrador */}
+          {isPendingApproval && (
+            isAdminUser ? (
+              <>
+                <Button
+                  size="xs"
+                  h="32px"
+                  bg="#16a34a"
+                  color="white"
+                  _hover={{ bg: "#15803d", transform: "translateY(-1px)", boxShadow: "0 2px 8px rgba(22,163,74,0.3)" }}
+                  _active={{ bg: "#166534" }}
+                  leftIcon={<Check className="w-3.5 h-3.5 stroke-[2.5]" />}
+                  onClick={() => handleUpdateStatus(docId, "APROBADO_COMERCIAL")}
+                  fontWeight="700"
+                  borderRadius="lg"
+                  px={3}
+                  boxShadow="xs"
+                >
+                  Aprobar
+                </Button>
+                <Button
+                  size="xs"
+                  h="32px"
+                  variant="outline"
+                  borderColor="#fde68a"
+                  bg="#fffbeb"
+                  color="#b45309"
+                  _hover={{ bg: "#fef3c7", borderColor: "#fcd34d", transform: "translateY(-1px)" }}
+                  leftIcon={<MessageSquare className="w-3.5 h-3.5" />}
+                  onClick={() => handleObserveQuote(q)}
+                  fontWeight="700"
+                  borderRadius="lg"
+                  px={2.5}
+                >
+                  Observar
+                </Button>
+                <Button
+                  size="xs"
+                  h="32px"
+                  variant="outline"
+                  borderColor="#fecdd3"
+                  bg="#fff1f2"
+                  color="#e11d48"
+                  _hover={{ bg: "#ffe4e6", borderColor: "#fda4af", transform: "translateY(-1px)" }}
+                  leftIcon={<X className="w-3.5 h-3.5 stroke-[2.5]" />}
+                  onClick={() => handleUpdateStatus(docId, "RECHAZADO")}
+                  fontWeight="700"
+                  borderRadius="lg"
+                  px={2.5}
+                >
+                  Rechazar
+                </Button>
+              </>
+            ) : (
+              <>
+                {/* Vendedor: Botón Retirar si aún no fue abierta */}
+                {!q.viewedByAdmin && (
+                  <Button
+                    size="xs"
+                    h="32px"
+                    variant="outline"
+                    borderColor="#fdba74"
+                    color="#c2410c"
+                    bg="#fff7ed"
+                    _hover={{ bg: "#ffedd5", borderColor: "#fb923c" }}
+                    leftIcon={<Undo2 className="w-3.5 h-3.5" />}
+                    onClick={() => handleRecallQuote(q)}
+                    fontWeight="700"
+                    borderRadius="lg"
+                    px={2.5}
+                  >
+                    Retirar
+                  </Button>
+                )}
+              </>
+            )
+          )}
+
+          {/* Generar Pedido si está aprobado comercialmente */}
+          {status === "APROBADO_COMERCIAL" && isAdminUser && (
+            <Button
+              size="xs"
+              h="32px"
+              bg="#d97706"
+              color="white"
+              _hover={{ bg: "#b45309", transform: "translateY(-1px)", boxShadow: "0 2px 8px rgba(217,119,6,0.3)" }}
+              leftIcon={<FileCheck2 className="w-3.5 h-3.5" />}
+              onClick={() => handleLoadQuote(q)}
+              fontWeight="700"
+              borderRadius="lg"
+              px={3}
+              boxShadow="xs"
+            >
+              Generar Pedido
+            </Button>
+          )}
+
+          {/* Emitir Pedido si está en PENDIENTE_FACTURACION */}
+          {isPendingBilling && isAdminUser && (
+            <>
+              <Button
+                size="xs"
+                h="32px"
+                bg="#16a34a"
+                color="white"
+                _hover={{ bg: "#15803d", transform: "translateY(-1px)", boxShadow: "0 2px 8px rgba(22,163,74,0.3)" }}
+                leftIcon={<Check className="w-3.5 h-3.5 stroke-[2.5]" />}
+                onClick={() => handleUpdateStatus(docId, "APROBADO")}
+                fontWeight="700"
+                borderRadius="lg"
+                px={3}
+                boxShadow="xs"
+              >
+                Emitir Pedido
+              </Button>
+              <Button
+                size="xs"
+                h="32px"
+                variant="outline"
+                borderColor="#fecdd3"
+                bg="#fff1f2"
+                color="#e11d48"
+                _hover={{ bg: "#ffe4e6", borderColor: "#fda4af" }}
+                leftIcon={<X className="w-3.5 h-3.5 stroke-[2.5]" />}
+                onClick={() => handleUpdateStatus(docId, "RECHAZADO")}
+                fontWeight="700"
+                borderRadius="lg"
+                px={2.5}
+              >
+                Rechazar
+              </Button>
+            </>
+          )}
+
+          {/* Vendedor: Corregir si fue observado o está en edición */}
+          {(status === "OBSERVADO" || status === "EN_EDICION") && !isAdminUser && (
+            <Button
+              size="xs"
+              h="32px"
+              bg="#ea580c"
+              color="white"
+              _hover={{ bg: "#c2410c", transform: "translateY(-1px)", boxShadow: "0 2px 8px rgba(234,88,12,0.3)" }}
+              leftIcon={<Edit3 className="w-3.5 h-3.5" />}
+              onClick={() => handleLoadQuote(q)}
+              fontWeight="700"
+              borderRadius="lg"
+              px={3}
+              boxShadow="xs"
+            >
+              Corregir y Reenviar
+            </Button>
+          )}
+
+          {/* Anular / Borrar Admin */}
+          {isAdminUser && !isDraft && (
+            <Tooltip label={status === "ANULADO" ? "Eliminar del historial" : "Anular cotización"} hasArrow>
+              <IconButton
+                size="xs"
+                h="32px"
+                w="32px"
+                aria-label={status === "ANULADO" ? "Eliminar" : "Anular"}
+                icon={<Trash2 className="w-3.5 h-3.5" />}
+                colorScheme="red"
+                variant="ghost"
+                color="#94a3b8"
+                _hover={{ color: "#ef4444", bg: "#fef2f2" }}
+                onClick={() => handleDeleteQuote(docId, status)}
+                borderRadius="lg"
+              />
+            </Tooltip>
+          )}
+        </Flex>
+      );
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // VISTA MÓVIL (Tarjetas con Grid táctil de 40px, espaciado perfecto)
+    // ─────────────────────────────────────────────────────────────
+    return (
+      <VStack align="stretch" spacing={2} w="full" pt={1}>
+        {/* Fila 1 Principal: Acción Primaria a Ancho Completo */}
+        {isDraft ? (
+          <Grid templateColumns="1fr 1fr" gap={2}>
+            <Button
+              size="sm"
+              h="40px"
+              bg="#2563eb"
+              color="white"
+              _hover={{ bg: "#1d4ed8" }}
+              leftIcon={<Edit3 className="w-4 h-4" />}
+              onClick={() => handleLoadQuote(q)}
+              fontWeight="800"
+              borderRadius="xl"
+            >
+              Editar Borrador
+            </Button>
+            <Button
+              size="sm"
+              h="40px"
+              variant="outline"
+              colorScheme="red"
+              borderColor="#fecaca"
+              color="#dc2626"
+              bg="#fff5f5"
+              _hover={{ bg: "#fee2e2" }}
+              leftIcon={<Trash2 className="w-4 h-4" />}
+              onClick={() => setDeleteConfirmDoc({ docId, status })}
+              fontWeight="800"
+              borderRadius="xl"
+            >
+              Borrar
+            </Button>
+          </Grid>
+        ) : (
           <Button
-            size="md"
-            minH={stack ? "44px" : "38px"}
-            colorScheme="teal"
-            bg="#0f766e"
+            size="sm"
+            h="42px"
+            bg={isAdminUser && (isPendingApproval || isPendingBilling) ? "#0f766e" : "#1e293b"}
             color="white"
-            _hover={{ bg: "#115e59", transform: "translateY(-1px)", boxShadow: "md" }}
-            _active={{ bg: "#134e4a" }}
-            leftIcon={<Eye className="w-4 h-4 text-teal-200 stroke-[2.5]" />}
+            _hover={{ bg: isAdminUser ? "#115e59" : "#0f172a" }}
+            leftIcon={<Eye className="w-4 h-4 stroke-[2.5]" />}
             onClick={() => {
               markAsViewedByAdmin(q);
               setSelectedQuote(q);
               setIsDetailOpen(true);
             }}
             fontWeight="900"
-            fontSize="xs"
             borderRadius="xl"
-            px={4}
             boxShadow="sm"
-            whiteSpace="nowrap"
-            flex={stack ? "1 1 100%" : undefined}
+            w="full"
           >
-            🔍 Verificar
-          </Button>
-        ) : (
-          <Button
-            size={btnSize}
-            minH={touchH(stack)}
-            variant="outline"
-            borderColor="#cbd5e1"
-            color="#334155"
-            bg="white"
-            _hover={{ bg: "#f8fafc", borderColor: "#94a3b8" }}
-            leftIcon={<Eye className="w-3.5 h-3.5 text-slate-500" />}
-            onClick={() => {
-              markAsViewedByAdmin(q);
-              setSelectedQuote(q);
-              setIsDetailOpen(true);
-            }}
-            fontWeight="700"
-            borderRadius="lg"
-            px={2.5}
-            whiteSpace="nowrap"
-            flex={halfFlex}
-            minW={btnMinW}
-          >
-            Vista
+            {isAdminUser && (isPendingApproval || isPendingBilling) ? "Verificar y Auditar Cotización" : "Ver Detalle Completo"}
           </Button>
         )}
 
-        {/* 2.5 Vista Previa y Descarga PDF */}
-        <Button
-          size={btnSize}
-          minH={touchH(stack)}
-          colorScheme="teal"
-          variant="outline"
-          borderColor="#99f6e4"
-          color="#0d9488"
-          bg="#f0fdfa"
-          _hover={{ bg: "#ccfbf1", borderColor: "#5eead4" }}
-          leftIcon={<Download className="w-3.5 h-3.5 text-teal-600" />}
-          onClick={() => {
-            markAsViewedByAdmin(q);
-            setPdfQuote(q);
-          }}
-          fontWeight="800"
-          borderRadius="lg"
-          px={2.5}
-          whiteSpace="nowrap"
-          flex={halfFlex}
-          minW={btnMinW}
-        >
-          PDF
-        </Button>
+        {/* Fila 2: Acciones Secundarias y PDF */}
+        {!isDraft && (
+          <Grid templateColumns={isPendingApproval && isAdminUser ? "1fr 1fr" : "1fr"} gap={2}>
+            <Button
+              size="sm"
+              h="38px"
+              variant="outline"
+              borderColor="#cbd5e1"
+              color="#0f766e"
+              bg="#f0fdfa"
+              _hover={{ bg: "#ccfbf1" }}
+              leftIcon={<FileText className="w-4 h-4 text-teal-600" />}
+              onClick={() => {
+                markAsViewedByAdmin(q);
+                setPdfQuote(q);
+              }}
+              fontWeight="700"
+              borderRadius="xl"
+            >
+              Ver / Imprimir PDF
+            </Button>
 
-        {/* 3. Acciones de Stepper (Validación Admin, etc.) */}
-        {(status === "ENVIADO" || status === "EN_PROCESO" || status === "PENDIENTE_APROBACION") && (
-          isAdminUser ? (
-            <>
-              {!q.viewedByAdmin && (
-                <Badge
-                  w={stack ? "full" : "auto"}
-                  textAlign="center"
-                  bg="#fee2e2"
-                  color="#dc2626"
-                  border="1.5px solid #fca5a5"
-                  px={2}
-                  py={stack ? 1.5 : 1}
-                  borderRadius="lg"
-                  fontSize="9px"
-                  fontWeight="900"
-                  whiteSpace="nowrap"
-                  flex={fullFlex}
-                >
-                  🔥 NUEVA SOLICITUD
-                </Badge>
-              )}
+            {isPendingApproval && isAdminUser && (
               <Button
-                size={btnSize}
-                minH={touchH(stack)}
-                colorScheme="green"
-                bg="#16a34a"
-                _hover={{ bg: "#15803d" }}
-                leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
-                onClick={() => handleUpdateStatus(docId, "APROBADO_COMERCIAL")}
-                fontWeight="800"
-                borderRadius="lg"
-                px={2.5}
-                whiteSpace="nowrap"
-                flex={halfFlex}
-                minW={btnMinW}
-              >
-                Aprobar
-              </Button>
-              <Button
-                size={btnSize}
-                minH={touchH(stack)}
-                colorScheme="red"
-                variant="outline"
-                onClick={() => handleUpdateStatus(docId, "RECHAZADO")}
-                fontWeight="700"
-                borderRadius="lg"
-                px={2.5}
-                whiteSpace="nowrap"
-                flex={halfFlex}
-                minW={btnMinW}
-              >
-                Rechazar
-              </Button>
-              {/* OBSERVAR: Devolver con motivo al vendedor */}
-              <Button
-                size={btnSize}
-                minH={touchH(stack)}
-                colorScheme="yellow"
+                size="sm"
+                h="38px"
                 variant="outline"
                 borderColor="#fde68a"
-                color="#92400e"
-                bg="#fefce8"
-                _hover={{ bg: "#fef9c3", borderColor: "#fcd34d" }}
-                leftIcon={<MessageSquareWarning className="w-3.5 h-3.5" />}
-                onClick={() => handleObserveQuote(docId)}
+                bg="#fffbeb"
+                color="#b45309"
+                _hover={{ bg: "#fef3c7" }}
+                leftIcon={<MessageSquare className="w-4 h-4" />}
+                onClick={() => handleObserveQuote(q)}
                 fontWeight="800"
-                borderRadius="lg"
-                px={2.5}
-                whiteSpace="nowrap"
-                flex={fullFlex}
+                borderRadius="xl"
               >
-                💬 Observar
+                Observar
               </Button>
-            </>
-          ) : (
-            <>
-              {q.viewedByAdmin ? (
-                <Badge
-                  w={stack ? "full" : "auto"}
-                  textAlign="center"
-                  bg="#e0f2fe"
-                  color="#0284c7"
-                  border="1.5px solid #7dd3fc"
-                  px={2.5}
-                  py={1.5}
-                  borderRadius="lg"
-                  fontSize="10px"
-                  fontWeight="900"
-                  whiteSpace="nowrap"
-                  flex={fullFlex}
-                >
-                  💎 Leído por Enrique (Admin) {q.adminViewCount > 1 ? `(${q.adminViewCount}ª lectura)` : ""}
-                </Badge>
-              ) : (
-                <>
-                  <Badge
-                    w={stack ? "full" : "auto"}
-                    textAlign="center"
-                    bg="#f1f5f9"
-                    color="#64748b"
-                    border="1.5px solid #cbd5e1"
-                    px={2.5}
-                    py={1.5}
-                    borderRadius="lg"
-                    fontSize="10px"
-                    fontWeight="800"
-                    whiteSpace="nowrap"
-                    flex={fullFlex}
-                  >
-                    📩 Entregado (Sin abrir)
-                  </Badge>
-                  {/* RECALL: Vendedor puede retirar solicitud si Enrique aún no la abrió */}
-                  <Button
-                    size={btnSize}
-                    minH={touchH(stack)}
-                    colorScheme="orange"
-                    variant="outline"
-                    borderColor="#fdba74"
-                    color="#ea580c"
-                    bg="#ffedd5"
-                    _hover={{ bg: "#fed7aa", borderColor: "#f97316" }}
-                    leftIcon={<Undo2 className="w-3.5 h-3.5" />}
-                    onClick={() => handleRecallQuote(q)}
-                    fontWeight="800"
-                    borderRadius="lg"
-                    px={2.5}
-                    whiteSpace="nowrap"
-                    flex={fullFlex}
-                  >
-                    ↩️ Retirar y Corregir
-                  </Button>
-                </>
-              )}
-            </>
-          )
+            )}
+          </Grid>
         )}
 
-        {status === "APROBADO_COMERCIAL" && (
-          isAdminUser ? (
+        {/* Fila 3: Aprobación y Rechazo para Administrador */}
+        {isPendingApproval && isAdminUser && (
+          <Grid templateColumns="1.2fr 1fr" gap={2}>
             <Button
-              size={btnSize}
-              minH={touchH(stack)}
-              colorScheme="amber"
-              bg="#d97706"
+              size="sm"
+              h="40px"
+              bg="#16a34a"
               color="white"
-              _hover={{ bg: "#b45309" }}
-              leftIcon={<FileCheck2 className="w-3.5 h-3.5" />}
-              onClick={() => handleLoadQuote(q)}
-              fontWeight="800"
-              borderRadius="lg"
-              px={2.5}
-              whiteSpace="nowrap"
-              flex={fullFlex}
-            >
-              📦 Generar Pedido
-            </Button>
-          ) : null
-        )}
-
-        {status === "PENDIENTE_FACTURACION" && (
-          isAdminUser ? (
-            <>
-              <Button
-                size={btnSize}
-                minH={touchH(stack)}
-                colorScheme="green"
-                bg="#16a34a"
-                _hover={{ bg: "#15803d" }}
-                leftIcon={<Check className="w-3.5 h-3.5" />}
-                onClick={() => handleUpdateStatus(docId, "APROBADO")}
-                fontWeight="800"
-                borderRadius="lg"
-                px={2.5}
-                whiteSpace="nowrap"
-                flex={halfFlex}
-                minW={btnMinW}
-              >
-                ⚡ Emitir Pedido
-              </Button>
-              <Button
-                size={btnSize}
-                minH={touchH(stack)}
-                colorScheme="red"
-                variant="outline"
-                onClick={() => handleUpdateStatus(docId, "RECHAZADO")}
-                fontWeight="700"
-                borderRadius="lg"
-                px={2.5}
-                whiteSpace="nowrap"
-                flex={halfFlex}
-                minW={btnMinW}
-              >
-                Rechazar
-              </Button>
-            </>
-          ) : (
-            <Badge
-              w={stack ? "full" : "auto"}
-              textAlign="center"
-              bg="#f3e8ff"
-              color="#7c3aed"
-              border="1.5px solid #c084fc"
-              px={2.5}
-              py={1.5}
-              borderRadius="lg"
-              fontSize="10px"
+              _hover={{ bg: "#15803d" }}
+              leftIcon={<Check className="w-4 h-4 stroke-[2.5]" />}
+              onClick={() => handleUpdateStatus(docId, "APROBADO_COMERCIAL")}
               fontWeight="900"
-              whiteSpace="nowrap"
-              flex={fullFlex}
+              borderRadius="xl"
+              boxShadow="sm"
             >
-              🔮 En Validación por Asesora
-            </Badge>
-          )
+              Aprobar
+            </Button>
+            <Button
+              size="sm"
+              h="40px"
+              variant="outline"
+              borderColor="#fecdd3"
+              bg="#fff1f2"
+              color="#e11d48"
+              _hover={{ bg: "#ffe4e6" }}
+              leftIcon={<X className="w-4 h-4 stroke-[2.5]" />}
+              onClick={() => handleUpdateStatus(docId, "RECHAZADO")}
+              fontWeight="800"
+              borderRadius="xl"
+            >
+              Rechazar
+            </Button>
+          </Grid>
         )}
 
-        {/* OBSERVADO: Cotización devuelta por Enrique con observación */}
-        {status === "OBSERVADO" && !isAdminUser && (
+        {/* Móvil: Vendedor Retirar Solicitud */}
+        {isPendingApproval && !isAdminUser && !q.viewedByAdmin && (
           <Button
-            size={btnSize}
-            minH={touchH(stack)}
-            colorScheme="orange"
-            bg="#ea580c"
-            color="white"
-            _hover={{ bg: "#c2410c" }}
-            leftIcon={<Edit3 className="w-3.5 h-3.5" />}
-            onClick={() => {
-              handleLoadQuote(q);
-            }}
+            size="sm"
+            h="38px"
+            variant="outline"
+            borderColor="#fdba74"
+            color="#c2410c"
+            bg="#fff7ed"
+            _hover={{ bg: "#ffedd5" }}
+            leftIcon={<Undo2 className="w-4 h-4" />}
+            onClick={() => handleRecallQuote(q)}
             fontWeight="800"
-            borderRadius="lg"
-            px={2.5}
-            whiteSpace="nowrap"
-            flex={fullFlex}
+            borderRadius="xl"
+            w="full"
           >
-            ✉️ Corregir y Reenviar
+            Retirar y Corregir Cotización
           </Button>
         )}
 
-        {/* EN_EDICION: Retirada por el vendedor para corrección */}
-        {status === "EN_EDICION" && !isAdminUser && (
+        {/* Móvil: Generar Pedido */}
+        {status === "APROBADO_COMERCIAL" && isAdminUser && (
           <Button
-            size={btnSize}
-            minH={touchH(stack)}
-            colorScheme="orange"
-            bg="#ea580c"
+            size="sm"
+            h="40px"
+            bg="#d97706"
             color="white"
-            _hover={{ bg: "#c2410c" }}
-            leftIcon={<Edit3 className="w-3.5 h-3.5" />}
+            _hover={{ bg: "#b45309" }}
+            leftIcon={<FileCheck2 className="w-4 h-4" />}
             onClick={() => handleLoadQuote(q)}
-            fontWeight="800"
-            borderRadius="lg"
-            px={2.5}
-            whiteSpace="nowrap"
-            flex={fullFlex}
+            fontWeight="900"
+            borderRadius="xl"
+            w="full"
+            boxShadow="sm"
           >
-            ✏️ Editar y Reenviar
+            Generar Pedido Oficial
           </Button>
         )}
 
-        {/* 4. Borrar / Anular / Purgar — Solo Enrique (Admin) para cotizaciones no borradores */}
-        {isAdminUser && !isDraft && (
-          <Tooltip
-            label={
-              status === "ANULADO"
-                ? "Eliminar permanentemente del historial"
-                : "Anular cotización (el estado cambiará a Anulado ❌)"
-            }
-          >
-            <IconButton
-              size={btnSize}
-              aria-label={status === "ANULADO" ? "Eliminar" : "Anular cotización"}
-              icon={<Trash2 className="w-3.5 h-3.5 text-red-500" />}
-              colorScheme="red"
-              variant="ghost"
-              _hover={{ bg: "#fef2f2" }}
-              onClick={() => handleDeleteQuote(docId, status)}
-              flex={stack ? "1 1 100%" : undefined}
-            />
-          </Tooltip>
+        {/* Móvil: Emitir Pedido en PENDIENTE_FACTURACION */}
+        {isPendingBilling && isAdminUser && (
+          <Grid templateColumns="1.2fr 1fr" gap={2}>
+            <Button
+              size="sm"
+              h="40px"
+              bg="#16a34a"
+              color="white"
+              _hover={{ bg: "#15803d" }}
+              leftIcon={<Check className="w-4 h-4 stroke-[2.5]" />}
+              onClick={() => handleUpdateStatus(docId, "APROBADO")}
+              fontWeight="900"
+              borderRadius="xl"
+              boxShadow="sm"
+            >
+              Emitir Pedido
+            </Button>
+            <Button
+              size="sm"
+              h="40px"
+              variant="outline"
+              borderColor="#fecdd3"
+              bg="#fff1f2"
+              color="#e11d48"
+              _hover={{ bg: "#ffe4e6" }}
+              leftIcon={<X className="w-4 h-4 stroke-[2.5]" />}
+              onClick={() => handleUpdateStatus(docId, "RECHAZADO")}
+              fontWeight="800"
+              borderRadius="xl"
+            >
+              Rechazar
+            </Button>
+          </Grid>
         )}
-      </Flex>
+
+        {/* Móvil: Corregir y Reenviar */}
+        {(status === "OBSERVADO" || status === "EN_EDICION") && !isAdminUser && (
+          <Button
+            size="sm"
+            h="40px"
+            bg="#ea580c"
+            color="white"
+            _hover={{ bg: "#c2410c" }}
+            leftIcon={<Edit3 className="w-4 h-4" />}
+            onClick={() => handleLoadQuote(q)}
+            fontWeight="900"
+            borderRadius="xl"
+            w="full"
+            boxShadow="sm"
+          >
+            Corregir y Reenviar
+          </Button>
+        )}
+
+        {/* Móvil: Anular */}
+        {isAdminUser && !isDraft && (
+          <Button
+            size="xs"
+            h="32px"
+            variant="ghost"
+            colorScheme="red"
+            color="#94a3b8"
+            _hover={{ color: "#ef4444", bg: "#fef2f2" }}
+            leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+            onClick={() => handleDeleteQuote(docId, status)}
+            borderRadius="lg"
+            fontWeight="600"
+          >
+            {status === "ANULADO" ? "Eliminar permanentemente" : "Anular cotización"}
+          </Button>
+        )}
+      </VStack>
     );
   };
 
@@ -1413,16 +1766,28 @@ export function QuoteApprovalPage() {
                   const clientName = q.clientName || q.client?.CardName || "Cliente No Registrado";
                   const grandTotalUSD = getQuoteTotalUSD(q);
 
+                  const quoteProducts = q.products || q.items || q.totals?.products || q.totals?.normalizedProducts || [];
+                  const maxAdicDiscount = quoteProducts.reduce((max, it) => {
+                    const adic = Number(it.lineDiscount ?? it.LineDiscount ?? 0);
+                    return Math.max(max, adic);
+                  }, Number(q.totals?.maxDiscount || 0));
+                  const hasAdditionalDiscount = maxAdicDiscount > 0 || Boolean(q.totals?.hasDiscount);
+
                   return (
                     <Tr key={docId} _hover={{ bg: "#f8fafc" }} borderBottom="1px solid" borderColor="#e2e8f0">
                       {/* Documento, Cliente y Vendedor consolidado */}
                       <Td py={3}>
                         <VStack align="flex-start" spacing={1}>
-                          <HStack spacing={2} align="center">
+                          <HStack spacing={2} align="center" wrap="wrap">
                             <Text fontSize="sm" fontWeight="950" color="#0e572b" fontFamily="mono">{docId}</Text>
                             {q.opNum && (
                               <Badge colorScheme="purple" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="800">
                                 VOUCHER: {q.opNum}
+                              </Badge>
+                            )}
+                            {hasAdditionalDiscount && (
+                              <Badge colorScheme="purple" variant="solid" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="900" boxShadow="xs">
+                                ⚡ DESCUENTO ADICIONAL APLICADO
                               </Badge>
                             )}
                           </HStack>
@@ -1464,18 +1829,16 @@ export function QuoteApprovalPage() {
                         <HStack justify="flex-end" spacing={2.5}>
                           {renderRowActions(q, docId, status)}
                         </HStack>
-                        </Td>
-                      </Tr>
-                    );
-                  })
-                )}
-              </Tbody>
-            </Table>
+                      </Td>
+                    </Tr>
+                  );
+                })
+              )}
+            </Tbody>
+          </Table>
         </Box>
 
-        {/* VISTA DE TARJETAS (solo móvil / tablet <lg): la tabla de 5 columnas
-            con botones de acción es inusable en un teléfono, así que cada
-            cotización se muestra como una tarjeta apilada y táctil. */}
+        {/* VISTA DE TARJETAS (solo móvil / tablet <lg) */}
         <VStack display={{ base: "flex", lg: "none" }} align="stretch" spacing={3}>
           {filteredQuotes.length === 0 ? (
             <Box bg="white" borderRadius="2xl" border="1.5px solid" borderColor="#cbd5e1" p={8} textAlign="center" color="gray.500" fontWeight="700" fontSize="sm">
@@ -1491,36 +1854,11 @@ export function QuoteApprovalPage() {
               return (
                 <Box key={docId} bg="white" borderRadius="2xl" border="1.5px solid" borderColor="#cbd5e1" boxShadow="sm" p={4}>
                   <VStack align="stretch" spacing={3}>
-                    {/* Cabecera: documento + estado */}
                     <Flex justify="space-between" align="flex-start" gap={2} wrap="wrap">
-                      <HStack spacing={2} align="center" minW={0}>
-                        <Text fontSize="sm" fontWeight="950" color="#0e572b" fontFamily="mono">{docId}</Text>
-                        {q.opNum && (
-                          <Badge colorScheme="purple" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="800">
-                            VOUCHER: {q.opNum}
-                          </Badge>
-                        )}
-                      </HStack>
+                      <Text fontSize="sm" fontWeight="950" color="#0e572b" fontFamily="mono">{docId}</Text>
                       {renderStatusBadge(status)}
                     </Flex>
-
-                    {/* Cliente */}
-                    <Text fontWeight="900" color="#0f172a" fontSize="md" lineHeight="1.3" overflowWrap="anywhere">
-                      {clientName}
-                    </Text>
-
-                    <HStack spacing={2} wrap="wrap">
-                      <Badge bg="#f1f5f9" color="#475569" fontSize="10px" px={2} py={0.5} borderRadius="md" fontWeight="700">
-                        Vend: {q.sellerName || "Vendedor Autorizado"}
-                      </Badge>
-                      {q.items?.some(i => i.stock === 0) && (
-                        <Badge colorScheme="red" variant="solid" fontSize="9px" px={1.5} py={0.5} borderRadius="md" fontWeight="900">
-                          ⚠️ AGOTADOS
-                        </Badge>
-                      )}
-                    </HStack>
-
-                    {/* Fecha + Total */}
+                    <Text fontWeight="900" color="#0f172a" fontSize="md">{clientName}</Text>
                     <Flex justify="space-between" align="center" bg="#f8fafc" borderRadius="lg" px={3} py={2} border="1px solid" borderColor="#e2e8f0">
                       <Box>
                         <Text fontSize="10px" fontWeight="700" color="gray.500" textTransform="uppercase">Fecha</Text>
@@ -1531,8 +1869,6 @@ export function QuoteApprovalPage() {
                         <Text fontSize="md" color="#0f172a" fontWeight="900" fontFamily="mono">${grandTotalUSD.toFixed(2)}</Text>
                       </Box>
                     </Flex>
-
-                    {/* Acciones táctiles */}
                     <Flex gap={2} wrap="wrap" align="center">
                       {renderRowActions(q, docId, status, { stack: true })}
                     </Flex>
@@ -1555,6 +1891,13 @@ export function QuoteApprovalPage() {
         isOpen={!!pdfQuote}
         onClose={() => setPdfQuote(null)}
         quote={pdfQuote}
+      />
+
+      <ObserveReasonModal
+        isOpen={!!observeQuoteTarget}
+        onClose={() => setObserveQuoteTarget(null)}
+        quote={observeQuoteTarget}
+        onConfirmObserve={handleConfirmObserve}
       />
 
       {/* MODAL DE CONFIRMACIÓN DE BORRADO DE BORRADOR */}

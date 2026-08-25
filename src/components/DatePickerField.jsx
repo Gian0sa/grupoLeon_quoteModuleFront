@@ -4,13 +4,18 @@ import { Box, FormLabel, Input } from "@chakra-ui/react";
 import { es } from "date-fns/locale";
 
 export function DatePickerField({ label, selectedDate, setSelectedDate, isDisabled = false, isReadOnly = false }) {
+  const parsedDate = selectedDate
+    ? (selectedDate instanceof Date ? selectedDate : new Date(selectedDate))
+    : null;
+  const validDate = parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate : null;
+
   return (
     <Box>
       <FormLabel fontSize="xs" fontWeight="800" color="gray.700" mb={1}>
         {label}
       </FormLabel>
       <ReactDatePicker
-        selected={selectedDate}
+        selected={validDate}
         onChange={(date) => !isDisabled && !isReadOnly && setSelectedDate(date)}
         disabled={isDisabled || isReadOnly}
         customInput={
