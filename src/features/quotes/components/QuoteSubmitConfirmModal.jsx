@@ -5,6 +5,11 @@ import {
 } from "@chakra-ui/react";
 import { CheckCircle2, AlertTriangle, Send } from "lucide-react";
 import { calculateQuoteTotals } from "../../../shared/utils/quoteCalculator";
+import {
+  formatDeliveryForm,
+  formatTransportName,
+  formatPaymentTerms
+} from "../../../shared/utils/quoteLogisticsFormatters";
 
 function formatRucOrDni(val) {
   if (!val) return "S/R";
@@ -94,6 +99,16 @@ export default function QuoteSubmitConfirmModal({
               </VStack>
             </Box>
 
+            {/* Sección: Condiciones Comerciales y Logística */}
+            <Box bg="#f8fafc" border="1px solid #e2e8f0" borderRadius="lg" p={3}>
+              <Text fontSize="xs" fontWeight="900" color="#475569" textTransform="uppercase" mb={2}>🚚 Logística & Términos</Text>
+              <VStack align="flex-start" spacing={1} fontSize="xs">
+                <HStack><Text fontWeight="700" color="#475569">Condición:</Text><Text fontWeight="800">{formatPaymentTerms(selectedPaymentType, quote.saleCondition)}</Text></HStack>
+                <HStack><Text fontWeight="700" color="#475569">Entrega:</Text><Text fontWeight="800">{formatDeliveryForm(selectedDeliveryForm)}</Text></HStack>
+                <HStack><Text fontWeight="700" color="#475569">Transporte:</Text><Text fontWeight="800">{formatTransportName(selectedTransport, selectedDeliveryForm)}</Text></HStack>
+              </VStack>
+            </Box>
+
             {/* Sección: Responsable Comercial */}
             <Box bg="#f8fafc" border="1px solid #e2e8f0" borderRadius="lg" p={3}>
               <Text fontSize="xs" fontWeight="900" color="#475569" textTransform="uppercase" mb={2}>👤 Responsable Comercial</Text>
@@ -111,7 +126,7 @@ export default function QuoteSubmitConfirmModal({
             {/* Alerta Preventiva */}
             <Alert status="warning" borderRadius="lg" fontSize="xs" fontWeight="700">
               <AlertIcon />
-              Al confirmar, Enrique (Asesora de Facturación) recibirá una notificación para la aprobación comercial. Podrás retirar la solicitud mientras Enrique no la haya abierto.
+              Al confirmar, el equipo de Facturación recibirá la solicitud para validación comercial.
             </Alert>
           </VStack>
         </ModalBody>

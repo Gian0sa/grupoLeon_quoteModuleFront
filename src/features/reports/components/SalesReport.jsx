@@ -46,7 +46,7 @@ export default function SalespersonReports({ salespersonId }) {
   const [tempEndDate, setTempEndDate] = useState(null);
 
   const [pagina, setPagina] = useState(1);
-  const porPagina = 6;
+  const porPagina = 12;
   const [ordenSeleccionada, setOrdenSeleccionada] = useState(null);
 
   const [startDate, setStartDate] = useState(null);
@@ -69,6 +69,7 @@ export default function SalespersonReports({ salespersonId }) {
   const {
     data: reportData,
     isLoading: reportLoading,
+    isFetching: reportFetching,
     error: reportError,
   } = useGetOrderswithStatusReports({
     salesPersonCode: dynamicSalespersonId || 0,
@@ -77,7 +78,7 @@ export default function SalespersonReports({ salespersonId }) {
     pageSize: porPagina,
   });
 
-  const totalPaginas = reportData?.hasMore ? pagina + 1 : pagina;
+  const totalPaginas = reportData?.hasMore ? pagina + 1 : Math.max(pagina, 1);
 
   const {
     isOpen: isDrawerOpen,

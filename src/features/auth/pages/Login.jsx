@@ -7,6 +7,7 @@ import {
   Heading,
   Input,
   VStack,
+  HStack,
   Spinner,
   Checkbox,
   Link,
@@ -17,8 +18,15 @@ import {
   IconButton,
   Image,
   Text,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalFooter,
+  ModalBody,
+  ModalCloseButton,
 } from "@chakra-ui/react";
-import { ViewIcon, ViewOffIcon } from "@chakra-ui/icons";
+import { ViewIcon, ViewOffIcon, DownloadIcon } from "@chakra-ui/icons";
 import { Turnstile } from "@marsidev/react-turnstile";
 import { useForm } from "react-hook-form";
 import { useAuthMutations } from "../hooks/mutations/authMutations";
@@ -48,16 +56,104 @@ export function Login() {
   const siteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY;
 
   const navigate = useNavigate();
-  const token = useAuthStore((state) => state.token);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const { login } = useAuthMutations(); // ✅ fix: hooks antes del return condicional
 
-  useEffect(() => {
-    if (token) {
-      navigate("/dashboard");
-    }
-  }, [token, navigate]);
+  // 📲 ESTADO Y CAPTURA PARA INSTALACIÓN PWA (TIPO APK / ESCRITORIO)
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+  const [isAppInstalled, setIsAppInstalled] = useState(false);
+  const [isDismissed, setIsDismissed] = useState(false);
 
-  if (token) {
+  useEffect(() => {
+    // 1. Detectar si la app ya está instalada o ejecutándose en modo standalone
+    const isStandalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      window.navigator.standalone === true;
+    if (isStandalone) {
+      setIsAppInstalled(true);
+    }
+
+    // 2. Regla de 7 días: si el usuario cerró el aviso, no mostrarlo hasta cumplirse 7 días
+    const lastDismissed = localStorage.getItem("pwa_install_dismissed_at");
+    if (lastDismissed) {
+      const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+      if (Date.now() - parseInt(lastDismissed, 10) < SEVEN_DAYS_MS) {
+        setIsDismissed(true);
+      }
+    }
+
+    // 3. Capturar el evento de instalación nativo de navegadores
+    if (window.deferredPwaPrompt) {
+      setDeferredPrompt(window.deferredPwaPrompt);
+    }
+
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      window.deferredPwaPrompt = e;
+      setDeferredPrompt(e);
+    };
+
+    const handlePwaPromptReady = () => {
+      if (window.deferredPwaPrompt) {
+        setDeferredPrompt(window.deferredPwaPrompt);
+      }
+    };
+
+    const handleAppInstalled = () => {
+      setIsAppInstalled(true);
+      setDeferredPrompt(null);
+      window.deferredPwaPrompt = null;
+      toast({
+        title: "🎉 ¡Aplicación Instalada!",
+        description: "Autopartes S.A. ya está instalada en tu dispositivo.",
+        status: "success",
+        duration: 5000,
+        isClosable: true,
+        position: "top",
+      });
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("pwaPromptReady", handlePwaPromptReady);
+    window.addEventListener("appinstalled", handleAppInstalled);
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener("pwaPromptReady", handlePwaPromptReady);
+      window.removeEventListener("appinstalled", handleAppInstalled);
+    };
+  }, [toast]);
+
+  const handleInstallApp = async () => {
+    const promptEvent = deferredPrompt || window.deferredPwaPrompt;
+    if (promptEvent) {
+      promptEvent.prompt();
+      const { outcome } = await promptEvent.userChoice;
+      if (outcome === "accepted") {
+        setDeferredPrompt(null);
+        window.deferredPwaPrompt = null;
+        setIsAppInstalled(true);
+      }
+    } else {
+      setIsInstallModalOpen(true);
+    }
+  };
+
+  const handleDismissModal = () => {
+    setIsInstallModalOpen(false);
+    localStorage.setItem("pwa_install_dismissed_at", Date.now().toString());
+  };
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      const savedRoute = localStorage.getItem("lastRoute");
+      const target = savedRoute && savedRoute !== "/" && savedRoute !== "/register" ? savedRoute : "/dashboard";
+      navigate(target, { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
+
+  if (isAuthenticated) {
     return (
       <Center height="100vh">
         <Spinner size="xl" />
@@ -282,6 +378,36 @@ export function Login() {
             >
               Iniciar sesión
             </Button>
+
+            {/* ========================================================================= */}
+            {/* 📲 BOTÓN COMPACTO DE INSTALACIÓN PWA (Sale cada 7 días si no se instala)   */}
+            {/* Comenta o elimina este bloque si deseas ocultar el botón en el login       */}
+            {/* ========================================================================= */}
+            {!isAppInstalled && !isDismissed && (
+              <Button
+                variant="ghost"
+                colorScheme="green"
+                color="green.700"
+                bg="green.50"
+                border="1px solid"
+                borderColor="green.200"
+                _hover={{ bg: "green.100", borderColor: "green.400", transform: "translateY(-1px)" }}
+                _active={{ bg: "green.200" }}
+                borderRadius="lg"
+                size="xs"
+                h="28px"
+                px={3}
+                fontWeight="600"
+                fontSize="11px"
+                leftIcon={<Image src="/icon.svg" h="14px" w="14px" />}
+                onClick={handleInstallApp}
+                transition="all 0.2s"
+                alignSelf="center"
+              >
+                📲 Instalar App en dispositivo
+              </Button>
+            )}
+            {/* ========================================================================= */}
           </VStack>
 
           <Flex mt={4} justify="center" align="center" fontSize="xs" color="gray.400">
@@ -319,6 +445,69 @@ export function Login() {
           </Flex>
         </VStack>
       </Box>
+
+      {/* ========================================================================= */}
+      {/* 📲 MODAL CON INSTRUCCIONES DE INSTALACIÓN PARA ANDROID, IOS Y PC           */}
+      {/* ========================================================================= */}
+      <Modal isOpen={isInstallModalOpen} onClose={handleDismissModal} isCentered size={{ base: "xs", sm: "md" }}>
+        <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(5px)" />
+        <ModalContent borderRadius="2xl" p={2}>
+          <ModalHeader textAlign="center" pb={1}>
+            <HStack justify="center" spacing={2}>
+              <Image src="/icon.svg" h="24px" w="24px" />
+              <Text fontWeight="800" fontSize="md" color="green.900">
+                Instalar Autopartes App
+              </Text>
+            </HStack>
+          </ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <VStack spacing={3} align="stretch" fontSize="sm">
+              <Text color="gray.600" textAlign="center" fontSize="12px">
+                Instala el aplicativo directamente en tu dispositivo para ingresar más rápido y usarlo con máxima fluidez:
+              </Text>
+
+              <Box p={3} bg="green.50" borderRadius="xl" border="1px solid" borderColor="green.200">
+                <Text fontWeight="bold" color="green.900" mb={1} fontSize="13px">
+                  📱 En Celulares Android (Chrome / Edge):
+                </Text>
+                <Text color="green.800" fontSize="12px" lineHeight="tall">
+                  1. Toca los tres puntos (<b>⋮</b>) en la esquina superior del navegador.<br />
+                  2. Selecciona <b>"Instalar aplicación"</b> o <b>"Agregar a pantalla principal"</b>.
+                </Text>
+              </Box>
+
+              <Box p={3} bg="blue.50" borderRadius="xl" border="1px solid" borderColor="blue.200">
+                <Text fontWeight="bold" color="blue.900" mb={1} fontSize="13px">
+                  🍎 En iPhone / iPad (Safari):
+                </Text>
+                <Text color="blue.800" fontSize="12px" lineHeight="tall">
+                  1. Toca el botón <b>Compartir</b> (el ícono de la flecha hacia arriba ⎋).<br />
+                  2. Desliza hacia abajo y elige <b>"Agregar a inicio" (➕)</b>.
+                </Text>
+              </Box>
+
+              <Box p={3} bg="purple.50" borderRadius="xl" border="1px solid" borderColor="purple.200">
+                <Text fontWeight="bold" color="purple.900" mb={1} fontSize="13px">
+                  💻 En Computadora (Edge / Chrome):
+                </Text>
+                <Text color="purple.800" fontSize="12px" lineHeight="tall">
+                  Haz clic en el ícono de <b>Instalar (+)</b> que aparece al final de la barra de direcciones arriba.
+                </Text>
+              </Box>
+            </VStack>
+          </ModalBody>
+          <ModalFooter justify="center" gap={2}>
+            <Button variant="ghost" size="sm" borderRadius="xl" color="gray.500" onClick={handleDismissModal}>
+              Recordar en 7 días
+            </Button>
+            <Button colorScheme="green" size="sm" borderRadius="xl" px={6} onClick={handleDismissModal}>
+              ¡Entendido!
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+      {/* ========================================================================= */}
     </Flex>
 
       {/* Right Panel: Green Background with Lightning Flash */}

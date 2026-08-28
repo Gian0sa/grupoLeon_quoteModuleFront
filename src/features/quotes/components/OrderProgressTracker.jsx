@@ -42,8 +42,8 @@ export function OrderTimelineBar({
   const isSolSent = !isDraft && status !== "EN_EDICION";
   const isInReview = status === "ENVIADO" || status === "EN_PROCESO" || status === "PENDIENTE_FACTURACION";
   const isObserved = status === "OBSERVADO";
-  const isFinalApproved = status === "APROBADO" || status === "APROBADO_COMERCIAL" || status === "FACTURADO";
-  const isFinalRejected = status === "RECHAZADO" || status === "ANULADO";
+  const isFinalApproved = ["APROBADO", "APROBADO_COMERCIAL", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO"].includes(status);
+  const isFinalRejected = status === "RECHAZADO" || status === "ANULADO" || status === "CANCELADO";
   const isFinalDone = isFinalApproved || isFinalRejected || isObserved;
 
   // Formateadores de hora precisos

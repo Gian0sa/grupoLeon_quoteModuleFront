@@ -35,11 +35,14 @@ import { AttendanceAdminPage } from "../features/entrada/pages/AttendanceAdminPa
 import { NewClientsPage } from "../features/clients/pages/NewClientsPage.jsx";
 import { FAQPage } from "../features/help/pages/FAQPage.jsx";
 import { ClientStatementPage } from "../features/receivable/pages/ClientStatementPage.jsx";
+import { RouteMemoryTracker } from "./middlewares/RouteMemoryTracker.jsx";
 
 const AppRoutes = () => {
   return (
-    <Routes>
-      {/* Público */}
+    <>
+      <RouteMemoryTracker />
+      <Routes>
+        {/* Público */}
       <Route path="/" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/s/:code" element={<ClientStatementPage />} />
@@ -304,6 +307,7 @@ const AppRoutes = () => {
         }
       />
     </Routes>
+    </>
   );
 };
 

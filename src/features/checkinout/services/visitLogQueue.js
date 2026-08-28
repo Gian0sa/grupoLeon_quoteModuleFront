@@ -3,17 +3,26 @@ import { openDB } from "idb";
 const DB_NAME = "checkin-offline-db";
 const STORE_NAME = "pending-checkins";
 
-const getDB = () =>
-  openDB(DB_NAME, 1, {
-    upgrade(db) {
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, {
-          keyPath: "id",
-          autoIncrement: true,
-        });
-      }
-    },
-  });
+let memoryQueue = [];
+let nextMemoryId = 1;
+
+const getDB = async () => {
+  try {
+    if (typeof window === "undefined" || !window.indexedDB) return null;
+    return await openDB(DB_NAME, 1, {
+      upgrade(db) {
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          db.createObjectStore(STORE_NAME, {
+            keyPath: "id",
+            autoIncrement: true,
+          });
+        }
+      },
+    });
+  } catch (err) {
+    return null;
+  }
+};
 
 // FormData → objeto guardable en IndexedDB (preserva el File/Blob)
 export const formDataToStorable = async (formData) => {
@@ -48,47 +57,102 @@ export const storableToFormData = (obj) => {
 };
 
 export const addToQueue = async (formData) => {
-  const db = await getDB();
   const storable = await formDataToStorable(formData);
-  const id = await db.add(STORE_NAME, {
+  try {
+    const db = await getDB();
+    if (db) {
+      const id = await db.add(STORE_NAME, {
+        ...storable,
+        status: "PENDING",
+        _queuedAt: Date.now(),
+      });
+      console.log("📦 Check-in guardado offline con id:", id);
+      return id;
+    }
+  } catch (err) {
+    // fallback
+  }
+  const id = nextMemoryId++;
+  memoryQueue.push({
+    id,
     ...storable,
     status: "PENDING",
     _queuedAt: Date.now(),
   });
-  console.log("📦 Check-in guardado offline con id:", id);
   return id;
 };
 
 export const getQueue = async () => {
-  const db = await getDB();
-  return db.getAll(STORE_NAME);
+  try {
+    const db = await getDB();
+    if (db) {
+      return await db.getAll(STORE_NAME);
+    }
+  } catch (err) {
+    // fallback
+  }
+  return [...memoryQueue];
 };
 
 export const removeFromQueue = async (id) => {
-  const db = await getDB();
-  await db.delete(STORE_NAME, id);
+  try {
+    const db = await getDB();
+    if (db) {
+      await db.delete(STORE_NAME, id);
+      return;
+    }
+  } catch (err) {
+    // fallback
+  }
+  memoryQueue = memoryQueue.filter((item) => item.id !== id);
 };
 
 export const clearAllQueue = async () => {
-  const db = await getDB();
-  await db.clear(STORE_NAME);
+  try {
+    const db = await getDB();
+    if (db) {
+      await db.clear(STORE_NAME);
+      return;
+    }
+  } catch (err) {
+    // fallback
+  }
+  memoryQueue = [];
 };
 
 export const getQueueCount = async () => {
-  const db = await getDB();
-  return db.count(STORE_NAME);
+  try {
+    const db = await getDB();
+    if (db) {
+      return await db.count(STORE_NAME);
+    }
+  } catch (err) {
+    // fallback
+  }
+  return memoryQueue.length;
 };
 
 export const updateQueueItem = async (id, updates) => {
-  const db = await getDB();
-  const tx = db.transaction(STORE_NAME, "readwrite");
-  const store = tx.objectStore(STORE_NAME);
-  const item = await store.get(id);
+  try {
+    const db = await getDB();
+    if (db) {
+      const tx = db.transaction(STORE_NAME, "readwrite");
+      const store = tx.objectStore(STORE_NAME);
+      const item = await store.get(id);
+      if (item) {
+        Object.assign(item, updates);
+        await store.put(item);
+      }
+      await tx.done;
+      return;
+    }
+  } catch (err) {
+    // fallback
+  }
+  const item = memoryQueue.find((i) => i.id === id);
   if (item) {
     Object.assign(item, updates);
-    await store.put(item);
   }
-  await tx.done;
 };
 
 // Estados de un ítem en cola.

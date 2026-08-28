@@ -56,7 +56,7 @@ export const useAuthStore = create((set) => ({
   },
 
   logout: () => {
-    ['userId', 'username', 'salesEmployeeCode', 'endpoints'].forEach((key) =>
+    ['userId', 'username', 'salesEmployeeCode', 'endpoints', 'lastRoute'].forEach((key) =>
       localStorage.removeItem(key)
     );
 

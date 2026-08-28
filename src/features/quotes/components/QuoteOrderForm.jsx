@@ -21,14 +21,6 @@ import { useIgvRate, useGetWarehouses } from "../hooks/queries/quotesQueries";
 const MotionBox = motion(Box);
 
 const CURRENCIES = ["USD", "PEN"];
-const DEFAULT_WAREHOUSES = [
-  { code: "014", name: "014 - Almacén Principal" },
-  { code: "001", name: "001 - Sede Central" },
-  { code: "002", name: "002 - Sede Norte" },
-  { code: "003", name: "003 - Sede Sur" },
-  { code: "004", name: "004 - Sede Este" },
-  { code: "005", name: "005 - Sede Provincia" },
-];
 
 const money = (value, currency = "USD") =>
   Number(value || 0).toLocaleString("en-US", {
@@ -51,7 +43,7 @@ export default function QuoteOrderForm({ sellerName }) {
   } = useQuoteStore();
 
   const { warehouses: sapWarehouses } = useGetWarehouses();
-  const availableWarehouses = sapWarehouses.length > 0 ? sapWarehouses : DEFAULT_WAREHOUSES;
+  const availableWarehouses = sapWarehouses || [];
 
   const { data: rateData } = useExchangeRate({
     currency: "USD",

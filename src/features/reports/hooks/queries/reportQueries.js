@@ -84,7 +84,7 @@ export const useGetOrderswithStatusReports = ({
   salesPersonCode,
   estadopedido = '',
   page = 0,
-  pageSize = 5,
+  pageSize = 12,
 }) => {
   return useQuery({
     queryKey: [
@@ -95,14 +95,17 @@ export const useGetOrderswithStatusReports = ({
       pageSize,
     ],
     queryFn: () =>
-      getOrderswithStatusReports({ salesPersonCode, estadopedido, page, pageSize })
+      getOrderswithStatusReports({ salesPersonCode, estadopedido, page, pageSize }),
+    placeholderData: (previousData) => previousData,
+    staleTime: 1000 * 60 * 2, // 2 minutos de caché fluida
+    refetchOnWindowFocus: false,
   });
 };
 
-export const useGetInvoiceDeliveryNoteperOrder = ({ docEntry }) => {
+export const useGetInvoiceDeliveryNoteperOrder = ({ docEntry, enabled = true }) => {
   return useQuery({
     queryKey: ["invoiceDeliveryNoteperOrder", docEntry],
     queryFn: () => getInvoiceDeliveryNoteperOrder({ docEntry }),
-    enabled: !!docEntry,
+    enabled: !!docEntry && enabled,
   });
 };

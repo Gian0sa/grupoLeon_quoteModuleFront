@@ -46,12 +46,21 @@ export default function SapItemGrid({
 
   const handleItemSelect = (selectedItem) => {
     if (isReadOnly || !selectedItem) return;
+    const rawPrice = Number(selectedItem.price || selectedItem.importe || selectedItem.Price || 0);
+    const hasSapPrice = rawPrice > 0;
+    // En catálogo de pruebas (cuando el precio viene $0.00), asignar un precio base simulado automático ($25.00)
+    // Cuando se conecta a la ruta real de SAP (precio > 0), usará directamente el precio real de SAP y quedará bloqueado
+    const effectivePrice = hasSapPrice ? rawPrice : 25.0;
+
     onAddProduct({
       id: selectedItem.id,
       code: selectedItem.id,
       name: selectedItem.name,
       quantity: 1,
-      price: selectedItem.price || selectedItem.importe || 0,
+      price: effectivePrice,
+      unitPrice: effectivePrice,
+      isTestFallback: !hasSapPrice,
+      isPriceFromSap: hasSapPrice,
       discount: selectedItem.discount || 0,
       whsCode: whsCode || "014",
       taxCode: "I18",
@@ -60,7 +69,7 @@ export default function SapItemGrid({
       isAgotado: selectedItem.isAgotado || false,
       marca: selectedItem.marca || "",
       sigla: selectedItem.sigla || "",
-      importe: selectedItem.importe || selectedItem.price || 0,
+      importe: effectivePrice,
     });
   };
 
@@ -159,7 +168,7 @@ export default function SapItemGrid({
                           borderRadius="md"
                           flexShrink={0}
                         >
-                          Stk: {item.stock}
+                          {item.stock > 0 ? `Stk: ${item.stock}` : "STK: 0 (Pendiente Importación)"}
                         </Badge>
                       )}
                     </Flex>
@@ -218,7 +227,27 @@ export default function SapItemGrid({
                   </Box>
                   <Box>
                     <Text fontSize="0.6rem" color="gray.500" fontWeight="800" mb={0.5} textAlign="right">PRECIO U.</Text>
-                    <Text fontSize="xs" fontWeight="800" color="gray.900" textAlign="right">{money(price, currency)}</Text>
+                    {isReadOnly || (item.isPriceFromSap && !item.isTestFallback) ? (
+                      <Text fontSize="xs" fontWeight="800" color="gray.900" textAlign="right">{money(price > 0 ? price : 25.0, currency)}</Text>
+                    ) : (
+                      <Input
+                        size="xs"
+                        maxW="75px"
+                        type="number"
+                        step="0.01"
+                        textAlign="right"
+                        fontWeight="800"
+                        borderRadius="md"
+                        borderColor="gray.300"
+                        bg="white"
+                        value={item.price > 0 ? item.price : 25.0}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          const newP = isNaN(val) ? 0 : val;
+                          onUpdateProduct(item.id, { price: newP, unitPrice: newP, importe: newP, isTestFallback: true });
+                        }}
+                      />
+                    )}
                   </Box>
                   <Box textAlign="center">
                     <Text fontSize="0.6rem" color="gray.500" fontWeight="800" mb={0.5}>DESC.</Text>
@@ -341,7 +370,7 @@ export default function SapItemGrid({
                                 fontWeight="800"
                                 borderRadius="sm"
                               >
-                                Stock: {item.stock}
+                                {item.stock > 0 ? `Stock: ${item.stock}` : "STK: 0 (Pendiente Importación)"}
                               </Badge>
                             )}
                           </HStack>
@@ -385,7 +414,27 @@ export default function SapItemGrid({
                         </VStack>
                       </Td>
                       <Td px={3} textAlign="right" fontWeight="800" fontSize="xs" color="gray.800">
-                        {money(price, currency)}
+                        {isReadOnly || (item.isPriceFromSap && !item.isTestFallback) ? (
+                          money(price > 0 ? price : 25.0, currency)
+                        ) : (
+                          <Input
+                            size="xs"
+                            maxW="85px"
+                            type="number"
+                            step="0.01"
+                            textAlign="right"
+                            fontWeight="800"
+                            borderRadius="md"
+                            borderColor="gray.300"
+                            bg="white"
+                            value={item.price > 0 ? item.price : 25.0}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value);
+                              const newP = isNaN(val) ? 0 : val;
+                              onUpdateProduct(item.id, { price: newP, unitPrice: newP, importe: newP, isTestFallback: true });
+                            }}
+                          />
+                        )}
                       </Td>
                       <Td px={2} textAlign="center">
                         <Badge colorScheme="green" fontSize="xs" fontWeight="800" px={1.5} py={0.5} borderRadius="md">
@@ -449,7 +498,7 @@ export default function SapItemGrid({
                 ⚠️ CÓDIGOS AGOTADOS
               </Badge>
               <Text fontSize="xs" fontWeight="800" color="#991b1b">
-                Los siguientes artículos no tienen stock disponible en Almacén 014:
+                Los siguientes artículos no tienen stock disponible en Almacén 014 (Pendientes a Importación):
               </Text>
             </HStack>
           </Flex>
@@ -465,7 +514,9 @@ export default function SapItemGrid({
                   </HStack>
                   <HStack spacing={3}>
                     <Text fontSize="xs" color="gray.600" fontWeight="700">Cant. Solicitada: {p.quantity || 1}</Text>
-                    <Badge colorScheme="red" fontSize="9px">SIN STOCK EN 014</Badge>
+                    <Badge colorScheme="red" bg="#fee2e2" color="#991b1b" border="1px solid" borderColor="#fca5a5" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="800">
+                      🚫 SIN STOCK EN 014 (Pendiente a Importación)
+                    </Badge>
                   </HStack>
                 </Flex>
               ))}

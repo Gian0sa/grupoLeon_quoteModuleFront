@@ -81,9 +81,10 @@ export function TopHeaderBanner({
           const serverIds = new Set(serverNotifs.map(s => String(s.id)));
           const serverQuoteIds = new Set(serverNotifs.map(s => String(s.quoteId)));
           const recentLocal = saved.filter(sn => {
-            const time = sn.createdAt ? new Date(sn.createdAt).getTime() : 0;
-            const isFresh = (now - time) < 30000;
-            return isFresh && !serverIds.has(String(sn.id)) && serverQuoteIds.has(String(sn.quoteId));
+            if (sn.read) return false;
+            const time = sn.createdAt || sn.timestamp ? new Date(sn.createdAt || sn.timestamp).getTime() : 0;
+            const isFresh = (now - time) < 15000;
+            return isFresh && !serverIds.has(String(sn.id)) && !serverQuoteIds.has(String(sn.quoteId));
           });
           combined = [...recentLocal, ...combined];
         }

@@ -1,5 +1,13 @@
 import React from "react";
 import { calculateQuoteTotals } from "../../../shared/utils/quoteCalculator";
+import {
+  formatDeliveryForm,
+  formatTransportName,
+  formatDeliveryPoint,
+  formatPaymentTerms,
+  formatBankAccount,
+  isPickupInStoreForm
+} from "../../../shared/utils/quoteLogisticsFormatters";
 
 const money = (val) => {
   const num = Number(val || 0);
@@ -81,54 +89,35 @@ export const QuotePdfDocument = React.forwardRef(({ quote, isPrintMode = false }
   const shortYear = fullYear.slice(-2);
 
   // Cliente y Despacho
-  const clientCardCode = client.CardCode || quote.clientDocument || quote.clientRuc || "CL72435405";
+  const clientCardCode = client.CardCode || quote.clientDocument || quote.clientRuc || "CL000000";
   const clientName = client.CardName || client.name || quote.clientName || "CLIENTE NO REGISTRADO";
-  const clientRuc = client.LicTradNum || client.FederalTaxID || quote.clientRuc || quote.clientDocument || "10724354051";
-  const clientAddress = client.Address || client.address || quote.clientAddress || "LA VICTORIA - LIMA";
+  const clientRuc = client.LicTradNum || client.FederalTaxID || quote.clientRuc || quote.clientDocument || "-";
+  const clientAddress = client.Address || client.address || quote.clientAddress || "-";
 
-  // Parseo inteligente de Transporte
-  let parsedTransport = quote.selectedTransport || quote.transport;
+  // Parseo y formateo inteligente de Transporte y Forma de Entrega
+  const rawDelivForm = quote.selectedDeliveryForm || quote.deliveryForm;
+  const rawTransport = quote.selectedTransport || quote.transport;
+  const transportName = formatTransportName(rawTransport, rawDelivForm);
+
+  let parsedTransport = rawTransport;
   if (typeof parsedTransport === "string" && parsedTransport.trim().startsWith("{")) {
-    try {
-      parsedTransport = JSON.parse(parsedTransport);
-    } catch (e) {}
+    try { parsedTransport = JSON.parse(parsedTransport); } catch (e) {}
   }
-
-  const transportName = typeof parsedTransport === "object" && parsedTransport !== null
-    ? (parsedTransport.Name || parsedTransport.name || parsedTransport.label || "")
-    : (parsedTransport || "Cód. 103 - ETTUSA");
-
   const transportAddress = typeof parsedTransport === "object" && parsedTransport !== null
-    ? (parsedTransport.U_TQC_DIREC || parsedTransport.address || quote.transportDirection || "")
-    : (quote.transportDirection || "San Vicente de Cañete / Provincia");
+    ? (parsedTransport.U_TQC_DIREC || parsedTransport.address || quote.transportDirection || "-")
+    : (quote.transportDirection || "-");
 
-  // Parseo inteligente de Punto de Llegada
-  let parsedPoint = quote.selectedPoint || quote.deliveryPoint;
-  if (typeof parsedPoint === "string" && parsedPoint.trim().startsWith("{")) {
-    try {
-      parsedPoint = JSON.parse(parsedPoint);
-    } catch (e) {}
-  }
-
-  const pointOfArrival = typeof parsedPoint === "object" && parsedPoint !== null
-    ? (parsedPoint.AddressName || parsedPoint.Street || parsedPoint.label || clientAddress || "")
-    : (parsedPoint || clientAddress || "LIMA - SAN VICENTE");
+  // Punto de Llegada
+  const rawPoint = quote.selectedPoint || quote.deliveryPoint;
+  const pointOfArrival = formatDeliveryPoint(rawPoint, clientAddress);
 
   const opNumberVal = quote.opNum || quote.operationNumber || "";
 
   // Parseo inteligente de Pago
-  let parsedPayment = quote.selectedPaymentType || quote.paymentType;
-  if (typeof parsedPayment === "string" && parsedPayment.trim().startsWith("{")) {
-    try {
-      parsedPayment = JSON.parse(parsedPayment);
-    } catch (e) {}
-  }
+  const rawPayment = quote.selectedPaymentType || quote.paymentType;
+  const bankVal = formatBankAccount(quote.bankAccount || (typeof rawPayment === "object" ? rawPayment?.bankAccount : rawPayment));
 
-  const bankVal = typeof parsedPayment === "object" && parsedPayment !== null
-    ? (parsedPayment.PymntGroup || parsedPayment.PaymentTermsGroupName || parsedPayment.label || "")
-    : (parsedPayment || (isContado ? "BCP SOLES" : ""));
-
-  const sellerDisplayName = quote.sellerName || quote.salesPersonName || "540";
+  const sellerDisplayName = quote.sellerName || quote.salesPersonName || "Asesor Comercial";
 
   // Totales
   const calcRes = calculateQuoteTotals(products, tcVal);

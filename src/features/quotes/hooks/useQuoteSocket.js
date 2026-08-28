@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { socket } from "../../../shared/lib/socket";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
@@ -6,42 +6,15 @@ import { useToast } from "@chakra-ui/react";
 
 export function useQuoteSocket() {
   const queryClient = useQueryClient();
-  const { username, role } = useAuthStore();
   const toast = useToast();
+  const displayedToastIdsRef = useRef(new Set());
 
   useEffect(() => {
     if (!socket) return;
 
     // 1. Escuchar cotizaciones creadas en vivo
     const handleQuoteCreated = (quote) => {
-      console.log("⚡ [WS EVENT] quote:created recibido:", quote);
-      
-      // Auto-generar notificación si la cotización fue ENVIADA
-      if (quote && (quote.state === "ENVIADO" || quote.approvalStatus === "ENVIADO")) {
-        const notifObj = {
-          id: `NOTIF-${Date.now()}`,
-          targetRole: "FACTURACION",
-          targetUsername: "enrique",
-          fromUsername: quote.sellerName || quote.createdByUsername || "Vendedor",
-          quoteId: quote.docNumber || String(quote.id),
-          quoteObj: quote,
-          title: `📩 Nueva Cotización Recibida - ${quote.docNumber}`,
-          description: `Enviada por ${quote.sellerName || "Vendedor"} • Cliente: ${quote.clientName} (${quote.totals?.grandTotalUSD ? `$${Number(quote.totals.grandTotalUSD).toFixed(2)}` : '$0.00'}). Requiere validación comercial.`,
-          status: "ENVIADO",
-          createdAt: new Date().toISOString(),
-          timestamp: new Date().toISOString(),
-          read: false
-        };
-
-        try {
-          const raw = localStorage.getItem("grupoLeon_notifications");
-          const all = raw ? JSON.parse(raw) : [];
-          if (!all.some(n => n.quoteId === notifObj.quoteId && n.status === "ENVIADO")) {
-            localStorage.setItem("grupoLeon_notifications", JSON.stringify([notifObj, ...all]));
-          }
-        } catch {}
-      }
-
+      console.log("⚡ [WS EVENT] quote:created recibido:", quote?.docNumber || quote?.id);
       queryClient.invalidateQueries({ queryKey: ["quotes"] });
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
       window.dispatchEvent(new Event("localQuotesUpdated"));
@@ -50,7 +23,7 @@ export function useQuoteSocket() {
 
     // 2. Escuchar cotizaciones actualizadas (aprobadas, rechazadas, etc.)
     const handleQuoteUpdated = (quote) => {
-      console.log("⚡ [WS EVENT] quote:updated recibido:", quote);
+      console.log("⚡ [WS EVENT] quote:updated recibido:", quote?.docNumber || quote?.id);
       if (quote && (quote.state === "ANULADO" || quote.approvalStatus === "ANULADO")) {
         const targetId = quote.docNumber || quote.id || quote.quoteId;
         const targetStr = String(targetId || "").trim().toUpperCase();
@@ -105,7 +78,8 @@ export function useQuoteSocket() {
 
     // 4. Escuchar notificaciones entrantes en vivo (tipo WhatsApp)
     const handleNewNotification = (notif) => {
-      console.log("🔔 [WS EVENT] notification:new recibido:", notif);
+      if (!notif) return;
+      console.log("🔔 [WS EVENT] notification:new recibido:", notif.id || notif.title);
       
       try {
         const raw = localStorage.getItem("grupoLeon_notifications");
@@ -118,14 +92,37 @@ export function useQuoteSocket() {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
       window.dispatchEvent(new Event("localNotificationsUpdated"));
 
+      const authState = useAuthStore.getState();
+      const currentUsername = authState.username;
+      const currentRole = authState.role;
+
+      // Si yo mismo envié la cotización, no necesito ver el toast de "Nueva cotización recibida" (ya vi el toast de confirmación local)
+      const isSender = notif.fromUsername && currentUsername && notif.fromUsername.toLowerCase() === currentUsername.toLowerCase();
+      if (isSender && notif.status === "ENVIADO") {
+        return;
+      }
+
       // Notificar con toast si coincide con el rol o usuario activo
       const isForMe =
-        (notif.targetUsername && notif.targetUsername.toLowerCase() === username?.toLowerCase()) ||
-        (notif.targetRole && notif.targetRole === role) ||
-        (notif.targetRole === "FACTURACION" && (role === "ADMIN" || username?.toLowerCase() === "enrique"));
+        (notif.targetUsername && notif.targetUsername.toLowerCase() === currentUsername?.toLowerCase()) ||
+        (notif.targetRole && notif.targetRole === currentRole) ||
+        (notif.targetRole === "FACTURACION" && (currentRole === "ADMIN" || currentUsername?.toLowerCase() === "enrique"));
 
       if (isForMe && notif.title) {
+        const toastId = `ws-notif-${notif.quoteId || notif.id}-${notif.status || 'new'}`;
+        
+        // Blindaje contra toasts duplicados o repetidos
+        if (displayedToastIdsRef.current.has(toastId) || toast.isActive(toastId)) {
+          return;
+        }
+
+        displayedToastIdsRef.current.add(toastId);
+        setTimeout(() => {
+          displayedToastIdsRef.current.delete(toastId);
+        }, 15000);
+
         toast({
+          id: toastId,
           title: notif.title,
           description: notif.description || "Tienes una nueva actualización en el módulo de cotizaciones.",
           status: notif.status === "APROBADO_COMERCIAL" || notif.status === "APROBADO" ? "success" : notif.status === "RECHAZADO" ? "error" : "info",
@@ -151,14 +148,18 @@ export function useQuoteSocket() {
         useAuthStore.getState().updateEndpoints(data.endpoints);
         window.dispatchEvent(new Event("permissionsUpdated"));
 
-        toast({
-          title: "🔑 Accesos y Permisos Actualizados",
-          description: `Tus accesos han sido actualizados en tiempo real (${data.endpoints.length} permisos activos). No requieres cerrar sesión.`,
-          status: "success",
-          duration: 6000,
-          isClosable: true,
-          position: "top-right",
-        });
+        const toastId = `ws-perm-${Date.now()}`;
+        if (!toast.isActive(toastId)) {
+          toast({
+            id: toastId,
+            title: "🔑 Accesos y Permisos Actualizados",
+            description: `Tus accesos han sido actualizados en tiempo real (${data.endpoints.length} permisos activos). No requieres cerrar sesión.`,
+            status: "success",
+            duration: 6000,
+            isClosable: true,
+            position: "top-right",
+          });
+        }
       }
 
       // Refrescar consultas de usuarios y servicios en cualquier panel de administración abierto
@@ -167,11 +168,29 @@ export function useQuoteSocket() {
       queryClient.invalidateQueries({ queryKey: ["Services"] });
     };
 
+    // 6. Escuchar actualizaciones en vivo del sistema o avisos globales de mantenimiento
+    const handleSystemUpdate = (data) => {
+      console.log("⚡ [WS EVENT] system:update recibido:", data);
+      const toastId = `ws-sys-${data?.id || Date.now()}`;
+      if (!toast.isActive(toastId)) {
+        toast({
+          id: toastId,
+          title: data?.title || "🚀 Nueva Actualización del Sistema",
+          description: data?.message || "Se han aplicado mejoras en el sistema. Puedes seguir trabajando con total normalidad.",
+          status: data?.type || "info",
+          duration: 9000,
+          isClosable: true,
+          position: "top-right",
+        });
+      }
+    };
+
     socket.on("quote:created", handleQuoteCreated);
     socket.on("quote:updated", handleQuoteUpdated);
     socket.on("quote:deleted", handleQuoteDeleted);
     socket.on("notification:new", handleNewNotification);
     socket.on("user:permissions:updated", handlePermissionsUpdated);
+    socket.on("system:update", handleSystemUpdate);
 
     return () => {
       socket.off("quote:created", handleQuoteCreated);
@@ -179,6 +198,8 @@ export function useQuoteSocket() {
       socket.off("quote:deleted", handleQuoteDeleted);
       socket.off("notification:new", handleNewNotification);
       socket.off("user:permissions:updated", handlePermissionsUpdated);
+      socket.off("system:update", handleSystemUpdate);
     };
-  }, [queryClient, username, role, toast]);
+  }, [queryClient, toast]);
 }
+

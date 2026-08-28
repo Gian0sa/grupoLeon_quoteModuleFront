@@ -50,7 +50,11 @@ import {
   MessageSquareWarning,
   FileText,
   MessageSquare,
-  X
+  X,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useQuoteStore } from "../stores/quoteStore";
@@ -72,6 +76,21 @@ const isDraftState = (status) => {
   if (!status) return true;
   const s = String(status).toUpperCase().trim();
   return ["BORRADOR", "DRAFT", "GENERADO"].includes(s);
+};
+
+export const isCancelledState = (status) => {
+  if (!status) return false;
+  const s = String(status).toUpperCase().trim();
+  return (
+    s === "ANULADO" ||
+    s === "CANCELADO" ||
+    s === "RECHAZADO" ||
+    s === "ANULADO (APLICATIVO)" ||
+    s === "CANCELADO EN SAP" ||
+    s.includes("ANULADO") ||
+    s.includes("CANCELADO") ||
+    s.includes("RECHAZADO")
+  );
 };
 
 const isDraftOwnedByCurrentUser = (q, currentUsername, currentUserId) => {
@@ -102,6 +121,21 @@ const isDraftOwnedByCurrentUser = (q, currentUsername, currentUserId) => {
     return true;
   }
 
+  return false;
+};
+
+export const isQuoteFromSap = (q) => {
+  if (!q) return false;
+  const status = String(q.approvalStatus || q.state || q.status || "").toUpperCase().trim();
+  const sapDocNum = q.sapDocNum || q.DocNum || q.totals?.DocNum || q.totals?.sapDocNum;
+  
+  if (q.isSapDirect || q.isSap || q.totals?.isSapDirect) return true;
+  if (sapDocNum && Number(sapDocNum) > 0) return true;
+  if (status === "CANCELADO" || status === "COMPLETADO" || status.includes("CANCELADO EN SAP")) return true;
+  if (Array.isArray(q.historyLog)) {
+    const hasSapLog = q.historyLog.some(h => h.note && (h.note.includes("SAP Service Layer") || h.note.includes("DocNum: #") || h.note.includes("Emitida en SAP")));
+    if (hasSapLog) return true;
+  }
   return false;
 };
 
@@ -147,12 +181,14 @@ export function QuoteApprovalPage() {
   const { data: serverQuotes, isLoading: isServerLoading, refetch: refetchServerQuotes } = useGetQuotes();
 
   const handleLoadQuote = (q) => {
-    if (typeof useQuoteStore.getState().setQuoteData === "function") {
+    if (typeof useQuoteStore.getState().loadQuote === "function") {
+      useQuoteStore.getState().loadQuote(q);
+    } else if (typeof useQuoteStore.getState().setQuoteData === "function") {
       useQuoteStore.getState().setQuoteData(q);
     } else {
       if (q.client) useQuoteStore.getState().setClient(q.client);
       if (q.products) useQuoteStore.getState().setProducts(q.products);
-      if (q.comment) useQuoteStore.getState().setComment(q.comment);
+      if (q.comment || q.comments || q.Comments) useQuoteStore.getState().setComment(q.comment || q.comments || q.Comments);
     }
     navigate("/newquotes");
   };
@@ -165,6 +201,8 @@ export function QuoteApprovalPage() {
   const [pdfQuote, setPdfQuote] = useState(null);
   const [deleteConfirmDoc, setDeleteConfirmDoc] = useState(null);
   const [observeQuoteTarget, setObserveQuoteTarget] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Jerarquía de estados: el mayor índice tiene mayor prioridad (más avanzado en el flujo)
   const STATUS_PRIORITY = [
@@ -220,13 +258,14 @@ export function QuoteApprovalPage() {
             // REGLA DE MEZCLA DE ESTADO REALTIME:
             // 1. Si el servidor indica ENVIADO/APROBADO/RECHAZADO/etc. y el local tenía OBSERVADO,
             //    significa que la observación fue corregida y se envió a validación. Prevalece la versión del servidor.
-            // 2. Solo usar estado local si fue actualizado optimistamente en la sesión actual de forma muy reciente (>2s).
+            // 2. Si el servidor indica CANCELADO, ANULADO o COMPLETADO, SIEMPRE prevalece el servidor (estado oficial en SAP/BD).
+            // 3. Solo usar estado local si fue actualizado optimistamente en la sesión actual de forma muy reciente (>3s) y no fue cancelado.
+            const isCancelledOrClosedInServer = sqStatus === "CANCELADO" || sqStatus === "COMPLETADO" || sqStatus === "ANULADO" || sq.isCancelled;
             const isObservationCorrected = lqStatus === "OBSERVADO" && (sqStatus === "ENVIADO" || sqStatus === "APROBADO_COMERCIAL" || sqStatus === "APROBADO");
             const localIsMoreRecent = lqUpdatedAt > (sqUpdatedAt + 3000);
             
-            // Si la observación fue levantada/corregida, NUNCA bloquear con la jerarquía local de OBSERVADO
-            const useLocalStatus = localIsMoreRecent && !isObservationCorrected;
-            const finalStatus = useLocalStatus ? lqStatus : sqStatus;
+            const useLocalStatus = localIsMoreRecent && !isObservationCorrected && !isCancelledOrClosedInServer;
+            const finalStatus = isCancelledOrClosedInServer ? sqStatus : (useLocalStatus ? lqStatus : sqStatus);
 
             return {
               ...matchedLocal,
@@ -235,17 +274,21 @@ export function QuoteApprovalPage() {
               status: finalStatus,
               state: finalStatus,
               approvalStatus: finalStatus,
+              isCancelled: sq.isCancelled || finalStatus === "CANCELADO" || finalStatus === "ANULADO",
+              isSapDirect: Boolean(sq.isSapDirect || matchedLocal.isSapDirect || sq.sapDocNum || matchedLocal.sapDocNum),
+              sapDocNum: sq.sapDocNum || matchedLocal.sapDocNum || sq.DocNum || matchedLocal.DocNum,
+              DocNum: sq.DocNum || matchedLocal.DocNum || sq.sapDocNum || matchedLocal.sapDocNum,
               // Campos de observación: si ya fue levantada (ENVIADO), limpiar la razón de observación antigua
-              observationReason: (finalStatus === "ENVIADO" || finalStatus === "APROBADO_COMERCIAL" || finalStatus === "APROBADO")
+              observationReason: (finalStatus === "ENVIADO" || finalStatus === "APROBADO_COMERCIAL" || finalStatus === "APROBADO" || finalStatus === "CANCELADO")
                 ? null
                 : (matchedLocal.observationReason || sq.observationReason || sq.rejectionReason),
-              rejectionReason: (finalStatus === "ENVIADO" || finalStatus === "APROBADO_COMERCIAL" || finalStatus === "APROBADO")
+              rejectionReason: (finalStatus === "ENVIADO" || finalStatus === "APROBADO_COMERCIAL" || finalStatus === "APROBADO" || finalStatus === "CANCELADO")
                 ? null
                 : (matchedLocal.rejectionReason || sq.rejectionReason),
-              observedAt: (finalStatus === "ENVIADO" || finalStatus === "APROBADO_COMERCIAL" || finalStatus === "APROBADO")
+              observedAt: (finalStatus === "ENVIADO" || finalStatus === "APROBADO_COMERCIAL" || finalStatus === "APROBADO" || finalStatus === "CANCELADO")
                 ? null
                 : (matchedLocal.observedAt || sq.observedAt),
-              observedBy: (finalStatus === "ENVIADO" || finalStatus === "APROBADO_COMERCIAL" || finalStatus === "APROBADO")
+              observedBy: (finalStatus === "ENVIADO" || finalStatus === "APROBADO_COMERCIAL" || finalStatus === "APROBADO" || finalStatus === "CANCELADO")
                 ? null
                 : (matchedLocal.observedBy || sq.observedBy),
               // Historial: combinar o usar el del servidor si trae registros nuevos
@@ -379,10 +422,15 @@ export function QuoteApprovalPage() {
           const mergedWithLocal = serverQuotes.map(sq => {
             const localMatch = localMap.get(String(sq.docNumber || "")) || localMap.get(String(sq.id ?? ""));
             if (localMatch) {
-              // Estado local prevalece (es el actualizado optimistamente)
+              const isCancelledInServer = sq.approvalStatus === "CANCELADO" || sq.state === "CANCELADO" || sq.status === "CANCELADO" || sq.isCancelled;
+              const finalStatus = isCancelledInServer ? "CANCELADO" : (localMatch.approvalStatus || localMatch.state || localMatch.status || sq.approvalStatus);
               return {
                 ...sq,
                 ...localMatch,
+                status: finalStatus,
+                state: finalStatus,
+                approvalStatus: finalStatus,
+                isCancelled: isCancelledInServer || Boolean(localMatch.isCancelled),
                 // Mantener datos ricos del servidor que no estén en local
                 products: (localMatch.products && localMatch.products.length > 0) ? localMatch.products : (sq.products || sq.items || []),
                 client: localMatch.client || sq.client,
@@ -434,13 +482,31 @@ export function QuoteApprovalPage() {
   const DRAFT_STATUSES = ["BORRADOR", "GENERADO"];
 
   const handleDeleteQuote = async (id, currentStatus) => {
-    const isHardDelete = !currentStatus || DRAFT_STATUSES.includes(currentStatus) || currentStatus === "ANULADO";
     const idStr = String(id);
     const isMatchingItem = (q) => {
       const qDocNum = q.docNumber ? String(q.docNumber) : "";
       const qId = q.id !== undefined && q.id !== null ? String(q.id) : "";
-      return qDocNum === idStr || qId === idStr;
+      return qDocNum === idStr || qId === idStr || isMatchingDoc(q, idStr);
     };
+
+    // Bloqueo de seguridad: No se permite eliminar ni anular cotizaciones originadas o sincronizadas con SAP
+    const targetQuote = quotes.find(isMatchingItem);
+    const stUpper = String(currentStatus || targetQuote?.approvalStatus || targetQuote?.state || targetQuote?.status || "").toUpperCase();
+    if (isQuoteFromSap(targetQuote)) {
+      toast({
+        title: "⚠️ Acción no permitida",
+        description: "Las cotizaciones de SAP Business One pertenecen a su propia base de datos y no pueden ser anuladas ni eliminadas desde el aplicativo.",
+        status: "warning",
+        duration: 4500,
+        isClosable: true,
+      });
+      return;
+    }
+
+    const isAlreadyAnulado = stUpper === "ANULADO" || stUpper === "RECHAZADO" || stUpper.includes("ANULADO");
+    const isDraft = !currentStatus || DRAFT_STATUSES.includes(currentStatus);
+    // Solo se borra físicamente (Hard Delete) si ya es borrador o si ya estaba anulada/rechazada previamente
+    const isHardDelete = isDraft || isAlreadyAnulado;
 
     // 1. ACTUALIZACIÓN OPTIMISTA INMEDIATA EN PANTALLA (CERO F5)
     if (isHardDelete) {
@@ -479,8 +545,8 @@ export function QuoteApprovalPage() {
       localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updated));
       window.dispatchEvent(new Event("localQuotesUpdated"));
       toast({
-        title: "🗑️ Cotización Borrada",
-        description: `La cotización ${id} fue borrada permanentemente del sistema al instante.`,
+        title: "🗑️ Cotización Eliminada",
+        description: `La cotización ${id} fue eliminada permanentemente del sistema al instante.`,
         status: "info",
         duration: 3000,
         isClosable: true,
@@ -508,7 +574,7 @@ export function QuoteApprovalPage() {
       window.dispatchEvent(new Event("localQuotesUpdated"));
       toast({
         title: "❌ Cotización Anulada",
-        description: `La cotización ${id} cambió su estado a ANULADO. Se muestra el distintivo Anulado ❌ en la tabla.`,
+        description: `La cotización ${id} cambió su estado a ANULADO (APLICATIVO).`,
         status: "warning",
         duration: 4000,
         isClosable: true,
@@ -973,62 +1039,149 @@ export function QuoteApprovalPage() {
   }, []);
 
 
-  // Filtrado de la lista por Pestañas y Buscador con REGLA ESTRICTA DE PRIVACIDAD DE BORRADORES
+  const isQuoteOwnedByCurrentUser = (q) => {
+    if (!q) return false;
+    const qUser = String(q.createdByUsername || q.username || "").toLowerCase().trim();
+    const qSeller = String(q.sellerName || "").toLowerCase().trim();
+    const qUserId = q.userId || q.createdByUserId;
+
+    if (activeCurrentUsername) {
+      if (qUser === activeCurrentUsername || qSeller === activeCurrentUsername) return true;
+      if (qSeller && (qSeller.includes(activeCurrentUsername) || activeCurrentUsername.includes(qSeller))) return true;
+    }
+    if (activeCurrentUserId && qUserId && String(qUserId) === String(activeCurrentUserId)) {
+      return true;
+    }
+    return false;
+  };
+
+  // Resetear a página 1 cuando cambia la pestaña, la búsqueda o el tamaño de página
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedTab, searchQuery, pageSize]);
+
+  // Filtrado de la lista por Pestañas y Buscador con REGLA ESTRICTA DE PRIVACIDAD POR ROL
   const filteredQuotes = useMemo(() => {
     return quotes.filter((q) => {
       const currentStatus = q.approvalStatus || q.state || q.status || "GENERADO";
       const isDraft = isDraftState(currentStatus);
+      const isCancelled = isCancelledState(currentStatus);
 
-      // REGLA DE PRIVACIDAD ESTRICTA: Los borradores solo son visibles para su propio creador
-      if (isDraft && !isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId)) {
-        return false;
+      // ── CONTROL DE ACCESO POR ROL ──
+      // Si el usuario NO es Administrador (es Vendedor / Asesor):
+      // SOLO puede ver SUS PROPIAS cotizaciones
+      if (!isAdminUser) {
+        if (!isQuoteOwnedByCurrentUser(q)) {
+          return false;
+        }
+      } else {
+        // Si ES Administrador: ve todas las cotizaciones del flujo, pero los borradores ajenos son privados
+        if (isDraft && !isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId)) {
+          return false;
+        }
       }
 
-      // Filtro por pestaña: En "TODAS" (ALL) solo van cotizaciones formales del flujo. Los borradores SOLO van a "GENERADO" (Borradores)
-      if (selectedTab === "ALL" && isDraft) return false;
-      if (selectedTab === "GENERADO" && !isDraft) return false;
-      if (selectedTab === "ENVIADO" && !["ENVIADO", "EN_PROCESO", "PENDIENTE_APROBACION"].includes(currentStatus)) return false;
-      if (selectedTab === "APROBADO_COMERCIAL" && !["APROBADO_COMERCIAL", "APROBADO_CREDITOS"].includes(currentStatus)) return false;
-      if (selectedTab === "PENDIENTE_FACTURACION" && !["PENDIENTE_FACTURACION", "EN_FACTURACION"].includes(currentStatus)) return false;
-      if (selectedTab === "APROBADO" && !["APROBADO", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO"].includes(currentStatus)) return false;
-      if (selectedTab === "RECHAZADO" && !["RECHAZADO", "ANULADO", "OBSERVADO", "EN_EDICION"].includes(currentStatus)) return false;
+      // Filtro por pestaña:
+      // En "TODAS" (ALL) solo van cotizaciones vigentes que pasaron el flujo (no canceladas ni borradores)
+      if (selectedTab === "ALL") {
+        if (isDraft || isCancelled) return false;
+      } else if (selectedTab === "GENERADO") {
+        if (!isDraft) return false;
+      } else if (selectedTab === "ENVIADO") {
+        if (!["ENVIADO", "EN_PROCESO", "PENDIENTE_APROBACION"].includes(currentStatus)) return false;
+      } else if (selectedTab === "APROBADO_COMERCIAL") {
+        if (!["APROBADO_COMERCIAL", "APROBADO_CREDITOS"].includes(currentStatus)) return false;
+      } else if (selectedTab === "PENDIENTE_FACTURACION") {
+        if (!["PENDIENTE_FACTURACION", "EN_FACTURACION"].includes(currentStatus)) return false;
+      } else if (selectedTab === "APROBADO") {
+        if (!["APROBADO", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO"].includes(currentStatus) || isCancelled) return false;
+      } else if (selectedTab === "ANULADO" || selectedTab === "RECHAZADO") {
+        if (!isCancelled) return false;
+      }
 
-      // Filtro por búsqueda
+      // Filtro por búsqueda ultra rápido y flexible (soporta código COT, SAP #ID, cliente, RUC, vendedor, váucher)
       if (!searchQuery.trim()) return true;
-      const query = searchQuery.toLowerCase();
-      const docNum = (q.docNumber || q.id || "").toLowerCase();
-      const clientName = (q.clientName || q.client?.CardName || "").toLowerCase();
-      const clientDoc = (q.clientDocument || q.client?.CardCode || "").toLowerCase();
-      const sellerStr = (q.sellerName || q.createdByUsername || "").toLowerCase();
+      const rawQuery = searchQuery.trim().toLowerCase();
+      const cleanNumericQuery = rawQuery.replace(/[^0-9]/g, ""); // Extraer dígitos ej: "#8", "#14", "14", "COT-8"
+      
+      const docNum = String(q.docNumber || q.id || "").toLowerCase();
+      const sapDocNum = String(q.sapDocNum || q.DocNum || q.totals?.DocNum || q.totals?.sapDocNum || "").toLowerCase();
+      const clientName = String(q.clientName || q.client?.CardName || "").toLowerCase();
+      const clientDoc = String(q.clientDocument || q.client?.CardCode || "").toLowerCase();
+      const sellerStr = String(q.sellerName || q.createdByUsername || "").toLowerCase();
+      const opNum = String(q.opNum || "").toLowerCase();
 
-      return docNum.includes(query) || clientName.includes(query) || clientDoc.includes(query) || sellerStr.includes(query);
+      // Búsqueda por texto directo en todos los campos principales
+      if (
+        docNum.includes(rawQuery) ||
+        clientName.includes(rawQuery) ||
+        clientDoc.includes(rawQuery) ||
+        sellerStr.includes(rawQuery) ||
+        opNum.includes(rawQuery)
+      ) {
+        return true;
+      }
+
+      // Búsqueda por SAP DocNum (ej: "#8", "#14", "SAP #14", "14")
+      if (sapDocNum && (sapDocNum === rawQuery || `#${sapDocNum}` === rawQuery || `sap #${sapDocNum}`.includes(rawQuery))) {
+        return true;
+      }
+
+      // Si el usuario escribió un número simple o con # (ej: "8", "#8", "14", "#14"), buscar coincidencia numérica
+      if (cleanNumericQuery) {
+        if (sapDocNum === cleanNumericQuery) return true;
+        if (docNum.replace(/[^0-9]/g, "").endsWith(cleanNumericQuery) || docNum.includes(cleanNumericQuery)) return true;
+      }
+
+      return false;
     });
-  }, [quotes, selectedTab, searchQuery, activeCurrentUsername, activeCurrentUserId]);
+  }, [quotes, isAdminUser, selectedTab, searchQuery, activeCurrentUsername, activeCurrentUserId]);
 
-  // Contadores por Estado (Borradores cuenta únicamente los propios del usuario en sesión)
+  const totalItems = filteredQuotes.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const validCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+
+  const paginatedQuotes = useMemo(() => {
+    const start = (validCurrentPage - 1) * pageSize;
+    return filteredQuotes.slice(start, start + pageSize);
+  }, [filteredQuotes, validCurrentPage, pageSize]);
+
+  // Contadores por Estado (Filtrados por rol)
   const counts = useMemo(() => {
-    const res = { ALL: 0, GENERADO: 0, ENVIADO: 0, APROBADO_COMERCIAL: 0, PENDIENTE_FACTURACION: 0, APROBADO: 0, RECHAZADO: 0 };
+    const res = { ALL: 0, GENERADO: 0, ENVIADO: 0, APROBADO_COMERCIAL: 0, PENDIENTE_FACTURACION: 0, APROBADO: 0, ANULADO: 0, RECHAZADO: 0 };
     quotes.forEach((q) => {
       const st = q.approvalStatus || q.state || q.status || "GENERADO";
       const isDraft = isDraftState(st);
+      const isCancelled = isCancelledState(st);
+
+      // Si es Vendedor, solo computar sus propias cotizaciones
+      if (!isAdminUser) {
+        if (!isQuoteOwnedByCurrentUser(q)) {
+          return;
+        }
+      } else {
+        if (isDraft && !isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId)) {
+          return;
+        }
+      }
       
       if (isDraft) {
-        if (isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId)) {
-          res.GENERADO++;
-        }
+        res.GENERADO++;
+      } else if (isCancelled) {
+        res.ANULADO++;
+        res.RECHAZADO++;
       } else {
         res.ALL++;
         if (["ENVIADO", "EN_PROCESO", "PENDIENTE_APROBACION"].includes(st)) res.ENVIADO++;
         else if (["APROBADO_COMERCIAL", "APROBADO_CREDITOS"].includes(st)) res.APROBADO_COMERCIAL++;
         else if (["PENDIENTE_FACTURACION", "EN_FACTURACION"].includes(st)) res.PENDIENTE_FACTURACION++;
         else if (["APROBADO", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO"].includes(st)) res.APROBADO++;
-        else if (["RECHAZADO", "ANULADO", "OBSERVADO", "EN_EDICION"].includes(st)) res.RECHAZADO++;
       }
     });
     return res;
-  }, [quotes, activeCurrentUsername, activeCurrentUserId]);
+  }, [quotes, isAdminUser, activeCurrentUsername, activeCurrentUserId]);
 
-  const renderStatusBadge = (status) => {
+  const renderStatusBadge = (status, q = null) => {
     switch (status) {
       case "GENERADO":
       case "DRAFT":
@@ -1069,22 +1222,37 @@ export function QuoteApprovalPage() {
       case "FACTURADO":
       case "PEDIDO_EMITIDO":
       case "COMPLETADO":
-      case "APROBADO":
+      case "APROBADO": {
+        const hasSap = Boolean(q?.isSapDirect || q?.sapDocNum || q?.DocNum || q?.totals?.DocNum || q?.totals?.sapDocNum);
+        if (hasSap) {
+          return (
+            <Badge bg="#dcfce7" color="#166534" border="1.5px solid #bbf7d0" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
+              🔒 4. Pedido Emitido SAP ✓
+            </Badge>
+          );
+        }
         return (
-          <Badge bg="#dcfce7" color="#166534" border="1.5px solid #bbf7d0" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
-            4. Pedido Emitido ✓
+          <Badge bg="#dcfce7" color="#15803d" border="1.5px solid #86efac" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
+            ✅ 4. Pedido Aprobado
+          </Badge>
+        );
+      }
+      case "ANULADO":
+        return (
+          <Badge bg="#fef2f2" color="#b91c1c" border="1.5px solid #fca5a5" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
+            ❌ Anulado (Aplicativo)
+          </Badge>
+        );
+      case "CANCELADO":
+        return (
+          <Badge bg="#fee2e2" color="#991b1b" border="1.5px solid #f87171" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
+            🚫 Cancelado en SAP
           </Badge>
         );
       case "RECHAZADO":
         return (
           <Badge bg="#fee2e2" color="#991b1b" border="1.5px solid #fecaca" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
             Rechazado ❌
-          </Badge>
-        );
-      case "ANULADO":
-        return (
-          <Badge bg="#ffe4e6" color="#e11d48" border="1.5px solid #fda4af" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
-            Anulado ❌
           </Badge>
         );
       case "OBSERVADO":
@@ -1103,21 +1271,24 @@ export function QuoteApprovalPage() {
         return <Badge px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="800">{status}</Badge>;
     }
   };
-
   // Botones de acción por fila, con diseño ultra elegante y optimizado para móvil y escritorio
   const renderRowActions = (q, docId, status, { stack = false } = {}) => {
-    const isDraft = !status || ["GENERADO", "BORRADOR", "DRAFT", "draft"].includes(status);
+    const isDraft = !status || isDraftState(status);
     const isPendingApproval = status === "ENVIADO" || status === "EN_PROCESO" || status === "PENDIENTE_APROBACION";
     const isPendingBilling = status === "PENDIENTE_FACTURACION";
+    const isSap = isQuoteFromSap(q);
+    const isAlreadyAnulado = isCancelledState(status);
+    const isApprovedOrder = status === "APROBADO" || status === "FACTURADO" || status === "PEDIDO_EMITIDO" || status === "COMPLETADO";
+    const canShowTrashIcon = isAdminUser && !isSap && !isApprovedOrder;
 
     // ─────────────────────────────────────────────────────────────
     // VISTA ESCRITORIO (Fila de Tabla compacta, ordenada y elegante)
     // ─────────────────────────────────────────────────────────────
     if (!stack) {
       return (
-        <Flex gap={1.5} justify="flex-end" align="center" wrap="wrap">
+        <Flex gap={1.5} justify="flex-end" align="center" wrap="nowrap">
           {/* Si es Borrador: Editar y Borrar */}
-          {isDraft && (
+          {isDraft ? (
             <>
               <Button
                 size="xs"
@@ -1144,247 +1315,113 @@ export function QuoteApprovalPage() {
                 color="#dc2626"
                 _hover={{ bg: "#fee2e2" }}
                 icon={<Trash2 className="w-3.5 h-3.5" />}
-                onClick={() => setDeleteConfirmDoc({ docId, status })}
+                onClick={() => setDeleteConfirmDoc({ docId, status, isDraft: true, isAlreadyAnulado: false })}
                 aria-label="Borrar borrador"
+                title="Eliminar borrador"
                 borderRadius="lg"
               />
             </>
-          )}
-
-          {/* Botón Principal: Verificar / Ver Detalle */}
-          {!isDraft && (
-            <Button
-              size="xs"
-              h="32px"
-              bg={isAdminUser && (isPendingApproval || isPendingBilling) ? "#0f766e" : "white"}
-              color={isAdminUser && (isPendingApproval || isPendingBilling) ? "white" : "#334155"}
-              variant={isAdminUser && (isPendingApproval || isPendingBilling) ? "solid" : "outline"}
-              borderColor="#cbd5e1"
-              _hover={
-                isAdminUser && (isPendingApproval || isPendingBilling)
-                  ? { bg: "#115e59", transform: "translateY(-1px)", boxShadow: "0 4px 12px rgba(15,118,110,0.3)" }
-                  : { bg: "#f8fafc", borderColor: "#94a3b8", transform: "translateY(-1px)" }
-              }
-              _active={{ bg: isAdminUser ? "#134e4a" : "#f1f5f9" }}
-              leftIcon={<Eye className="w-3.5 h-3.5" />}
-              onClick={() => {
-                markAsViewedByAdmin(q);
-                setSelectedQuote(q);
-                setIsDetailOpen(true);
-              }}
-              fontWeight="700"
-              borderRadius="lg"
-              px={3}
-              boxShadow="xs"
-            >
-              {isAdminUser && (isPendingApproval || isPendingBilling) ? "Verificar" : "Vista"}
-            </Button>
-          )}
-
-          {/* Botón PDF */}
-          <Button
-            size="xs"
-            h="32px"
-            variant="outline"
-            borderColor="#e2e8f0"
-            color="#0f766e"
-            bg="#f0fdfa"
-            _hover={{ bg: "#ccfbf1", borderColor: "#5eead4", transform: "translateY(-1px)" }}
-            leftIcon={<FileText className="w-3.5 h-3.5 text-teal-600" />}
-            onClick={() => {
-              markAsViewedByAdmin(q);
-              setPdfQuote(q);
-            }}
-            fontWeight="700"
-            borderRadius="lg"
-            px={2.5}
-          >
-            PDF
-          </Button>
-
-          {/* Acciones de Validación para Administrador */}
-          {isPendingApproval && (
-            isAdminUser ? (
-              <>
-                <Button
-                  size="xs"
-                  h="32px"
-                  bg="#16a34a"
-                  color="white"
-                  _hover={{ bg: "#15803d", transform: "translateY(-1px)", boxShadow: "0 2px 8px rgba(22,163,74,0.3)" }}
-                  _active={{ bg: "#166534" }}
-                  leftIcon={<Check className="w-3.5 h-3.5 stroke-[2.5]" />}
-                  onClick={() => handleUpdateStatus(docId, "APROBADO_COMERCIAL")}
-                  fontWeight="700"
-                  borderRadius="lg"
-                  px={3}
-                  boxShadow="xs"
-                >
-                  Aprobar
-                </Button>
-                <Button
-                  size="xs"
-                  h="32px"
-                  variant="outline"
-                  borderColor="#fde68a"
-                  bg="#fffbeb"
-                  color="#b45309"
-                  _hover={{ bg: "#fef3c7", borderColor: "#fcd34d", transform: "translateY(-1px)" }}
-                  leftIcon={<MessageSquare className="w-3.5 h-3.5" />}
-                  onClick={() => handleObserveQuote(q)}
-                  fontWeight="700"
-                  borderRadius="lg"
-                  px={2.5}
-                >
-                  Observar
-                </Button>
-                <Button
-                  size="xs"
-                  h="32px"
-                  variant="outline"
-                  borderColor="#fecdd3"
-                  bg="#fff1f2"
-                  color="#e11d48"
-                  _hover={{ bg: "#ffe4e6", borderColor: "#fda4af", transform: "translateY(-1px)" }}
-                  leftIcon={<X className="w-3.5 h-3.5 stroke-[2.5]" />}
-                  onClick={() => handleUpdateStatus(docId, "RECHAZADO")}
-                  fontWeight="700"
-                  borderRadius="lg"
-                  px={2.5}
-                >
-                  Rechazar
-                </Button>
-              </>
-            ) : (
-              <>
-                {/* Vendedor: Botón Retirar si aún no fue abierta */}
-                {!q.viewedByAdmin && (
-                  <Button
-                    size="xs"
-                    h="32px"
-                    variant="outline"
-                    borderColor="#fdba74"
-                    color="#c2410c"
-                    bg="#fff7ed"
-                    _hover={{ bg: "#ffedd5", borderColor: "#fb923c" }}
-                    leftIcon={<Undo2 className="w-3.5 h-3.5" />}
-                    onClick={() => handleRecallQuote(q)}
-                    fontWeight="700"
-                    borderRadius="lg"
-                    px={2.5}
-                  >
-                    Retirar
-                  </Button>
-                )}
-              </>
-            )
-          )}
-
-          {/* Generar Pedido si está aprobado comercialmente */}
-          {status === "APROBADO_COMERCIAL" && isAdminUser && (
-            <Button
-              size="xs"
-              h="32px"
-              bg="#d97706"
-              color="white"
-              _hover={{ bg: "#b45309", transform: "translateY(-1px)", boxShadow: "0 2px 8px rgba(217,119,6,0.3)" }}
-              leftIcon={<FileCheck2 className="w-3.5 h-3.5" />}
-              onClick={() => handleLoadQuote(q)}
-              fontWeight="700"
-              borderRadius="lg"
-              px={3}
-              boxShadow="xs"
-            >
-              Generar Pedido
-            </Button>
-          )}
-
-          {/* Emitir Pedido si está en PENDIENTE_FACTURACION */}
-          {isPendingBilling && isAdminUser && (
+          ) : (
             <>
+              {/* Botón Principal: Verificar / Ver Detalle */}
               <Button
                 size="xs"
                 h="32px"
-                bg="#16a34a"
-                color="white"
-                _hover={{ bg: "#15803d", transform: "translateY(-1px)", boxShadow: "0 2px 8px rgba(22,163,74,0.3)" }}
-                leftIcon={<Check className="w-3.5 h-3.5 stroke-[2.5]" />}
-                onClick={() => handleUpdateStatus(docId, "APROBADO")}
+                bg={isAdminUser && (isPendingApproval || isPendingBilling) ? "#0f766e" : "white"}
+                color={isAdminUser && (isPendingApproval || isPendingBilling) ? "white" : "#334155"}
+                variant={isAdminUser && (isPendingApproval || isPendingBilling) ? "solid" : "outline"}
+                borderColor="#cbd5e1"
+                _hover={
+                  isAdminUser && (isPendingApproval || isPendingBilling)
+                    ? { bg: "#115e59", transform: "translateY(-1px)", boxShadow: "0 4px 12px rgba(15,118,110,0.3)" }
+                    : { bg: "#f8fafc", borderColor: "#94a3b8", transform: "translateY(-1px)" }
+                }
+                _active={{ bg: isAdminUser ? "#134e4a" : "#f1f5f9" }}
+                leftIcon={<Eye className="w-3.5 h-3.5" />}
+                onClick={() => {
+                  markAsViewedByAdmin(q);
+                  setSelectedQuote(q);
+                  setIsDetailOpen(true);
+                }}
                 fontWeight="700"
                 borderRadius="lg"
                 px={3}
                 boxShadow="xs"
               >
-                Emitir Pedido
+                {isAdminUser && (isPendingApproval || isPendingBilling) ? "Verificar" : "Vista"}
               </Button>
+
+              {/* Botón PDF */}
               <Button
                 size="xs"
                 h="32px"
                 variant="outline"
-                borderColor="#fecdd3"
-                bg="#fff1f2"
-                color="#e11d48"
-                _hover={{ bg: "#ffe4e6", borderColor: "#fda4af" }}
-                leftIcon={<X className="w-3.5 h-3.5 stroke-[2.5]" />}
-                onClick={() => handleUpdateStatus(docId, "RECHAZADO")}
+                borderColor="#e2e8f0"
+                color="#0f766e"
+                bg="#f0fdfa"
+                _hover={{ bg: "#ccfbf1", borderColor: "#5eead4", transform: "translateY(-1px)" }}
+                leftIcon={<FileText className="w-3.5 h-3.5 text-teal-600" />}
+                onClick={() => {
+                  markAsViewedByAdmin(q);
+                  setPdfQuote(q);
+                }}
                 fontWeight="700"
                 borderRadius="lg"
                 px={2.5}
               >
-                Rechazar
+                PDF
               </Button>
+
+              {/* Vendedor: Botón Retirar si aún no fue abierta por el admin */}
+              {!isAdminUser && isPendingApproval && !q.viewedByAdmin && (
+                <Button
+                  size="xs"
+                  h="32px"
+                  variant="outline"
+                  borderColor="#fdba74"
+                  color="#c2410c"
+                  bg="#fff7ed"
+                  _hover={{ bg: "#ffedd5", borderColor: "#fb923c" }}
+                  leftIcon={<Undo2 className="w-3.5 h-3.5" />}
+                  onClick={() => handleRecallQuote(q)}
+                  fontWeight="700"
+                  borderRadius="lg"
+                  px={2.5}
+                >
+                  Retirar
+                </Button>
+              )}
+
+              {/* Administrador: Solo cotizaciones del aplicativo en validación o anuladas se pueden anular o eliminar */}
+              {canShowTrashIcon && (
+                <IconButton
+                  size="xs"
+                  h="32px"
+                  w="32px"
+                  variant="ghost"
+                  colorScheme="red"
+                  color="#dc2626"
+                  _hover={{ bg: "#fee2e2" }}
+                  icon={<Trash2 className="w-3.5 h-3.5" />}
+                  onClick={() => setDeleteConfirmDoc({ docId, status, isDraft: false, isAlreadyAnulado })}
+                  aria-label={isAlreadyAnulado ? "Eliminar definitivamente" : "Anular cotización"}
+                  title={isAlreadyAnulado ? "Eliminar cotización definitivamente del sistema" : "Anular cotización del aplicativo"}
+                  borderRadius="lg"
+                />
+              )}
             </>
-          )}
-
-          {/* Vendedor: Corregir si fue observado o está en edición */}
-          {(status === "OBSERVADO" || status === "EN_EDICION") && !isAdminUser && (
-            <Button
-              size="xs"
-              h="32px"
-              bg="#ea580c"
-              color="white"
-              _hover={{ bg: "#c2410c", transform: "translateY(-1px)", boxShadow: "0 2px 8px rgba(234,88,12,0.3)" }}
-              leftIcon={<Edit3 className="w-3.5 h-3.5" />}
-              onClick={() => handleLoadQuote(q)}
-              fontWeight="700"
-              borderRadius="lg"
-              px={3}
-              boxShadow="xs"
-            >
-              Corregir y Reenviar
-            </Button>
-          )}
-
-          {/* Anular / Borrar Admin */}
-          {isAdminUser && !isDraft && (
-            <Tooltip label={status === "ANULADO" ? "Eliminar del historial" : "Anular cotización"} hasArrow>
-              <IconButton
-                size="xs"
-                h="32px"
-                w="32px"
-                aria-label={status === "ANULADO" ? "Eliminar" : "Anular"}
-                icon={<Trash2 className="w-3.5 h-3.5" />}
-                colorScheme="red"
-                variant="ghost"
-                color="#94a3b8"
-                _hover={{ color: "#ef4444", bg: "#fef2f2" }}
-                onClick={() => handleDeleteQuote(docId, status)}
-                borderRadius="lg"
-              />
-            </Tooltip>
           )}
         </Flex>
       );
     }
 
     // ─────────────────────────────────────────────────────────────
-    // VISTA MÓVIL (Tarjetas con Grid táctil de 40px, espaciado perfecto)
+    // VISTA MÓVIL (Tarjeta con botones de toque amplio)
     // ─────────────────────────────────────────────────────────────
     return (
-      <VStack align="stretch" spacing={2} w="full" pt={1}>
-        {/* Fila 1 Principal: Acción Primaria a Ancho Completo */}
+      <VStack spacing={2} align="stretch" w="full">
         {isDraft ? (
-          <Grid templateColumns="1fr 1fr" gap={2}>
+          <Grid templateColumns="1fr auto" gap={2} w="full">
             <Button
               size="sm"
               h="40px"
@@ -1393,58 +1430,52 @@ export function QuoteApprovalPage() {
               _hover={{ bg: "#1d4ed8" }}
               leftIcon={<Edit3 className="w-4 h-4" />}
               onClick={() => handleLoadQuote(q)}
-              fontWeight="800"
+              fontWeight="900"
               borderRadius="xl"
             >
               Editar Borrador
             </Button>
+            <IconButton
+              size="sm"
+              h="40px"
+              w="40px"
+              variant="outline"
+              borderColor="#fca5a5"
+              color="#dc2626"
+              bg="#fef2f2"
+              icon={<Trash2 className="w-4 h-4" />}
+              onClick={() => setDeleteConfirmDoc({ docId, status, isDraft: true, isAlreadyAnulado: false })}
+              aria-label="Borrar borrador"
+              borderRadius="xl"
+            />
+          </Grid>
+        ) : (
+          <Grid templateColumns={canShowTrashIcon ? "1fr 1fr auto" : "1fr 1fr"} gap={2} w="full">
+            <Button
+              size="sm"
+              h="40px"
+              bg={isAdminUser && (isPendingApproval || isPendingBilling) ? "#0f766e" : "white"}
+              color={isAdminUser && (isPendingApproval || isPendingBilling) ? "white" : "#334155"}
+              variant={isAdminUser && (isPendingApproval || isPendingBilling) ? "solid" : "outline"}
+              borderColor="#cbd5e1"
+              leftIcon={<Eye className="w-4 h-4" />}
+              onClick={() => {
+                markAsViewedByAdmin(q);
+                setSelectedQuote(q);
+                setIsDetailOpen(true);
+              }}
+              fontWeight="800"
+              borderRadius="xl"
+              boxShadow="xs"
+            >
+              {isAdminUser && (isPendingApproval || isPendingBilling) ? "Verificar" : "Vista"}
+            </Button>
+
             <Button
               size="sm"
               h="40px"
               variant="outline"
-              colorScheme="red"
-              borderColor="#fecaca"
-              color="#dc2626"
-              bg="#fff5f5"
-              _hover={{ bg: "#fee2e2" }}
-              leftIcon={<Trash2 className="w-4 h-4" />}
-              onClick={() => setDeleteConfirmDoc({ docId, status })}
-              fontWeight="800"
-              borderRadius="xl"
-            >
-              Borrar
-            </Button>
-          </Grid>
-        ) : (
-          <Button
-            size="sm"
-            h="42px"
-            bg={isAdminUser && (isPendingApproval || isPendingBilling) ? "#0f766e" : "#1e293b"}
-            color="white"
-            _hover={{ bg: isAdminUser ? "#115e59" : "#0f172a" }}
-            leftIcon={<Eye className="w-4 h-4 stroke-[2.5]" />}
-            onClick={() => {
-              markAsViewedByAdmin(q);
-              setSelectedQuote(q);
-              setIsDetailOpen(true);
-            }}
-            fontWeight="900"
-            borderRadius="xl"
-            boxShadow="sm"
-            w="full"
-          >
-            {isAdminUser && (isPendingApproval || isPendingBilling) ? "Verificar y Auditar Cotización" : "Ver Detalle Completo"}
-          </Button>
-        )}
-
-        {/* Fila 2: Acciones Secundarias y PDF */}
-        {!isDraft && (
-          <Grid templateColumns={isPendingApproval && isAdminUser ? "1fr 1fr" : "1fr"} gap={2}>
-            <Button
-              size="sm"
-              h="38px"
-              variant="outline"
-              borderColor="#cbd5e1"
+              borderColor="#e2e8f0"
               color="#0f766e"
               bg="#f0fdfa"
               _hover={{ bg: "#ccfbf1" }}
@@ -1453,64 +1484,29 @@ export function QuoteApprovalPage() {
                 markAsViewedByAdmin(q);
                 setPdfQuote(q);
               }}
-              fontWeight="700"
-              borderRadius="xl"
-            >
-              Ver / Imprimir PDF
-            </Button>
-
-            {isPendingApproval && isAdminUser && (
-              <Button
-                size="sm"
-                h="38px"
-                variant="outline"
-                borderColor="#fde68a"
-                bg="#fffbeb"
-                color="#b45309"
-                _hover={{ bg: "#fef3c7" }}
-                leftIcon={<MessageSquare className="w-4 h-4" />}
-                onClick={() => handleObserveQuote(q)}
-                fontWeight="800"
-                borderRadius="xl"
-              >
-                Observar
-              </Button>
-            )}
-          </Grid>
-        )}
-
-        {/* Fila 3: Aprobación y Rechazo para Administrador */}
-        {isPendingApproval && isAdminUser && (
-          <Grid templateColumns="1.2fr 1fr" gap={2}>
-            <Button
-              size="sm"
-              h="40px"
-              bg="#16a34a"
-              color="white"
-              _hover={{ bg: "#15803d" }}
-              leftIcon={<Check className="w-4 h-4 stroke-[2.5]" />}
-              onClick={() => handleUpdateStatus(docId, "APROBADO_COMERCIAL")}
-              fontWeight="900"
-              borderRadius="xl"
-              boxShadow="sm"
-            >
-              Aprobar
-            </Button>
-            <Button
-              size="sm"
-              h="40px"
-              variant="outline"
-              borderColor="#fecdd3"
-              bg="#fff1f2"
-              color="#e11d48"
-              _hover={{ bg: "#ffe4e6" }}
-              leftIcon={<X className="w-4 h-4 stroke-[2.5]" />}
-              onClick={() => handleUpdateStatus(docId, "RECHAZADO")}
               fontWeight="800"
               borderRadius="xl"
             >
-              Rechazar
+              PDF
             </Button>
+
+            {canShowTrashIcon && (
+              <IconButton
+                size="sm"
+                h="40px"
+                w="40px"
+                variant="outline"
+                borderColor="#fca5a5"
+                color="#dc2626"
+                bg="#fef2f2"
+                _hover={{ bg: "#fee2e2" }}
+                icon={<Trash2 className="w-4 h-4" />}
+                onClick={() => setDeleteConfirmDoc({ docId, status, isDraft: false, isAlreadyAnulado })}
+                aria-label={isAlreadyAnulado ? "Eliminar definitivamente" : "Anular cotización"}
+                title={isAlreadyAnulado ? "Eliminar cotización definitivamente del sistema" : "Anular cotización del aplicativo"}
+                borderRadius="xl"
+              />
+            )}
           </Grid>
         )}
 
@@ -1533,97 +1529,6 @@ export function QuoteApprovalPage() {
             Retirar y Corregir Cotización
           </Button>
         )}
-
-        {/* Móvil: Generar Pedido */}
-        {status === "APROBADO_COMERCIAL" && isAdminUser && (
-          <Button
-            size="sm"
-            h="40px"
-            bg="#d97706"
-            color="white"
-            _hover={{ bg: "#b45309" }}
-            leftIcon={<FileCheck2 className="w-4 h-4" />}
-            onClick={() => handleLoadQuote(q)}
-            fontWeight="900"
-            borderRadius="xl"
-            w="full"
-            boxShadow="sm"
-          >
-            Generar Pedido Oficial
-          </Button>
-        )}
-
-        {/* Móvil: Emitir Pedido en PENDIENTE_FACTURACION */}
-        {isPendingBilling && isAdminUser && (
-          <Grid templateColumns="1.2fr 1fr" gap={2}>
-            <Button
-              size="sm"
-              h="40px"
-              bg="#16a34a"
-              color="white"
-              _hover={{ bg: "#15803d" }}
-              leftIcon={<Check className="w-4 h-4 stroke-[2.5]" />}
-              onClick={() => handleUpdateStatus(docId, "APROBADO")}
-              fontWeight="900"
-              borderRadius="xl"
-              boxShadow="sm"
-            >
-              Emitir Pedido
-            </Button>
-            <Button
-              size="sm"
-              h="40px"
-              variant="outline"
-              borderColor="#fecdd3"
-              bg="#fff1f2"
-              color="#e11d48"
-              _hover={{ bg: "#ffe4e6" }}
-              leftIcon={<X className="w-4 h-4 stroke-[2.5]" />}
-              onClick={() => handleUpdateStatus(docId, "RECHAZADO")}
-              fontWeight="800"
-              borderRadius="xl"
-            >
-              Rechazar
-            </Button>
-          </Grid>
-        )}
-
-        {/* Móvil: Corregir y Reenviar */}
-        {(status === "OBSERVADO" || status === "EN_EDICION") && !isAdminUser && (
-          <Button
-            size="sm"
-            h="40px"
-            bg="#ea580c"
-            color="white"
-            _hover={{ bg: "#c2410c" }}
-            leftIcon={<Edit3 className="w-4 h-4" />}
-            onClick={() => handleLoadQuote(q)}
-            fontWeight="900"
-            borderRadius="xl"
-            w="full"
-            boxShadow="sm"
-          >
-            Corregir y Reenviar
-          </Button>
-        )}
-
-        {/* Móvil: Anular */}
-        {isAdminUser && !isDraft && (
-          <Button
-            size="xs"
-            h="32px"
-            variant="ghost"
-            colorScheme="red"
-            color="#94a3b8"
-            _hover={{ color: "#ef4444", bg: "#fef2f2" }}
-            leftIcon={<Trash2 className="w-3.5 h-3.5" />}
-            onClick={() => handleDeleteQuote(docId, status)}
-            borderRadius="lg"
-            fontWeight="600"
-          >
-            {status === "ANULADO" ? "Eliminar permanentemente" : "Anular cotización"}
-          </Button>
-        )}
       </VStack>
     );
   };
@@ -1636,13 +1541,14 @@ export function QuoteApprovalPage() {
           <Text fontSize="xs" fontWeight="900" color="#475569" mb={3} textTransform="uppercase" letterSpacing="wider">
             Filtrar Cotizaciones por Fase Comercial (Toca para seleccionar):
           </Text>
-          <Grid templateColumns={{ base: "repeat(2, 1fr)", md: "repeat(3, 1fr)", lg: "repeat(6, 1fr)" }} gap={3}>
+          <Grid templateColumns={{ base: "repeat(2, 1fr)", md: "repeat(3, 1fr)", lg: "repeat(7, 1fr)" }} gap={3}>
             {[
               { id: "ALL", label: "Todas", count: counts.ALL, color: "#475569", bgSelected: "#475569", bgGlow: "#f1f5f9" },
               { id: "ENVIADO", label: "1. Pend. Aprobación", count: counts.ENVIADO, color: "#0284c7", bgSelected: "#0284c7", bgGlow: "#e0f2fe" },
               { id: "APROBADO_COMERCIAL", label: "2. Cotizaciones Aprobadas", count: counts.APROBADO_COMERCIAL, color: "#16a34a", bgSelected: "#16a34a", bgGlow: "#dcfce7" },
               { id: "PENDIENTE_FACTURACION", label: "3. Pnd. Facturación", count: counts.PENDIENTE_FACTURACION, color: "#7c3aed", bgSelected: "#7c3aed", bgGlow: "#f3e8ff" },
-              { id: "APROBADO", label: "4. Pedidos Emitidos", count: counts.APROBADO, color: "#16a34a", bgSelected: "#16a34a", bgGlow: "#dcfce7" },
+              { id: "APROBADO", label: "4. Pedidos Aprobados", count: counts.APROBADO, color: "#16a34a", bgSelected: "#16a34a", bgGlow: "#dcfce7" },
+              { id: "ANULADO", label: "Anuladas / Canceladas", count: counts.ANULADO, color: "#dc2626", bgSelected: "#dc2626", bgGlow: "#fee2e2" },
               { id: "GENERADO", label: "Borradores", isTrash: true, count: counts.GENERADO, color: "#dc2626", bgSelected: "#dc2626", bgGlow: "#fef2f2" }
             ].map((card) => {
               const isSelected = selectedTab === card.id;
@@ -1691,12 +1597,12 @@ export function QuoteApprovalPage() {
             </Text>
           </Box>
           <HStack spacing={3}>
-            <InputGroup size="md" maxW={{ base: "full", md: "340px" }}>
+            <InputGroup size="md" maxW={{ base: "full", md: "380px" }}>
               <InputLeftElement pointerEvents="none">
                 <Search className="w-4 h-4 text-gray-500" />
               </InputLeftElement>
               <Input
-                placeholder="Buscar cliente, RUC o N° cotización..."
+                placeholder="Buscar cliente, RUC, N° cotización o SAP (#...)"
                 borderRadius="xl"
                 fontSize="sm"
                 fontWeight="700"
@@ -1718,26 +1624,6 @@ export function QuoteApprovalPage() {
                 _hover={{ bg: "emerald.50", borderColor: "emerald.300" }}
               />
             </Tooltip>
-            {/* Solo Enrique (Admin) puede limpiar el historial completo */}
-            {isAdminUser && (
-              <Tooltip label="Solo el Administrador puede limpiar el historial completo">
-                <Button
-                  size="md"
-                  leftIcon={<Trash2 className="w-4 h-4 text-red-600" />}
-                  onClick={handleClearAll}
-                  colorScheme="red"
-                  variant="outline"
-                  borderColor="red.200"
-                  bg="red.50"
-                  _hover={{ bg: "red.100" }}
-                  borderRadius="xl"
-                  fontWeight="800"
-                  fontSize="xs"
-                >
-                  Limpiar Todo
-                </Button>
-              </Tooltip>
-            )}
           </HStack>
         </Flex>
 
@@ -1754,14 +1640,14 @@ export function QuoteApprovalPage() {
               </Tr>
             </Thead>
             <Tbody>
-              {filteredQuotes.length === 0 ? (
+              {paginatedQuotes.length === 0 ? (
                 <Tr>
                   <Td colSpan={5} textAlign="center" py={12} color="gray.500" fontWeight="700" fontSize="sm">
                     No se encontraron cotizaciones en este estado.
                   </Td>
                 </Tr>
               ) : (
-                filteredQuotes.map((q) => {
+                paginatedQuotes.map((q) => {
                   const docId = q.docNumber || q.id;
                   const status = q.approvalStatus || q.state || "GENERADO";
                   const clientName = q.clientName || q.client?.CardName || "Cliente No Registrado";
@@ -1773,6 +1659,7 @@ export function QuoteApprovalPage() {
                     return Math.max(max, adic);
                   }, Number(q.totals?.maxDiscount || 0));
                   const hasAdditionalDiscount = maxAdicDiscount > 0 || Boolean(q.totals?.hasDiscount);
+                  const sapDocNum = q.sapDocNum || q.DocNum || q.totals?.DocNum || q.totals?.sapDocNum || (Array.isArray(q.historyLog) ? q.historyLog.find(h => h.note && (h.note.includes("DocNum") || h.note.includes("SAP")))?.note?.match(/DocNum:?\s*#?(\d+)/i)?.[1] : null);
 
                   return (
                     <Tr key={docId} _hover={{ bg: "#f8fafc" }} borderBottom="1px solid" borderColor="#e2e8f0">
@@ -1781,6 +1668,11 @@ export function QuoteApprovalPage() {
                         <VStack align="flex-start" spacing={1}>
                           <HStack spacing={2} align="center" wrap="wrap">
                             <Text fontSize="sm" fontWeight="950" color="#0e572b" fontFamily="mono">{docId}</Text>
+                            {sapDocNum && (
+                              <Badge colorScheme="green" variant="solid" bg="#15803d" color="white" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="900" boxShadow="xs">
+                                🏛️ Oferta SAP: #{sapDocNum}
+                              </Badge>
+                            )}
                             {q.opNum && (
                               <Badge colorScheme="purple" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="800">
                                 VOUCHER: {q.opNum}
@@ -1821,7 +1713,7 @@ export function QuoteApprovalPage() {
                       {/* Píldora de Estado */}
                       <Td textAlign="center" py={3}>
                         <Flex justify="center">
-                          {renderStatusBadge(status)}
+                          {renderStatusBadge(status, q)}
                         </Flex>
                       </Td>
 
@@ -1841,25 +1733,60 @@ export function QuoteApprovalPage() {
 
         {/* VISTA DE TARJETAS (solo móvil / tablet <lg) */}
         <VStack display={{ base: "flex", lg: "none" }} align="stretch" spacing={3}>
-          {filteredQuotes.length === 0 ? (
+          {paginatedQuotes.length === 0 ? (
             <Box bg="white" borderRadius="2xl" border="1.5px solid" borderColor="#cbd5e1" p={8} textAlign="center" color="gray.500" fontWeight="700" fontSize="sm">
               No se encontraron cotizaciones en este estado.
             </Box>
           ) : (
-            filteredQuotes.map((q) => {
+            paginatedQuotes.map((q) => {
               const docId = q.docNumber || q.id;
               const status = q.approvalStatus || q.state || "GENERADO";
               const clientName = q.clientName || q.client?.CardName || "Cliente No Registrado";
               const grandTotalUSD = getQuoteTotalUSD(q);
 
+              const quoteProducts = q.products || q.items || q.totals?.products || q.totals?.normalizedProducts || [];
+              const maxAdicDiscount = quoteProducts.reduce((max, it) => {
+                const adic = Number(it.lineDiscount ?? it.LineDiscount ?? 0);
+                return Math.max(max, adic);
+              }, Number(q.totals?.maxDiscount || 0));
+              const hasAdditionalDiscount = maxAdicDiscount > 0 || Boolean(q.totals?.hasDiscount);
+              const sapDocNum = q.sapDocNum || q.DocNum || q.totals?.DocNum || q.totals?.sapDocNum || (Array.isArray(q.historyLog) ? q.historyLog.find(h => h.note && (h.note.includes("DocNum") || h.note.includes("SAP")))?.note?.match(/DocNum:?\s*#?(\d+)/i)?.[1] : null);
+
               return (
                 <Box key={docId} bg="white" borderRadius="2xl" border="1.5px solid" borderColor="#cbd5e1" boxShadow="sm" p={4}>
                   <VStack align="stretch" spacing={3}>
                     <Flex justify="space-between" align="flex-start" gap={2} wrap="wrap">
-                      <Text fontSize="sm" fontWeight="950" color="#0e572b" fontFamily="mono">{docId}</Text>
-                      {renderStatusBadge(status)}
+                      <HStack spacing={1.5} align="center" wrap="wrap">
+                        <Text fontSize="sm" fontWeight="950" color="#0e572b" fontFamily="mono">{docId}</Text>
+                        {sapDocNum && (
+                          <Badge colorScheme="green" variant="solid" bg="#15803d" color="white" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="900" boxShadow="xs">
+                            🏛️ Oferta SAP: #{sapDocNum}
+                          </Badge>
+                        )}
+                      </HStack>
+                      {renderStatusBadge(status, q)}
                     </Flex>
                     <Text fontWeight="900" color="#0f172a" fontSize="md">{clientName}</Text>
+                    <HStack spacing={2} wrap="wrap">
+                      <Badge bg="#f1f5f9" color="#475569" fontSize="10px" px={2} py={0.5} borderRadius="md" fontWeight="700">
+                        Vend: {q.sellerName || "Vendedor Autorizado"}
+                      </Badge>
+                      {q.opNum && (
+                        <Badge colorScheme="purple" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="800">
+                          VOUCHER: {q.opNum}
+                        </Badge>
+                      )}
+                      {hasAdditionalDiscount && (
+                        <Badge colorScheme="purple" variant="solid" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="900" boxShadow="xs">
+                          ⚡ DESCUENTO ADICIONAL
+                        </Badge>
+                      )}
+                      {q.items?.some(i => i.stock === 0) && (
+                        <Badge colorScheme="red" variant="solid" fontSize="9px" px={1.5} py={0.5} borderRadius="md" fontWeight="900">
+                          ⚠️ AGOTADOS
+                        </Badge>
+                      )}
+                    </HStack>
                     <Flex justify="space-between" align="center" bg="#f8fafc" borderRadius="lg" px={3} py={2} border="1px solid" borderColor="#e2e8f0">
                       <Box>
                         <Text fontSize="10px" fontWeight="700" color="gray.500" textTransform="uppercase">Fecha</Text>
@@ -1879,6 +1806,113 @@ export function QuoteApprovalPage() {
             })
           )}
         </VStack>
+
+        {/* BARRA DE PAGINACIÓN Y CONTROL DE VISTA */}
+        {filteredQuotes.length > 0 && (
+          <Flex
+            direction={{ base: "column", md: "row" }}
+            justify="space-between"
+            align="center"
+            gap={3}
+            bg="white"
+            p={3.5}
+            borderRadius="2xl"
+            border="1.5px solid"
+            borderColor="#cbd5e1"
+            boxShadow="xs"
+            w="full"
+          >
+            {/* Información del rango mostrado */}
+            <HStack spacing={2} align="center" wrap="wrap">
+              <Text fontSize="xs" fontWeight="700" color="gray.600">
+                Mostrando <Text as="span" fontWeight="900" color="gray.900">{(validCurrentPage - 1) * pageSize + 1}</Text> -{" "}
+                <Text as="span" fontWeight="900" color="gray.900">{Math.min(validCurrentPage * pageSize, totalItems)}</Text> de{" "}
+                <Text as="span" fontWeight="900" color="#0e572b">{totalItems}</Text> cotizaciones
+              </Text>
+
+              {/* Selector de tamaño de página */}
+              <HStack spacing={1} ml={{ base: 0, md: 3 }}>
+                <Text fontSize="11px" fontWeight="800" color="gray.500" textTransform="uppercase">
+                  Por pág:
+                </Text>
+                {[10, 20, 50].map((size) => (
+                  <Button
+                    key={size}
+                    size="xs"
+                    h="26px"
+                    minW="32px"
+                    variant={pageSize === size ? "solid" : "outline"}
+                    colorScheme={pageSize === size ? "whatsapp" : "gray"}
+                    bg={pageSize === size ? "#0e572b" : "white"}
+                    color={pageSize === size ? "white" : "gray.700"}
+                    borderColor={pageSize === size ? "#0e572b" : "gray.300"}
+                    _hover={{ bg: pageSize === size ? "#0b4623" : "gray.50" }}
+                    onClick={() => setPageSize(size)}
+                    fontWeight="800"
+                    borderRadius="md"
+                  >
+                    {size}
+                  </Button>
+                ))}
+              </HStack>
+            </HStack>
+
+            {/* Botones de navegación de página */}
+            <HStack spacing={1.5} align="center">
+              <IconButton
+                icon={<ChevronsLeft className="w-4 h-4" />}
+                size="sm"
+                variant="outline"
+                borderColor="gray.300"
+                isDisabled={validCurrentPage <= 1}
+                onClick={() => setCurrentPage(1)}
+                aria-label="Primera página"
+                borderRadius="lg"
+                _hover={{ bg: "gray.50" }}
+              />
+              <IconButton
+                icon={<ChevronLeft className="w-4 h-4" />}
+                size="sm"
+                variant="outline"
+                borderColor="gray.300"
+                isDisabled={validCurrentPage <= 1}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                aria-label="Página anterior"
+                borderRadius="lg"
+                _hover={{ bg: "gray.50" }}
+              />
+
+              <Box px={3} py={1} bg="#f1f5f9" borderRadius="lg" border="1px solid" borderColor="#cbd5e1">
+                <Text fontSize="xs" fontWeight="900" color="gray.800">
+                  Página {validCurrentPage} de {totalPages}
+                </Text>
+              </Box>
+
+              <IconButton
+                icon={<ChevronRight className="w-4 h-4" />}
+                size="sm"
+                variant="outline"
+                borderColor="gray.300"
+                isDisabled={validCurrentPage >= totalPages}
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                aria-label="Página siguiente"
+                borderRadius="lg"
+                _hover={{ bg: "gray.50" }}
+              />
+              <IconButton
+                icon={<ChevronsRight className="w-4 h-4" />}
+                size="sm"
+                variant="outline"
+                borderColor="gray.300"
+                isDisabled={validCurrentPage >= totalPages}
+                onClick={() => setCurrentPage(totalPages)}
+                aria-label="Última página"
+                borderRadius="lg"
+                _hover={{ bg: "gray.50" }}
+              />
+            </HStack>
+          </Flex>
+        )}
       </VStack>
 
       <QuoteDetailDrawer
@@ -1901,17 +1935,36 @@ export function QuoteApprovalPage() {
         onConfirmObserve={handleConfirmObserve}
       />
 
-      {/* MODAL DE CONFIRMACIÓN DE BORRADO DE BORRADOR */}
+      {/* MODAL DE CONFIRMACIÓN DE ANULACIÓN / ELIMINACIÓN */}
       <Modal isOpen={!!deleteConfirmDoc} onClose={() => setDeleteConfirmDoc(null)} isCentered size="sm">
         <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(3px)" />
         <ModalContent borderRadius="2xl" p={2}>
           <ModalHeader fontSize="md" fontWeight="900" color="red.700" display="flex" alignItems="center" gap={2}>
-            <Trash2 className="w-5 h-5 text-red-600" /> Confirmar Borrado de Borrador
+            <Trash2 className="w-5 h-5 text-red-600" />
+            {deleteConfirmDoc?.isDraft
+              ? "Confirmar Borrado de Borrador"
+              : deleteConfirmDoc?.isAlreadyAnulado
+              ? "Confirmar Eliminación Permanente"
+              : "Confirmar Anulación de Cotización"}
           </ModalHeader>
           <ModalCloseButton />
           <ModalBody fontSize="xs" color="gray.600" fontWeight="600">
-            ¿Estás seguro de que deseas eliminar permanentemente el borrador{" "}
-            <Text as="span" fontWeight="900" color="gray.800">{deleteConfirmDoc?.docId}</Text>? Esta acción no se puede deshacer.
+            {deleteConfirmDoc?.isDraft ? (
+              <>
+                ¿Estás seguro de que deseas eliminar permanentemente el borrador{" "}
+                <Text as="span" fontWeight="900" color="gray.800">{deleteConfirmDoc?.docId}</Text>? Esta acción no se puede deshacer.
+              </>
+            ) : deleteConfirmDoc?.isAlreadyAnulado ? (
+              <>
+                ¿Estás seguro de que deseas eliminar definitivamente la cotización anulada{" "}
+                <Text as="span" fontWeight="900" color="gray.800">{deleteConfirmDoc?.docId}</Text> del sistema? Esta acción no se puede deshacer.
+              </>
+            ) : (
+              <>
+                ¿Estás seguro de que deseas anular la cotización{" "}
+                <Text as="span" fontWeight="900" color="gray.800">{deleteConfirmDoc?.docId}</Text>? Cambiará su estado a ANULADO en el aplicativo.
+              </>
+            )}
           </ModalBody>
           <ModalFooter gap={2} pt={3}>
             <Button size="sm" variant="ghost" onClick={() => setDeleteConfirmDoc(null)}>
@@ -1930,7 +1983,11 @@ export function QuoteApprovalPage() {
                 }
               }}
             >
-              🗑️ Sí, Eliminar Borrador
+              {deleteConfirmDoc?.isDraft
+                ? "🗑️ Sí, Eliminar Borrador"
+                : deleteConfirmDoc?.isAlreadyAnulado
+                ? "🗑️ Sí, Eliminar Definitivamente"
+                : "❌ Sí, Anular Cotización"}
             </Button>
           </ModalFooter>
         </ModalContent>

@@ -27,7 +27,9 @@ export function useAuthMutations() {
         endpoints: res.endpoints,
       });
 
-      navigate("/dashboard");
+      const savedRoute = localStorage.getItem("lastRoute");
+      const target = savedRoute && savedRoute !== "/" && savedRoute !== "/register" ? savedRoute : "/dashboard";
+      navigate(target);
     },
 
     onError: (error) => {

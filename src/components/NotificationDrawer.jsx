@@ -22,7 +22,7 @@ import { QuoteDetailDrawer } from "../features/quotes/components/QuoteDetailDraw
 import { useAuthStore } from "../features/auth/stores/useAuthStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNotifications } from "../features/quotes/hooks/queries/quotesQueries";
-import { markNotificationAsRead, clearNotifications, updateQuote } from "../features/quotes/services/quoteService";
+import { markNotificationAsRead, deleteNotification, clearNotifications, updateQuote } from "../features/quotes/services/quoteService";
 
 export function NotificationDrawer({ isOpen, onClose }) {
   const { username, userId, role } = useAuthStore();
@@ -71,7 +71,7 @@ export function NotificationDrawer({ isOpen, onClose }) {
       // La base de datos es la fuente de verdad absoluta
       combined = [...serverNotifs];
       
-      // Preservar solo notificaciones WebSocket muy recientes (< 30s) que aún no estén en serverNotifs
+      // Preservar solo notificaciones WebSocket muy recientes (< 15s) que aún no estén en serverNotifs
       try {
         const raw = localStorage.getItem("grupoLeon_notifications");
         const saved = raw ? JSON.parse(raw) : [];
@@ -80,9 +80,10 @@ export function NotificationDrawer({ isOpen, onClose }) {
           const serverIds = new Set(serverNotifs.map(s => String(s.id)));
           const serverQuoteIds = new Set(serverNotifs.map(s => String(s.quoteId)));
           const recentLocal = saved.filter(sn => {
+            if (sn.read) return false;
             const time = sn.createdAt || sn.timestamp ? new Date(sn.createdAt || sn.timestamp).getTime() : 0;
-            const isFresh = (now - time) < 30000;
-            return isFresh && !serverIds.has(String(sn.id)) && serverQuoteIds.has(String(sn.quoteId));
+            const isFresh = (now - time) < 15000;
+            return isFresh && !serverIds.has(String(sn.id)) && !serverQuoteIds.has(String(sn.quoteId));
           });
           combined = [...recentLocal, ...combined];
         }
@@ -137,6 +138,9 @@ export function NotificationDrawer({ isOpen, onClose }) {
         if (n.targetUsername && username) {
           return n.targetUsername.toLowerCase() !== username.toLowerCase();
         }
+        if (n.targetRole === "FACTURACION" && (role === "ADMIN" || username?.toLowerCase() === "enrique")) {
+          return false;
+        }
         if (n.targetUserId && userId) {
           return String(n.targetUserId) !== String(userId);
         }
@@ -144,27 +148,31 @@ export function NotificationDrawer({ isOpen, onClose }) {
       });
       localStorage.setItem("grupoLeon_notifications", JSON.stringify(remaining));
       window.dispatchEvent(new Event("localNotificationsUpdated"));
+      setLocalVersion(v => v + 1);
     } catch {}
   };
 
   const handleDeleteNotif = async (id, quoteId) => {
     try {
-      if (id) await markNotificationAsRead(id);
+      await deleteNotification(id, quoteId);
+      await markNotificationAsRead(id, quoteId);
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
     } catch (e) {
-      console.error("Error marking notif read:", e);
+      console.error("Error deleting notif:", e);
     }
 
     try {
       const raw = localStorage.getItem("grupoLeon_notifications");
       const all = raw ? JSON.parse(raw) : [];
       const updated = all.filter((n) => {
-        if (id && n.id === id) return false;
+        if (id && String(n.id) === String(id)) return false;
         if (quoteId && String(n.quoteId || n.id) === String(quoteId)) return false;
+        if (id && String(n.quoteId) === String(id)) return false;
         return true;
       });
       localStorage.setItem("grupoLeon_notifications", JSON.stringify(updated));
       window.dispatchEvent(new Event("localNotificationsUpdated"));
+      setLocalVersion(v => v + 1);
     } catch {}
   };
 

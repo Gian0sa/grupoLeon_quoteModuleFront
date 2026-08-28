@@ -76,7 +76,7 @@ export function ProductList() {
 
   // Búsqueda simultánea por Código, OEM y Nombre de producto
   const handleSearch = () => {
-    const trimmed = cardName.trim();
+    const trimmed = String(cardName || "").trim();
     const newStock = trimmed ? "N" : "Y";
 
     const isDifferent =
@@ -104,7 +104,10 @@ export function ProductList() {
   };
 
   // Cambio de texto con limpieza automática
-  const handleCardNameChange = (value) => {
+  const handleCardNameChange = (eOrValue) => {
+    const value = typeof eOrValue === "object" && eOrValue !== null && eOrValue.target 
+      ? eOrValue.target.value 
+      : (typeof eOrValue === "string" ? eOrValue : "");
     setCardName(value);
     if (!value) {
       const newParams = {

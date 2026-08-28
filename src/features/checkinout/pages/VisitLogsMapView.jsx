@@ -112,7 +112,11 @@ const customSelectStyles = {
 function VendorRoute({ visits, color = "#0e572b" }) {
     if (!visits || visits.length < 2) return null;
 
-    const positions = visits.map(v => [v.latitude, v.longitude]);
+    const positions = visits
+        .filter(v => v && v.latitude !== null && v.longitude !== null && !isNaN(Number(v.latitude)) && !isNaN(Number(v.longitude)) && Number(v.latitude) !== 0 && Number(v.longitude) !== 0)
+        .map(v => [Number(v.latitude), Number(v.longitude)]);
+
+    if (positions.length < 2) return null;
 
     return (
         <>
@@ -304,9 +308,11 @@ export default function VisitLogsMapView() {
         if (selectedVendor === "all" || !showVendorRoute) return null;
 
         const vendorVisits = filteredGroups
-            .filter(g => g.in)
+            .filter(g => g && g.in && g.in.latitude !== null && g.in.longitude !== null && !isNaN(Number(g.in.latitude)) && !isNaN(Number(g.in.longitude)) && Number(g.in.latitude) !== 0 && Number(g.in.longitude) !== 0)
             .map(g => ({
                 ...g.in,
+                latitude: Number(g.in.latitude),
+                longitude: Number(g.in.longitude),
                 storeName: g.storeName,
                 groupId: g.id
             }))
@@ -764,8 +770,9 @@ export default function VisitLogsMapView() {
                                     keyboard={false}
                                 >
                                     <TileLayer
-                                        url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-                                        attribution="&copy; OpenStreetMap &copy; CARTO"
+                                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                                        maxZoom={19}
                                     />
 
                                     {vendorRouteData && showVendorRoute ? (

@@ -5,6 +5,8 @@ import {
     getTransports,
     getPaymentType,
     getDeliveryForms,
+    getWarehouses,
+    getHouseBankAccounts,
     getNotifications,
 } from "../../services/quoteService"
 import { useQuery } from "@tanstack/react-query"
@@ -36,7 +38,7 @@ export const useGetQuoteById = (id) => {
         queryKey: ["quoteById", id],
         queryFn:  () => getQuoteById(id),
         enabled: !!id,
-        refetchInterval: 5000,
+        retry: false,
     })
     return { data, isLoading, error }
 }
@@ -72,7 +74,19 @@ export const useGetDeliveryForms = () => {
 }
 
 export const useGetWarehouses = () => {
-    return { warehouses: [], isLoading: false };
+    const { data, isLoading, error } = useQuery({
+        queryKey: ["warehouses"],
+        queryFn: () => getWarehouses(),
+    })
+    return { warehouses: data || [], isLoading, error };
+};
+
+export const useGetHouseBankAccounts = () => {
+    const { data, isLoading, error } = useQuery({
+        queryKey: ["houseBankAccounts"],
+        queryFn: () => getHouseBankAccounts(),
+    })
+    return { dataHouseBankAccounts: data || [], isLoading, error };
 };
 
 export const useIgvRate = () => {

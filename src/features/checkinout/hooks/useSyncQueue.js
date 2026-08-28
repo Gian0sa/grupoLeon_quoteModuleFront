@@ -28,15 +28,18 @@ export const useSyncQueue = ({ enabled = true } = {}) => {
       const count = await getQueueCount();
       setPendingCount(count);
       const items = await getQueue();
-      setQueueItems(items.sort((a, b) => a.id - b.id));
+      setQueueItems((items || []).sort((a, b) => a.id - b.id));
     } catch (error) {
-      console.error("Error refreshing queue:", error);
+      // Ignorar silenciosamente si el navegador bloquea el almacenamiento local
     }
   }, []);
 
   const syncPending = useCallback(async () => {
     if (isSyncingRef.current) return;
     if (!enabledRef.current) return;
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      return;
+    }
 
     // Se activa antes del primer await: si el montaje, el evento "online" y el
     // visibilitychange disparan syncPending() casi al mismo tiempo (típico al
@@ -45,8 +48,15 @@ export const useSyncQueue = ({ enabled = true } = {}) => {
     // donde las tres pasaban el candado y triplicaban el envío del mismo ítem.
     isSyncingRef.current = true;
 
-    const items = await getQueue();
-    if (items.length === 0) {
+    let items = [];
+    try {
+      items = await getQueue();
+    } catch (storageErr) {
+      isSyncingRef.current = false;
+      return;
+    }
+
+    if (!items || items.length === 0) {
       setPendingCount(0);
       setQueueItems([]);
       isSyncingRef.current = false;
@@ -282,20 +292,21 @@ export const useSyncQueue = ({ enabled = true } = {}) => {
   }, [refreshQueue, queryClient]);
 
   useEffect(() => {
-    // El conteo se refresca siempre (la UI puede querer mostrar pendientes),
-    // pero solo se intenta enviar cuando hay sesión.
-    refreshQueue();
+    refreshQueue().catch(() => {});
     if (!enabled) return undefined;
 
-    syncPending();
-    window.addEventListener("online", syncPending);
+    syncPending().catch(() => {});
+    const onOnline = () => {
+      syncPending().catch(() => {});
+    };
+    window.addEventListener("online", onOnline);
 
     const interval = setInterval(() => {
-      syncPending();
+      syncPending().catch(() => {});
     }, 3600000);
 
     return () => {
-      window.removeEventListener("online", syncPending);
+      window.removeEventListener("online", onOnline);
       clearInterval(interval);
     };
   }, [enabled, syncPending, refreshQueue]);

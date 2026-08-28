@@ -57,6 +57,8 @@ export function ProductPriceListSearchheader({
 
   const activeFiltersCount = [marca, tipo, subtipo].filter(Boolean).length;
 
+  const safeBrandList = Array.isArray(brandTypeSubtype) ? brandTypeSubtype : [];
+
   return (
     <TopHeaderBanner
       title="Lista de Precios de Productos"
@@ -68,90 +70,264 @@ export function ProductPriceListSearchheader({
 
         {/* Panel de vidrio: integra la búsqueda + filtros al header en 1 sola fila compacta en PC */}
         <Box p={2.5} {...HEADER_GLASS_PANEL_PROPS}>
-          <Flex direction={{ base: "column", md: "row" }} gap={2} align="center">
-            {/* Barra de búsqueda principal */}
-            <InputGroup size="md" flex="1">
-              <InputLeftElement pointerEvents="none" h="40px">
-                <Icon as={FiSearch} color="gray.400" boxSize={4} />
+          <HStack spacing={2} w="full" align="center">
+            {/* Input de Búsqueda */}
+            <InputGroup size="sm" flex="1">
+              <InputLeftElement pointerEvents="none">
+                <Icon as={FiSearch} color="gray.400" boxSize="15px" />
               </InputLeftElement>
               <Input
+                placeholder="Buscar por Código, OEM o Descripción..."
                 value={cardName}
-                placeholder="Buscar por código u OEM..."
-                bg="white"
-                color="gray.800"
-                borderRadius="full"
-                h="40px"
-                fontSize="13px"
-                fontWeight="500"
-                _placeholder={{ color: "gray.400" }}
-                onChange={(e) => onCardNameChange(e.target.value)}
+                onChange={onCardNameChange}
                 onKeyPress={handleKeyPress}
-                disabled={isLoading}
-                boxShadow="0 4px 15px rgba(0,0,0,0.05)"
+                bg="white"
+                borderRadius="xl"
+                color="gray.800"
+                h="38px"
+                fontSize={{ base: "13px", md: "13px" }}
+                fontWeight="500"
+                border="1.5px solid"
+                borderColor="gray.200"
+                _placeholder={{ color: "gray.400" }}
+                _focus={{
+                  borderColor: "emerald.500",
+                  boxShadow: "0 0 0 1px #10b981",
+                  bg: "white",
+                }}
               />
               {cardName && (
-                <InputRightElement h="40px">
+                <InputRightElement>
                   <IconButton
+                    icon={<Icon as={FiX} />}
                     size="xs"
-                    icon={<FiX />}
                     variant="ghost"
+                    color="gray.400"
+                    _hover={{ color: "gray.600" }}
+                    onClick={() => {
+                      onCardNameChange({ target: { value: "" } });
+                      onSearch();
+                    }}
                     aria-label="Limpiar búsqueda"
-                    onClick={() => onCardNameChange("")}
                   />
                 </InputRightElement>
               )}
             </InputGroup>
 
-            {/* Botón de Colapso de Filtros + Botón de Búsqueda */}
-            <Flex gap={2} align="center" w={{ base: "full", md: "auto" }}>
-              <Button
-                variant="outline"
-                onClick={onToggle}
-                w={{ base: "full", md: "auto" }}
-                rightIcon={<Icon as={isOpen ? FiChevronUp : FiChevronDown} />}
-                h="40px"
-                fontSize="12.5px"
-                fontWeight="700"
-                borderRadius="full"
-                borderColor="whiteAlpha.400"
-                _hover={{ bg: "whiteAlpha.200" }}
-                color="white"
-                bg="whiteAlpha.100"
-                backdropFilter="blur(8px)"
-                px={4}
-              >
-                <HStack spacing={2}>
-                  <Icon as={FiFilter} boxSize={3.5} />
-                  <Text whiteSpace="nowrap">Filtros</Text>
-                  {activeFiltersCount > 0 && (
-                    <Badge colorScheme="green" bg="green.400" color="white" borderRadius="full" px={2} fontSize="10px">
-                      {activeFiltersCount}
-                    </Badge>
-                  )}
-                </HStack>
-              </Button>
+            {/* Botón Buscar */}
+            <Button
+              size="sm"
+              h="38px"
+              px={{ base: 3.5, md: 5 }}
+              bg="white"
+              color="#0d522c"
+              fontWeight="800"
+              fontSize="13px"
+              borderRadius="xl"
+              boxShadow="0 2px 8px rgba(0,0,0,0.15)"
+              _hover={{ bg: "emerald.50", transform: "translateY(-1px)" }}
+              _active={{ transform: "translateY(0)" }}
+              onClick={onSearch}
+              isLoading={isLoading}
+              flexShrink={0}
+            >
+              Buscar
+            </Button>
 
-              <Button
-                onClick={onSearch}
-                isLoading={isLoading}
-                loadingText="Buscando..."
-                leftIcon={<Icon as={FiSearch} boxSize={4} />}
-                w={{ base: "full", md: "auto" }}
-                px={5}
-                h="40px"
-                fontSize="12.5px"
-                fontWeight="700"
-                colorScheme="green"
-                bg="white"
-                color="green.800"
-                borderRadius="full"
-                boxShadow="0 4px 15px rgba(0,0,0,0.15)"
-                _hover={{ bg: "gray.100", transform: "translateY(-1px)" }}
-              >
-                Buscar
-              </Button>
-            </Flex>
-          </Flex>
+            {/* Botón Filtros Avanzados (Toggle) */}
+            <Button
+              size="sm"
+              h="38px"
+              px={{ base: 2.5, md: 3.5 }}
+              variant="outline"
+              borderColor="whiteAlpha.400"
+              bg="whiteAlpha.150"
+              color="white"
+              fontWeight="700"
+              fontSize="12.5px"
+              borderRadius="xl"
+              _hover={{ bg: "whiteAlpha.300", borderColor: "whiteAlpha.600" }}
+              _active={{ bg: "whiteAlpha.400" }}
+              onClick={onToggle}
+              leftIcon={<Icon as={FiFilter} boxSize="13px" />}
+              rightIcon={
+                <Icon
+                  as={isOpen ? FiChevronUp : FiChevronDown}
+                  boxSize="13px"
+                  transition="transform 0.2s"
+                />
+              }
+              flexShrink={0}
+              position="relative"
+            >
+              <Text display={{ base: "none", sm: "inline" }}>Filtros</Text>
+              {activeFiltersCount > 0 && (
+                <Badge
+                  ml={1.5}
+                  colorScheme="green"
+                  bg="#10b981"
+                  color="white"
+                  borderRadius="full"
+                  fontSize="10px"
+                  px={1.5}
+                  py={0.2}
+                >
+                  {activeFiltersCount}
+                </Badge>
+              )}
+            </Button>
+          </HStack>
+
+          {/* Panel Desplegable de Filtros Avanzados */}
+          <Collapse in={isOpen} animateOpacity>
+            <VStack
+              spacing={3}
+              align="stretch"
+              pt={3}
+              mt={2.5}
+              borderTop="1px solid"
+              borderColor="whiteAlpha.200"
+            >
+              {/* Spinner de carga de filtros */}
+              {isLoadingBrandTypeSubtype && (
+                <HStack spacing={2} justify="center" py={1}>
+                  <Spinner size="sm" color="white" />
+                  <Text fontSize="12px" color="whiteAlpha.800">Cargando filtros...</Text>
+                </HStack>
+              )}
+
+              {/* Fila 1 - Marca y Tipo */}
+              <HStack spacing={3} w="full">
+                <Select
+                  placeholder="Marca"
+                  value={marca}
+                  onChange={(e) => {
+                    setMarca(e.target.value);
+                    setTipo("");
+                    setSubtipo("");
+                  }}
+                  bg="white"
+                  color="gray.800"
+                  borderRadius="xl"
+                  size="sm"
+                  h="36px"
+                  fontSize="12.5px"
+                  fontWeight="600"
+                  isDisabled={isLoadingBrandTypeSubtype || safeBrandList.length === 0}
+                >
+                  {safeBrandList.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </Select>
+
+                <Select
+                  placeholder="Tipo"
+                  value={tipo}
+                  onChange={(e) => {
+                    setTipo(e.target.value);
+                    setSubtipo("");
+                  }}
+                  bg="white"
+                  color="gray.800"
+                  borderRadius="xl"
+                  size="sm"
+                  h="36px"
+                  fontSize="12.5px"
+                  fontWeight="600"
+                  isDisabled={isLoadingBrandTypeSubtype}
+                >
+                  {(
+                    marca
+                      ? safeBrandList.find((m) => m.value === marca)?.tipos || []
+                      : Array.from(
+                          new Map(
+                            safeBrandList
+                              .flatMap((m) => m.tipos || [])
+                              .map((t) => [t.value, t])
+                          ).values()
+                        )
+                  ).map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </Select>
+              </HStack>
+
+              {/* Fila 2 - Subtipo y Tipo de precio */}
+              <HStack spacing={3} w="full">
+                <Select
+                  placeholder="Subtipo"
+                  value={subtipo}
+                  onChange={(e) => setSubtipo(e.target.value)}
+                  bg="white"
+                  color="gray.800"
+                  borderRadius="xl"
+                  size="sm"
+                  h="36px"
+                  fontSize="12.5px"
+                  fontWeight="600"
+                  isDisabled={isLoadingBrandTypeSubtype}
+                >
+                  {(
+                    tipo
+                      ? safeBrandList
+                          .flatMap((m) => m.tipos || [])
+                          .find((t) => t.value === tipo)?.subtipos || []
+                      : Array.from(
+                          new Map(
+                            safeBrandList
+                              .flatMap((m) => (m.tipos || []).flatMap((t) => t.subtipos || []))
+                              .map((st) => [st.value, st])
+                          ).values()
+                        )
+                  ).map((st) => (
+                    <option key={st.value} value={st.value}>
+                      {st.label}
+                    </option>
+                  ))}
+                </Select>
+
+                <Select
+                  value={tipoPrecio}
+                  onChange={(e) => setTipoPrecio(e.target.value)}
+                  bg="white"
+                  color="gray.800"
+                  borderRadius="xl"
+                  size="sm"
+                  h="36px"
+                  fontSize="12.5px"
+                  fontWeight="600"
+                >
+                  <option value="FINAL">Precio Final</option>
+                  <option value="CONTADO">Precio al contado</option>
+                  <option value="CREDITO">Precio al crédito</option>
+                </Select>
+              </HStack>
+
+              {/* Fila 3 - Limpiar filtros */}
+              <Flex justify="flex-end" align="center" pt={1}>
+                {activeFiltersCount > 0 && (
+                  <Button
+                    variant="ghost"
+                    colorScheme="whiteAlpha"
+                    size="xs"
+                    fontWeight="700"
+                    onClick={() => {
+                      setMarca("");
+                      setTipo("");
+                      setSubtipo("");
+                      setTipoPrecio("FINAL");
+                    }}
+                  >
+                    Limpiar filtros
+                  </Button>
+                )}
+              </Flex>
+            </VStack>
+          </Collapse>
         </Box>
 
         {/* Mensaje de Error si falla la carga de marcas/tipos */}
@@ -161,149 +337,6 @@ export function ProductPriceListSearchheader({
             Error al cargar filtros: {errorBrandTypeSubtype.message || 'Error desconocido'}
           </Alert>
         )}
-
-        {/* Panel Desplegable de Filtros */}
-        <Collapse in={isOpen} animateOpacity>
-          <VStack spacing={3} align="stretch" p={4} bg="blackAlpha.300" borderRadius="2xl" backdropFilter="blur(10px)" border="1px solid rgba(255,255,255,0.15)" mt={1}>
-            {isLoadingBrandTypeSubtype && (
-              <HStack justify="center" p={2}>
-                <Spinner size="sm" color="white" />
-                <Text fontSize="12px" color="whiteAlpha.800">Cargando filtros...</Text>
-              </HStack>
-            )}
-
-            {/* Fila 1 - Marca y Tipo */}
-            <HStack spacing={3} w="full">
-              <Select
-                placeholder="Marca"
-                value={marca}
-                onChange={(e) => {
-                  setMarca(e.target.value);
-                  setTipo("");
-                  setSubtipo("");
-                }}
-                bg="white"
-                color="gray.800"
-                borderRadius="xl"
-                size="sm"
-                h="36px"
-                fontSize="12.5px"
-                fontWeight="600"
-                isDisabled={isLoadingBrandTypeSubtype || !brandTypeSubtype || brandTypeSubtype.length === 0}
-              >
-                {brandTypeSubtype?.map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.label}
-                  </option>
-                ))}
-              </Select>
-
-              <Select
-                placeholder="Tipo"
-                value={tipo}
-                onChange={(e) => {
-                  setTipo(e.target.value);
-                  setSubtipo("");
-                }}
-                bg="white"
-                color="gray.800"
-                borderRadius="xl"
-                size="sm"
-                h="36px"
-                fontSize="12.5px"
-                fontWeight="600"
-                isDisabled={isLoadingBrandTypeSubtype}
-              >
-                {(
-                  marca
-                    ? brandTypeSubtype?.find((m) => m.value === marca)?.tipos
-                    : Array.from(
-                        new Map(
-                          brandTypeSubtype
-                            ?.flatMap((m) => m.tipos)
-                            ?.map((t) => [t.value, t])
-                        ).values()
-                      )
-                )?.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </Select>
-            </HStack>
-
-            {/* Fila 2 - Subtipo y Tipo de precio */}
-            <HStack spacing={3} w="full">
-              <Select
-                placeholder="Subtipo"
-                value={subtipo}
-                onChange={(e) => setSubtipo(e.target.value)}
-                bg="white"
-                color="gray.800"
-                borderRadius="xl"
-                size="sm"
-                h="36px"
-                fontSize="12.5px"
-                fontWeight="600"
-                isDisabled={isLoadingBrandTypeSubtype}
-              >
-                {(
-                  tipo
-                    ? brandTypeSubtype
-                        ?.flatMap((m) => m.tipos)
-                        ?.find((t) => t.value === tipo)?.subtipos
-                    : Array.from(
-                        new Map(
-                          brandTypeSubtype
-                            ?.flatMap((m) => m.tipos.flatMap((t) => t.subtipos))
-                            ?.map((st) => [st.value, st])
-                        ).values()
-                      )
-                )?.map((st) => (
-                  <option key={st.value} value={st.value}>
-                    {st.label}
-                  </option>
-                ))}
-              </Select>
-
-              <Select
-                value={tipoPrecio}
-                onChange={(e) => setTipoPrecio(e.target.value)}
-                bg="white"
-                color="gray.800"
-                borderRadius="xl"
-                size="sm"
-                h="36px"
-                fontSize="12.5px"
-                fontWeight="600"
-              >
-                <option value="FINAL">Precio Final</option>
-                <option value="CONTADO">Precio al contado</option>
-                <option value="CREDITO">Precio al crédito</option>
-              </Select>
-            </HStack>
-
-            {/* Fila 3 - Limpiar filtros */}
-            <Flex justify="flex-end" align="center" pt={1}>
-              {activeFiltersCount > 0 && (
-                <Button
-                  variant="ghost"
-                  colorScheme="whiteAlpha"
-                  size="xs"
-                  fontWeight="700"
-                  onClick={() => {
-                    setMarca("");
-                    setTipo("");
-                    setSubtipo("");
-                    setTipoPrecio("FINAL");
-                  }}
-                >
-                  Limpiar filtros
-                </Button>
-              )}
-            </Flex>
-          </VStack>
-        </Collapse>
       </VStack>
     </TopHeaderBanner>
   );

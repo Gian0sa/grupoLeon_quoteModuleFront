@@ -1,3 +1,4 @@
+import React, { useState, useEffect } from "react";
 import {
   Box,
   Text,
@@ -17,40 +18,11 @@ import {
 import CreatableSelect from "react-select/creatable";
 import { adaptBusinessPartner } from "../adapters/quotesAdapter";
 import { useQuoteMutations } from "../hooks/mutations/quotesMutations";
-import { DatePickerField } from "../../../components/DatePickerField";
 import Tesseract from "tesseract.js";
-import { useState } from "react";
 import { Truck, CreditCard, Paperclip, FileCheck, Upload, Shield, Receipt } from "lucide-react";
 import { SAP_TRANSPORTS_CATALOG } from "../constants/sapTransportsCatalog";
+import { DatePickerField } from "../../../components/DatePickerField";
 
-// Opciones predeterminadas de resguardo (Fallbacks B2B para boleta de campo)
-const DEFAULT_PAYMENT_TYPES = [
-  { GroupNum: "CONTADO", PymntGroup: "Contado / Transferencia Inmediata" },
-  { GroupNum: "ANTICIPADO", PymntGroup: "Anticipado / Depósito Bancario" },
-  { GroupNum: "CRED_15", PymntGroup: "Crédito 15 días" },
-  { GroupNum: "CRED_30", PymntGroup: "Crédito 30 días" },
-  { GroupNum: "CRED_45", PymntGroup: "Crédito 45 días" },
-  { GroupNum: "CRED_60", PymntGroup: "Crédito 60 días" },
-];
-
-const DEFAULT_DELIVERY_FORMS = [
-  { TrnspCode: 1, TrnspName: "RECOJO EN ALMACÉN / TIENDA" },
-  { TrnspCode: 2, TrnspName: "ENTREGA CON TRANSPORTE DE AGENCIA (PROVINCIA)" },
-  { TrnspCode: 3, TrnspName: "DESPACHO LOCAL (LIMA METROPOLITANA)" },
-];
-
-const DEFAULT_DELIVERY_POINTS = [
-  { AddressName: "ENVÍO A PROVINCIA", Street: "Lima - Cañete - San Vicente de Cañete" },
-  { AddressName: "ALMACÉN PRINCIPAL", Street: "Av. Industrial 123, Lima" },
-  { AddressName: "SUCURSAL DESTINO", Street: "Dirección de Agencia / Tienda Destino" },
-];
-
-const DEFAULT_TRANSPORTS = [
-  { Code: "00103", Name: "EMPRESA DE TRANSPORTES TRANSPORTISTAS UNIDOS S.A. (ETTUSA)", U_TQC_DIREC: "AV. NICOLAS ARRIOLA NRO. 1957 URB. SAN LUIS - LIMA / CAÑETE" },
-  { Code: "00044", Name: "SHALOM EXPRESS S.A.C.", U_TQC_DIREC: "Agencia Principal Shalom" },
-  { Code: "00033", Name: "AREQUIPA EXPRESO MARVISUR EIRL", U_TQC_DIREC: "Agencia Marvisur Carga" },
-  { Code: "00039", Name: "OLVA COURIER", U_TQC_DIREC: "Oficina Olva Express" },
-];
 export const isPickupInStoreForm = (form) => {
   if (!form) return false;
   let parsed = form;
@@ -117,6 +89,7 @@ export function NewSellTerms({
   deliveryPoints = [],
   deliveryForms = [],
   paymentTypes = [],
+  houseBankAccounts = [],
   selectedPoint,
   selectedTransport,
   selectedDeliveryForm,
@@ -143,15 +116,18 @@ export function NewSellTerms({
   setIsLetra,
   creditTerm = "",
   setCreditTerm,
+  paymentMethod = "DEPOSITO_BANCARIO",
+  setPaymentMethod,
+  bankAccount = "",
+  setBankAccount,
+  sunatOpType = "0101",
+  setSunatOpType,
   isAdmin = false,
   isDeliveryLocked = false,
   isFinanceLocked = false,
 }) {
   const { uploadImageMutation, deleteImageMutation } = useQuoteMutations();
   const [ocrText, setOcrText] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("DEPOSITO_BANCARIO");
-  const [bankAccount, setBankAccount] = useState("BCP_SOLES");
-  const [sunatOpType, setSunatOpType] = useState("0101");
   const [attachments, setAttachments] = useState([]);
 
   const extractOperationNumber = async (imageFile, setOpNum) => {
@@ -176,11 +152,31 @@ export function NewSellTerms({
 
   const clientAdapted = client ? adaptBusinessPartner(client) : null;
 
-  // Combinación inteligente de datos SAP + Opciones por defecto
-  const allPaymentTypes = paymentTypes.length > 0 ? paymentTypes : DEFAULT_PAYMENT_TYPES;
-  const allDeliveryForms = deliveryForms.length > 0 ? deliveryForms : DEFAULT_DELIVERY_FORMS;
-  const allDeliveryPoints = (deliveryPoints.length > 0 ? deliveryPoints : DEFAULT_DELIVERY_POINTS);
-  const allTransports = (transports && transports.length > 10) ? transports : SAP_TRANSPORTS_CATALOG;
+  // Datos en vivo desde la API de SAP B1 (100% dinámicos)
+  const allPaymentTypes = paymentTypes || [];
+  const allDeliveryForms = deliveryForms || [];
+  const allDeliveryPoints = deliveryPoints || [];
+  const allTransports = transports || [];
+
+  // Cuentas bancarias de banco propio oficiales desde SAP B1
+  const bankAccountOptions = (houseBankAccounts || []).map((acc) => {
+    const bank = acc.BankCode || acc.bankCode || "";
+    const name = acc.AccountName || acc.accountName || "";
+    const num = acc.Account || acc.account || acc.AccountNo || "";
+    const iban = acc.IBAN || acc.iban || "";
+    const labelParts = [];
+    if (bank) labelParts.push(bank);
+    if (name && name !== bank) labelParts.push(name);
+    if (num) labelParts.push(`Cta: ${num}`);
+    if (iban) labelParts.push(`CCI: ${iban}`);
+    const label = labelParts.join(" - ") || "Cuenta Bancaria SAP";
+    const val = num || name || String(acc.AbsoluteEntry || bank || "");
+    return {
+      value: val,
+      label: label,
+      raw: acc,
+    };
+  });
 
   // Opciones para CreatableSelect
   const paymentTypesOptions = allPaymentTypes.map((type) => {
@@ -344,6 +340,17 @@ export function NewSellTerms({
     }
   };
 
+  // Auto-detección de Tipo de Comprobante según DNI (Boleta) o RUC (Factura)
+  useEffect(() => {
+    if (isDeliveryLocked) return;
+    const doc = String(client?.FederalTaxID || client?.clientDocument || client?.documentNumber || "").trim();
+    if (doc.length === 11 && setDocumentType && !documentType) {
+      setDocumentType("FACTURA");
+    } else if (doc.length === 8 && setDocumentType && !documentType) {
+      setDocumentType("BOLETA");
+    }
+  }, [client, setDocumentType, documentType, isDeliveryLocked]);
+
   const handlePaymentTypeChange = (selected) => {
     if (!selected) {
       setSelectedPaymentType(null);
@@ -361,6 +368,31 @@ export function NewSellTerms({
       PaymentTermsGroupName: selected.label
     };
     setSelectedPaymentType(selectedObj);
+
+    // Auto-sincronización inteligente de casillas comerciales UDF al seleccionar la Condición de Pago SAP
+    if (!isDeliveryLocked) {
+      const lbl = String(selectedObj.PymntGroup || selectedObj.PaymentTermsGroupName || "").toLowerCase();
+      if (lbl.includes("contado")) {
+        if (setSaleCondition) setSaleCondition("CONTADO");
+        if (setIsLetra) setIsLetra(false);
+        if (setCreditTerm) setCreditTerm("ANTICIPADO");
+      } else {
+        if (setSaleCondition) setSaleCondition("CREDITO");
+        if (lbl.includes("letra")) {
+          if (setIsLetra) setIsLetra(true);
+        } else {
+          if (setIsLetra) setIsLetra(false);
+        }
+        const matchDays = lbl.match(/(\d+)\s*d/i);
+        if (matchDays && setCreditTerm) {
+          setCreditTerm(`${matchDays[1]} días`);
+        } else if (lbl.includes("anticipad") && setCreditTerm) {
+          setCreditTerm("Anticipado");
+        } else if (lbl.includes("inmediat") && setCreditTerm) {
+          setCreditTerm("Inmediato");
+        }
+      }
+    }
   };
 
   const handleDeliveryPointChange = (selected) => {
@@ -504,6 +536,32 @@ export function NewSellTerms({
               selectedDate={deliveryDate}
               setSelectedDate={setDeliveryDate}
               isDisabled={isDeliveryLocked}
+            />
+          </Box>
+
+          {/* ── SELECCIÓN OFICIAL DE CONDICIÓN DE PAGO SAP B1 (TABLA OCTG) ── */}
+          <Box p={3.5} bg="emerald.50" borderRadius="xl" border="1.5px solid" borderColor="emerald.200">
+            <FormLabel fontSize="xs" fontWeight="900" color="emerald.900" mb={1.5} textTransform="uppercase">
+              💳 Condición de Pago Oficial SAP B1 (Tabla OCTG) {isDeliveryLocked && "🔒"}
+            </FormLabel>
+            <CreatableSelect
+              isDisabled={isDeliveryLocked}
+              isClearable={!isDeliveryLocked}
+              options={paymentTypesOptions}
+              value={
+                selectedPaymentType
+                  ? {
+                      value: String(selectedPaymentType.GroupNum ?? selectedPaymentType.GroupNumber ?? selectedPaymentType.value ?? ""),
+                      label: selectedPaymentType.PymntGroup || selectedPaymentType.PaymentTermsGroupName || selectedPaymentType.label || "Seleccionar...",
+                    }
+                  : null
+              }
+              onChange={handlePaymentTypeChange}
+              placeholder="Selecciona la Condición de Pago oficial cargada en vivo desde SAP B1..."
+              formatCreateLabel={(inputValue) => `Escribir condición libre: "${inputValue}"`}
+              styles={{
+                container: (p) => ({ ...p, maxWidth: "100%", width: "100%", color: "black", opacity: isDeliveryLocked ? 0.75 : 1 }),
+              }}
             />
           </Box>
 
@@ -749,152 +807,204 @@ export function NewSellTerms({
             )}
           </HStack>
 
-          <VStack align="stretch" spacing={4}>
-            <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={3}>
-              <FormControl>
-                <FormLabel fontSize="xs" fontWeight="800" color="gray.700">
-                  Tipo de Pago / Condición Comercial {isFinanceLocked && "🔒"}
-                </FormLabel>
-                <CreatableSelect
-                  isDisabled={isFinanceLocked}
-                  isClearable={!isFinanceLocked}
-                  options={paymentTypesOptions}
-                  value={
-                    selectedPaymentType
-                      ? {
-                          value: String(selectedPaymentType.GroupNum ?? selectedPaymentType.GroupNumber ?? selectedPaymentType.value ?? selectedPaymentType.PymntGroup ?? selectedPaymentType.PaymentTermsGroupName ?? ''),
-                          label: selectedPaymentType.PymntGroup || selectedPaymentType.PaymentTermsGroupName || selectedPaymentType.label || String(selectedPaymentType.GroupNum ?? selectedPaymentType.GroupNumber ?? ''),
-                        }
-                      : null
-                  }
-                  onChange={handlePaymentTypeChange}
-                  placeholder="Selecciona condición de pago..."
-                  formatCreateLabel={(inputValue) => `Escribir: "${inputValue}"`}
-                  styles={{
-                    container: (p) => ({ ...p, maxWidth: "100%", width: "100%", color: "black", opacity: isFinanceLocked ? 0.75 : 1 }),
-                  }}
-                />
-              </FormControl>
+          {(() => {
+            const currentPymntLabel = String(
+              selectedPaymentType?.PymntGroup ||
+              selectedPaymentType?.PaymentTermsGroupName ||
+              selectedPaymentType?.label ||
+              selectedPaymentType?.value ||
+              saleCondition ||
+              ""
+            ).toLowerCase();
 
-              <FormControl>
-                <FormLabel fontSize="xs" fontWeight="800" color="gray.700">
-                  Medio de Pago (`PaymentMethod` / SUNAT) {isFinanceLocked && "🔒"}
-                </FormLabel>
-                <ChakraSelect
-                  size="sm"
-                  bg={isFinanceLocked ? "gray.100" : "white"}
-                  isDisabled={isFinanceLocked}
-                  borderRadius="md"
-                  value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value)}
-                  fontWeight="600"
-                >
-                  <option value="DEPOSITO_BANCARIO">001 - Depósito en Cuenta Bancaria</option>
-                  <option value="TRANSFERENCIA">003 - Transferencia de Fondos Directa</option>
-                  <option value="YAPE_PLIN">008 - Yape / Plin / Pago Móvil</option>
-                  <option value="EFECTIVO">009 - Efectivo / Pago Contra Entrega</option>
-                  <option value="CHEQUE">002 - Cheque / Abono Diferido</option>
-                </ChakraSelect>
-              </FormControl>
-            </Grid>
+            const isCreditCondition = currentPymntLabel.includes("credit") || 
+                                      currentPymntLabel.includes("crédito") || 
+                                      currentPymntLabel.includes("dias") || 
+                                      currentPymntLabel.includes("días") || 
+                                      currentPymntLabel.includes("letra") || 
+                                      saleCondition === "CREDITO";
 
-            <FormControl>
-              <FormLabel fontSize="xs" fontWeight="800" color="gray.700">
-                Banco de Abono Oficial {isFinanceLocked && "🔒"}
-              </FormLabel>
-              <ChakraSelect
-                size="sm"
-                bg={isFinanceLocked ? "gray.100" : "white"}
-                isDisabled={isFinanceLocked}
-                borderRadius="md"
-                value={bankAccount}
-                onChange={(e) => setBankAccount(e.target.value)}
-                fontWeight="600"
-              >
-                <option value="BCP_SOLES">BCP (Soles) - Cta: 191-0104153-0-60 (CCI: 002-191-000104153060-52)</option>
-                <option value="BCP_USD">BCP (Dólares) - Cta: 191-0104154-1-71 (CCI: 002-191-000104154171-55)</option>
-                <option value="BBVA_SOLES">BBVA Continental (Soles) - Cta: 0011-0182-0100045231</option>
-                <option value="SCOTIA_USD">Scotiabank (USD) - Cta: 000-1245211</option>
-              </ChakraSelect>
-            </FormControl>
-
-            <Box p={4} bg="gray.50" borderRadius="xl" border="1px solid" borderColor="gray.200">
-              <FormLabel fontSize="xs" fontWeight="800" color="gray.800" mb={2}>
-                Adjuntar Váucher / Comprobante de Abono Bancario {isFinanceLocked && "🔒"}
-              </FormLabel>
-              <Input
-                type="file"
-                size="sm"
-                bg="white"
-                accept="image/*"
-                isDisabled={isFinanceLocked}
-                onClick={(e) => {
-                  e.target.value = null;
-                }}
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    setTempImage(file);
-                    setPaymentImg(URL.createObjectURL(file));
-                    extractOperationNumber(file, setOpNum);
-                  }
-                }}
-              />
-
-              <Box mt={3.5}>
-                <FormLabel fontSize="xs" fontWeight="800" color="gray.700">
-                  Número de Operación (Váucher) {isFinanceLocked && "🔒"}
-                </FormLabel>
-                <Input
-                  type="text"
-                  size="sm"
-                  bg={isFinanceLocked ? "gray.100" : "white"}
-                  isReadOnly={isFinanceLocked}
-                  borderRadius="md"
-                  placeholder="Ej: 0169944 (Detectado por OCR o digitado)"
-                  value={opNum ?? ""}
-                  onChange={(e) => setOpNum(e.target.value)}
-                />
-              </Box>
-
-              {paymentImg && (
-                <Box mt={3} p={2.5} bg="white" borderRadius="md" border="1px solid" borderColor="gray.200">
-                  <img
-                    style={{ maxHeight: "200px", borderRadius: "8px", objectFit: "contain" }}
-                    src={
-                      typeof paymentImg === 'string' && paymentImg.startsWith('blob:')
-                        ? paymentImg
-                        : `${import.meta.env.VITE_API_URL}/quoteModule/${paymentImg}`
-                    }
-                  />
-                  {!isFinanceLocked && (
-                    <Button
-                      mt={2}
-                      colorScheme="red"
-                      size="xs"
-                      onClick={() => {
-                        setPaymentImg(null);
-                        setTempImage(null);
+            return (
+              <VStack align="stretch" spacing={4}>
+                <Grid templateColumns={{ base: "1fr", md: isCreditCondition ? "1fr 1fr" : "1fr 1fr" }} gap={3}>
+                  <FormControl>
+                    <FormLabel fontSize="xs" fontWeight="800" color="gray.700">
+                      Tipo de Pago / Condición Comercial {isFinanceLocked && "🔒"}
+                    </FormLabel>
+                    <CreatableSelect
+                      isDisabled={isFinanceLocked}
+                      isClearable={!isFinanceLocked}
+                      options={paymentTypesOptions}
+                      value={
+                        selectedPaymentType
+                          ? {
+                              value: String(selectedPaymentType.GroupNum ?? selectedPaymentType.GroupNumber ?? selectedPaymentType.value ?? selectedPaymentType.PymntGroup ?? selectedPaymentType.PaymentTermsGroupName ?? ''),
+                              label: selectedPaymentType.PymntGroup || selectedPaymentType.PaymentTermsGroupName || selectedPaymentType.label || String(selectedPaymentType.GroupNum ?? selectedPaymentType.GroupNumber ?? ''),
+                            }
+                          : null
+                      }
+                      onChange={handlePaymentTypeChange}
+                      placeholder="Selecciona condición de pago..."
+                      formatCreateLabel={(inputValue) => `Escribir: "${inputValue}"`}
+                      styles={{
+                        container: (p) => ({ ...p, maxWidth: "100%", width: "100%", color: "black", opacity: isFinanceLocked ? 0.75 : 1 }),
                       }}
-                    >
-                      Eliminar comprobante
-                    </Button>
+                    />
+                  </FormControl>
+
+                  {/* Si es CRÉDITO: Mostrar Plazo y Letra */}
+                  {isCreditCondition ? (
+                    <FormControl>
+                      <FormLabel fontSize="xs" fontWeight="800" color="gray.700">
+                        Plazo de Crédito Pactado {isFinanceLocked && "🔒"}
+                      </FormLabel>
+                      <Input
+                        size="sm"
+                        bg={isFinanceLocked ? "gray.100" : "white"}
+                        isDisabled={isFinanceLocked}
+                        borderRadius="md"
+                        placeholder="Ej: 30 días, 45 días..."
+                        value={creditTerm || ""}
+                        onChange={(e) => setCreditTerm && setCreditTerm(e.target.value)}
+                        fontWeight="700"
+                      />
+                    </FormControl>
+                  ) : (
+                    /* Si es CONTADO: Mostrar Medio de Pago */
+                    <FormControl>
+                      <FormLabel fontSize="xs" fontWeight="800" color="gray.700">
+                        Medio de Pago (`PaymentMethod` / SUNAT) {isFinanceLocked && "🔒"}
+                      </FormLabel>
+                      <ChakraSelect
+                        size="sm"
+                        bg={isFinanceLocked ? "gray.100" : "white"}
+                        isDisabled={isFinanceLocked}
+                        borderRadius="md"
+                        value={paymentMethod}
+                        onChange={(e) => setPaymentMethod(e.target.value)}
+                        fontWeight="600"
+                      >
+                        <option value="DEPOSITO_BANCARIO">001 - Depósito en Cuenta Bancaria</option>
+                        <option value="TRANSFERENCIA">003 - Transferencia de Fondos Directa</option>
+                        <option value="YAPE_PLIN">008 - Yape / Plin / Pago Móvil</option>
+                        <option value="EFECTIVO">009 - Efectivo / Pago Contra Entrega</option>
+                        <option value="CHEQUE">002 - Cheque / Abono Diferido</option>
+                      </ChakraSelect>
+                    </FormControl>
                   )}
-                </Box>
-              )}
-            </Box>
-          </VStack>
+                </Grid>
+
+                {/* BANNER Y DETALLES CONDICIONALES PARA CRÉDITO */}
+                {isCreditCondition ? (
+                  <Box p={4} bg="purple.50" borderRadius="xl" border="1.5px solid" borderColor="purple.200">
+                    <HStack spacing={3} align="flex-start">
+                      <Text fontSize="22px" lineHeight="1">💳</Text>
+                      <VStack align="stretch" spacing={2} flex="1">
+                        <HStack justify="space-between" flexWrap="wrap">
+                          <Text fontSize="xs" fontWeight="900" color="purple.900" textTransform="uppercase">
+                            Condición de Venta a Crédito / Plazos ({creditTerm || "Plazo Comercial"})
+                          </Text>
+                          <Checkbox
+                            isChecked={isLetra}
+                            onChange={(e) => setIsLetra && setIsLetra(e.target.checked)}
+                            isDisabled={isFinanceLocked}
+                            colorScheme="purple"
+                            fontSize="xs"
+                            fontWeight="800"
+                          >
+                            ¿Aplica Letra de Cambio? (`U_VS_LETRA`)
+                          </Checkbox>
+                        </HStack>
+                        <Text fontSize="xs" color="purple.800" fontWeight="600">
+                          ⚠️ <b>No requiere váucher bancario inmediato al cotizar</b>. Al ser venta a crédito, el pago se liquidará al vencimiento. Por favor asegúrese de adjuntar la <b>Orden de Compra (OC)</b> oficial o contrato en la <b>Sección 3 (Anexos de Resguardo)</b> para el respaldo de cobranzas.
+                        </Text>
+                      </VStack>
+                    </HStack>
+                  </Box>
+                ) : (
+                  /* CAMPOS CONDICIONALES PARA CONTADO (BANCO, VÁUCHER Y OCR) */
+                  <>
+                    <FormControl>
+                      <Flex justify="space-between" align="center" mb={1}>
+                        <FormLabel fontSize="xs" fontWeight="800" color="gray.700" m={0}>
+                          Banco de Abono Oficial (SAP B1) {isFinanceLocked && "🔒"}
+                        </FormLabel>
+                        <Badge colorScheme="emerald" fontSize="9px" px={1.5} borderRadius="sm">
+                          * Requerido para Contado
+                        </Badge>
+                      </Flex>
+                      <ChakraSelect
+                        size="sm"
+                        bg={isFinanceLocked ? "gray.100" : "white"}
+                        isDisabled={isFinanceLocked}
+                        borderRadius="md"
+                        value={bankAccount || ""}
+                        onChange={(e) => setBankAccount && setBankAccount(e.target.value)}
+                        placeholder="-- Seleccione Cuenta Bancaria Oficial SAP --"
+                        fontWeight="600"
+                      >
+                        {bankAccount && !bankAccountOptions.some(opt => opt.value === bankAccount) && (
+                          <option value={bankAccount}>
+                            {bankAccount === "BCP_SOLES" ? "BCP (Soles) - Cta: 191-0104153-0-60 (CCI: 002-191-000104153060-52)"
+                              : bankAccount === "BCP_USD" ? "BCP (Dólares) - Cta: 191-0104154-1-71 (CCI: 002-191-000104154171-55)"
+                              : bankAccount === "BBVA_SOLES" ? "BBVA Continental (Soles) - Cta: 0011-0182-0100045231"
+                              : bankAccount === "SCOTIA_USD" ? "Scotiabank (USD) - Cta: 000-1245211"
+                              : `Cuenta Seleccionada: ${bankAccount}`}
+                          </option>
+                        )}
+                        {bankAccountOptions.length > 0 ? (
+                          bankAccountOptions.map((opt, idx) => (
+                            <option key={idx} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))
+                        ) : (
+                          <>
+                            <option value="BCP_SOLES">BCP (Soles) - Cta: 191-0104153-0-60 (CCI: 002-191-000104153060-52)</option>
+                            <option value="BCP_USD">BCP (Dólares) - Cta: 191-0104154-1-71 (CCI: 002-191-000104154171-55)</option>
+                            <option value="BBVA_SOLES">BBVA Continental (Soles) - Cta: 0011-0182-0100045231</option>
+                            <option value="SCOTIA_USD">Scotiabank (USD) - Cta: 000-1245211</option>
+                          </>
+                        )}
+                      </ChakraSelect>
+                    </FormControl>
+
+                    <Box p={4} bg="emerald.50/50" borderRadius="xl" border="1.5px solid" borderColor="emerald.200">
+                      <FormLabel fontSize="xs" fontWeight="900" color="emerald.900" mb={1.5}>
+                        💳 Número de Operación Bancaria / Váucher {isFinanceLocked && "🔒"}
+                      </FormLabel>
+                      <Input
+                        type="text"
+                        size="md"
+                        bg={isFinanceLocked ? "gray.100" : "white"}
+                        isReadOnly={isFinanceLocked}
+                        borderRadius="md"
+                        borderColor="emerald.300"
+                        fontWeight="700"
+                        placeholder="Ej: 0169944 / 61956167 (Número de operación de depósito o transferencia)"
+                        value={opNum ?? ""}
+                        onChange={(e) => setOpNum(e.target.value)}
+                      />
+                      <Text fontSize="11px" color="gray.500" mt={1.5} fontWeight="600">
+                        * Ingrese el número de operación bancaria para conciliación contable en SAP B1.
+                      </Text>
+                    </Box>
+                  </>
+                )}
+              </VStack>
+            );
+          })()}
         </Box>
       )}
 
-      {/* TARJETA 3: 📎 PARÁMETROS SUNAT Y ANEXOS - EXCLUSIVO ADMINISTRADOR */}
+      {/* TARJETA 3: 📋 PARÁMETROS SUNAT - EXCLUSIVO ADMINISTRADOR */}
       {isAdmin && (
         <Box bg="white" p={{ base: 4, md: 5 }} borderRadius="2xl" border="1.5px solid" borderColor="#e2e8f0" boxShadow="xs">
           <HStack spacing={2.5} mb={4} pb={2.5} borderBottom="1.5px solid" borderColor="emerald.100" justify="space-between">
             <HStack spacing={2.5}>
               <Paperclip className="w-5 h-5 text-emerald-700 stroke-[2.5]" />
               <Text fontSize="sm" fontWeight="950" color="emerald.900" textTransform="uppercase" letterSpacing="wide">
-                3. Parámetros SUNAT y Anexos de Resguardo
+                3. Parámetros SUNAT
               </Text>
             </HStack>
             {isFinanceLocked ? (
@@ -927,45 +1037,6 @@ export function NewSellTerms({
                 <option value="0103">0103 - Venta Inafecta / Exonerada</option>
               </ChakraSelect>
             </FormControl>
-
-            <Box p={4} bg="gray.50" borderRadius="xl" border="1.5px dashed" borderColor="gray.300">
-              <HStack spacing={2} mb={2}>
-                <Upload className="w-4 h-4 text-emerald-700" />
-                <FormLabel fontSize="xs" fontWeight="800" color="gray.800" m={0}>
-                  Anexos y Documentos de Resguardo (PDF / Órdenes de Compra) {isFinanceLocked && "🔒"}
-                </FormLabel>
-              </HStack>
-              <Input
-                type="file"
-                multiple
-                size="sm"
-                bg="white"
-                isDisabled={isFinanceLocked}
-                onChange={handleAttachmentUpload}
-              />
-
-              {attachments.length > 0 && (
-                <VStack align="stretch" spacing={1.5} mt={3}>
-                  {attachments.map((att, idx) => (
-                    <HStack key={idx} justify="space-between" bg="white" p={2} borderRadius="md" border="1px solid" borderColor="gray.200">
-                      <HStack spacing={2}>
-                        <FileCheck className="w-4 h-4 text-emerald-600" />
-                        <Text fontSize="xs" fontWeight="600" color="gray.700">{att.name}</Text>
-                        <Badge fontSize="10px" colorScheme="gray">{att.size}</Badge>
-                      </HStack>
-                      <Button
-                        size="xs"
-                        colorScheme="red"
-                        variant="ghost"
-                        onClick={() => setAttachments(prev => prev.filter((_, i) => i !== idx))}
-                      >
-                        Quitar
-                      </Button>
-                    </HStack>
-                  ))}
-                </VStack>
-              )}
-            </Box>
           </VStack>
         </Box>
       )}

@@ -71,7 +71,7 @@ export default function ClientAutocomplete({ client, setClient }) {
       const cleanTerm = searchTerm.replace(/^CL/i, "").trim();
 
       axiosInstance
-        .get(`/reportModule/accounts-receivable/v2/grouped?clientName=${encodeURIComponent(cleanTerm)}`)
+        .get(`/reportModule/accountsReceivable?clientName=${encodeURIComponent(cleanTerm)}`)
         .then((res) => {
           if (!isMounted) return;
           const list = res.data?.clients?.clients || res.data?.clients || res.data || [];
