@@ -60,7 +60,18 @@ export function Login() {
   const { login } = useAuthMutations(); // ✅ fix: hooks antes del return condicional
 
   // 📲 ESTADO Y CAPTURA PARA INSTALACIÓN PWA (TIPO APK / ESCRITORIO)
+  const getDevicePlatform = () => {
+    if (typeof window === "undefined") return "android";
+    const ua = (navigator.userAgent || navigator.vendor || window.opera || "").toLowerCase();
+    const isIos = /iphone|ipad|ipod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    if (isIos) return "ios";
+    const isAndroid = /android/.test(ua);
+    if (isAndroid) return "android";
+    return "desktop";
+  };
+
   const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [selectedPlatform, setSelectedPlatform] = useState(() => getDevicePlatform());
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
   const [isAppInstalled, setIsAppInstalled] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
@@ -128,14 +139,20 @@ export function Login() {
   const handleInstallApp = async () => {
     const promptEvent = deferredPrompt || window.deferredPwaPrompt;
     if (promptEvent) {
-      promptEvent.prompt();
-      const { outcome } = await promptEvent.userChoice;
-      if (outcome === "accepted") {
-        setDeferredPrompt(null);
-        window.deferredPwaPrompt = null;
-        setIsAppInstalled(true);
+      try {
+        promptEvent.prompt();
+        const { outcome } = await promptEvent.userChoice;
+        if (outcome === "accepted") {
+          setDeferredPrompt(null);
+          window.deferredPwaPrompt = null;
+          setIsAppInstalled(true);
+        }
+      } catch (err) {
+        setSelectedPlatform(getDevicePlatform());
+        setIsInstallModalOpen(true);
       }
     } else {
+      setSelectedPlatform(getDevicePlatform());
       setIsInstallModalOpen(true);
     }
   };
@@ -381,30 +398,34 @@ export function Login() {
 
             {/* ========================================================================= */}
             {/* 📲 BOTÓN COMPACTO DE INSTALACIÓN PWA (Sale cada 7 días si no se instala)   */}
-            {/* Comenta o elimina este bloque si deseas ocultar el botón en el login       */}
             {/* ========================================================================= */}
             {!isAppInstalled && !isDismissed && (
               <Button
                 variant="ghost"
                 colorScheme="green"
-                color="green.700"
+                color="green.800"
                 bg="green.50"
-                border="1px solid"
-                borderColor="green.200"
-                _hover={{ bg: "green.100", borderColor: "green.400", transform: "translateY(-1px)" }}
+                border="1.5px solid"
+                borderColor="green.300"
+                _hover={{ bg: "green.100", borderColor: "green.500", transform: "translateY(-1px)", boxShadow: "sm" }}
                 _active={{ bg: "green.200" }}
-                borderRadius="lg"
-                size="xs"
-                h="28px"
-                px={3}
-                fontWeight="600"
-                fontSize="11px"
-                leftIcon={<Image src="/icon.svg" h="14px" w="14px" />}
+                borderRadius="xl"
+                size="sm"
+                h={{ base: "36px", md: "32px" }}
+                px={4}
+                fontWeight="800"
+                fontSize={{ base: "12px", md: "11px" }}
+                leftIcon={<Image src="/icon.svg" h="16px" w="16px" borderRadius="sm" />}
                 onClick={handleInstallApp}
                 transition="all 0.2s"
                 alignSelf="center"
+                w={{ base: "full", sm: "auto" }}
               >
-                📲 Instalar App en dispositivo
+                {selectedPlatform === "ios"
+                  ? "📲 Agregar a Pantalla de Inicio (iPhone / iPad)"
+                  : selectedPlatform === "android"
+                  ? "📲 Instalar Aplicativo en Android"
+                  : "💻 Instalar App en tu Equipo"}
               </Button>
             )}
             {/* ========================================================================= */}
@@ -447,61 +468,172 @@ export function Login() {
       </Box>
 
       {/* ========================================================================= */}
-      {/* 📲 MODAL CON INSTRUCCIONES DE INSTALACIÓN PARA ANDROID, IOS Y PC           */}
+      {/* 📲 MODAL ULTRA INTUITIVO CON GUÍA ESPECÍFICA SEGÚN EL DISPOSITIVO DEL USUARIO */}
       {/* ========================================================================= */}
       <Modal isOpen={isInstallModalOpen} onClose={handleDismissModal} isCentered size={{ base: "xs", sm: "md" }}>
         <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(5px)" />
-        <ModalContent borderRadius="2xl" p={2}>
-          <ModalHeader textAlign="center" pb={1}>
-            <HStack justify="center" spacing={2}>
-              <Image src="/icon.svg" h="24px" w="24px" />
-              <Text fontWeight="800" fontSize="md" color="green.900">
+        <ModalContent borderRadius="2xl" p={2} boxShadow="2xl">
+          <ModalHeader textAlign="center" pb={2} pt={4}>
+            <HStack justify="center" spacing={2.5}>
+              <Image src="/icon.svg" h="32px" w="32px" borderRadius="lg" boxShadow="xs" />
+              <Text fontWeight="900" fontSize="lg" color="green.900">
                 Instalar Autopartes App
               </Text>
             </HStack>
+            <Text color="gray.500" fontSize="12px" fontWeight="500" mt={1}>
+              {selectedPlatform === "ios"
+                ? "Sigue estos 3 pasos rápidos en Safari de tu iPhone / iPad"
+                : selectedPlatform === "android"
+                ? "Sigue estos pasos en Chrome o Edge de tu Android"
+                : "Instala el aplicativo directamente en tu navegador"}
+            </Text>
           </ModalHeader>
           <ModalCloseButton />
-          <ModalBody>
-            <VStack spacing={3} align="stretch" fontSize="sm">
-              <Text color="gray.600" textAlign="center" fontSize="12px">
-                Instala el aplicativo directamente en tu dispositivo para ingresar más rápido y usarlo con máxima fluidez:
-              </Text>
+          
+          <ModalBody px={4} py={2}>
+            <VStack spacing={4} align="stretch">
+              {/* Selector de Plataforma */}
+              <HStack spacing={1} bg="gray.100" p={1} borderRadius="xl" justify="center">
+                <Button
+                  size="xs"
+                  flex="1"
+                  borderRadius="lg"
+                  variant={selectedPlatform === "ios" ? "solid" : "ghost"}
+                  colorScheme={selectedPlatform === "ios" ? "green" : "gray"}
+                  bg={selectedPlatform === "ios" ? "green.600" : "transparent"}
+                  color={selectedPlatform === "ios" ? "white" : "gray.600"}
+                  fontWeight="700"
+                  onClick={() => setSelectedPlatform("ios")}
+                >
+                  🍎 iPhone / iPad
+                </Button>
+                <Button
+                  size="xs"
+                  flex="1"
+                  borderRadius="lg"
+                  variant={selectedPlatform === "android" ? "solid" : "ghost"}
+                  colorScheme={selectedPlatform === "android" ? "green" : "gray"}
+                  bg={selectedPlatform === "android" ? "green.600" : "transparent"}
+                  color={selectedPlatform === "android" ? "white" : "gray.600"}
+                  fontWeight="700"
+                  onClick={() => setSelectedPlatform("android")}
+                >
+                  🤖 Android
+                </Button>
+                <Button
+                  size="xs"
+                  flex="1"
+                  borderRadius="lg"
+                  variant={selectedPlatform === "desktop" ? "solid" : "ghost"}
+                  colorScheme={selectedPlatform === "desktop" ? "green" : "gray"}
+                  bg={selectedPlatform === "desktop" ? "green.600" : "transparent"}
+                  color={selectedPlatform === "desktop" ? "white" : "gray.600"}
+                  fontWeight="700"
+                  onClick={() => setSelectedPlatform("desktop")}
+                >
+                  💻 PC / Mac
+                </Button>
+              </HStack>
 
-              <Box p={3} bg="green.50" borderRadius="xl" border="1px solid" borderColor="green.200">
-                <Text fontWeight="bold" color="green.900" mb={1} fontSize="13px">
-                  📱 En Celulares Android (Chrome / Edge):
-                </Text>
-                <Text color="green.800" fontSize="12px" lineHeight="tall">
-                  1. Toca los tres puntos (<b>⋮</b>) en la esquina superior del navegador.<br />
-                  2. Selecciona <b>"Instalar aplicación"</b> o <b>"Agregar a pantalla principal"</b>.
-                </Text>
-              </Box>
+              {/* Guía para iOS (iPhone / iPad) */}
+              {selectedPlatform === "ios" && (
+                <Box p={4} bg="blue.50" borderRadius="2xl" border="1.5px solid" borderColor="blue.200">
+                  <VStack spacing={3.5} align="stretch">
+                    <HStack spacing={3} align="flex-start">
+                      <Flex w="24px" h="24px" borderRadius="full" bg="blue.600" color="white" align="center" justify="center" fontSize="12px" fontWeight="900" flexShrink={0} mt={0.5}>
+                        1
+                      </Flex>
+                      <Box fontSize="12px" color="blue.900" fontWeight="600">
+                        En <b>Safari</b>, toca el botón <b>Compartir</b> (el ícono de la flecha hacia arriba <b>⎋</b> en la barra inferior).
+                      </Box>
+                    </HStack>
 
-              <Box p={3} bg="blue.50" borderRadius="xl" border="1px solid" borderColor="blue.200">
-                <Text fontWeight="bold" color="blue.900" mb={1} fontSize="13px">
-                  🍎 En iPhone / iPad (Safari):
-                </Text>
-                <Text color="blue.800" fontSize="12px" lineHeight="tall">
-                  1. Toca el botón <b>Compartir</b> (el ícono de la flecha hacia arriba ⎋).<br />
-                  2. Desliza hacia abajo y elige <b>"Agregar a inicio" (➕)</b>.
-                </Text>
-              </Box>
+                    <HStack spacing={3} align="flex-start">
+                      <Flex w="24px" h="24px" borderRadius="full" bg="blue.600" color="white" align="center" justify="center" fontSize="12px" fontWeight="900" flexShrink={0} mt={0.5}>
+                        2
+                      </Flex>
+                      <Box fontSize="12px" color="blue.900" fontWeight="600">
+                        Desliza la lista hacia abajo y selecciona <b>"Agregar a inicio" (➕)</b>.
+                      </Box>
+                    </HStack>
 
-              <Box p={3} bg="purple.50" borderRadius="xl" border="1px solid" borderColor="purple.200">
-                <Text fontWeight="bold" color="purple.900" mb={1} fontSize="13px">
-                  💻 En Computadora (Edge / Chrome):
-                </Text>
-                <Text color="purple.800" fontSize="12px" lineHeight="tall">
-                  Haz clic en el ícono de <b>Instalar (+)</b> que aparece al final de la barra de direcciones arriba.
-                </Text>
-              </Box>
+                    <HStack spacing={3} align="flex-start">
+                      <Flex w="24px" h="24px" borderRadius="full" bg="blue.600" color="white" align="center" justify="center" fontSize="12px" fontWeight="900" flexShrink={0} mt={0.5}>
+                        3
+                      </Flex>
+                      <Box fontSize="12px" color="blue.900" fontWeight="600">
+                        Asegúrate de que la casilla <b>"Abrir como app web"</b> esté activada y pulsa <b>"Agregar"</b> arriba a la derecha.
+                      </Box>
+                    </HStack>
+                  </VStack>
+                </Box>
+              )}
+
+              {/* Guía para Android */}
+              {selectedPlatform === "android" && (
+                <Box p={4} bg="green.50" borderRadius="2xl" border="1.5px solid" borderColor="green.200">
+                  <VStack spacing={3.5} align="stretch">
+                    <HStack spacing={3} align="flex-start">
+                      <Flex w="24px" h="24px" borderRadius="full" bg="green.700" color="white" align="center" justify="center" fontSize="12px" fontWeight="900" flexShrink={0} mt={0.5}>
+                        1
+                      </Flex>
+                      <Box fontSize="12px" color="green.900" fontWeight="600">
+                        Toca los tres puntos (<b>⋮</b>) en la esquina superior del navegador (Chrome o Edge).
+                      </Box>
+                    </HStack>
+
+                    <HStack spacing={3} align="flex-start">
+                      <Flex w="24px" h="24px" borderRadius="full" bg="green.700" color="white" align="center" justify="center" fontSize="12px" fontWeight="900" flexShrink={0} mt={0.5}>
+                        2
+                      </Flex>
+                      <Box fontSize="12px" color="green.900" fontWeight="600">
+                        Selecciona <b>"Instalar aplicación"</b> o <b>"Agregar a pantalla principal"</b>.
+                      </Box>
+                    </HStack>
+
+                    <HStack spacing={3} align="flex-start">
+                      <Flex w="24px" h="24px" borderRadius="full" bg="green.700" color="white" align="center" justify="center" fontSize="12px" fontWeight="900" flexShrink={0} mt={0.5}>
+                        3
+                      </Flex>
+                      <Box fontSize="12px" color="green.900" fontWeight="600">
+                        Presiona <b>"Instalar"</b> para confirmar. ¡Listo!
+                      </Box>
+                    </HStack>
+                  </VStack>
+                </Box>
+              )}
+
+              {/* Guía para Computadora */}
+              {selectedPlatform === "desktop" && (
+                <Box p={4} bg="purple.50" borderRadius="2xl" border="1.5px solid" borderColor="purple.200">
+                  <VStack spacing={3.5} align="stretch">
+                    <HStack spacing={3} align="flex-start">
+                      <Flex w="24px" h="24px" borderRadius="full" bg="purple.700" color="white" align="center" justify="center" fontSize="12px" fontWeight="900" flexShrink={0} mt={0.5}>
+                        1
+                      </Flex>
+                      <Box fontSize="12px" color="purple.900" fontWeight="600">
+                        Haz clic en el ícono de <b>Instalar (➕)</b> o monitor que aparece al final de la barra de direcciones arriba en Chrome o Edge.
+                      </Box>
+                    </HStack>
+
+                    <HStack spacing={3} align="flex-start">
+                      <Flex w="24px" h="24px" borderRadius="full" bg="purple.700" color="white" align="center" justify="center" fontSize="12px" fontWeight="900" flexShrink={0} mt={0.5}>
+                        2
+                      </Flex>
+                      <Box fontSize="12px" color="purple.900" fontWeight="600">
+                        Haz clic en <b>"Instalar"</b> en la ventana emergente para abrirla como aplicación independiente.
+                      </Box>
+                    </HStack>
+                  </VStack>
+                </Box>
+              )}
             </VStack>
           </ModalBody>
-          <ModalFooter justify="center" gap={2}>
+          <ModalFooter justify="center" gap={2} pt={2}>
             <Button variant="ghost" size="sm" borderRadius="xl" color="gray.500" onClick={handleDismissModal}>
-              Recordar en 7 días
+              Recordar más tarde
             </Button>
-            <Button colorScheme="green" size="sm" borderRadius="xl" px={6} onClick={handleDismissModal}>
+            <Button colorScheme="green" bg="green.700" _hover={{ bg: "green.800" }} size="sm" borderRadius="xl" px={6} fontWeight="800" onClick={handleDismissModal}>
               ¡Entendido!
             </Button>
           </ModalFooter>
