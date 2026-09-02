@@ -160,14 +160,14 @@ export function InvoiceHistoryTab({ invoices = [] }) {
 
   // Filtrar productos por búsqueda
   const filteredProducts = useMemo(() => {
-    if (!searchTerm.trim()) return productSummary;
+    if (!searchTerm || !searchTerm.trim()) return productSummary;
     
-    const term = searchTerm.toLowerCase();
-    return productSummary.filter(
-      (product) =>
-        product.productCode.toLowerCase().includes(term) ||
-        product.productName.toLowerCase().includes(term)
-    );
+    const term = searchTerm.toLowerCase().trim();
+    return productSummary.filter((product) => {
+      const code = String(product?.productCode || "").toLowerCase();
+      const name = String(product?.productName || "").toLowerCase();
+      return code.includes(term) || name.includes(term);
+    });
   }, [productSummary, searchTerm]);
 
   const getDaysSinceLastPurchase = (dateString) => {

@@ -30,11 +30,16 @@ export function ProductPriceListCard({ product, tipoPrecio }) {
 
   const { bg, color, borderColor } = priceColorMap[tipoPrecio] || priceColorMap.FINAL;
 
-  const formatNumber = (num, decimals = 2) =>
-    num?.toLocaleString("es-PE", {
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals,
-    }) ?? "0.00";
+  const formatNumber = (num, decimals = 2) => {
+    if (num === null || num === undefined || num === "") return "0.00";
+    const n = Number(num);
+    return isNaN(n)
+      ? "0.00"
+      : n.toLocaleString("es-PE", {
+          minimumFractionDigits: decimals,
+          maximumFractionDigits: decimals,
+        });
+  };
 
   // Selección de precio según tipoPrecio
   const getPriceByType = () => {

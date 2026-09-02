@@ -684,3 +684,5 @@ export function Login() {
     </Flex>
   );
 }
+
+export default Login;

@@ -5,14 +5,13 @@ import { PrivateRoute } from "../app/middlewares/privateRoute.jsx";
 import { RoleRoute } from "../app/middlewares/roleRoute.jsx";
 import { RouteMemoryTracker } from "./middlewares/RouteMemoryTracker.jsx";
 
-// ─── Importaciones estáticas para soporte Offline asegurado (Check-in / Visitas) ───
-import ClienteBusquedaPage from "../features/clients/pages/ClienteBusquedaPage.jsx";
-import VisitLogPage from "../features/checkinout/pages/VisitLogPage.jsx";
+// ─── Login cargado de forma estática para renderizado instantáneo y sin chunks en la pantalla inicial ───
+import Login from "../features/auth/pages/Login.jsx";
 
-// ─── Lazy imports ── cada página descarga su propio chunk solo cuando se visita
-// Esto reduce el bundle inicial de 3.5MB a ~200KB (carga ~10x más rápida en LTE)
-const Login                = lazy(() => import("../features/auth/pages/Login.jsx").then(m => ({ default: m.Login })));
+// ─── Lazy imports ── cada página privada descarga su propio chunk solo cuando se visita
 const Register             = lazy(() => import("../features/auth/pages/Register.jsx").then(m => ({ default: m.Register })));
+const ClienteBusquedaPage  = lazy(() => import("../features/clients/pages/ClienteBusquedaPage.jsx"));
+const VisitLogPage         = lazy(() => import("../features/checkinout/pages/VisitLogPage.jsx"));
 const ClientStatementPage  = lazy(() => import("../features/receivable/pages/ClientStatementPage.jsx").then(m => ({ default: m.ClientStatementPage })));
 const ClientPage           = lazy(() => import("../features/clients/pages/ClientPage.jsx").then(m => ({ default: m.ClientPage })));
 const DashboardPage        = lazy(() => import("../features/dashboard/pages/DashboardPage.jsx").then(m => ({ default: m.DashboardPage })));
