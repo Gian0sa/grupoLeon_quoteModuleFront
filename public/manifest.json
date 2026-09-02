@@ -1,6 +1,7 @@
 {
   "name": "Autopartes S.A.",
   "short_name": "Autopartes",
+  "lang": "es",
   "description": "Sistema Móvil y Web de Cotizaciones, Visitas y Ventas de Autopartes S.A.",
   "start_url": "/",
   "id": "/",

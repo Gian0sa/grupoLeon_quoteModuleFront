@@ -18,13 +18,6 @@ import {
   IconButton,
   Image,
   Text,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalFooter,
-  ModalBody,
-  ModalCloseButton,
 } from "@chakra-ui/react";
 import { ViewIcon, ViewOffIcon, DownloadIcon } from "@chakra-ui/icons";
 import { Turnstile } from "@marsidev/react-turnstile";
@@ -59,20 +52,8 @@ export function Login() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const { login } = useAuthMutations(); // ✅ fix: hooks antes del return condicional
 
-  // 📲 ESTADO Y CAPTURA PARA INSTALACIÓN PWA (TIPO APK / ESCRITORIO)
-  const getDevicePlatform = () => {
-    if (typeof window === "undefined") return "android";
-    const ua = (navigator.userAgent || navigator.vendor || window.opera || "").toLowerCase();
-    const isIos = /iphone|ipad|ipod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-    if (isIos) return "ios";
-    const isAndroid = /android/.test(ua);
-    if (isAndroid) return "android";
-    return "desktop";
-  };
-
+  // 📲 ESTADO Y CAPTURA PARA INSTALACIÓN PWA
   const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [selectedPlatform, setSelectedPlatform] = useState(() => getDevicePlatform());
-  const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
   const [isAppInstalled, setIsAppInstalled] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
 
@@ -137,29 +118,50 @@ export function Login() {
   }, [toast]);
 
   const handleInstallApp = async () => {
+    // 1. Android / Chrome / Edge / PC: Disparar la instalación nativa del navegador directamente
     const promptEvent = deferredPrompt || window.deferredPwaPrompt;
     if (promptEvent) {
       try {
-        promptEvent.prompt();
+        await promptEvent.prompt();
         const { outcome } = await promptEvent.userChoice;
         if (outcome === "accepted") {
           setDeferredPrompt(null);
           window.deferredPwaPrompt = null;
           setIsAppInstalled(true);
         }
+        return;
       } catch (err) {
-        setSelectedPlatform(getDevicePlatform());
-        setIsInstallModalOpen(true);
+        console.warn("PWA prompt error:", err);
       }
-    } else {
-      setSelectedPlatform(getDevicePlatform());
-      setIsInstallModalOpen(true);
     }
-  };
 
-  const handleDismissModal = () => {
-    setIsInstallModalOpen(false);
-    localStorage.setItem("pwa_install_dismissed_at", Date.now().toString());
+    // 2. iOS (iPhone / iPad) o navegadores con Web Share API:
+    // Abre directamente la hoja nativa del sistema (Share Sheet) donde está "Agregar a inicio"
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: "Autopartes S.A.",
+          text: "Acceso directo a Autopartes S.A.",
+          url: window.location.origin,
+        });
+        return;
+      } catch (err) {
+        if (err.name !== "AbortError") {
+          console.warn("Share API error:", err);
+        }
+        return;
+      }
+    }
+
+    // 3. Fallback rápido sin modal para navegadores sin APIs
+    toast({
+      title: "Instalar aplicación",
+      description: "Presiona el menú de tu navegador (⋮ o compartir) y selecciona 'Agregar a la pantalla principal'.",
+      status: "info",
+      duration: 4000,
+      isClosable: true,
+      position: "top",
+    });
   };
 
   useEffect(() => {
@@ -414,21 +416,17 @@ export function Login() {
                 _active={{ bg: "green.200" }}
                 borderRadius="xl"
                 size="sm"
-                h={{ base: "36px", md: "32px" }}
+                h={{ base: "38px", md: "34px" }}
                 px={4}
                 fontWeight="800"
-                fontSize={{ base: "12px", md: "11px" }}
-                leftIcon={<Image src="/icon.svg" h="16px" w="16px" borderRadius="sm" />}
+                fontSize={{ base: "13px", md: "12px" }}
+                leftIcon={<Image src="/icon.svg" h="18px" w="18px" borderRadius="sm" />}
                 onClick={handleInstallApp}
                 transition="all 0.2s"
                 alignSelf="center"
                 w={{ base: "full", sm: "auto" }}
               >
-                {selectedPlatform === "ios"
-                  ? "📲 Agregar a Pantalla de Inicio (iPhone / iPad)"
-                  : selectedPlatform === "android"
-                  ? "📲 Instalar Aplicativo en Android"
-                  : "💻 Instalar App en tu Equipo"}
+                📲 Agregar a Pantalla de Inicio
               </Button>
             )}
             {/* ========================================================================= */}
@@ -469,180 +467,6 @@ export function Login() {
           </Flex>
         </VStack>
       </Box>
-
-      {/* ========================================================================= */}
-      {/* 📲 MODAL ULTRA INTUITIVO CON GUÍA ESPECÍFICA SEGÚN EL DISPOSITIVO DEL USUARIO */}
-      {/* ========================================================================= */}
-      <Modal isOpen={isInstallModalOpen} onClose={handleDismissModal} isCentered size={{ base: "xs", sm: "md" }}>
-        <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(5px)" />
-        <ModalContent borderRadius="2xl" p={2} boxShadow="2xl">
-          <ModalHeader textAlign="center" pb={2} pt={4}>
-            <HStack justify="center" spacing={2.5}>
-              <Image src="/icon.svg" h="32px" w="32px" borderRadius="lg" boxShadow="xs" />
-              <Text fontWeight="900" fontSize="lg" color="green.900">
-                Instalar Autopartes App
-              </Text>
-            </HStack>
-            <Text color="gray.500" fontSize="12px" fontWeight="500" mt={1}>
-              {selectedPlatform === "ios"
-                ? "Sigue estos 3 pasos rápidos en Safari de tu iPhone / iPad"
-                : selectedPlatform === "android"
-                ? "Sigue estos pasos en Chrome o Edge de tu Android"
-                : "Instala el aplicativo directamente en tu navegador"}
-            </Text>
-          </ModalHeader>
-          <ModalCloseButton />
-          
-          <ModalBody px={4} py={2}>
-            <VStack spacing={4} align="stretch">
-              {/* Selector de Plataforma */}
-              <HStack spacing={1} bg="gray.100" p={1} borderRadius="xl" justify="center">
-                <Button
-                  size="xs"
-                  flex="1"
-                  borderRadius="lg"
-                  variant={selectedPlatform === "ios" ? "solid" : "ghost"}
-                  colorScheme={selectedPlatform === "ios" ? "green" : "gray"}
-                  bg={selectedPlatform === "ios" ? "green.600" : "transparent"}
-                  color={selectedPlatform === "ios" ? "white" : "gray.600"}
-                  fontWeight="700"
-                  onClick={() => setSelectedPlatform("ios")}
-                >
-                  🍎 iPhone / iPad
-                </Button>
-                <Button
-                  size="xs"
-                  flex="1"
-                  borderRadius="lg"
-                  variant={selectedPlatform === "android" ? "solid" : "ghost"}
-                  colorScheme={selectedPlatform === "android" ? "green" : "gray"}
-                  bg={selectedPlatform === "android" ? "green.600" : "transparent"}
-                  color={selectedPlatform === "android" ? "white" : "gray.600"}
-                  fontWeight="700"
-                  onClick={() => setSelectedPlatform("android")}
-                >
-                  🤖 Android
-                </Button>
-                <Button
-                  size="xs"
-                  flex="1"
-                  borderRadius="lg"
-                  variant={selectedPlatform === "desktop" ? "solid" : "ghost"}
-                  colorScheme={selectedPlatform === "desktop" ? "green" : "gray"}
-                  bg={selectedPlatform === "desktop" ? "green.600" : "transparent"}
-                  color={selectedPlatform === "desktop" ? "white" : "gray.600"}
-                  fontWeight="700"
-                  onClick={() => setSelectedPlatform("desktop")}
-                >
-                  💻 PC / Mac
-                </Button>
-              </HStack>
-
-              {/* Guía para iOS (iPhone / iPad) */}
-              {selectedPlatform === "ios" && (
-                <Box p={4} bg="blue.50" borderRadius="2xl" border="1.5px solid" borderColor="blue.200">
-                  <VStack spacing={3.5} align="stretch">
-                    <HStack spacing={3} align="flex-start">
-                      <Flex w="24px" h="24px" borderRadius="full" bg="blue.600" color="white" align="center" justify="center" fontSize="12px" fontWeight="900" flexShrink={0} mt={0.5}>
-                        1
-                      </Flex>
-                      <Box fontSize="12px" color="blue.900" fontWeight="600">
-                        En <b>Safari</b>, toca el botón <b>Compartir</b> (el ícono de la flecha hacia arriba <b>⎋</b> en la barra inferior).
-                      </Box>
-                    </HStack>
-
-                    <HStack spacing={3} align="flex-start">
-                      <Flex w="24px" h="24px" borderRadius="full" bg="blue.600" color="white" align="center" justify="center" fontSize="12px" fontWeight="900" flexShrink={0} mt={0.5}>
-                        2
-                      </Flex>
-                      <Box fontSize="12px" color="blue.900" fontWeight="600">
-                        Desliza la lista hacia abajo y selecciona <b>"Agregar a inicio" (➕)</b>.
-                      </Box>
-                    </HStack>
-
-                    <HStack spacing={3} align="flex-start">
-                      <Flex w="24px" h="24px" borderRadius="full" bg="blue.600" color="white" align="center" justify="center" fontSize="12px" fontWeight="900" flexShrink={0} mt={0.5}>
-                        3
-                      </Flex>
-                      <Box fontSize="12px" color="blue.900" fontWeight="600">
-                        Asegúrate de que la casilla <b>"Abrir como app web"</b> esté activada y pulsa <b>"Agregar"</b> arriba a la derecha.
-                      </Box>
-                    </HStack>
-                  </VStack>
-                </Box>
-              )}
-
-              {/* Guía para Android */}
-              {selectedPlatform === "android" && (
-                <Box p={4} bg="green.50" borderRadius="2xl" border="1.5px solid" borderColor="green.200">
-                  <VStack spacing={3.5} align="stretch">
-                    <HStack spacing={3} align="flex-start">
-                      <Flex w="24px" h="24px" borderRadius="full" bg="green.700" color="white" align="center" justify="center" fontSize="12px" fontWeight="900" flexShrink={0} mt={0.5}>
-                        1
-                      </Flex>
-                      <Box fontSize="12px" color="green.900" fontWeight="600">
-                        Toca los tres puntos (<b>⋮</b>) en la esquina superior del navegador (Chrome o Edge).
-                      </Box>
-                    </HStack>
-
-                    <HStack spacing={3} align="flex-start">
-                      <Flex w="24px" h="24px" borderRadius="full" bg="green.700" color="white" align="center" justify="center" fontSize="12px" fontWeight="900" flexShrink={0} mt={0.5}>
-                        2
-                      </Flex>
-                      <Box fontSize="12px" color="green.900" fontWeight="600">
-                        Selecciona <b>"Instalar aplicación"</b> o <b>"Agregar a pantalla principal"</b>.
-                      </Box>
-                    </HStack>
-
-                    <HStack spacing={3} align="flex-start">
-                      <Flex w="24px" h="24px" borderRadius="full" bg="green.700" color="white" align="center" justify="center" fontSize="12px" fontWeight="900" flexShrink={0} mt={0.5}>
-                        3
-                      </Flex>
-                      <Box fontSize="12px" color="green.900" fontWeight="600">
-                        Presiona <b>"Instalar"</b> para confirmar. ¡Listo!
-                      </Box>
-                    </HStack>
-                  </VStack>
-                </Box>
-              )}
-
-              {/* Guía para Computadora */}
-              {selectedPlatform === "desktop" && (
-                <Box p={4} bg="purple.50" borderRadius="2xl" border="1.5px solid" borderColor="purple.200">
-                  <VStack spacing={3.5} align="stretch">
-                    <HStack spacing={3} align="flex-start">
-                      <Flex w="24px" h="24px" borderRadius="full" bg="purple.700" color="white" align="center" justify="center" fontSize="12px" fontWeight="900" flexShrink={0} mt={0.5}>
-                        1
-                      </Flex>
-                      <Box fontSize="12px" color="purple.900" fontWeight="600">
-                        Haz clic en el ícono de <b>Instalar (➕)</b> o monitor que aparece al final de la barra de direcciones arriba en Chrome o Edge.
-                      </Box>
-                    </HStack>
-
-                    <HStack spacing={3} align="flex-start">
-                      <Flex w="24px" h="24px" borderRadius="full" bg="purple.700" color="white" align="center" justify="center" fontSize="12px" fontWeight="900" flexShrink={0} mt={0.5}>
-                        2
-                      </Flex>
-                      <Box fontSize="12px" color="purple.900" fontWeight="600">
-                        Haz clic en <b>"Instalar"</b> en la ventana emergente para abrirla como aplicación independiente.
-                      </Box>
-                    </HStack>
-                  </VStack>
-                </Box>
-              )}
-            </VStack>
-          </ModalBody>
-          <ModalFooter justify="center" gap={2} pt={2}>
-            <Button variant="ghost" size="sm" borderRadius="xl" color="gray.500" onClick={handleDismissModal}>
-              Recordar más tarde
-            </Button>
-            <Button colorScheme="green" bg="green.700" _hover={{ bg: "green.800" }} size="sm" borderRadius="xl" px={6} fontWeight="800" onClick={handleDismissModal}>
-              ¡Entendido!
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
-      {/* ========================================================================= */}
     </Flex>
 
       {/* Right Panel: Green Background with Lightning Flash */}
