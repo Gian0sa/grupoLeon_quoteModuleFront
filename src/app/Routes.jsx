@@ -1,6 +1,6 @@
-import React, { lazy, Suspense, Component } from "react";
+import { lazy, Suspense } from "react";
 import { Routes, Route } from "react-router-dom";
-import { Flex, Spinner, Box, Text, Button } from "@chakra-ui/react";
+import { Flex, Spinner } from "@chakra-ui/react";
 import { PrivateRoute } from "../app/middlewares/privateRoute.jsx";
 import { RoleRoute } from "../app/middlewares/roleRoute.jsx";
 import { RouteMemoryTracker } from "./middlewares/RouteMemoryTracker.jsx";
@@ -44,47 +44,6 @@ const AttendanceAdminPage  = lazy(() => import("../features/entrada/pages/Attend
 const NewClientsPage       = lazy(() => import("../features/clients/pages/NewClientsPage.jsx").then(m => ({ default: m.NewClientsPage })));
 const FAQPage              = lazy(() => import("../features/help/pages/FAQPage.jsx").then(m => ({ default: m.FAQPage })));
 
-// ─── Error boundary contra fallos de carga en modo offline ─────────────
-class RouteErrorBoundary extends Component {
-  state = { hasError: false, error: null };
-  static getDerivedStateFromError(error) {
-    return { hasError: true, error };
-  }
-  componentDidCatch(error, errorInfo) {
-    console.error("Route chunk loading error caught:", error, errorInfo);
-  }
-  render() {
-    if (this.state.hasError) {
-      const isChunkError = this.state.error?.message?.includes("dynamically imported module") || !navigator.onLine;
-      return (
-        <Flex w="full" minH="80vh" align="center" justify="center" p={6}>
-          <Box bg="white" p={6} borderRadius="lg" boxShadow="lg" maxW="420px" textAlign="center">
-            <Text fontSize="lg" fontWeight="bold" color="green.700" mb={2}>
-              {isChunkError ? "Modo Offline Activo" : "Error al cargar la pantalla"}
-            </Text>
-            <Text fontSize="sm" color="gray.600" mb={4}>
-              {isChunkError
-                ? "Esta pantalla requiere conexión a internet para descargarse por primera vez. Regresa a tus visitas o vuelve a conectarte."
-                : "Ocurrió un error inesperado al cargar la pantalla."}
-            </Text>
-            <Button
-              colorScheme="green"
-              size="sm"
-              onClick={() => {
-                this.setState({ hasError: false, error: null });
-                window.location.href = "/visitLog";
-              }}
-            >
-              Volver a Visitas
-            </Button>
-          </Box>
-        </Flex>
-      );
-    }
-    return this.props.children;
-  }
-}
-
 // ─── Fallback de carga: spinner mínimo centrado con color de marca ───────────
 function PageLoader() {
   return (
@@ -98,8 +57,7 @@ const AppRoutes = () => {
   return (
     <>
       <RouteMemoryTracker />
-      <RouteErrorBoundary>
-        <Suspense fallback={<PageLoader />}>
+      <Suspense fallback={<PageLoader />}>
         <Routes>
           {/* Público */}
           <Route path="/"                      element={<Login />} />
@@ -143,9 +101,8 @@ const AppRoutes = () => {
           <Route path="/faq"               element={<PrivateRoute><FAQPage /></PrivateRoute>} />
         </Routes>
       </Suspense>
-    </RouteErrorBoundary>
-  </>
-);
+    </>
+  );
 };
 
 export default AppRoutes;
