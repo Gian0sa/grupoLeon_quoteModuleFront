@@ -7,6 +7,7 @@ export function useClientQueries(code) {
     queryFn: () => fetchClientByCode(code),
     enabled: !!code,
     refetchOnWindowFocus: false,
+    staleTime: 5 * 60 * 1000,
   });
 
   return {
@@ -17,16 +18,19 @@ export function useClientQueries(code) {
 }
 
 export function useClientQueriesByName(name) {
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["client", name],
     queryFn: () => fetchClientByName(name),
     enabled: !!name,
+    refetchOnWindowFocus: false,
+    staleTime: 5 * 60 * 1000,
   });
 
   return {
     data,
     isLoading,
     error,
+    refetch,
   };
 }
 
@@ -108,7 +112,7 @@ export function usePriceListByItemCodes(itemCodes) {
 export function usePurchaseOrdersImportacion() {
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['purchaseOrdersImportacion'],
-    queryFn: fetchPurchaseOrdersImportacion,
+    queryFn: () => fetchPurchaseOrdersImportacion(1, 20),
     enabled: true,
     refetchOnWindowFocus: false,
     retry: 1,

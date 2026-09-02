@@ -1,22 +1,22 @@
-const MAX_DIMENSION = 1600;
+const MAX_DIMENSION = 1200;
 
 /**
- * Decodifica el archivo sin pasarlo nunca a Base64.
- *
- * La versión anterior hacía `readAsDataURL` sobre el archivo ORIGINAL (una foto
- * de cámara pesa 10–15 MB, y en Base64 crece un 33% más) y luego asignaba esa
- * cadena a `img.src`. En un teléfono eso agota la memoria del navegador y
- * termina en "Error al cargar imagen" o recargando la página.
- *
- * `createImageBitmap` decodifica directamente desde el Blob, sin copia
- * intermedia. El respaldo con objectURL tampoco genera Base64.
+ * Decodifica el archivo con downsampling nativo en C++ sin saturar la RAM móvil.
  */
 const decodeImage = async (file) => {
     if (typeof createImageBitmap === "function") {
         try {
-            return { source: await createImageBitmap(file), release: (s) => s.close?.() };
+            // Decodificación directa con reducción a MAX_DIMENSION durante el decode
+            const bitmap = await createImageBitmap(file, {
+                resizeWidth: MAX_DIMENSION,
+                resizeQuality: "medium"
+            });
+            return { source: bitmap, release: (s) => s.close?.() };
         } catch {
-            // Safari antiguo puede fallar con algunos JPEG: se usa el respaldo.
+            try {
+                const fallbackBitmap = await createImageBitmap(file);
+                return { source: fallbackBitmap, release: (s) => s.close?.() };
+            } catch {}
         }
     }
 

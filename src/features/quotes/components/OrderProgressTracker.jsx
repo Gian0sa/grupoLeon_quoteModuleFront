@@ -64,10 +64,10 @@ export function OrderTimelineBar({
     return entry ? entry.timestamp : null;
   };
 
-  const time1 = formatTime(createdIso || getLogTime(["GENERADO", "BORRADOR"]) || new Date().toISOString());
-  const time2 = isSolSent ? formatTime(submittedIso || getLogTime(["ENVIADO", "EN_PROCESO"]) || new Date().toISOString()) : "—";
-  const time3 = (isInReview || isFinalDone) ? formatTime(reviewedIso || getLogTime(["PENDIENTE_FACTURACION", "VISTO"]) || getLogTime(["APROBADO_COMERCIAL", "APROBADO", "RECHAZADO", "OBSERVADO"]) || new Date().toISOString()) : "—";
-  const time4 = isFinalDone ? formatTime(completedIso || getLogTime(["APROBADO", "RECHAZADO", "OBSERVADO"]) || new Date().toISOString()) : "—";
+  const time1 = formatTime(createdIso || getLogTime(["GENERADO", "BORRADOR", "DRAFT"]));
+  const time2 = isSolSent ? formatTime(submittedIso || getLogTime(["ENVIADO", "EN_PROCESO"])) : "—";
+  const time3 = (isInReview || isFinalDone) ? formatTime(reviewedIso || getLogTime(["PENDIENTE_FACTURACION", "VISTO", "APROBADO_COMERCIAL", "APROBADO", "RECHAZADO", "OBSERVADO"])) : "—";
+  const time4 = isFinalDone ? formatTime(completedIso || getLogTime(["APROBADO", "RECHAZADO", "OBSERVADO", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO"])) : "—";
 
   // Porcentaje de ciclo
   let progressPct = 25;

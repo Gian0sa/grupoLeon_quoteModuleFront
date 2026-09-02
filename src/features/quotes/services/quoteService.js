@@ -7,7 +7,7 @@ export const getQuotes = async (filters = {}) => {
         const response = await axiosInstance.get('/quoteModule/quotes', { params: filters });
         return response.data || [];
     } catch (err) {
-        console.error("Error fetching quotes:", err);
+        console.warn("ℹ️ Aviso al consultar cotizaciones del servidor:", err?.message || err);
         return [];
     }
 };
@@ -58,6 +58,16 @@ export const createQuote = async (quote) => {
         } catch (e) {}
         return quote;
     }
+};
+
+export const createSapQuotation = async (quoteData) => {
+    const response = await axiosInstance.post('/quoteModule/quotes/sap/create', quoteData);
+    return response.data;
+};
+
+export const createSapOrder = async (quoteData) => {
+    const response = await axiosInstance.post('/quoteModule/quotes/sap/order', quoteData);
+    return response.data;
 };
 
 export const updateQuote = async (quote) => {

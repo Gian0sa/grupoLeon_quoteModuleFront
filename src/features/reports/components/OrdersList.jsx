@@ -5,6 +5,7 @@ import {
   HStack,
   VStack,
   Badge,
+  Button,
   SimpleGrid,
   useColorModeValue,
 } from "@chakra-ui/react";
@@ -32,14 +33,26 @@ const STATUS_ICON_MAP = {
   "cancel.png": XCircle,
 };
 
-export default function OrdersList({ detalle = [], onVerSeguimiento }) {
+export default function OrdersList({ detalle = [], onVerSeguimiento, searchTerm = "", onClearSearch }) {
   const bgCard = useColorModeValue("white", "gray.800");
   const hasAccess = useHasAccess();
 
   if (!Array.isArray(detalle) || detalle.length === 0) {
     return (
-      <Box p={8} bg="white" borderRadius="2xl" border="1px dashed" borderColor="gray.200" textAlign="center" my={4}>
-        <Text color="gray.500" fontWeight="medium">No hay órdenes para mostrar</Text>
+      <Box p={8} bg="white" borderRadius="2xl" border="1.5px dashed" borderColor="gray.200" textAlign="center" my={4}>
+        <VStack spacing={2}>
+          <Text color="gray.700" fontWeight="800" fontSize="md">
+            {searchTerm ? `🔍 No se encontraron órdenes para "${searchTerm}"` : "No hay órdenes para mostrar"}
+          </Text>
+          <Text color="gray.500" fontSize="sm">
+            {searchTerm ? "Intenta buscar por otro término (RUC, DNI, nombre o N° de orden) o limpia la búsqueda." : "No se registraron pedidos en este período con los filtros aplicados."}
+          </Text>
+          {searchTerm && onClearSearch && (
+            <Button size="sm" colorScheme="green" variant="outline" borderRadius="full" mt={2} onClick={onClearSearch}>
+              Limpiar búsqueda
+            </Button>
+          )}
+        </VStack>
       </Box>
     );
   }

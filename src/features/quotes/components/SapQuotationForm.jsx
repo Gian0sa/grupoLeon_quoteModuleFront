@@ -136,14 +136,17 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   // Estado que permite al Administrador desbloquear/editar cualquier cotización si necesita corregir ítems/precios
   const [adminForceEditMode, setAdminForceEditMode] = useState(false);
 
-  // El Administrador está en modo "Solo Revisión" cuando es una cotización enviada y no ha forzado el modo edición
-  const isAdminReviewing = Boolean(isAdmin && isSubmittedQuote && !adminForceEditMode);
+  // Si la cotización está observada o en edición, está en modo corrección activa
+  const isCorrectionMode = approvalStatus === "OBSERVADO" || approvalStatus === "EN_EDICION";
 
-  // Los campos comerciales (Cliente, Grilla de Productos, Despacho, etc.) solo se bloquean si:
-  // 1. La cotización ya está aprobada/anulada (Solo Lectura)
-  // 2. El Administrador está en modo "Solo Revisión" de una solicitud enviada por un asesor.
-  // En modo CREACIÓN o BORRADOR, el Administrador tiene control 100% total e ilimitado para agregar clientes, productos, etc.
-  const isSellerFieldsLocked = isReadOnly || isAdminReviewing;
+  // El Administrador está en modo "Solo Revisión" cuando es una cotización enviada/en proceso y no está en corrección ni forzando edición
+  const isAdminReviewing = Boolean(isAdmin && isSubmittedQuote && !adminForceEditMode && !isCorrectionMode);
+
+  // Los campos comerciales (Cliente, Grilla de Productos) solo se bloquean si es solo lectura o revisión estricta
+  const isSellerFieldsLocked = (isReadOnly && !isCorrectionMode) || (isAdminReviewing && !adminForceEditMode);
+
+  // Despacho y Logística son editables si no está aprobada/cerrada en SAP, o si está en corrección, o si faltan datos
+  const isDeliveryLocked = (isReadOnly && !isCorrectionMode) || (isAdminReviewing && !adminForceEditMode && Boolean(selectedDeliveryForm));
   const revealTabs = true; // Flujo unificado: Pestaña de logística y pagos accesible al inicio
 
   useEffect(() => {
@@ -229,6 +232,65 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       }
     }
   }, [client, contactList, setContactPerson, contactPerson]);
+
+  // Auto-inicializar datos comerciales de SAP para el cliente si vienen vacíos
+  useEffect(() => {
+    if (!client) return;
+
+    // 1. Condición de Pago y Condición de Venta
+    if (!selectedPaymentType && Array.isArray(dataPaymentTypes) && dataPaymentTypes.length > 0 && setSelectedPaymentType) {
+      const clientPayTerms = client.raw?.PayTermsGrpCode ?? client.PayTermsGrpCode ?? client.PaymentGroupCode;
+      let matched = null;
+      if (clientPayTerms !== undefined && clientPayTerms !== null) {
+        matched = dataPaymentTypes.find(pt => String(pt.GroupNum ?? pt.GroupNumber ?? pt.value) === String(clientPayTerms));
+      }
+      if (!matched) {
+        matched = dataPaymentTypes.find(pt => {
+          const name = (pt.PymntGroup || pt.PaymentTermsGroupName || pt.label || "").toLowerCase();
+          return name.includes("contado") || String(pt.GroupNum) === "-1";
+        }) || dataPaymentTypes[0];
+      }
+      if (matched) {
+        setSelectedPaymentType(matched);
+      }
+    }
+
+    // 2. Tipo de Comprobante (DNI -> BOLETA, RUC 20 -> FACTURA)
+    if (!documentType && setDocumentType) {
+      const docStr = String(client.LicTradNum || client.clientRuc || client.CardCode || client.clientDocument || "").replace(/^CL/i, '').trim();
+      if (docStr.startsWith("20") || docStr.length === 11) {
+        setDocumentType("FACTURA");
+      } else {
+        setDocumentType("BOLETA");
+      }
+    }
+
+    // 3. Condición de Venta (CONTADO por defecto si no está seteado)
+    if (!saleCondition && setSaleCondition) {
+      setSaleCondition("CONTADO");
+    }
+
+    // 4. Punto de Llegada por defecto desde SAP
+    if (!selectedPoint && deliveryPoints.length > 0 && setSelectedPoint) {
+      const defaultPt = deliveryPoints.find(p => p.AddressName?.toLowerCase().includes("entrega") || p.AddressName?.toLowerCase().includes("fiscal")) || deliveryPoints[0];
+      if (defaultPt) {
+        setSelectedPoint(defaultPt);
+      }
+    }
+  }, [client, selectedPaymentType, documentType, saleCondition, selectedPoint, dataPaymentTypes, deliveryPoints, setSelectedPaymentType, setDocumentType, setSaleCondition, setSelectedPoint]);
+
+  // Auto-seleccionar Forma de Entrega por defecto si viene vacía
+  useEffect(() => {
+    if (!selectedDeliveryForm && Array.isArray(dataDeliveryForms) && dataDeliveryForms.length > 0 && setSelectedDeliveryForm) {
+      const defaultForm = dataDeliveryForms.find(f => {
+        const name = (f.TrnspName || f.label || "").toLowerCase();
+        return name.includes("recojo") || name.includes("tienda") || String(f.TrnspCode) === "1";
+      }) || dataDeliveryForms[0];
+      if (defaultForm) {
+        setSelectedDeliveryForm(defaultForm);
+      }
+    }
+  }, [selectedDeliveryForm, dataDeliveryForms, setSelectedDeliveryForm]);
 
   // Regla de negocio: El almacén es obligatoria y estrictamente el 014
   useEffect(() => {
@@ -458,8 +520,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       || storeSalesPersonCode
       || storeSalesEmployeeCode;
 
-    const finalSellerName = originalSellerName || (isAdmin ? "Vendedor Autorizado" : activeSeller);
-    const finalCreatedByUsername = originalCreatedByUsername || (isAdmin ? "vendedor" : (username || localSeller || "vendedor"));
+    const currentLoggedInUsername = (username || localSeller || authUsername || "").toLowerCase().trim();
+    const finalSellerName = originalSellerName || (activeSeller && activeSeller !== "Vendedor Autorizado" ? activeSeller : (currentLoggedInUsername || "Enrique"));
+    const finalCreatedByUsername = originalCreatedByUsername || currentLoggedInUsername || "enrique";
     const finalCreatedByUserId = originalUserId || (isAdmin ? null : (userId || null));
     const effectiveSlpCode = (originalSlpCode && !isNaN(Number(originalSlpCode)))
       ? Number(originalSlpCode)
@@ -582,16 +645,23 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     return { success: true, activeDocNumber, currentStatus, newDoc, savePromise };
   };
 
-  // Autoguardado preventivo (Exit-Safe & Crash-Safe)
+  // Autoguardado preventivo (Exit-Safe & Crash-Safe) solo para borradores activos o cotizaciones nuevas
+  // Si el Admin está revisando o la cotización es de solo lectura, NUNCA sobreescribir al salir
   useEffect(() => {
+    if (isAdminReviewing || isReadOnly) return;
+
+    const shouldAutoSave = () => {
+      return !isExplicitlySubmittingRef.current && client && products && products.length > 0 && !isAdminReviewing && !isReadOnly;
+    };
+
     const handleBeforeUnload = () => {
-      if (!isExplicitlySubmittingRef.current && client && products && products.length > 0) {
+      if (shouldAutoSave()) {
         handleSaveAction("BORRADOR", { silent: true });
       }
     };
 
     const handleVisibilityChange = () => {
-      if (!isExplicitlySubmittingRef.current && document.visibilityState === "hidden" && client && products && products.length > 0) {
+      if (document.visibilityState === "hidden" && shouldAutoSave()) {
         handleSaveAction("BORRADOR", { silent: true });
       }
     };
@@ -603,11 +673,11 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       window.removeEventListener("beforeunload", handleBeforeUnload);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       // Guardar automáticamente al salir de la pantalla solo si no se envió explícitamente y hay datos completos
-      if (!isExplicitlySubmittingRef.current && client && products && products.length > 0) {
+      if (shouldAutoSave()) {
         handleSaveAction("BORRADOR", { silent: true });
       }
     };
-  }, [client, products, totals, docNumber, quoteId, comment, selectedDeliveryForm, selectedTransport, selectedPaymentType, opNum, contactPerson, refNumber, saleCondition, documentType, isLetra, creditTerm, bankAccount, paymentMethod, sunatOpType]);
+  }, [client, products, totals, docNumber, quoteId, comment, selectedDeliveryForm, selectedTransport, selectedPaymentType, opNum, contactPerson, refNumber, saleCondition, documentType, isLetra, creditTerm, bankAccount, paymentMethod, sunatOpType, isAdminReviewing, isReadOnly]);
 
   const handleSaveDraft = () => {
     const result = handleSaveAction("BORRADOR");
@@ -756,28 +826,45 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         return false;
       }
     } else {
-      // Venta al Contado / Anticipada / Depósito
-      if (!bankAccount || !String(bankAccount).trim()) {
-        toast({
-          title: "⚠️ Banco de Abono Oficial requerido",
-          description: "Debe seleccionar la Cuenta Bancaria Oficial SAP donde el cliente depositó o abonará (Sección 2).",
-          status: "warning",
-          duration: 4500,
-          isClosable: true,
-        });
-        setActiveTabIndex(1);
-        return false;
-      }
-      if (!opNum || !String(opNum).trim()) {
-        toast({
-          title: "⚠️ N° de Operación (Váucher) requerido",
-          description: "Debe ingresar el Número de Operación Bancaria del comprobante de abono (Sección 2).",
-          status: "warning",
-          duration: 4500,
-          isClosable: true,
-        });
-        setActiveTabIndex(1);
-        return false;
+      // Venta al Contado / Anticipada
+      if (paymentMethod === "EFECTIVO") {
+        // En efectivo / contra entrega no se exige banco ni váucher
+      } else if (paymentMethod === "CHEQUE") {
+        if (!opNum || !String(opNum).trim()) {
+          toast({
+            title: "⚠️ N° de Cheque requerido",
+            description: "Debe ingresar el Número de Cheque o referencia (Sección 2).",
+            status: "warning",
+            duration: 4500,
+            isClosable: true,
+          });
+          setActiveTabIndex(1);
+          return false;
+        }
+      } else {
+        // Depósito en Cuenta, Transferencia Bancaria, Yape/Plin
+        if (!bankAccount || !String(bankAccount).trim()) {
+          toast({
+            title: "⚠️ Cuenta Bancaria requerida",
+            description: "Debe seleccionar la Cuenta Bancaria Oficial donde el cliente depositó o abonará (Sección 2).",
+            status: "warning",
+            duration: 4500,
+            isClosable: true,
+          });
+          setActiveTabIndex(1);
+          return false;
+        }
+        if (!opNum || !String(opNum).trim()) {
+          toast({
+            title: "⚠️ N° de Operación (Váucher) requerido",
+            description: "Debe ingresar el Número de Operación Bancaria del comprobante de abono (Sección 2).",
+            status: "warning",
+            duration: 4500,
+            isClosable: true,
+          });
+          setActiveTabIndex(1);
+          return false;
+        }
       }
     }
 
@@ -998,9 +1085,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     if (!selectedDeliveryForm) {
       toast({
         title: "⚠️ Forma de Entrega requerida",
-        description: "Debe seleccionar una Forma de Entrega en la pestaña 'Logística y Despacho'.",
+        description: "Debe seleccionar una Forma de Entrega en la pestaña 'Logística y Despacho' (Sección 1) antes de enviar.",
         status: "warning",
-        duration: 4000,
+        duration: 4500,
         isClosable: true,
       });
       setActiveTabIndex(1);
@@ -1010,9 +1097,27 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     if (!isPickup && !selectedPoint && !selectedTransport) {
       toast({
         title: "⚠️ Destino o Agencia requerida",
-        description: "Para envíos fuera de tienda, debe indicar la agencia de transporte o el punto de llegada.",
+        description: "Para envíos fuera de tienda, debe indicar la agencia de transporte o el punto de llegada (Sección 1).",
         status: "warning",
-        duration: 4000,
+        duration: 4500,
+        isClosable: true,
+      });
+      setActiveTabIndex(1);
+      return false;
+    }
+    // Validar también Condición de Pago
+    const hasPaymentType = Boolean(
+      selectedPaymentType &&
+      (typeof selectedPaymentType === "object"
+        ? (selectedPaymentType.value || selectedPaymentType.GroupNum !== undefined || selectedPaymentType.PymntGroup || selectedPaymentType.PaymentTermsGroupName || selectedPaymentType.label)
+        : String(selectedPaymentType).trim().length > 0)
+    );
+    if (!hasPaymentType) {
+      toast({
+        title: "⚠️ Condición de Pago requerida",
+        description: "Debe seleccionar la Condición de Pago oficial en la Sección 2 (Condición de Pago SAP B1) antes de enviar.",
+        status: "warning",
+        duration: 4500,
         isClosable: true,
       });
       setActiveTabIndex(1);
@@ -1796,7 +1901,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                     sunatOpType={sunatOpType}
                     setSunatOpType={setSunatOpType}
                     isAdmin={isAdmin}
-                    isDeliveryLocked={isSellerFieldsLocked}
+                    isDeliveryLocked={isDeliveryLocked}
                     isFinanceLocked={isAdmin ? false : isReadOnly}
                   />
                 </VStack>
@@ -2142,52 +2247,52 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         onConfirmReject={(qId, reason) => handleRejectFromForm(qId, reason)}
       />
 
-      {/* MODAL DE ANIMACIÓN DE CARGA AL GUARDAR Y ENVIAR A VALIDACIÓN */}
+      {/* MODAL DE ANIMACIÓN DE CARGA AL GUARDAR Y ENVIAR A VALIDACIÓN (MINIATURA) */}
       <Modal
         isOpen={isSendingToValidation}
         onClose={() => {}}
         isCentered
         closeOnOverlayClick={false}
         closeOnEsc={false}
-        size="md"
+        size="xs"
       >
-        <ModalOverlay bg="blackAlpha.750" backdropFilter="blur(8px)" />
+        <ModalOverlay bg="blackAlpha.500" backdropFilter="blur(4px)" />
         <ModalContent
-          borderRadius="3xl"
+          borderRadius="2xl"
           overflow="hidden"
-          boxShadow="0 25px 50px -12px rgba(0, 0, 0, 0.4)"
-          border="1px solid"
+          boxShadow="0 20px 40px -5px rgba(0, 0, 0, 0.3)"
+          border="1.5px solid"
           borderColor="emerald.400"
-          mx={4}
+          maxW="290px"
+          mx="auto"
+          bg="white"
         >
           <Box
-            h="6px"
+            h="4px"
             w="full"
             bg="linear-gradient(90deg, #10b981, #06b6d4, #10b981)"
           />
-          <ModalBody py={8} px={6} textAlign="center" bg="white">
-            <VStack spacing={5}>
-              <Box position="relative" display="inline-flex" alignItems="center" justifyContent="center">
-                <Flex
-                  w="72px"
-                  h="72px"
-                  borderRadius="full"
-                  bg="linear-gradient(135deg, #059669 0%, #0d9488 100%)"
-                  color="white"
-                  align="center"
-                  justify="center"
-                  boxShadow="0 10px 25px -5px rgba(5, 150, 105, 0.5)"
-                >
-                  <ChakraIcon as={Send} boxSize="36px" />
-                </Flex>
-              </Box>
+          <ModalBody py={5} px={4} textAlign="center">
+            <VStack spacing={3.5}>
+              <Flex
+                w="46px"
+                h="46px"
+                borderRadius="xl"
+                bg="linear-gradient(135deg, #059669 0%, #0d9488 100%)"
+                color="white"
+                align="center"
+                justify="center"
+                boxShadow="0 8px 18px -3px rgba(5, 150, 105, 0.45)"
+              >
+                <ChakraIcon as={Send} boxSize="22px" />
+              </Flex>
 
-              <VStack spacing={1}>
-                <Text fontSize="lg" fontWeight="900" color="gray.800" letterSpacing="-0.02em">
-                  {validationLoadingTitle || "Guardando y Enviando a Validación..."}
+              <VStack spacing={0.5}>
+                <Text fontSize="sm" fontWeight="900" color="gray.800" letterSpacing="-0.01em">
+                  {validationLoadingTitle || "Enviando a Validación..."}
                 </Text>
-                <Text fontSize="xs" fontWeight="600" color="gray.500" maxW="340px">
-                  {validationLoadingSub || `Registrando ${quoteId || docNumber || "cotización"} y notificando en tiempo real a Facturación`}
+                <Text fontSize="10.5px" fontWeight="600" color="gray.500" isTruncated maxW="240px">
+                  {validationLoadingSub || `Registrando ${quoteId || docNumber || "cotización"}`}
                 </Text>
               </VStack>
 
@@ -2196,14 +2301,15 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                 isIndeterminate
                 colorScheme="emerald"
                 borderRadius="full"
-                w="80%"
+                w="85%"
                 bg="emerald.50"
+                h="3px"
               />
 
-              <HStack spacing={2} bg="gray.50" px={3.5} py={1.5} borderRadius="full" border="1px solid" borderColor="gray.200">
+              <HStack spacing={1.5} bg="gray.50" px={2.5} py={1} borderRadius="full" border="1px solid" borderColor="gray.200">
                 <Spinner size="xs" color="emerald.500" speed="0.8s" />
-                <Text fontSize="11px" fontWeight="700" color="gray.600">
-                  {validationStepText || "Sincronizando datos comerciales, finanzas y logística..."}
+                <Text fontSize="10px" fontWeight="700" color="gray.600" isTruncated maxW="220px">
+                  {validationStepText || "Notificando a Facturación..."}
                 </Text>
               </HStack>
             </VStack>

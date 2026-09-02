@@ -135,26 +135,45 @@ export const formatDeliveryPoint = (point, clientAddress) => {
 };
 
 export const formatPaymentTerms = (paymentType, saleCondition) => {
-  if (!paymentType && !saleCondition) return "Contado / Entrega";
-
-  let parsed = paymentType;
-  if (typeof paymentType === "string") {
-    const trimmed = paymentType.trim();
-    if (trimmed.startsWith("{")) {
-      try {
-        parsed = JSON.parse(trimmed);
-      } catch (e) {}
+  const extractString = (val) => {
+    if (!val) return "";
+    if (typeof val === "string") {
+      const trimmed = val.trim();
+      if (trimmed === "[object Object]" || trimmed === "undefined" || trimmed === "null") return "";
+      if (trimmed.startsWith("{")) {
+        try {
+          return extractString(JSON.parse(trimmed));
+        } catch (e) {
+          return "";
+        }
+      }
+      return trimmed;
     }
-  }
+    if (typeof val === "object" && val !== null) {
+      const candidates = [
+        val.PymntGroup,
+        val.PaymentTermsGroupName,
+        val.label,
+        val.name,
+        val.text,
+        val.PymntGroupGroup,
+        val.value
+      ];
+      for (const cand of candidates) {
+        const res = extractString(cand);
+        if (res && res !== "[object Object]") return res;
+      }
+    }
+    return "";
+  };
 
-  if (typeof parsed === "object" && parsed !== null) {
-    const label = parsed.PymntGroup || parsed.PaymentTermsGroupName || parsed.label || parsed.value || "";
-    if (label && label !== "undefined" && label !== "null") return label;
-  }
+  const paymentStr = extractString(paymentType);
+  if (paymentStr) return paymentStr;
 
-  const str = String(parsed || saleCondition || "").trim();
-  if (!str || str === "undefined" || str === "null") return "Contado / Entrega";
-  return str;
+  const saleStr = extractString(saleCondition);
+  if (saleStr) return saleStr;
+
+  return "Contado / Entrega";
 };
 
 export const formatBankAccount = (bankAccount) => {
@@ -201,4 +220,41 @@ export const formatSunatOp = (sunatOp) => {
   if (str === "0102") return "0102 - Exportación";
   if (str === "0200") return "0200 - Operación Gratuita";
   return str;
+};
+
+export const cleanSellerName = (seller) => {
+  if (!seller) return "Vendedor Autorizado";
+  const s = String(seller).trim();
+  const upper = s.toUpperCase();
+  if (
+    upper.includes("NINGÚN EMPLEADO") ||
+    upper.includes("NINGUN EMPLEADO") ||
+    upper.includes("NO ASIGNADO") ||
+    upper === "-1" ||
+    upper === "0" ||
+    upper === "NULL" ||
+    upper === "UNDEFINED"
+  ) {
+    return "Venta Directa / Mostrador";
+  }
+  return s;
+};
+
+export const cleanClientName = (q) => {
+  if (!q) return "Cliente General";
+  if (typeof q === "string") {
+    const s = q.trim();
+    if (s.toUpperCase() === "CLIENTE CLIENTE CLIENTE" || s.toUpperCase() === "CLIENTE GENERAL" || !s) {
+      return "Cliente General / Mostrador";
+    }
+    return s;
+  }
+  const name = String(q.clientName || q.client?.CardName || q.CardName || q.totals?.clientName || "").trim();
+  const doc = String(q.clientDocument || q.client?.CardCode || q.clientRuc || q.CardCode || "").trim();
+  
+  if (!name || name.toUpperCase() === "CLIENTE CLIENTE CLIENTE" || name.toUpperCase() === "CLIENTE GENERAL") {
+    if (doc && doc !== "undefined" && doc !== "null") return `Cliente Registrado (${doc})`;
+    return "Cliente General / Mostrador";
+  }
+  return name;
 };

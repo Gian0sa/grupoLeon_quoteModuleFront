@@ -252,27 +252,30 @@ export default function ClientAutocomplete({ client, setClient }) {
           />
           <Button
             size="sm"
-            colorScheme="green"
             bg="#0d6334"
+            color="white"
             _hover={{ bg: "#166534" }}
+            _active={{ bg: "#14532d" }}
             px={3.5}
             onClick={triggerSearch}
-            isLoading={isSearching}
-            leftIcon={<FiSearch />}
+            leftIcon={isSearching ? <Spinner size="xs" color="white" speed="0.6s" /> : <FiSearch size={14} />}
             fontSize="xs"
             fontWeight="800"
             flexShrink={0}
+            boxShadow="sm"
           >
             Buscar
           </Button>
         </Flex>
       </Box>
 
-      {/* ESTADO DE CARGA */}
+      {/* INDICADOR DE BÚSQUEDA EN CURSO */}
       {isSearching && (
-        <Flex justify="center" py={4} bg="white" mt={2} borderRadius="md" shadow="sm">
-          <Spinner color="emerald.600" size="sm" />
-          <Text fontSize="xs" color="gray.600" ml={2}>Consultando socio de negocio en SAP...</Text>
+        <Flex align="center" gap={2} mt={1.5} px={2} py={1.5} bg="emerald.50" borderRadius="md" border="1px solid" borderColor="emerald.200">
+          <Spinner color="#16a34a" size="xs" speed="0.6s" />
+          <Text fontSize="11px" color="#166534" fontWeight="700">
+            Consultando "{searchInput}" en SAP Business One...
+          </Text>
         </Flex>
       )}
 
@@ -343,9 +346,16 @@ export default function ClientAutocomplete({ client, setClient }) {
                   <Text fontWeight="700" fontSize="xs" color="emerald.900" isTruncated maxW="240px">
                     {cardName}
                   </Text>
-                  <Badge colorScheme="emerald" fontSize="0.65rem">
-                    {cardCode}
-                  </Badge>
+                  <HStack spacing={1}>
+                    {clientData.FederalTaxID && (
+                      <Badge colorScheme="purple" fontSize="0.65rem">
+                        {clientData.FederalTaxID}
+                      </Badge>
+                    )}
+                    <Badge colorScheme="emerald" fontSize="0.65rem">
+                      {cardCode}
+                    </Badge>
+                  </HStack>
                 </HStack>
                 <Text fontSize="0.7rem" color="gray.500" isTruncated>
                   {address}

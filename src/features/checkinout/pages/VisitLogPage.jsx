@@ -183,6 +183,7 @@ export default function VisitLogPage() {
                                 existingImageData={clientImageData}
                                 isLoadingExistingImage={isLoadingClientImage}
                                 fileInputKey={fileInputKey}
+                                onResetImage={resetImage}
                             />
                         )}
 

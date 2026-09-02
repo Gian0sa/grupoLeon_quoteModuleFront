@@ -26,7 +26,9 @@ export function SalesStats({ data }) {
   const pctFactVsPed = Math.min(100, Math.max(0, Number(data.PCT_FACT_VS_PED || 0)));
   const cantidadPedidos = data.CANT_PEDIDOS || 0;
 
-  const isTopPerformer = pctFactVsPed >= 100;
+  const rawVendor = (data.VENDEDOR || "").trim();
+  const firstName = (!rawVendor || rawVendor.toLowerCase() === "todos") ? "Equipo" : rawVendor.split(" ")[0];
+  const slpCode = Number(data.SLP_CODE || 0);
 
   const getGradient = (value) => {
     if (value >= 100) return "linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%)";
@@ -35,10 +37,58 @@ export function SalesStats({ data }) {
   };
 
   const getStatusMessage = (value) => {
-    if (value >= 100) return "Facturación completa";
-    if (value >= 70) return "Buen ritmo de pedidos";
-    return "Avanzando pedidos";
+    const seed = Math.abs((slpCode * 23 + new Date().getDate() * 7 + Number(cantidadPedidos) * 3) % 100);
+
+    // 🏆 1. Facturación completa de pedidos (>= 100%)
+    if (value >= 100) {
+      const topPhrases = [
+        `🎉 ¡${cantidadPedidos} pedidos 100% facturados, ${firstName}!`,
+        `⚡ ¡Despacho al día con ${cantidadPedidos} pedidos!`,
+        `✨ ¡Flujo perfecto de pedidos, ${firstName}!`,
+        `💎 ¡Eficiencia total en pedidos, ${firstName}!`,
+      ];
+      return topPhrases[seed % topPhrases.length];
+    }
+
+    // 📦 2. Buen ritmo de pedidos (>= 80%)
+    if (value >= 80) {
+      const goodPhrases = [
+        `📦 ¡${cantidadPedidos} pedidos en marcha, ${firstName}!`,
+        `🚚 ¡Buen volumen con ${cantidadPedidos} pedidos!`,
+        `🚀 ¡Gran actividad con ${cantidadPedidos} pedidos, ${firstName}!`,
+        `📈 ¡Cartera dinámica con ${cantidadPedidos} pedidos!`,
+      ];
+      return goodPhrases[seed % goodPhrases.length];
+    }
+
+    // 📝 3. Ritmo medio (50% - 79%)
+    if (value >= 50) {
+      const midPhrases = [
+        `📝 ¡${cantidadPedidos} pedidos activos, ${firstName}!`,
+        `💼 ¡${firstName}, convirtiendo cotizaciones!`,
+        `📈 ¡${cantidadPedidos} pedidos registrados este mes!`,
+        `🏃‍♂️ ¡Avanzando pedidos con fuerza, ${firstName}!`,
+      ];
+      return midPhrases[seed % midPhrases.length];
+    }
+
+    // 🎯 4. Ritmo inicial (< 50%)
+    const lowPhrases = [
+      `🎯 ¡${firstName}, a levantar más pedidos hoy!`,
+      `📞 ¡Momento de llamar a clientes, ${firstName}!`,
+      `💡 ¡${cantidadPedidos} pedidos listos, vamos por más!`,
+      `🔥 ¡${firstName}, activa tus cotizaciones pendientes!`,
+    ];
+    return lowPhrases[seed % lowPhrases.length];
   };
+
+  const getStatusBadge = (value) => {
+    if (value >= 100) return { bg: "blue.50", color: "blue.700", border: "1px solid rgba(59, 130, 246, 0.25)" };
+    if (value >= 70) return { bg: "indigo.50", color: "indigo.700", border: "1px solid rgba(99, 102, 241, 0.25)" };
+    return { bg: "purple.50", color: "purple.700", border: "1px solid rgba(139, 92, 246, 0.25)" };
+  };
+
+  const badgeStyle = getStatusBadge(pctFactVsPed);
 
   return (
     <MotionBox
@@ -133,8 +183,9 @@ export function SalesStats({ data }) {
           py={1}
           fontSize="xs"
           fontWeight="bold"
-          bg="indigo.50"
-          color="indigo.700"
+          bg={badgeStyle.bg}
+          color={badgeStyle.color}
+          border={badgeStyle.border}
         >
           {getStatusMessage(pctFactVsPed)}
         </Badge>

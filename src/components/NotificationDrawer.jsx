@@ -47,18 +47,32 @@ export function NotificationDrawer({ isOpen, onClose }) {
     username
   );
 
-  // Filtra notificaciones que pertenecen SOLO al usuario en sesión
+  // Filtra notificaciones que pertenecen al usuario en sesión o su rol
   const filterForCurrentUser = (notifs) => {
-    if (!username && !userId) return [];
+    if (!username && !userId && !role) return [];
+    const userLower = (username || "").toLowerCase();
+    const roleUpper = (role || "").toUpperCase();
+    const isAdminOrEnrique = roleUpper === "ADMIN" || roleUpper === "FACTURACION" || roleUpper === "SUPERVISOR" || userLower.includes("enrique");
+
     return notifs.filter((n) => {
-      if (n.targetUsername && username) {
-        return n.targetUsername.toLowerCase() === username.toLowerCase();
-      }
-      if (n.targetRole === "FACTURACION" && (role === "ADMIN" || username?.toLowerCase() === "enrique")) {
+      const targetUser = (n.targetUsername || "").toLowerCase();
+      const targetRoleUpper = (n.targetRole || "").toUpperCase();
+
+      // 1. Coincidencia por nombre de usuario de destino
+      if (targetUser && userLower && (targetUser === userLower || userLower.includes(targetUser) || targetUser.includes(userLower))) {
         return true;
       }
-      if (n.targetUserId && userId) {
-        return String(n.targetUserId) === String(userId);
+      // 2. Coincidencia por rol de Facturación / Administración
+      if ((targetRoleUpper === "FACTURACION" || targetRoleUpper === "ADMIN") && isAdminOrEnrique) {
+        return true;
+      }
+      // 3. Coincidencia por rol de Vendedor
+      if ((targetRoleUpper === "VENDEDOR" || targetRoleUpper === "SELLER") && !isAdminOrEnrique) {
+        return true;
+      }
+      // 4. Coincidencia por ID de usuario
+      if (n.targetUserId && userId && String(n.targetUserId) === String(userId)) {
+        return true;
       }
       return false;
     });

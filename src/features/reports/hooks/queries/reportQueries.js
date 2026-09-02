@@ -85,6 +85,7 @@ export const useGetOrderswithStatusReports = ({
   estadopedido = '',
   page = 0,
   pageSize = 12,
+  search = '',
 }) => {
   return useQuery({
     queryKey: [
@@ -93,9 +94,10 @@ export const useGetOrderswithStatusReports = ({
       estadopedido,
       page,
       pageSize,
+      search,
     ],
     queryFn: () =>
-      getOrderswithStatusReports({ salesPersonCode, estadopedido, page, pageSize }),
+      getOrderswithStatusReports({ salesPersonCode, estadopedido, page, pageSize, search }),
     placeholderData: (previousData) => previousData,
     staleTime: 1000 * 60 * 2, // 2 minutos de caché fluida
     refetchOnWindowFocus: false,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Box,
   Text,
@@ -129,6 +129,7 @@ export function NewSellTerms({
   const { uploadImageMutation, deleteImageMutation } = useQuoteMutations();
   const [ocrText, setOcrText] = useState("");
   const [attachments, setAttachments] = useState([]);
+  const lastClientDocRef = useRef(null);
 
   const extractOperationNumber = async (imageFile, setOpNum) => {
     try {
@@ -315,6 +316,16 @@ export function NewSellTerms({
     }
     const strVal = String(val);
     if (!strVal || strVal === "undefined" || strVal === "null") return null;
+    const found = allPaymentTypes.find(
+      (pt) => String(pt.GroupNum ?? pt.GroupNumber ?? pt.value) === strVal ||
+              (pt.PymntGroup || pt.PaymentTermsGroupName || pt.label || "").toLowerCase() === strVal.toLowerCase()
+    );
+    if (found) {
+      return {
+        value: String(found.GroupNum ?? found.GroupNumber ?? found.value ?? strVal),
+        label: found.PymntGroup || found.PaymentTermsGroupName || found.label || strVal,
+      };
+    }
     return { value: strVal, label: strVal };
   };
 
@@ -340,16 +351,19 @@ export function NewSellTerms({
     }
   };
 
-  // Auto-detección de Tipo de Comprobante según DNI (Boleta) o RUC (Factura)
+  // Auto-detección inteligente de Tipo de Comprobante según DNI (Boleta) o RUC (Factura)
   useEffect(() => {
     if (isDeliveryLocked) return;
-    const doc = String(client?.FederalTaxID || client?.clientDocument || client?.documentNumber || "").trim();
-    if (doc.length === 11 && setDocumentType && !documentType) {
-      setDocumentType("FACTURA");
-    } else if (doc.length === 8 && setDocumentType && !documentType) {
-      setDocumentType("BOLETA");
+    const rawDoc = String(client?.FederalTaxID || client?.clientDocument || client?.documentNumber || client?.CardCode || "").replace(/\D/g, "");
+    if (rawDoc && lastClientDocRef.current !== rawDoc) {
+      lastClientDocRef.current = rawDoc;
+      if (rawDoc.length === 11 && setDocumentType) {
+        setDocumentType("FACTURA");
+      } else if (rawDoc.length === 8 && setDocumentType) {
+        setDocumentType("BOLETA");
+      }
     }
-  }, [client, setDocumentType, documentType, isDeliveryLocked]);
+  }, [client, setDocumentType, isDeliveryLocked]);
 
   const handlePaymentTypeChange = (selected) => {
     if (!selected) {
@@ -548,14 +562,7 @@ export function NewSellTerms({
               isDisabled={isDeliveryLocked}
               isClearable={!isDeliveryLocked}
               options={paymentTypesOptions}
-              value={
-                selectedPaymentType
-                  ? {
-                      value: String(selectedPaymentType.GroupNum ?? selectedPaymentType.GroupNumber ?? selectedPaymentType.value ?? ""),
-                      label: selectedPaymentType.PymntGroup || selectedPaymentType.PaymentTermsGroupName || selectedPaymentType.label || "Seleccionar...",
-                    }
-                  : null
-              }
+              value={normalizePaymentTypeValue(selectedPaymentType)}
               onChange={handlePaymentTypeChange}
               placeholder="Selecciona la Condición de Pago oficial cargada en vivo desde SAP B1..."
               formatCreateLabel={(inputValue) => `Escribir condición libre: "${inputValue}"`}
@@ -581,70 +588,74 @@ export function NewSellTerms({
                   Condiciones Comerciales de la Solicitud {isDeliveryLocked && "🔒"}
                 </Text>
               </HStack>
-              <Badge colorScheme="teal" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="800">
-                TALONARIO DE PEDIDO
-              </Badge>
+              <HStack spacing={1.5}>
+                <Badge colorScheme="blue" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="800">
+                  🔒 AUTO DESDE SAP OCTG
+                </Badge>
+                <Badge colorScheme="teal" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="800">
+                  TALONARIO DE PEDIDO
+                </Badge>
+              </HStack>
             </HStack>
 
             <Grid templateColumns={{ base: "1fr", md: "1fr 1fr 1.4fr" }} gap={3.5}>
-              {/* Casilla 1: Modalidad (CONTADO / CRÉDITO) */}
+              {/* Casilla 1: Modalidad (CONTADO / CRÉDITO) - Auto sincronizado ineditable */}
               <Box p={3} bg="white" borderRadius="lg" border="1px solid" borderColor="gray.200">
-                <Text fontSize="10px" fontWeight="900" color="gray.500" mb={2} textTransform="uppercase">
-                  Condición de Venta
-                </Text>
+                <Flex justify="space-between" align="center" mb={2}>
+                  <Text fontSize="10px" fontWeight="900" color="gray.500" textTransform="uppercase">
+                    Condición de Venta
+                  </Text>
+                  <Text fontSize="9px" color="gray.400" fontWeight="700">🔒 AUTO</Text>
+                </Flex>
                 <HStack spacing={4}>
                   <Checkbox
                     isChecked={saleCondition === "CONTADO"}
-                    onChange={() => {
-                      if (!isDeliveryLocked && setSaleCondition) {
-                        const nextVal = saleCondition === "CONTADO" ? "" : "CONTADO";
-                        setSaleCondition(nextVal);
-                        if (setCreditTerm && nextVal === "CONTADO" && (!creditTerm || creditTerm.includes("DÍAS"))) {
-                          setCreditTerm("ANTICIPADO");
-                        }
-                      }
-                    }}
-                    isDisabled={isDeliveryLocked}
+                    isReadOnly
+                    isDisabled
                     colorScheme="green"
                     size="sm"
                     fontWeight="800"
                     fontSize="xs"
+                    _disabled={{ opacity: 0.9, cursor: "default" }}
                   >
                     CONTADO
                   </Checkbox>
                   <Checkbox
                     isChecked={saleCondition === "CREDITO"}
-                    onChange={() => {
-                      if (!isDeliveryLocked && setSaleCondition) {
-                        const nextVal = saleCondition === "CREDITO" ? "" : "CREDITO";
-                        setSaleCondition(nextVal);
-                        if (setCreditTerm && nextVal === "CREDITO" && (!creditTerm || creditTerm === "ANTICIPADO")) {
-                          setCreditTerm("30 DÍAS");
-                        }
-                      }
-                    }}
-                    isDisabled={isDeliveryLocked}
+                    isReadOnly
+                    isDisabled
                     colorScheme="green"
                     size="sm"
                     fontWeight="800"
                     fontSize="xs"
+                    _disabled={{ opacity: 0.9, cursor: "default" }}
                   >
                     CRÉDITO
                   </Checkbox>
                 </HStack>
               </Box>
 
-              {/* Casilla 2: Tipo de Comprobante (BOLETA / FACTURA) */}
-              <Box p={3} bg="white" borderRadius="lg" border="1px solid" borderColor="gray.200">
-                <Text fontSize="10px" fontWeight="900" color="gray.500" mb={2} textTransform="uppercase">
-                  Tipo de Comprobante
-                </Text>
+              {/* Casilla 2: Tipo de Comprobante (BOLETA / FACTURA) - Pre-seleccionado automático + 100% editable */}
+              <Box p={3} bg="white" borderRadius="lg" border="1.5px solid" borderColor="emerald.300" boxShadow="xs">
+                <Flex justify="space-between" align="center" mb={2}>
+                  <Text fontSize="10px" fontWeight="900" color="emerald.800" textTransform="uppercase">
+                    Tipo de Comprobante
+                  </Text>
+                  <HStack spacing={1}>
+                    <Badge colorScheme="blue" fontSize="8px" px={1.5} py={0.2} borderRadius="sm" fontWeight="800">
+                      ⚡ AUTO DNI/RUC
+                    </Badge>
+                    <Badge colorScheme="green" fontSize="8px" px={1.5} py={0.2} borderRadius="sm" fontWeight="800">
+                      ✏️ EDITABLE
+                    </Badge>
+                  </HStack>
+                </Flex>
                 <HStack spacing={4}>
                   <Checkbox
                     isChecked={documentType === "FACTURA"}
                     onChange={() => {
                       if (!isDeliveryLocked && setDocumentType) {
-                        setDocumentType(documentType === "FACTURA" ? "" : "FACTURA");
+                        setDocumentType("FACTURA");
                       }
                     }}
                     isDisabled={isDeliveryLocked}
@@ -652,6 +663,7 @@ export function NewSellTerms({
                     size="sm"
                     fontWeight="800"
                     fontSize="xs"
+                    cursor="pointer"
                   >
                     FACTURA
                   </Checkbox>
@@ -659,7 +671,7 @@ export function NewSellTerms({
                     isChecked={documentType === "BOLETA"}
                     onChange={() => {
                       if (!isDeliveryLocked && setDocumentType) {
-                        setDocumentType(documentType === "BOLETA" ? "" : "BOLETA");
+                        setDocumentType("BOLETA");
                       }
                     }}
                     isDisabled={isDeliveryLocked}
@@ -667,85 +679,48 @@ export function NewSellTerms({
                     size="sm"
                     fontWeight="800"
                     fontSize="xs"
+                    cursor="pointer"
                   >
                     BOLETA
                   </Checkbox>
                 </HStack>
               </Box>
 
-              {/* Casilla 3: Instrumento y Plazo (LETRA / SELECTOR DE PLAZO EXCLUSIVO POR ACCIÓN) */}
+              {/* Casilla 3: Instrumento y Plazo (LETRA / PLAZO AUTO) */}
               <Box p={3} bg="white" borderRadius="lg" border="1px solid" borderColor="gray.200">
                 <Flex justify="space-between" align="center" mb={2}>
                   <Checkbox
                     isChecked={Boolean(isLetra)}
-                    onChange={(e) => !isDeliveryLocked && setIsLetra && setIsLetra(e.target.checked)}
-                    isDisabled={isDeliveryLocked}
+                    isReadOnly
+                    isDisabled
                     colorScheme="green"
                     size="sm"
                     fontWeight="800"
                     fontSize="xs"
+                    _disabled={{ opacity: 0.9, cursor: "default" }}
                   >
                     LETRA
                   </Checkbox>
                   <Text fontSize="10px" fontWeight="900" color="gray.500">
-                    PLAZO / TÉRMINO
+                    PLAZO / TÉRMINO 🔒
                   </Text>
                 </Flex>
 
-                {/* Visualizador de Plazo Seleccionado (Solo Lectura / Sin teclado) */}
+                {/* Visualizador de Plazo Detectado desde SAP (Solo Lectura) */}
                 <Box
                   py={2}
                   px={3}
                   borderRadius="lg"
-                  bg={creditTerm ? (isDeliveryLocked ? "gray.100" : "emerald.50") : "gray.50"}
+                  bg={creditTerm ? "emerald.50" : "gray.50"}
                   border="1.5px solid"
-                  borderColor={creditTerm ? (isDeliveryLocked ? "gray.300" : "emerald.300") : "gray.200"}
+                  borderColor={creditTerm ? "emerald.300" : "gray.200"}
                   textAlign="center"
-                  mb={2.5}
                   boxShadow="xs"
                 >
-                  <Text fontWeight="900" fontSize="xs" color={creditTerm ? (isDeliveryLocked ? "gray.700" : "emerald.900") : "gray.400"} letterSpacing="wider">
-                    {creditTerm || "(Seleccionar Plazo / Término)"}
+                  <Text fontWeight="900" fontSize="xs" color={creditTerm ? "emerald.900" : "gray.400"} letterSpacing="wider">
+                    {creditTerm || "(Auto según condición de pago SAP)"}
                   </Text>
                 </Box>
-
-                {/* Botones de selección rápida exclusivos */}
-                {!isDeliveryLocked && (
-                  <Flex wrap="wrap" gap={1.5} justify="center">
-                    {[
-                      { label: "Anticipado", val: "ANTICIPADO", condition: "CONTADO" },
-                      { label: "Inmediato", val: "CONTADO INMEDIATO", condition: "CONTADO" },
-                      { label: "15 días", val: "15 DÍAS", condition: "CREDITO" },
-                      { label: "30 días", val: "30 DÍAS", condition: "CREDITO" },
-                      { label: "45 días", val: "45 DÍAS", condition: "CREDITO" },
-                      { label: "60 días", val: "60 DÍAS", condition: "CREDITO" },
-                    ].map((opt) => {
-                      const isSelected = creditTerm === opt.val;
-                      return (
-                        <Button
-                          key={opt.val}
-                          size="xs"
-                          h="22px"
-                          fontSize="10px"
-                          fontWeight={isSelected ? "900" : "700"}
-                          px={2}
-                          borderRadius="md"
-                          variant={isSelected ? "solid" : "outline"}
-                          colorScheme={isSelected ? "green" : "gray"}
-                          bg={isSelected ? "#16a34a" : "white"}
-                          color={isSelected ? "white" : "gray.700"}
-                          _hover={{ bg: isSelected ? "#15803d" : "gray.100" }}
-                          onClick={() => {
-                            if (setCreditTerm) setCreditTerm(opt.val);
-                            if (setSaleCondition) setSaleCondition(opt.condition);
-                          }}
-                        >
-                          {opt.label}
-                        </Button>
-                      );
-                    })}
-                  </Flex>
-                )}
               </Box>
             </Grid>
           </Box>
@@ -835,14 +810,7 @@ export function NewSellTerms({
                       isDisabled={isFinanceLocked}
                       isClearable={!isFinanceLocked}
                       options={paymentTypesOptions}
-                      value={
-                        selectedPaymentType
-                          ? {
-                              value: String(selectedPaymentType.GroupNum ?? selectedPaymentType.GroupNumber ?? selectedPaymentType.value ?? selectedPaymentType.PymntGroup ?? selectedPaymentType.PaymentTermsGroupName ?? ''),
-                              label: selectedPaymentType.PymntGroup || selectedPaymentType.PaymentTermsGroupName || selectedPaymentType.label || String(selectedPaymentType.GroupNum ?? selectedPaymentType.GroupNumber ?? ''),
-                            }
-                          : null
-                      }
+                      value={normalizePaymentTypeValue(selectedPaymentType)}
                       onChange={handlePaymentTypeChange}
                       placeholder="Selecciona condición de pago..."
                       formatCreateLabel={(inputValue) => `Escribir: "${inputValue}"`}
@@ -923,73 +891,115 @@ export function NewSellTerms({
                   </Box>
                 ) : (
                   /* CAMPOS CONDICIONALES PARA CONTADO (BANCO, VÁUCHER Y OCR) */
-                  <>
-                    <FormControl>
-                      <Flex justify="space-between" align="center" mb={1}>
-                        <FormLabel fontSize="xs" fontWeight="800" color="gray.700" m={0}>
-                          Banco de Abono Oficial (SAP B1) {isFinanceLocked && "🔒"}
-                        </FormLabel>
-                        <Badge colorScheme="emerald" fontSize="9px" px={1.5} borderRadius="sm">
-                          * Requerido para Contado
-                        </Badge>
-                      </Flex>
-                      <ChakraSelect
-                        size="sm"
-                        bg={isFinanceLocked ? "gray.100" : "white"}
-                        isDisabled={isFinanceLocked}
-                        borderRadius="md"
-                        value={bankAccount || ""}
-                        onChange={(e) => setBankAccount && setBankAccount(e.target.value)}
-                        placeholder="-- Seleccione Cuenta Bancaria Oficial SAP --"
-                        fontWeight="600"
-                      >
-                        {bankAccount && !bankAccountOptions.some(opt => opt.value === bankAccount) && (
-                          <option value={bankAccount}>
-                            {bankAccount === "BCP_SOLES" ? "BCP (Soles) - Cta: 191-0104153-0-60 (CCI: 002-191-000104153060-52)"
-                              : bankAccount === "BCP_USD" ? "BCP (Dólares) - Cta: 191-0104154-1-71 (CCI: 002-191-000104154171-55)"
-                              : bankAccount === "BBVA_SOLES" ? "BBVA Continental (Soles) - Cta: 0011-0182-0100045231"
-                              : bankAccount === "SCOTIA_USD" ? "Scotiabank (USD) - Cta: 000-1245211"
-                              : `Cuenta Seleccionada: ${bankAccount}`}
-                          </option>
-                        )}
-                        {bankAccountOptions.length > 0 ? (
-                          bankAccountOptions.map((opt, idx) => (
-                            <option key={idx} value={opt.value}>
-                              {opt.label}
-                            </option>
-                          ))
-                        ) : (
-                          <>
-                            <option value="BCP_SOLES">BCP (Soles) - Cta: 191-0104153-0-60 (CCI: 002-191-000104153060-52)</option>
-                            <option value="BCP_USD">BCP (Dólares) - Cta: 191-0104154-1-71 (CCI: 002-191-000104154171-55)</option>
-                            <option value="BBVA_SOLES">BBVA Continental (Soles) - Cta: 0011-0182-0100045231</option>
-                            <option value="SCOTIA_USD">Scotiabank (USD) - Cta: 000-1245211</option>
-                          </>
-                        )}
-                      </ChakraSelect>
-                    </FormControl>
-
-                    <Box p={4} bg="emerald.50/50" borderRadius="xl" border="1.5px solid" borderColor="emerald.200">
-                      <FormLabel fontSize="xs" fontWeight="900" color="emerald.900" mb={1.5}>
-                        💳 Número de Operación Bancaria / Váucher {isFinanceLocked && "🔒"}
-                      </FormLabel>
-                      <Input
-                        type="text"
-                        size="md"
-                        bg={isFinanceLocked ? "gray.100" : "white"}
-                        isReadOnly={isFinanceLocked}
-                        borderRadius="md"
-                        borderColor="emerald.300"
-                        fontWeight="700"
-                        placeholder="Ej: 0169944 / 61956167 (Número de operación de depósito o transferencia)"
-                        value={opNum ?? ""}
-                        onChange={(e) => setOpNum(e.target.value)}
-                      />
-                      <Text fontSize="11px" color="gray.500" mt={1.5} fontWeight="600">
-                        * Ingrese el número de operación bancaria para conciliación contable en SAP B1.
-                      </Text>
+                  paymentMethod === "EFECTIVO" ? (
+                    <Box p={3.5} bg="blue.50" borderRadius="xl" border="1.5px solid" borderColor="blue.200">
+                      <HStack spacing={2.5} align="flex-start">
+                        <Text fontSize="xl" lineHeight="1">💵</Text>
+                        <VStack align="stretch" spacing={0.5} flex="1">
+                          <Text fontSize="xs" fontWeight="900" color="blue.900" textTransform="uppercase">
+                            Pago en Efectivo / Contra Entrega
+                          </Text>
+                          <Text fontSize="xs" color="blue.800" fontWeight="600">
+                            No requiere número de operación bancaria ni selección de cuenta. El cobro se realiza directamente al momento de la entrega o recojo del pedido.
+                          </Text>
+                        </VStack>
+                      </HStack>
                     </Box>
-                  </>
+                  ) : paymentMethod === "CHEQUE" ? (
+                    <VStack align="stretch" spacing={3}>
+                      <FormControl>
+                        <FormLabel fontSize="xs" fontWeight="800" color="gray.700" m={0} mb={1}>
+                          Banco Emisor del Cheque (Banco del Cliente) {isFinanceLocked && "🔒"}
+                        </FormLabel>
+                        <Input
+                          size="sm"
+                          bg={isFinanceLocked ? "gray.100" : "white"}
+                          isDisabled={isFinanceLocked}
+                          borderRadius="md"
+                          placeholder="Ej: BCP, BBVA, Interbank, Scotiabank..."
+                          value={bankAccount || ""}
+                          onChange={(e) => setBankAccount && setBankAccount(e.target.value)}
+                          fontWeight="700"
+                        />
+                      </FormControl>
+                      <Box p={3.5} bg="purple.50" borderRadius="xl" border="1.5px solid" borderColor="purple.200">
+                        <FormLabel fontSize="xs" fontWeight="900" color="purple.900" mb={1.5}>
+                          🧾 Número de Cheque / Referencia {isFinanceLocked && "🔒"}
+                        </FormLabel>
+                        <Input
+                          type="text"
+                          size="md"
+                          bg={isFinanceLocked ? "gray.100" : "white"}
+                          isReadOnly={isFinanceLocked}
+                          borderRadius="md"
+                          borderColor="purple.300"
+                          fontWeight="700"
+                          placeholder="Ej: CHQ-00984725"
+                          value={opNum ?? ""}
+                          onChange={(e) => setOpNum(e.target.value)}
+                        />
+                        <Text fontSize="11px" color="purple.700" mt={1.5} fontWeight="600">
+                          * El cheque ingresará a custodia para compensación y canje bancario en SAP B1.
+                        </Text>
+                      </Box>
+                    </VStack>
+                  ) : (
+                    <>
+                      <FormControl>
+                        <Flex justify="space-between" align="center" mb={1}>
+                          <FormLabel fontSize="xs" fontWeight="800" color="gray.700" m={0}>
+                            Cuenta Bancaria de Abono (Grupo León) {isFinanceLocked && "🔒"}
+                          </FormLabel>
+                          <Badge colorScheme="emerald" fontSize="9px" px={1.5} borderRadius="sm">
+                            * Requerido para Depósito / Transferencia
+                          </Badge>
+                        </Flex>
+                        <ChakraSelect
+                          size="sm"
+                          bg={isFinanceLocked ? "gray.100" : "white"}
+                          isDisabled={isFinanceLocked}
+                          borderRadius="md"
+                          value={bankAccount || ""}
+                          onChange={(e) => setBankAccount && setBankAccount(e.target.value)}
+                          placeholder="-- Seleccione Cuenta de Recaudo Oficial --"
+                          fontWeight="600"
+                        >
+                          <option value="BCP_SOLES">BCP (Soles) - Cta: 191-0104153-0-60 (CCI: 002-191-000104153060-52)</option>
+                          <option value="BCP_USD">BCP (Dólares) - Cta: 191-0104154-1-71 (CCI: 002-191-000104154171-55)</option>
+                          <option value="BBVA_SOLES">BBVA Continental (Soles) - Cta: 0011-0182-0100045231</option>
+                          <option value="BBVA_USD">BBVA Continental (Dólares) - Cta: 0011-0182-0100045240</option>
+                          <option value="INTERBANK_SOLES">Interbank (Soles) - Cta: 200-3001245781</option>
+                          <option value="BN_DETRACCIONES">Banco de la Nación (Detracciones) - Cta: 00-068-123456</option>
+                          {bankAccount && !["BCP_SOLES", "BCP_USD", "BBVA_SOLES", "BBVA_USD", "INTERBANK_SOLES", "BN_DETRACCIONES"].includes(bankAccount) && (
+                            <option value={bankAccount}>
+                              {`Cuenta: ${bankAccount}`}
+                            </option>
+                          )}
+                        </ChakraSelect>
+                      </FormControl>
+
+                      <Box p={3.5} bg="emerald.50/50" borderRadius="xl" border="1.5px solid" borderColor="emerald.200">
+                        <FormLabel fontSize="xs" fontWeight="900" color="emerald.900" mb={1.5}>
+                          💳 Número de Operación Bancaria / Váucher {isFinanceLocked && "🔒"}
+                        </FormLabel>
+                        <Input
+                          type="text"
+                          size="md"
+                          bg={isFinanceLocked ? "gray.100" : "white"}
+                          isReadOnly={isFinanceLocked}
+                          borderRadius="md"
+                          borderColor="emerald.300"
+                          fontWeight="700"
+                          placeholder="Ej: 0169944 / 61956167 (Número de operación de depósito o transferencia)"
+                          value={opNum ?? ""}
+                          onChange={(e) => setOpNum(e.target.value)}
+                        />
+                        <Text fontSize="11px" color="gray.500" mt={1.5} fontWeight="600">
+                          * Ingrese el número de operación bancaria para conciliación en SAP B1 (`Numero deposito`).
+                        </Text>
+                      </Box>
+                    </>
+                  )
                 )}
               </VStack>
             );

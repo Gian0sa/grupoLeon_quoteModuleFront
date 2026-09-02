@@ -26,10 +26,6 @@ export function useAuthMutations() {
         salesEmployeeCode: res.salesEmployeeCode,
         endpoints: res.endpoints,
       });
-
-      const savedRoute = localStorage.getItem("lastRoute");
-      const target = savedRoute && savedRoute !== "/" && savedRoute !== "/register" ? savedRoute : "/dashboard";
-      navigate(target);
     },
 
     onError: (error) => {

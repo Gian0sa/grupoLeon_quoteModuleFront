@@ -152,6 +152,8 @@ export const useTopSelledProducts = ({ yearFrom, monthFrom, monthTo, slpCode } =
     queryKey: ['topSelledProducts', yearFrom, monthFrom, monthTo, slpCode],
     queryFn: () => getTopSelledProducts({ yearFrom, monthFrom, monthTo, slpCode }),
     enabled: yearFrom != null && monthFrom != null && monthTo != null,
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 };
 export const useTopSelled = useTopSelledProducts;

@@ -172,15 +172,13 @@ export function Login() {
 
   if (isAuthenticated) {
     return (
-      <Center height="100vh">
-        <Spinner size="xl" />
+      <Center height="100vh" bg="#051f11">
+        <Spinner size="xl" color="emerald.400" thickness="4px" />
       </Center>
     );
   }
 
   const resetCaptcha = () => {
-    // En local el widget no puede resolverse; recargarlo solo reinicia el bucle
-    // de reintentos y borra el marcador que permite seguir trabajando.
     if (import.meta.env.DEV && captchaUnavailable) return;
     setCaptchaKey((prev) => prev + 1);
     setCaptchaToken(null);
@@ -195,6 +193,11 @@ export function Login() {
     login.mutate(
       { ...data, captchaToken },
       {
+        onSuccess: () => {
+          const savedRoute = localStorage.getItem("lastRoute");
+          const target = savedRoute && savedRoute !== "/" && savedRoute !== "/register" ? savedRoute : "/dashboard";
+          navigate(target, { replace: true });
+        },
         onError: (error) => {
           const message =
             error?.response?.data?.message || "Error al iniciar sesión";
@@ -208,7 +211,7 @@ export function Login() {
             position: "top",
           });
 
-          resetCaptcha(); // ✅ fix: reset real del widget
+          resetCaptcha();
         },
       }
     );

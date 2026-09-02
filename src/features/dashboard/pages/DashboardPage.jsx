@@ -24,6 +24,7 @@ import { Calendar, RotateCcw, UserCheck } from "lucide-react";
 
 import { useAuthStore } from "../../../features/auth/stores/useAuthStore";
 import { useHasAccess } from "../../../shared/utils/permissions";
+import { useIsFetching } from "@tanstack/react-query";
 import {
   useQuotesSellers,
   useQuotesSellersAdmin,
@@ -37,6 +38,8 @@ import { SalesStats } from "../components/SalesStats";
 import { SurfaceChartCard } from "../components/SurfaceChartCard";
 import { DashboardCommercialPanel } from "../components/DashboardCommercialPanel";
 import SellerSelect from "../../../components/SellerSelect";
+import { AnimatePresence } from "framer-motion";
+import { LoginTransitionScreen } from "../../auth/components/LoginTransitionScreen";
 
 const MONTH_NAMES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -230,8 +233,27 @@ export function DashboardPage() {
     [QUERY_KEYS.exchangeRate, "USD", todayIso],
   ];
 
+  const pageBg = useColorModeValue("gray.50", "gray.900");
+  const [initialLoadingComplete, setInitialLoadingComplete] = useState(false);
+
+  // ✅ Todos los datos clave de SAP (resumenData de cuotas/pedidos/metas) deben estar listos
+  const isDashboardReady = (Boolean(resumenData) || Boolean(error)) && !isLoading;
+
+  // Splash activo durante la carga inicial para evitar mostrar cualquier skeleton gris
+  const isInitialSplash = !initialLoadingComplete;
+
   return (
-    <Box w="full" minH="100vh" bg={useColorModeValue("gray.50", "gray.900")}>
+    <Box w="full" minH="100vh" bg={pageBg} position="relative">
+      <AnimatePresence>
+        {isInitialSplash && (
+          <LoginTransitionScreen
+            username={username}
+            isReady={isDashboardReady}
+            onComplete={() => setInitialLoadingComplete(true)}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Header Integrado */}
       <TopHeaderBanner
         title={`Hola, ${username}.`}

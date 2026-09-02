@@ -5,16 +5,15 @@ import {
     Text,
     Input,
     Button,
-    Badge,
     Spinner,
     Modal,
     ModalOverlay,
     ModalContent,
     ModalCloseButton,
     useColorModeValue,
+    useDisclosure,
 } from "@chakra-ui/react";
-import { FiCamera, FiClock, FiMaximize2 } from "react-icons/fi";
-import { useDisclosure } from "@chakra-ui/react";
+import { FiCamera, FiClock, FiMaximize2, FiTrash2 } from "react-icons/fi";
 
 export function ImageUploadCard({
     image,
@@ -24,6 +23,7 @@ export function ImageUploadCard({
     existingImageData,
     isLoadingExistingImage,
     fileInputKey,
+    onResetImage,
 }) {
     const hasExistingImage = existingImageData?.hasImage;
     const { isOpen, onOpen, onClose } = useDisclosure();
@@ -39,21 +39,35 @@ export function ImageUploadCard({
             border="1px solid"
             borderColor={borderColor}
         >
-            <Flex align="center" mb={4}>
-                <Flex
-                    w="34px"
-                    h="34px"
-                    borderRadius="xl"
-                    bg="green.50"
-                    align="center"
-                    justify="center"
-                    mr={3}
-                >
-                    <Icon as={FiCamera} color="green.600" boxSize={4} />
+            <Flex align="center" justify="space-between" mb={4}>
+                <Flex align="center">
+                    <Flex
+                        w="34px"
+                        h="34px"
+                        borderRadius="xl"
+                        bg="green.50"
+                        align="center"
+                        justify="center"
+                        mr={3}
+                    >
+                        <Icon as={FiCamera} color="green.600" boxSize={4} />
+                    </Flex>
+                    <Text fontSize="sm" fontWeight="700" color="gray.800">
+                        Fotografía de Verificación (Check-In)
+                    </Text>
                 </Flex>
-                <Text fontSize="sm" fontWeight="700" color="gray.800">
-                    Fotografía de Verificación (Check-In)
-                </Text>
+                {image && onResetImage && (
+                    <Button
+                        size="xs"
+                        variant="ghost"
+                        colorScheme="red"
+                        leftIcon={<FiTrash2 />}
+                        onClick={onResetImage}
+                        fontSize="11px"
+                    >
+                        Quitar
+                    </Button>
+                )}
             </Flex>
 
             {isLoadingExistingImage && (
@@ -126,53 +140,40 @@ export function ImageUploadCard({
                 </Box>
             )}
 
+            {/* Botón único de Carga / Captura de Fotografía */}
             <Button
                 as="label"
-                htmlFor="file-input"
-                bg="gray.50"
-                color="gray.700"
+                htmlFor={`file-input-${fileInputKey}`}
+                w="full"
+                bg="green.50"
+                color="green.800"
                 border="1.5px dashed"
-                borderColor="gray.300"
-                width="100%"
-                h="52px"
+                borderColor="green.300"
+                h="50px"
                 borderRadius="xl"
-                fontSize="sm"
-                fontWeight="700"
+                fontSize="xs"
+                fontWeight="800"
                 cursor="pointer"
-                leftIcon={
-                    <Flex
-                        w="30px"
-                        h="30px"
-                        borderRadius="lg"
-                        bg="white"
-                        align="center"
-                        justify="center"
-                        border="1px solid"
-                        borderColor="gray.200"
-                        boxShadow="0 2px 5px rgba(0,0,0,0.05)"
-                    >
-                        <Icon as={FiCamera} color="gray.600" boxSize={4} />
-                    </Flex>
-                }
+                leftIcon={<Icon as={FiCamera} boxSize={4} color="green.600" />}
                 _hover={{
-                    bg: "gray.100",
+                    bg: "green.100",
                     borderColor: "green.500",
-                    color: "green.800",
                     transform: "translateY(-1px)",
                 }}
                 transition="all 0.2s"
                 isLoading={isProcessingImage}
                 loadingText="Procesando..."
+                justifyContent="center"
             >
-                {image ? "Cambiar Fotografía" : hasExistingImage ? "Actualizar Fotografía" : "Tomar / Subir Fotografía"}
+                {image ? "Cambiar Fotografía" : "Tomar / Subir Fotografía"}
             </Button>
 
+            {/* Input Oculto Único */}
             <Input
                 key={fileInputKey}
                 type="file"
-                id="file-input"
+                id={`file-input-${fileInputKey}`}
                 accept="image/*"
-                capture="environment"
                 onChange={onImageChange}
                 display="none"
             />

@@ -14,16 +14,21 @@ export function useQuoteSocket() {
 
     // 1. Escuchar cotizaciones creadas en vivo
     const handleQuoteCreated = (quote) => {
-      console.log("⚡ [WS EVENT] quote:created recibido:", quote?.docNumber || quote?.id);
+      const docId = quote?.docNumber || quote?.id;
+      console.log("⚡ [WS EVENT] quote:created recibido:", docId);
       queryClient.invalidateQueries({ queryKey: ["quotes"] });
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
       window.dispatchEvent(new Event("localQuotesUpdated"));
       window.dispatchEvent(new Event("localNotificationsUpdated"));
+      if (docId) {
+        window.dispatchEvent(new CustomEvent("quoteHighlight", { detail: { docId } }));
+      }
     };
 
     // 2. Escuchar cotizaciones actualizadas (aprobadas, rechazadas, etc.)
     const handleQuoteUpdated = (quote) => {
-      console.log("⚡ [WS EVENT] quote:updated recibido:", quote?.docNumber || quote?.id);
+      const docId = quote?.docNumber || quote?.id;
+      console.log("⚡ [WS EVENT] quote:updated recibido:", docId);
       if (quote && (quote.state === "ANULADO" || quote.approvalStatus === "ANULADO")) {
         const targetId = quote.docNumber || quote.id || quote.quoteId;
         const targetStr = String(targetId || "").trim().toUpperCase();
@@ -47,6 +52,9 @@ export function useQuoteSocket() {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
       window.dispatchEvent(new Event("localQuotesUpdated"));
       window.dispatchEvent(new Event("localNotificationsUpdated"));
+      if (docId) {
+        window.dispatchEvent(new CustomEvent("quoteHighlight", { detail: { docId } }));
+      }
     };
 
     // 3. Escuchar cotizaciones eliminadas
@@ -102,11 +110,25 @@ export function useQuoteSocket() {
         return;
       }
 
-      // Notificar con toast si coincide con el rol o usuario activo
-      const isForMe =
-        (notif.targetUsername && notif.targetUsername.toLowerCase() === currentUsername?.toLowerCase()) ||
-        (notif.targetRole && notif.targetRole === currentRole) ||
-        (notif.targetRole === "FACTURACION" && (currentRole === "ADMIN" || currentUsername?.toLowerCase() === "enrique"));
+      // Normalización inteligente de roles y usuarios para notificaciones
+      const targetRoleUpper = String(notif.targetRole || "").toUpperCase();
+      const currentRoleUpper = String(currentRole || "").toUpperCase();
+
+      const isSellerTarget = targetRoleUpper === "VENDEDOR" || targetRoleUpper === "SELLER";
+      const isSellerActive = currentRoleUpper === "VENDEDOR" || currentRoleUpper === "SELLER";
+
+      const isAdminTarget = targetRoleUpper === "FACTURACION" || targetRoleUpper === "ADMIN" || targetRoleUpper === "SUPERVISOR";
+      const isAdminActive = currentRoleUpper === "ADMIN" || currentRoleUpper === "FACTURACION" || currentRoleUpper === "SUPERVISOR" || currentUsername?.toLowerCase() === "enrique";
+
+      const isUserMatch = Boolean(
+        notif.targetUsername && currentUsername && (
+          notif.targetUsername.toLowerCase() === currentUsername.toLowerCase() ||
+          currentUsername.toLowerCase().includes(notif.targetUsername.toLowerCase()) ||
+          notif.targetUsername.toLowerCase().includes(currentUsername.toLowerCase())
+        )
+      );
+
+      const isForMe = isUserMatch || (isSellerTarget && isSellerActive) || (isAdminTarget && isAdminActive);
 
       if (isForMe && notif.title) {
         const toastId = `ws-notif-${notif.quoteId || notif.id}-${notif.status || 'new'}`;
@@ -125,8 +147,8 @@ export function useQuoteSocket() {
           id: toastId,
           title: notif.title,
           description: notif.description || "Tienes una nueva actualización en el módulo de cotizaciones.",
-          status: notif.status === "APROBADO_COMERCIAL" || notif.status === "APROBADO" ? "success" : notif.status === "RECHAZADO" ? "error" : "info",
-          duration: 6000,
+          status: notif.status === "APROBADO_COMERCIAL" || notif.status === "APROBADO" ? "success" : notif.status === "RECHAZADO" ? "error" : "warning",
+          duration: 7000,
           isClosable: true,
           position: "top-right",
         });

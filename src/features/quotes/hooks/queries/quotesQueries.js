@@ -15,10 +15,10 @@ export const useGetQuotes = (filters = {}) => {
     const query = useQuery({
         queryKey: ["quotes", filters],
         queryFn: () => getQuotes(filters),
-        refetchInterval: 5000, // Live poll every 5 seconds for real-time multi-user sync
+        staleTime: 30000, // 30 segundos de caché; Socket.io actualiza instantáneamente con cero delay
         refetchOnWindowFocus: true,
     })
-    return { ...query, data: query.data || [], isLoading: query.isLoading, error: query.error }
+    return { ...query, data: query.data || [], isLoading: query.isLoading, isFetching: query.isFetching, error: query.error }
 }
 
 export const useQuotes = useGetQuotes;
@@ -27,10 +27,11 @@ export const useNotifications = (targetRole, targetUsername) => {
     const query = useQuery({
         queryKey: ["notifications", targetRole, targetUsername],
         queryFn: () => getNotifications(targetRole, targetUsername),
-        refetchInterval: 5000, // Live poll every 5 seconds
+        staleTime: 0,
+        refetchOnMount: "always",
         refetchOnWindowFocus: true,
     })
-    return { ...query, data: query.data || [], isLoading: query.isLoading, error: query.error }
+    return { ...query, data: query.data || [], isLoading: query.isLoading, isFetching: query.isFetching, error: query.error }
 }
 
 export const useGetQuoteById = (id) => {
@@ -38,6 +39,8 @@ export const useGetQuoteById = (id) => {
         queryKey: ["quoteById", id],
         queryFn:  () => getQuoteById(id),
         enabled: !!id,
+        staleTime: 0,
+        refetchOnMount: "always",
         retry: false,
     })
     return { data, isLoading, error }

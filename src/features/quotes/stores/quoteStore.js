@@ -421,39 +421,45 @@ export const useQuoteStore = create((set, get) => {
 
       const saleConditionVal = firstMeaningfulValue(
         quoteData.saleCondition,
+        quoteData.totals?.saleCondition,
+        quoteData.U_VS_CONDICION,
         quoteData.condicionVenta,
         quoteData.condicionPago
       ) || (quoteData.paymentType?.isCredit ? "CREDITO" : (quoteData.paymentType ? "CONTADO" : ""));
 
       const documentTypeVal = firstMeaningfulValue(
         quoteData.documentType,
+        quoteData.totals?.documentType,
+        quoteData.U_VS_COMPROBANTE,
         quoteData.tipoComprobante,
         quoteData.docTypeVenta
       ) || "";
 
-      const isLetraVal = Boolean(quoteData.isLetra || quoteData.hasLetra || quoteData.letra);
+      const isLetraVal = Boolean(quoteData.isLetra || quoteData.totals?.isLetra || quoteData.hasLetra || quoteData.letra || quoteData.U_VS_LETRA === "S");
       const creditTermVal = firstMeaningfulValue(
         quoteData.creditTerm,
+        quoteData.totals?.creditTerm,
+        quoteData.U_VS_PLAZO,
         quoteData.plazo,
         quoteData.plazoCredito
       ) || "";
 
-      let deliveryFormVal = quoteData.selectedDeliveryForm || quoteData.deliveryForm || "";
+      let deliveryFormVal = quoteData.selectedDeliveryForm || quoteData.deliveryForm || quoteData.totals?.selectedDeliveryForm || quoteData.totals?.deliveryForm || "";
       if (typeof deliveryFormVal === "string" && deliveryFormVal.trim().startsWith("{")) {
         try { deliveryFormVal = JSON.parse(deliveryFormVal); } catch (e) {}
       }
 
-      let transportVal = quoteData.selectedTransport || quoteData.TransportationCode || quoteData.transport || "";
+      let transportVal = quoteData.selectedTransport || quoteData.transport || quoteData.TransportationCode || quoteData.totals?.selectedTransport || quoteData.totals?.transport || "";
       if (typeof transportVal === "string" && transportVal.trim().startsWith("{")) {
         try { transportVal = JSON.parse(transportVal); } catch (e) {}
       }
 
-      let pointVal = quoteData.selectedPoint || quoteData.ShipToCode || quoteData.deliveryPoint || null;
+      let pointVal = quoteData.selectedPoint || quoteData.deliveryPoint || quoteData.ShipToCode || quoteData.totals?.selectedPoint || quoteData.totals?.deliveryPoint || null;
       if (typeof pointVal === "string" && pointVal.trim().startsWith("{")) {
         try { pointVal = JSON.parse(pointVal); } catch (e) {}
       }
 
-      let paymentTypeVal = quoteData.selectedPaymentType || quoteData.PaymentGroupCode || quoteData.PayTermsGrpCode || quoteData.paymentType || "";
+      let paymentTypeVal = quoteData.selectedPaymentType || quoteData.paymentType || quoteData.PaymentGroupCode || quoteData.PayTermsGrpCode || quoteData.totals?.selectedPaymentType || quoteData.totals?.paymentType || "";
       if (typeof paymentTypeVal === "string" && paymentTypeVal.trim().startsWith("{")) {
         try { paymentTypeVal = JSON.parse(paymentTypeVal); } catch (e) {}
       }

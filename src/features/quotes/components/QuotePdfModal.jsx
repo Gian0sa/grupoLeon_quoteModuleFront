@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import {
@@ -18,14 +18,31 @@ import {
   Stack,
   Flex,
 } from "@chakra-ui/react";
-import { Download, Printer, FileText } from "lucide-react";
+import { Download, Printer, FileText, ZoomIn, ZoomOut } from "lucide-react";
 import QuotePdfDocument from "./QuotePdfDocument";
 
 export default function QuotePdfModal({ isOpen, onClose, quote }) {
   const pdfRef = useRef();
   const [isGenerating, setIsGenerating] = useState(false);
   const [isPrintMode, setIsPrintMode] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(1);
   const toast = useToast();
+
+  const handleAutoFit = () => {
+    const availableW = window.innerWidth - 32;
+    const fitScale = Math.min(1, Math.max(0.38, availableW / 800));
+    setZoomLevel(Number(fitScale.toFixed(2)));
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      if (window.innerWidth < 800) {
+        handleAutoFit();
+      } else {
+        setZoomLevel(1);
+      }
+    }
+  }, [isOpen]);
 
   if (!quote) return null;
 
@@ -45,6 +62,12 @@ export default function QuotePdfModal({ isOpen, onClose, quote }) {
       const origMaxW = element.style.maxWidth;
       const origMinH = element.style.minHeight;
       const origBoxShadow = element.style.boxShadow;
+      const wrapperEl = element.parentElement;
+      const origTransform = wrapperEl ? wrapperEl.style.transform : "";
+
+      if (wrapperEl) {
+        wrapperEl.style.transform = "none";
+      }
 
       // Dimensiones A4 fijas y ultra nítidas
       element.style.width = "800px";
@@ -64,6 +87,9 @@ export default function QuotePdfModal({ isOpen, onClose, quote }) {
       element.style.maxWidth = origMaxW;
       element.style.minHeight = origMinH;
       element.style.boxShadow = origBoxShadow;
+      if (wrapperEl) {
+        wrapperEl.style.transform = origTransform;
+      }
       setIsPrintMode(false);
 
       const imgData = canvas.toDataURL("image/png", 1.0);
@@ -207,20 +233,126 @@ export default function QuotePdfModal({ isOpen, onClose, quote }) {
         </ModalHeader>
         <ModalCloseButton color="white" top={3} right={3} />
 
-        <ModalBody p={{ base: 2, sm: 4, md: 6 }} bg="#334155" overflowY="auto">
+        {/* BARRA SUPERIOR DE HERRAMIENTAS: ZOOM Y DESCARGA (Fija y siempre visible en Móvil y PC) */}
+        <Box
+          bg="#0f172a"
+          px={{ base: 3, md: 5 }}
+          py={2}
+          borderBottom="1px solid rgba(255, 255, 255, 0.12)"
+          className="no-print"
+        >
+          <Flex justify="space-between" align="center" gap={2}>
+            {/* Controles de Zoom */}
+            <HStack spacing={1.5}>
+              <Button
+                size="xs"
+                variant="ghost"
+                color="white"
+                _hover={{ bg: "whiteAlpha.300" }}
+                onClick={() => setZoomLevel((z) => Math.max(0.35, Number((z - 0.15).toFixed(2))))}
+                title="Alejar (-)"
+              >
+                <ZoomOut className="w-3.5 h-3.5" />
+              </Button>
+              <Badge
+                cursor="pointer"
+                onClick={() => setZoomLevel(1)}
+                bg="emerald.500"
+                color="white"
+                px={2}
+                py={0.5}
+                borderRadius="full"
+                fontSize="xs"
+                fontWeight="800"
+                title="Restablecer 100%"
+              >
+                {Math.round(zoomLevel * 100)}%
+              </Badge>
+              <Button
+                size="xs"
+                variant="ghost"
+                color="white"
+                _hover={{ bg: "whiteAlpha.300" }}
+                onClick={() => setZoomLevel((z) => Math.min(2.0, Number((z + 0.15).toFixed(2))))}
+                title="Acercar (+)"
+              >
+                <ZoomIn className="w-3.5 h-3.5" />
+              </Button>
+              <Button
+                size="xs"
+                variant="outline"
+                colorScheme="teal"
+                color="emerald.200"
+                borderColor="emerald.500"
+                px={2}
+                h="24px"
+                fontSize="11px"
+                fontWeight="700"
+                _hover={{ bg: "emerald.900" }}
+                onClick={handleAutoFit}
+              >
+                Ajustar
+              </Button>
+              <Button
+                size="xs"
+                variant="outline"
+                colorScheme="teal"
+                color="emerald.200"
+                borderColor="emerald.500"
+                px={2}
+                h="24px"
+                fontSize="11px"
+                fontWeight="700"
+                _hover={{ bg: "emerald.900" }}
+                onClick={() => setZoomLevel(1)}
+              >
+                100%
+              </Button>
+            </HStack>
+
+            {/* Botón de Descarga Directa */}
+            <Button
+              size="xs"
+              colorScheme="green"
+              bg="#10b981"
+              _hover={{ bg: "#059669" }}
+              color="white"
+              fontWeight="800"
+              px={3}
+              h="26px"
+              leftIcon={<Download className="w-3.5 h-3.5" />}
+              onClick={handleDownloadPdf}
+              isLoading={isGenerating}
+              loadingText="..."
+            >
+              Descargar PDF
+            </Button>
+          </Flex>
+        </Box>
+
+        <ModalBody p={{ base: 2, sm: 4, md: 6 }} bg="#1e293b" overflowY="auto" overflowX="auto" sx={{ WebkitOverflowScrolling: "touch" }}>
+          {/* Lienzo del Documento con Zoom y Ancho Fijo de PC (Nunca comprimido en móvil) */}
           <Box
             w="full"
             display="flex"
             justifyContent="center"
             alignItems="flex-start"
+            minW="800px"
           >
             <Box
-              w="full"
-              maxW="210mm"
+              w="800px"
+              minW="800px"
+              maxW="800px"
               boxShadow="2xl"
-              borderRadius={{ base: "sm", sm: "md" }}
+              borderRadius="md"
               overflow="hidden"
               bg="white"
+              style={{
+                transform: zoomLevel !== 1 ? `scale(${zoomLevel})` : undefined,
+                transformOrigin: "top center",
+                transition: "transform 0.12s ease-out",
+                marginBottom: zoomLevel > 1 ? `${(zoomLevel - 1) * 1150}px` : "0px",
+              }}
             >
               <QuotePdfDocument ref={pdfRef} quote={quote} isPrintMode={isPrintMode} />
             </Box>
