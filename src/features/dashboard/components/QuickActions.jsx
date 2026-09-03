@@ -87,8 +87,8 @@ export function QuickActions() {
                 whileHover={{ scale: 1.03, y: -2 }}
                 whileTap={{ scale: 0.97 }}
                 onClick={() => navigate(action.path)}
-                bg="rgba(255, 255, 255, 0.16)"
-                backdropFilter="blur(16px)"
+                bg={{ base: "rgba(255, 255, 255, 0.22)", md: "rgba(255, 255, 255, 0.16)" }}
+                backdropFilter={{ base: "none", md: "blur(16px)" }}
                 border="1.5px solid rgba(255, 255, 255, 0.28)"
                 color="white"
                 minW="0"

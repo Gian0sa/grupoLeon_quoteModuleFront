@@ -224,8 +224,8 @@ export function TopHeaderBanner({
             {/* Badge Tipo de Cambio USD - Solo en vista principal / cuando se habilite */}
             {showExchangeRate && (
               <Box
-                bg="whiteAlpha.200"
-                backdropFilter="blur(12px)"
+                bg={{ base: "rgba(255, 255, 255, 0.22)", md: "whiteAlpha.200" }}
+                backdropFilter={{ base: "none", md: "blur(12px)" }}
                 border="1px solid rgba(255,255,255,0.25)"
                 borderRadius="full"
                 px={{ base: 3, sm: 4 }}
@@ -275,8 +275,8 @@ export function TopHeaderBanner({
 
           {/* Bloque de acciones del Dashboard: Recargar + Notificaciones + Menú Lateral */}
           <HStack
-            bg="rgba(255, 255, 255, 0.14)"
-            backdropFilter="blur(14px)"
+            bg={{ base: "rgba(255, 255, 255, 0.20)", md: "rgba(255, 255, 255, 0.14)" }}
+            backdropFilter={{ base: "none", md: "blur(14px)" }}
             border="1px solid rgba(255, 255, 255, 0.25)"
             borderRadius="full"
             py={{ base: 1.5, md: 2 }}

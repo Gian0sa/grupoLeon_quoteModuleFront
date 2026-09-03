@@ -116,7 +116,7 @@ export function LoginTransitionScreen({ username, isReady = true, onComplete }) 
     <MotionFlex
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      exit={{ opacity: 0, transition: { duration: 0.35 } }}
+      exit={{ opacity: 0, transition: { duration: 0.25 } }}
       position="fixed"
       top="0"
       left="0"
@@ -126,10 +126,11 @@ export function LoginTransitionScreen({ username, isReady = true, onComplete }) 
       direction="column"
       align="center"
       justify="center"
-      bg="rgba(15, 23, 42, 0.45)"
-      backdropFilter="blur(20px) saturate(180%)"
+      bg="rgba(15, 23, 42, 0.65)"
+      backdropFilter={{ base: "none", md: "blur(6px)" }}
       overflow="hidden"
       p={4}
+      style={{ willChange: "opacity" }}
     >
       {/* Círculos de luz ambiental animados suaves */}
       <MotionBox
@@ -137,10 +138,10 @@ export function LoginTransitionScreen({ username, isReady = true, onComplete }) 
         w="450px"
         h="450px"
         borderRadius="full"
-        bg="radial-gradient(circle, rgba(16, 185, 129, 0.18) 0%, rgba(0,0,0,0) 70%)"
+        bg="radial-gradient(circle, rgba(16, 185, 129, 0.15) 0%, rgba(0,0,0,0) 70%)"
         animate={{
-          scale: [1, 1.25, 1],
-          opacity: [0.3, 0.6, 0.3],
+          scale: [1, 1.15, 1],
+          opacity: [0.2, 0.4, 0.2],
         }}
         transition={{
           duration: 3.5,
@@ -150,22 +151,22 @@ export function LoginTransitionScreen({ username, isReady = true, onComplete }) 
         pointerEvents="none"
       />
 
-      {/* Tarjeta de Carga Glassmorphism Blanca Translúcida */}
+      {/* Tarjeta de Carga Blanca Sólida y Nítida (Sin blur pesado) */}
       <MotionBox
         initial={{ y: 20, scale: 0.95, opacity: 0 }}
         animate={{ y: 0, scale: 1, opacity: 1 }}
-        transition={{ duration: 0.4, ease: "easeOut" }}
+        transition={{ duration: 0.3, ease: "easeOut" }}
         w="full"
         maxW="420px"
-        bg="rgba(255, 255, 255, 0.95)"
-        backdropFilter="blur(30px)"
-        border="1.5px solid rgba(255, 255, 255, 0.9)"
+        bg="white"
+        border="1px solid rgba(255, 255, 255, 0.8)"
         borderRadius="3xl"
         p={{ base: 6, sm: 8 }}
         boxShadow="0 25px 60px -12px rgba(0, 0, 0, 0.35), 0 0 30px rgba(16, 185, 129, 0.15)"
         textAlign="center"
         position="relative"
         zIndex={10}
+        style={{ willChange: "transform, opacity", transform: "translate3d(0, 0, 0)" }}
       >
         {/* Logo con respiración suave */}
         <VStack spacing={3} mb={5}>

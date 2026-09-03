@@ -209,8 +209,10 @@ export function LateralMenu() {
         w={{ base: "42px", md: "48px" }}
         h={{ base: "42px", md: "48px" }}
         _hover={{ bg: "whiteAlpha.300" }}
+        _active={{ bg: "whiteAlpha.400" }}
         onClick={onOpen}
         aria-label="Abrir menú"
+        sx={{ touchAction: "manipulation" }}
       />
 
       <Drawer
@@ -219,21 +221,28 @@ export function LateralMenu() {
         onClose={onClose}
         finalFocusRef={btnRef}
         size="md"
-        blockScrollOnMount={true}
+        blockScrollOnMount={false}
         preserveScrollBarGap={false}
         autoFocus={false}
+        trapFocus={false}
+        returnFocusOnClose={false}
       >
         {/* Sin backdropFilter para respuesta ultra veloz de 60fps en móviles */}
         <DrawerOverlay bg="blackAlpha.600" transition="opacity 0.15s ease-out" />
         <DrawerContent
           bg="white"
           maxW="340px"
+          h="100dvh"
+          maxH="100dvh"
+          display="flex"
+          flexDirection="column"
           borderLeftRadius="2xl"
           boxShadow="-8px 0 40px rgba(0,0,0,0.12)"
-          style={{ willChange: "transform", transform: "translateZ(0)" }}
+          overflow="hidden"
+          style={{ willChange: "transform", transform: "translate3d(0, 0, 0)" }}
         >
           {/* Header con perfil integrado */}
-          <DrawerHeader p={0}>
+          <DrawerHeader p={0} flexShrink={0}>
             <Box
               bg="#126C36"
               boxShadow="0 10px 30px rgba(18, 108, 54, 0.4)"
@@ -357,8 +366,19 @@ export function LateralMenu() {
           </DrawerHeader>
 
           {/* Cuerpo del menú con scroll fluido optimizado */}
-          <DrawerBody px={3} py={4}>
-            <VStack spacing={4} align="stretch">
+          <DrawerBody 
+            px={3} 
+            py={3}
+            flex="1"
+            overflowY="auto"
+            overscrollBehavior="contain"
+            sx={{
+              WebkitOverflowScrolling: "touch",
+              "&::-webkit-scrollbar": { width: "4px" },
+              "&::-webkit-scrollbar-thumb": { bg: "gray.200", borderRadius: "full" },
+            }}
+          >
+            <VStack spacing={4} align="stretch" pb={2}>
               {/* SECCIÓN 1: Aplicación */}
               <Box>
                 <SectionLabel icon color="green">Aplicación</SectionLabel>
@@ -387,8 +407,17 @@ export function LateralMenu() {
             </VStack>
           </DrawerBody>
 
-          {/* Footer con Botón de Cerrar Sesión */}
-          <DrawerFooter borderTop="1px solid" borderColor="gray.100" p={4}>
+          {/* Footer con Botón de Cerrar Sesión fijo y seguro que nunca desaparece */}
+          <DrawerFooter 
+            borderTop="1px solid" 
+            borderColor="gray.100" 
+            p={4}
+            pb="calc(14px + env(safe-area-inset-bottom, 0px))"
+            flexShrink={0}
+            bg="white"
+            zIndex={10}
+            boxShadow="0 -4px 16px rgba(0,0,0,0.05)"
+          >
             <Button
               bg="linear-gradient(135deg, #b91c1c 0%, #dc2626 50%, #ef4444 100%)"
               color="white"
@@ -401,6 +430,8 @@ export function LateralMenu() {
               onClick={handleLogout}
               boxShadow="0 4px 14px rgba(220, 38, 38, 0.25)"
               _hover={{ bg: "#991b1b" }}
+              _active={{ transform: "scale(0.98)" }}
+              sx={{ touchAction: "manipulation" }}
             >
               Cerrar sesión
             </Button>
