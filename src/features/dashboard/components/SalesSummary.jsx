@@ -129,9 +129,10 @@ export function SalesSummary({ data }) {
       transition={{ duration: 0.2 }}
       bg="white"
       borderRadius="3xl"
-      p={6}
+      p={{ base: 4, md: 6 }}
       w="full"
-      h="240px"
+      h={{ base: "225px", md: "245px" }}
+      minH={{ base: "220px", md: "245px" }}
       display="flex"
       flexDirection="column"
       justifyContent="space-between"
@@ -149,11 +150,11 @@ export function SalesSummary({ data }) {
         position="absolute"
         top="-20px"
         right="-20px"
-        w="100px"
-        h="100px"
+        w="105px"
+        h="105px"
         borderRadius="full"
-        bg={progressValue >= 70 ? "emerald.50" : "orange.50"}
-        opacity={0.6}
+        bg="#fffbf0"
+        opacity={0.85}
         pointerEvents="none"
       />
 
@@ -177,10 +178,10 @@ export function SalesSummary({ data }) {
 
       {/* Valor principal */}
       <VStack align="start" spacing={0} my={1}>
-        <Text fontSize={{ base: "2xl", sm: "3xl" }} fontWeight="900" color="gray.800" lineHeight="1" letterSpacing="tight">
+        <Text fontSize={{ base: "xl", sm: "2xl", md: "3xl" }} fontWeight="900" color="gray.800" lineHeight="1" letterSpacing="tight">
           ${pedidos}
         </Text>
-        <Text fontSize="xs" color="gray.400" mt={1} fontWeight="medium">
+        <Text fontSize={{ base: "11px", sm: "xs" }} color="gray.400" mt={1} fontWeight="medium">
           Venta facturada hoy: <Text as="span" color="emerald.600" fontWeight="bold">${ventasHoy}</Text>
         </Text>
       </VStack>
@@ -190,11 +191,11 @@ export function SalesSummary({ data }) {
         <Flex justify="space-between" align="center" mb={1.5}>
           <HStack spacing={1}>
             <Icon as={Target} boxSize={3.5} color="gray.400" />
-            <Text fontSize="xs" color="gray.500" fontWeight="semibold">
+            <Text fontSize={{ base: "10.5px", sm: "xs" }} color="gray.500" fontWeight="semibold">
               {Number(data.CUOTA_MES_USD || 0) > 0 ? `Meta: $${cuota}` : "Meta SAP: Sin asignar ($0.00)"}
             </Text>
           </HStack>
-          <Text fontSize="xs" fontWeight="900" color={progressValue >= 70 ? "emerald.600" : "orange.600"}>
+          <Text fontSize={{ base: "11px", sm: "xs" }} fontWeight="900" color={progressValue >= 70 ? "emerald.600" : "orange.600"}>
             {progressValue.toFixed(2)}%
           </Text>
         </Flex>
@@ -216,12 +217,14 @@ export function SalesSummary({ data }) {
       <Flex justify="space-between" align="center" pt={1}>
         <Badge
           borderRadius="full"
-          px={3}
+          px={{ base: 2, sm: 3 }}
           py={1}
-          fontSize="xs"
+          fontSize={{ base: "10px", sm: "11px", md: "xs" }}
           fontWeight="bold"
           bg={badgeStyle.bg}
           color={badgeStyle.color}
+          maxW="100%"
+          noOfLines={1}
         >
           {getStatusMessage(progressValue)}
         </Badge>

@@ -7,7 +7,7 @@ import {
   Flex,
   Badge,
 } from "@chakra-ui/react";
-import { FileText, ArrowUpRight, CheckCircle2, Clock } from "lucide-react";
+import { ShoppingBag, FileText, ArrowUpRight, CheckCircle2, Clock } from "lucide-react";
 import { motion } from "framer-motion";
 
 const MotionBox = motion(Box);
@@ -96,9 +96,10 @@ export function SalesStats({ data }) {
       transition={{ duration: 0.2 }}
       bg="white"
       borderRadius="3xl"
-      p={6}
+      p={{ base: 4, md: 6 }}
       w="full"
-      h="240px"
+      h={{ base: "225px", md: "245px" }}
+      minH={{ base: "220px", md: "245px" }}
       display="flex"
       flexDirection="column"
       justifyContent="space-between"
@@ -125,10 +126,10 @@ export function SalesStats({ data }) {
       <Flex justify="space-between" align="center">
         <HStack spacing={2}>
           <Box p={2} borderRadius="xl" bg="blue.50" color="blue.600">
-            <Icon as={FileText} boxSize={5} />
+            <Icon as={ShoppingBag} boxSize={5} />
           </Box>
           <Text fontSize="xs" color="gray.500" fontWeight="bold" textTransform="uppercase" letterSpacing="wider">
-            Total Pedido
+            Pedidos del Mes
           </Text>
         </HStack>
 
@@ -139,10 +140,10 @@ export function SalesStats({ data }) {
 
       {/* Valor principal */}
       <VStack align="start" spacing={0} my={1}>
-        <Text fontSize={{ base: "2xl", sm: "3xl" }} fontWeight="900" color="gray.800" lineHeight="1" letterSpacing="tight">
+        <Text fontSize={{ base: "xl", sm: "2xl", md: "3xl" }} fontWeight="900" color="gray.800" lineHeight="1" letterSpacing="tight">
           ${pedidosMes}
         </Text>
-        <Text fontSize="xs" color="gray.400" mt={1} fontWeight="medium">
+        <Text fontSize={{ base: "11px", sm: "xs" }} color="gray.400" mt={1} fontWeight="medium">
           Total de pedidos: <Text as="span" color="gray.700" fontWeight="bold">{cantidadPedidos}</Text>
         </Text>
       </VStack>
@@ -152,11 +153,11 @@ export function SalesStats({ data }) {
         <Flex justify="space-between" align="center" mb={1.5}>
           <HStack spacing={1}>
             <Icon as={Clock} boxSize={3.5} color="gray.400" />
-            <Text fontSize="xs" color="gray.500" fontWeight="semibold">
+            <Text fontSize={{ base: "10.5px", sm: "xs" }} color="gray.500" fontWeight="semibold">
               Dif: ${diferencia}
             </Text>
           </HStack>
-          <Text fontSize="xs" fontWeight="900" color="blue.600">
+          <Text fontSize={{ base: "11px", sm: "xs" }} fontWeight="900" color="blue.600">
             {parseFloat(data.DIF_FACT_VS_PED_USD || 0) >= 0 ? "+" : ""}
             {pctFactVsPed.toFixed(2)}%
           </Text>
@@ -179,13 +180,15 @@ export function SalesStats({ data }) {
       <Flex justify="space-between" align="center" pt={1}>
         <Badge
           borderRadius="full"
-          px={3}
+          px={{ base: 2, sm: 3 }}
           py={1}
-          fontSize="xs"
+          fontSize={{ base: "10px", sm: "11px", md: "xs" }}
           fontWeight="bold"
           bg={badgeStyle.bg}
           color={badgeStyle.color}
           border={badgeStyle.border}
+          maxW="100%"
+          noOfLines={1}
         >
           {getStatusMessage(pctFactVsPed)}
         </Badge>

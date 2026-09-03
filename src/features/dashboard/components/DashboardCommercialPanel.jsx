@@ -3,7 +3,18 @@ import { Box, Grid } from "@chakra-ui/react";
 import { CreditAlertsCard } from "./CreditAlertsCard";
 import { TopProductsCard } from "./TopProductsCard";
 
-export function DashboardCommercialPanel() {
+export function DashboardCommercialPanel({
+  selectedSeller,
+  selectedSellerCode,
+  selectedYear,
+  selectedMonth,
+  canFilterSellers,
+}) {
+  const sellerLabel = selectedSeller?.label || "";
+  const sellerName = selectedSeller?.value !== 0
+    ? (sellerLabel.includes(".") ? sellerLabel.split(".")[1]?.trim() : sellerLabel.trim())
+    : null;
+
   return (
     <Box pt={6} pb={12} w="full">
       <Grid
@@ -14,10 +25,19 @@ export function DashboardCommercialPanel() {
       >
         {/* Cada celda del grid actúa como un contenedor flex de altura fija */}
         <Box display="flex" flexDirection="column" overflow="hidden">
-          <CreditAlertsCard />
+          <CreditAlertsCard
+            selectedSeller={selectedSeller}
+            canFilterSellers={canFilterSellers}
+          />
         </Box>
         <Box display="flex" flexDirection="column" overflow="hidden">
-          <TopProductsCard />
+          <TopProductsCard
+            year={selectedYear}
+            month={selectedMonth}
+            sellerCode={selectedSellerCode}
+            sellerName={sellerName}
+            canFilterSellers={canFilterSellers}
+          />
         </Box>
       </Grid>
     </Box>

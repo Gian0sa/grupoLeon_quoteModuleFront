@@ -185,11 +185,12 @@ export default function SapItemGrid({
                   )}
                 </Flex>
                 <Divider mb={2.5} borderColor="gray.100" />
-                <Grid templateColumns="1fr 1.2fr 1fr 1fr" gap={2} align="center" mb={2.5}>
+                <Grid templateColumns="1fr 1.2fr 0.9fr 1fr" gap={1.5} align="center" mb={2.5}>
                   <Box>
                     <Text fontSize="0.6rem" color="gray.500" fontWeight="800" mb={0.5} textAlign="center">CANT.</Text>
                     <Input
                       size="xs"
+                      h="26px"
                       type="text"
                       inputMode="numeric"
                       pattern="[0-9]*"
@@ -227,31 +228,11 @@ export default function SapItemGrid({
                   </Box>
                   <Box>
                     <Text fontSize="0.6rem" color="gray.500" fontWeight="800" mb={0.5} textAlign="right">PRECIO U.</Text>
-                    {isReadOnly || (item.isPriceFromSap && !item.isTestFallback) ? (
-                      <Text fontSize="xs" fontWeight="800" color="gray.900" textAlign="right">{money(price > 0 ? price : 25.0, currency)}</Text>
-                    ) : (
-                      <Input
-                        size="xs"
-                        maxW="75px"
-                        type="number"
-                        step="0.01"
-                        textAlign="right"
-                        fontWeight="800"
-                        borderRadius="md"
-                        borderColor="gray.300"
-                        bg="white"
-                        value={item.price > 0 ? item.price : 25.0}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value);
-                          const newP = isNaN(val) ? 0 : val;
-                          onUpdateProduct(item.id, { price: newP, unitPrice: newP, importe: newP, isTestFallback: true });
-                        }}
-                      />
-                    )}
+                    <Text fontSize={{ base: "11px", sm: "xs" }} fontWeight="800" color="gray.900" textAlign="right">{money(price > 0 ? price : 25.0, currency)}</Text>
                   </Box>
                   <Box textAlign="center">
                     <Text fontSize="0.6rem" color="gray.500" fontWeight="800" mb={0.5}>DESC.</Text>
-                    <Badge colorScheme="green" fontSize="0.65rem" fontWeight="800" px={1.5} py={0.5} borderRadius="md">
+                    <Badge colorScheme="green" fontSize="0.65rem" fontWeight="800" px={1} py={0.5} borderRadius="md">
                       {sapDisc}%
                     </Badge>
                   </Box>
@@ -268,7 +249,7 @@ export default function SapItemGrid({
                       onClick={() => handleOpenDiscountModal(item)}
                       fontWeight="900"
                       fontSize="0.65rem"
-                      px={1.5}
+                      px={1}
                       borderRadius="md"
                     >
                       {addDisc}% ⚡
@@ -414,27 +395,7 @@ export default function SapItemGrid({
                         </VStack>
                       </Td>
                       <Td px={3} textAlign="right" fontWeight="800" fontSize="xs" color="gray.800">
-                        {isReadOnly || (item.isPriceFromSap && !item.isTestFallback) ? (
-                          money(price > 0 ? price : 25.0, currency)
-                        ) : (
-                          <Input
-                            size="xs"
-                            maxW="85px"
-                            type="number"
-                            step="0.01"
-                            textAlign="right"
-                            fontWeight="800"
-                            borderRadius="md"
-                            borderColor="gray.300"
-                            bg="white"
-                            value={item.price > 0 ? item.price : 25.0}
-                            onChange={(e) => {
-                              const val = parseFloat(e.target.value);
-                              const newP = isNaN(val) ? 0 : val;
-                              onUpdateProduct(item.id, { price: newP, unitPrice: newP, importe: newP, isTestFallback: true });
-                            }}
-                          />
-                        )}
+                        {money(price > 0 ? price : 25.0, currency)}
                       </Td>
                       <Td px={2} textAlign="center">
                         <Badge colorScheme="green" fontSize="xs" fontWeight="800" px={1.5} py={0.5} borderRadius="md">

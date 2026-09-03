@@ -77,6 +77,8 @@ export const normalizeQuoteItem = (item) => {
     whsCode,
     sigla,
     marca,
+    isPriceFromSap: true,
+    isTestFallback: false,
   };
 };
 

@@ -33,6 +33,7 @@ export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVis
     // `isSubmitting` solo bloquea el botón tras un re-render; en un teléfono un
     // doble toque rápido entra antes de eso. Este candado es síncrono.
     const inFlightRef = useRef(false);
+    const lastGpsWarningTimeRef = useRef(0);
     const { mutate: createVisit, isLoading: isCreatingVisit, isPending } = useCreateVisitLog();
     const toast = useToast();
     const navigate = useNavigate();
@@ -107,24 +108,41 @@ export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVis
         setIsSubmitting(true);
 
         try {
-            // El GPS falla a menudo en campo (sin señal, permiso denegado, timeout).
-            // Antes eso abortaba el envío y la visita se perdía sin dejar rastro;
-            // ahora se registra igual y se marca para conciliación.
             let location = null;
             let reviewReason = null;
             try {
                 location = await getLocation();
             } catch (locErr) {
-                const info = LOCATION_ERRORS[locErr.message];
-                reviewReason = `Sin ubicación: ${info?.title || locErr.message || "error de GPS"}`;
-                toast({
-                    title: "Sin ubicación GPS",
-                    description: "La marca se registrará sin coordenadas y quedará señalada para revisión.",
-                    status: "warning",
-                    duration: 5000,
-                    isClosable: true,
-                    position: "top",
-                });
+                const now = Date.now();
+                // Si el usuario vuelve a presionar dentro de los 15 segundos después de la advertencia,
+                // permite registrar como excepción (ej: dispositivo sin sensor de GPS).
+                if (now - lastGpsWarningTimeRef.current < 15000) {
+                    const info = LOCATION_ERRORS[locErr.message];
+                    reviewReason = `Sin ubicación: ${info?.title || locErr.message || "GPS no disponible"}`;
+                    toast({
+                        title: "Registrando sin coordenadas",
+                        description: "La marca se registrará sin GPS y quedará señalada para revisión.",
+                        status: "info",
+                        duration: 4000,
+                        isClosable: true,
+                        position: "top",
+                    });
+                } else {
+                    // Primer intento fallido: DETENER el envío y avisar al usuario para que active su GPS
+                    lastGpsWarningTimeRef.current = now;
+                    inFlightRef.current = false;
+                    setIsSubmitting(false);
+
+                    toast({
+                        title: "📍 Enciende tu GPS / Ubicación",
+                        description: "No se detectaron coordenadas. Por favor activa la Ubicación en la barra superior de tu teléfono y vuelve a pulsar el botón.",
+                        status: "warning",
+                        duration: 6000,
+                        isClosable: true,
+                        position: "top",
+                    });
+                    return;
+                }
             }
 
             // El Check-In abre un grupo; el Check-Out reutiliza el del Check-In
@@ -211,7 +229,7 @@ export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVis
                 onSuccess: async (data) => {
                     toast({
                         title: type === "IN" ? "Check-in registrado" : "Check-out registrado",
-                        description: type === "IN" 
+                        description: type === "IN"
                             ? "Check-In registrado. Redirigiendo a Historial de Cliente..."
                             : "Check-Out registrado correctamente.",
                         status: "success",

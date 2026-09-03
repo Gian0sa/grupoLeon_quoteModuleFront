@@ -23,7 +23,12 @@ import { useNavigate } from "react-router-dom";
 import { useTopSelledProducts } from "../hooks/queries/dashboardQueries";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 
-export function TopProductsCard() {
+const MONTH_NAMES = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+];
+
+export function TopProductsCard({ year, month, sellerCode, sellerName, canFilterSellers }) {
   const navigate = useNavigate();
   const toast = useToast();
   const [copiedCode, setCopiedCode] = useState(null);
@@ -34,20 +39,44 @@ export function TopProductsCard() {
   const salesEmployeeCode = useAuthStore((state) => state.salesEmployeeCode);
 
   const isAdmin = role === "ADMIN" || username?.toLowerCase() === "enrique" || role === "FACTURACION";
-  const isSeller = !isAdmin;
+  const isSeller = !isAdmin && !canFilterSellers;
 
-  // Venta Mensual (Mes actual en curso)
+  // Periodo dinámico recibido por props o fallback a hoy
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth() + 1; // 1 a 12
 
-  // 1. Consultar Reporte de Órdenes SAP para el mes actual (Carga ultra rápida en ~100ms)
+  const effectiveYear = year || currentYear;
+  const effectiveMonth = month || currentMonth;
+
+  // Código de vendedor dinámico
+  let effectiveSlpCode = undefined;
+  if (canFilterSellers || isAdmin) {
+    effectiveSlpCode = sellerCode && Number(sellerCode) !== 0 ? Number(sellerCode) : undefined;
+  } else if (salesEmployeeCode) {
+    effectiveSlpCode = Number(salesEmployeeCode);
+  }
+
+  // 1. Consultar Reporte de Órdenes SAP para el período y vendedor seleccionados
   const { data: topSelledData, isLoading } = useTopSelledProducts({
-    yearFrom: currentYear,
-    monthFrom: currentMonth,
-    monthTo: currentMonth,
-    slpCode: isSeller && salesEmployeeCode ? salesEmployeeCode : undefined,
+    yearFrom: effectiveYear,
+    monthFrom: effectiveMonth,
+    monthTo: effectiveMonth,
+    slpCode: effectiveSlpCode,
   });
+
+  const isAllSellers = !effectiveSlpCode;
+  const isCurrentMonth = effectiveYear === currentYear && effectiveMonth === currentMonth;
+  const monthName = MONTH_NAMES[effectiveMonth - 1] || "";
+  const periodTag = isCurrentMonth ? "MES" : `${monthName.toUpperCase()} ${effectiveYear}`;
+
+  const badgeText = isAllSellers
+    ? `🌐 TOP EMPRESA (${periodTag})`
+    : `🔥 TOP ${sellerName ? sellerName.split(" ")[0].toUpperCase() : (isSeller ? "MIS PRODUCTOS" : "VENDEDOR")} (${periodTag})`;
+
+  const subtitleText = isAllSellers
+    ? `Los productos más vendidos a nivel empresa (${monthName} ${effectiveYear})`
+    : `Productos más vendidos de ${sellerName || "este vendedor"} (${monthName} ${effectiveYear})`;
 
   // Extractor inteligente de marca
   const extractBrand = (prod) => {
@@ -212,7 +241,7 @@ export function TopProductsCard() {
                   Top Productos
                 </Text>
                 <Badge
-                  colorScheme={isSeller ? "green" : "blue"}
+                  colorScheme={isAllSellers ? "blue" : "green"}
                   borderRadius="full"
                   px={2}
                   py={0.2}
@@ -220,13 +249,11 @@ export function TopProductsCard() {
                   fontWeight="800"
                   flexShrink={0}
                 >
-                  {isSeller ? "🔥 MIS MÁS VENDIDOS (MES)" : "🌐 TOP EMPRESA (MES)"}
+                  {badgeText}
                 </Badge>
               </HStack>
               <Text fontSize="11px" color="gray.500" display={{ base: "none", xl: "block" }} noOfLines={1}>
-                {isSeller
-                  ? "Tus productos con mayor récord de ventas este mes"
-                  : "Los productos más vendidos a nivel empresa este mes"}
+                {subtitleText}
               </Text>
             </Box>
           </HStack>
@@ -373,7 +400,9 @@ export function TopProductsCard() {
           >
             <Icon as={FiPackage} boxSize={7} color="gray.400" mb={2} />
             <Text fontSize="xs" color="gray.700" fontWeight="bold">
-              Cargando catálogo destacado...
+              {effectiveSlpCode
+                ? `Sin ventas de productos registradas para ${sellerName || "este vendedor"} en ${monthName} ${effectiveYear}.`
+                : `Sin ventas de productos registradas en ${monthName} ${effectiveYear}.`}
             </Text>
           </Flex>
         )}
