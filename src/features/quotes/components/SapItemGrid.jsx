@@ -139,12 +139,13 @@ export default function SapItemGrid({
             const sapDisc = Number(item.discount || item.sapDiscount || 0);
             const promoDisc = Number(item.promoDiscount || 0);
             const addDisc = Number(item.lineDiscount || 0);
-            const totalDisc = Math.min(56, sapDisc + promoDisc + addDisc);
+            const maxAllowedCeiling = qty > 100 ? 56 : 50;
+            const totalDisc = Math.min(maxAllowedCeiling, sapDisc + promoDisc + addDisc);
             const finalUnitPrice = price * (1 - totalDisc / 100);
             const lineTotal = qty * finalUnitPrice;
             const itemName = item.name || item.productName || item.description || item.ItemName || item.ItemDescription || "Artículo General";
             const itemCode = item.code || item.productCode || item.itemCode || "";
-            const isVolume = totalDisc > 50;
+            const isVolume = qty > 100 && totalDisc > 50;
 
             return (
               <Box key={item.id || index} p={3} bg="white" borderRadius="xl" border="1px solid" borderColor={isVolume ? "orange.300" : promoDisc > 0 ? "amber.300" : "emerald.200"} boxShadow="xs">
@@ -342,12 +343,13 @@ export default function SapItemGrid({
                   const sapDisc = Number(item.discount || item.sapDiscount || 0);
                   const promoDisc = Number(item.promoDiscount || 0);
                   const addDisc = Number(item.lineDiscount || 0);
-                  const totalDisc = Math.min(56, sapDisc + promoDisc + addDisc);
+                  const maxAllowedCeiling = qty > 100 ? 56 : 50;
+                  const totalDisc = Math.min(maxAllowedCeiling, sapDisc + promoDisc + addDisc);
                   const finalUnitPrice = price * (1 - totalDisc / 100);
                   const lineTotal = qty * finalUnitPrice;
                   const itemName = item.name || item.productName || item.description || item.ItemName || item.ItemDescription || "Artículo General";
                   const itemCode = item.code || item.productCode || item.itemCode || "";
-                  const isVolume = totalDisc > 50;
+                  const isVolume = qty > 100 && totalDisc > 50;
 
                   return (
                     <Tr key={item.id || index} _hover={{ bg: "gray.50" }} transition="background 0.2s">

@@ -181,8 +181,12 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
     
     // Solo leer sapDocNum legítimo si NO es un estado pendiente/borrador y si coincide el sync
     const currentSyncResult = (sapSyncResult?.quoteId && String(sapSyncResult.quoteId) === quoteIdentifier) ? sapSyncResult : null;
+    const quoteDirectDocNum = (quote?.sapDocNum && !isNaN(Number(quote.sapDocNum)) ? Number(quote.sapDocNum) : null)
+      || (quote?.totals?.sapDocNum && !isNaN(Number(quote.totals.sapDocNum)) ? Number(quote.totals.sapDocNum) : null)
+      || (quote?.DocNum && !String(quote.DocNum).startsWith("COT-") && !isNaN(Number(quote.DocNum)) ? Number(quote.DocNum) : null);
+
     let freshestSapDocNum = !isInitialUnapproved
-      ? ((quote?.isSapDirect ? (quote.sapDocNum || quote.DocNum || quote.totals?.sapDocNum) : null) || currentSyncResult?.docNum || null)
+      ? (quoteDirectDocNum || currentSyncResult?.docNum || null)
       : null;
 
     // 1. Buscar en la caché de React Query (['quotes'])
@@ -202,8 +206,10 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
             freshestHistory = foundInCache.historyLog;
           }
           if (foundInCache.totals) freshestTotals = { ...foundInCache.totals, ...(freshestTotals || {}) };
-          if (!isInitialUnapproved && foundInCache.isSapDirect && foundInCache.sapDocNum) {
-            freshestSapDocNum = foundInCache.sapDocNum;
+          const cacheSapNum = (foundInCache.sapDocNum && !isNaN(Number(foundInCache.sapDocNum)) ? Number(foundInCache.sapDocNum) : null)
+            || (foundInCache.DocNum && !String(foundInCache.DocNum).startsWith("COT-") && !isNaN(Number(foundInCache.DocNum)) ? Number(foundInCache.DocNum) : null);
+          if (!isInitialUnapproved && cacheSapNum) {
+            freshestSapDocNum = cacheSapNum;
           }
         }
       }
@@ -225,8 +231,10 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
           freshestHistory = foundInLocal.historyLog;
         }
         if (foundInLocal.totals) freshestTotals = { ...foundInLocal.totals, ...(freshestTotals || {}) };
-        if (!isInitialUnapproved && foundInLocal.isSapDirect && foundInLocal.sapDocNum) {
-          freshestSapDocNum = foundInLocal.sapDocNum;
+        const localSapNum = (foundInLocal.sapDocNum && !isNaN(Number(foundInLocal.sapDocNum)) ? Number(foundInLocal.sapDocNum) : null)
+          || (foundInLocal.DocNum && !String(foundInLocal.DocNum).startsWith("COT-") && !isNaN(Number(foundInLocal.DocNum)) ? Number(foundInLocal.DocNum) : null);
+        if (!isInitialUnapproved && localSapNum) {
+          freshestSapDocNum = localSapNum;
         }
       }
     } catch {}
@@ -360,7 +368,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
       full.totals.sapDocNum = freshestSapDocNum;
       full.totals.DocNum = freshestSapDocNum;
       full.totals.isSapDirect = true;
-    } else {
+    } else if (isFinalUnapproved) {
       full.sapDocNum = null;
       full.DocNum = null;
       full.isSapDirect = false;
@@ -923,6 +931,19 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
     }
     if (!effectiveQuote) return;
 
+    // ─── Validación anti-duplicado en cliente: si ya cuenta con sapDocNum, no re-emitir ───
+    if (isAlreadySyncedToSap || syncedDocNum) {
+      toast({
+        title: "✅ Ya Sincronizado en SAP B1",
+        description: `Esta cotización ya cuenta con la Orden Oficial #${syncedDocNum || effectiveQuote.sapDocNum} en SAP. No es necesario re-emitirla.`,
+        status: "info",
+        duration: 5000,
+        isClosable: true,
+        position: "top-right"
+      });
+      return;
+    }
+
     // ─── Validación: la logística debe estar completa antes de enviar a SAP ───
     const delivFormCheck = effectiveQuote.deliveryForm || effectiveQuote.selectedDeliveryForm;
     if (!delivFormCheck) {
@@ -940,7 +961,6 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
     try {
       setIsSyncingSap(true);
 
-
       const rawSlp = effectiveQuote.SlpCode
         ?? effectiveQuote.slpCode
         ?? effectiveQuote.salesPersonCode
@@ -956,14 +976,35 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
       const sanitizedProducts = (displayProducts || []).map((p) => {
         const itemCode = p.productCode || p.itemCode || p.ItemCode || p.code || (typeof p.id === "string" && isNaN(Number(p.id)) ? p.id : undefined);
+        const sigla = p.sigla || p.Sigla || p.U_TQC_SIGLA;
+        const rawPrice = Number(p.unitPrice ?? p.price ?? p.Price ?? 0);
+        const sapDisc = Number(p.sapDiscount ?? p.discount ?? p.Discount ?? 0);
+        const promoDisc = Number(p.promoDiscount ?? p.PromoDiscount ?? 0);
+        const addDisc = Number(p.lineDiscount ?? p.LineDiscount ?? 0);
+        const totalDisc = Number(p.discountPercent ?? (sapDisc + promoDisc + addDisc));
+        const valorDescLista = Number((rawPrice * (1 - sapDisc / 100)).toFixed(2));
+        const descVenta = Number(Math.max(0, totalDisc - sapDisc).toFixed(2));
+
         return {
           ...p,
-          productCode: itemCode,
-          itemCode: itemCode,
-          ItemCode: itemCode,
-          code: itemCode,
+          productCode: itemCode || sigla,
+          itemCode: itemCode || sigla,
+          ItemCode: itemCode || sigla,
+          code: itemCode || sigla,
+          sigla: sigla || undefined,
+          U_TQC_SIGLA: sigla || undefined,
           productName: p.productName || p.description || p.name || p.ItemDescription,
           description: p.productName || p.description || p.name || p.ItemDescription,
+          unitPrice: rawPrice,
+          price: rawPrice,
+          sapDiscount: sapDisc,
+          promoDiscount: promoDisc,
+          lineDiscount: addDisc,
+          discountPercent: totalDisc,
+          DiscountPercent: totalDisc,
+          U_TQC_DESL: sapDisc,
+          U_TQC_DELP: valorDescLista,
+          U_TQC_DESV: descVenta,
         };
       });
 
@@ -1048,7 +1089,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         docTotalUSD: calculatedUSD,
         docTotalSOL: calculatedSOL,
         docRate,
-        database: "ZZTET_02022025"
+        database: sapData.CompanyDB || "SBO_AJUSTES_2025"
       });
       console.groupEnd();
 
@@ -1065,6 +1106,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         docTotalSOL: calculatedSOL,
         docCurrency: sapData.DocCurrency || "USD",
         docRate: docRate,
+        companyDB: sapData.CompanyDB || "SBO_AJUSTES_2025",
       });
       setIsSapSuccessModalOpen(true);
 
@@ -1101,14 +1143,26 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         queryClient.invalidateQueries(["quotes"]);
       }
 
-      toast({
-        title: "⚡ Orden de Venta Sincronizada con Éxito en SAP B1",
-        description: `Se registró como Orden de Venta Oficial en SAP (DocNum: #${sapDocNum}, DocEntry: ${sapDocEntry}) en BD ZZTET_02022025.`,
-        status: "success",
-        duration: 7000,
-        isClosable: true,
-        position: "top-right",
-      });
+      const isAlreadySynced = Boolean(res.data?.alreadySynced || sapData.alreadySynced);
+      if (isAlreadySynced) {
+        toast({
+          title: "ℹ️ Orden Existente en SAP B1",
+          description: `La cotización ya se encontraba emitida oficialmente como Orden #${sapDocNum} en SAP B1.`,
+          status: "info",
+          duration: 6000,
+          isClosable: true,
+          position: "top-right"
+        });
+      } else {
+        toast({
+          title: "⚡ Orden de Venta Sincronizada con Éxito en SAP B1",
+          description: `Se registró como Orden de Venta Oficial en SAP (DocNum: #${sapDocNum}, DocEntry: ${sapDocEntry}) en BD ${sapData.CompanyDB || "SBO_AJUSTES_2025"}.`,
+          status: "success",
+          duration: 7000,
+          isClosable: true,
+          position: "top-right",
+        });
+      }
     } catch (err) {
       console.error("Error sincronizando con SAP:", err);
       const sapErrMsg = err.response?.data?.error?.message?.value 
@@ -1236,14 +1290,14 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
       let sumTotal = 0;
 
       items.forEach((p, idx) => {
-        const itemCode = p.ItemCode || p.codigo || p.code || p.itemCode || p.productCode || p.id || "—";
+        const itemCode = p.ItemCode || p.codigo || p.code || p.itemCode || p.productCode || p.sigla || p.Sigla || p.U_TQC_SIGLA || p.id || "—";
         const itemDesc = p.ItemDescription || p.ItemName || p.descripcion || p.name || p.productName || "Producto";
         const itemBrand = p.brand || p.U_VS_MARCA || p.marca || "—";
         const unitMsr = p.SalesUnit || p.SalUnitMsr || p.unit || p.medida || "UND";
         const quantity = Number(p.quantity || p.Quantity || p.cant || 1);
         const listPrice = Number(p.basePrice || p.listPrice || p.UnitPrice || p.price || 0);
-        const discountPercent = Number(p.discount || p.DiscountPercent || p.desc || 0);
-        const unitPrice = Number(p.unitPrice || p.price || p.UnitPrice || (listPrice * (1 - discountPercent / 100)) || 0);
+        const discountPercent = Number(p.discountPercent ?? p.DiscountPercent ?? p.discount ?? p.desc ?? 0);
+        const unitPrice = Number(p.discountedUnitPrice || p.unitPrice || (listPrice > 0 ? (listPrice * (1 - discountPercent / 100)) : p.price) || 0);
         const lineSubtotal = Number(p.subtotal || (quantity * unitPrice) || 0);
         const lineTotal = Number(p.total || lineSubtotal || 0);
         const lineTotalPEN = lineTotal * tc;
@@ -1329,12 +1383,12 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
       const rawTrnspCode = effectiveQuote.transport || effectiveQuote.selectedTransport || effectiveQuote.TransportationCode || 7;
 
       items.forEach((p) => {
-        const itemCode = p.ItemCode || p.codigo || p.code || p.itemCode || p.productCode || p.id || "";
+        const itemCode = p.ItemCode || p.codigo || p.code || p.itemCode || p.productCode || p.sigla || p.Sigla || p.U_TQC_SIGLA || p.id || "";
         const itemDesc = p.ItemDescription || p.ItemName || p.descripcion || p.name || p.productName || "";
         const quantity = Number(p.quantity || p.Quantity || p.cant || 1);
         const listPrice = Number(p.basePrice || p.listPrice || p.UnitPrice || p.price || 0);
-        const discountPercent = Number(p.discount || p.DiscountPercent || p.desc || 0);
-        const unitPrice = Number(p.unitPrice || p.price || p.UnitPrice || (listPrice * (1 - discountPercent / 100)) || 0);
+        const discountPercent = Number(p.discountPercent ?? p.DiscountPercent ?? p.discount ?? p.desc ?? 0);
+        const unitPrice = Number(p.discountedUnitPrice || p.unitPrice || (listPrice > 0 ? (listPrice * (1 - discountPercent / 100)) : p.price) || 0);
 
         sapImportRows.push([
           quoteNum,
@@ -2588,11 +2642,13 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                     <Box display={{ base: "block", md: "none" }}>
                       <VStack align="stretch" spacing={3}>
                         {displayProducts.map((item, idx) => {
+                          const qty = Number(item.quantity ?? 1);
                           const sapDisc = Number(item.sapDiscount ?? item.discount ?? 0);
                           const promoDisc = Number(item.promoDiscount ?? 0);
                           const addDisc = Number(item.lineDiscount ?? 0);
-                          const totalDisc = Number(item.discountPercent ?? Math.min(56, sapDisc + promoDisc + addDisc));
-                          const isVolume = totalDisc > 50;
+                          const maxAllowedCeiling = qty > 100 ? 56 : 50;
+                          const totalDisc = Number(item.discountPercent ?? Math.min(maxAllowedCeiling, sapDisc + promoDisc + addDisc));
+                          const isVolume = qty > 100 && totalDisc > 50;
                           const reqAppr = addDisc > 0 || isVolume;
                           const { isOutOfStock } = getItemStockInfo(item);
 
@@ -2689,11 +2745,13 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                           </Thead>
                           <Tbody fontSize="xs">
                             {displayProducts.map((item, idx) => {
+                              const qty = Number(item.quantity ?? 1);
                               const sapDisc = Number(item.sapDiscount ?? item.discount ?? 0);
                               const promoDisc = Number(item.promoDiscount ?? 0);
                               const addDisc = Number(item.lineDiscount ?? 0);
-                              const totalDisc = Number(item.discountPercent ?? Math.min(56, sapDisc + promoDisc + addDisc));
-                              const isVolume = totalDisc > 50;
+                              const maxAllowedCeiling = qty > 100 ? 56 : 50;
+                              const totalDisc = Number(item.discountPercent ?? Math.min(maxAllowedCeiling, sapDisc + promoDisc + addDisc));
+                              const isVolume = qty > 100 && totalDisc > 50;
                               const reqAppr = addDisc > 0 || isVolume;
                               const { isOutOfStock } = getItemStockInfo(item);
 
@@ -2957,6 +3015,23 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                     boxShadow="0 2px 6px rgba(18,108,54,0.3)"
                   >
                     ⚡ Enviar / Sincronizar con SAP
+                  </Button>
+                )}
+
+                {isAdminUser && isApprovedQuote && isAlreadySyncedToSap && (
+                  <Button
+                    size="sm"
+                    colorScheme="green"
+                    variant="outline"
+                    borderColor="green.500"
+                    color="green.700"
+                    bg="green.50"
+                    leftIcon={<CheckCircle2 className="w-4 h-4 text-green-600" />}
+                    isDisabled={true}
+                    _disabled={{ opacity: 0.95, cursor: "default" }}
+                    fontWeight="800"
+                  >
+                    ✅ Emitido en SAP (Doc #{syncedDocNum || effectiveQuote.sapDocNum || "OK"})
                   </Button>
                 )}
 
@@ -3243,7 +3318,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                     ¡Orden de Venta Emitida en SAP B1!
                   </Text>
                   <Text fontSize="11px" fontWeight="600" color="#d1fae5">
-                    Transacción Oficial en BD ZZTET_02022025
+                    Transacción Oficial en BD {sapSyncResult?.companyDB || "SBO_AJUSTES_2025"}
                   </Text>
                 </Box>
               </HStack>

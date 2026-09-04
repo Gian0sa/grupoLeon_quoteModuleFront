@@ -40,9 +40,11 @@ const normalizeItem = (item) => {
 
   // 2. Descuentos: evitar descuentos negativos en la fórmula de precio unitario
   // (en SAP un descuento negativo es un ajuste contable interno, no debe multiplicar el precio)
-  const rawSapDisc = Number(item.discount ?? item.Discount ?? item.sapDiscount ?? item.DiscountPercent ?? 0);
+  const rawSapDisc = Number(item.discount ?? item.Discount ?? item.sapDiscount ?? 0);
+  const rawPromoDisc = Number(item.promoDiscount ?? item.PromoDiscount ?? 0);
   const rawAddDisc = Number(item.lineDiscount ?? item.LineDiscount ?? item.addDiscount ?? 0);
   const sapDisc = Math.max(0, Math.min(100, isNaN(rawSapDisc) ? 0 : rawSapDisc));
+  const promoDisc = Math.max(0, Math.min(100, isNaN(rawPromoDisc) ? 0 : rawPromoDisc));
   const addDisc = Math.max(0, Math.min(100, isNaN(rawAddDisc) ? 0 : rawAddDisc));
 
   let finalUnitPrice = 0;
@@ -61,7 +63,7 @@ const normalizeItem = (item) => {
     finalUnitPrice = Number((lineTotalNum / qty).toFixed(2));
   } else {
     const listPrice = Number(item.price ?? item.unitPrice ?? item.Price ?? item.UnitPrice ?? item.importe ?? 0);
-    const totalDisc = Math.min(100, sapDisc + addDisc);
+    const totalDisc = Math.min(56.0, Number(item.discountPercent ?? (sapDisc + promoDisc + addDisc)));
     finalUnitPrice = Number((listPrice * (1 - totalDisc / 100)).toFixed(2));
     lineTotalNum = Number((qty * finalUnitPrice).toFixed(2));
   }
@@ -72,14 +74,11 @@ const normalizeItem = (item) => {
     baseName = item.sigla || code || "Artículo";
   }
 
-  let discTag = "";
-  if (sapDisc > 0 && addDisc > 0) {
-    discTag = ` (-${sapDisc}% -${addDisc}%)`;
-  } else if (sapDisc > 0) {
-    discTag = ` (-${sapDisc}%)`;
-  } else if (addDisc > 0) {
-    discTag = ` (-${addDisc}%)`;
-  }
+  const discParts = [];
+  if (sapDisc > 0) discParts.push(`-${sapDisc}%`);
+  if (promoDisc > 0) discParts.push(`-${promoDisc}% Promo`);
+  if (addDisc > 0) discParts.push(`-${addDisc}%`);
+  const discTag = discParts.length > 0 ? ` (${discParts.join(" ")})` : "";
 
   return {
     qty: isNaN(qty) || qty < 1 ? 1 : qty,

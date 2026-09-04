@@ -230,7 +230,7 @@ export default function ClientAutocomplete({ client, setClient }) {
 
   // 2. BUSCADOR ÚNICO INTELIGENTE SAP (Diseño Compacto y Elegante)
   return (
-    <Box w="full" maxW={{ base: "full", md: "560px" }}>
+    <Box w="full">
       <Box p={2.5} bg="#f0fdf4" borderRadius="lg" border="1.5px dashed #86efac">
         <Box fontSize="11px" fontWeight="900" color="#166534" mb={1} letterSpacing="wider" textTransform="uppercase">
           🔍 Búsqueda Inteligente de Cliente SAP

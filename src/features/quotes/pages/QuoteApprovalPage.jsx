@@ -1614,10 +1614,11 @@ export function QuoteApprovalPage() {
       q?.hasVolumeDiscount ||
       q?.totals?.hasVolumeDiscount ||
       (Array.isArray(q?.products || q?.items) && (q?.products || q?.items).some(p => {
+        const qty = Number(p.quantity || p.Quantity || 0);
         const s = Number(p.discount || p.sapDiscount || 0);
         const pr = Number(p.promoDiscount || 0);
         const a = Number(p.lineDiscount || 0);
-        return (s + pr + a) > 50.01;
+        return qty > 100 && (s + pr + a) > 50.01;
       }))
     );
 

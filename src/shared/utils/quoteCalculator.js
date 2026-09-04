@@ -23,26 +23,28 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.76) {
     // Descuento adicional de línea (%)
     const addDisc = Math.max(0, Math.min(100, Number(p.lineDiscount ?? p.LineDiscount ?? 0)));
 
-    if (addDisc > 0 || promoDisc > 0) {
+    if (addDisc > 0) {
       hasAdditionalDiscount = true;
     }
 
     const grossLine = qty * listPrice;
     
-    // Cálculo sumatorio directo (Desc. SAP + Desc. Promo + Desc. Adicional) con tope máximo de 56%
+    // Cálculo sumatorio directo (Desc. SAP + Desc. Promo + Desc. Adicional)
+    // Regla de Negocio: Descuento mayor al 50% (hasta 56%) aplica ÚNICAMENTE si la cantidad es mayor a 100 (>100 uds)
     const rawTotalDisc = sapDisc + promoDisc + addDisc;
-    const totalDisc = Math.min(MAX_DISCOUNT_CEILING, Math.max(0, rawTotalDisc));
+    const applicableCeiling = qty > 100 ? MAX_DISCOUNT_CEILING : STANDARD_DISCOUNT_CEILING;
+    const totalDisc = Math.min(applicableCeiling, Math.max(0, rawTotalDisc));
     const discountedUnitPrice = listPrice * (1 - totalDisc / 100);
     const netLine = qty * discountedUnitPrice;
     const discAmount = Math.max(0, grossLine - netLine);
     const effectiveDiscPct = grossLine > 0 ? (discAmount / grossLine) * 100 : totalDisc;
 
-    const isVolumeLine = totalDisc > STANDARD_DISCOUNT_CEILING + 0.01;
+    const isVolumeLine = qty > 100 && totalDisc > STANDARD_DISCOUNT_CEILING + 0.01;
     if (isVolumeLine) {
       hasVolumeDiscount = true;
     }
 
-    if (rawTotalDisc > MAX_DISCOUNT_CEILING + 0.01) {
+    if (rawTotalDisc > applicableCeiling + 0.01) {
       hasExceededDiscountCeiling = true;
     }
 
@@ -66,7 +68,7 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.76) {
       lineTotal: Number(netLine.toFixed(2)),
       requiresApproval: addDisc > 0 || isVolumeLine,
       isVolumeDiscount: isVolumeLine,
-      isExceedingCeiling: rawTotalDisc > MAX_DISCOUNT_CEILING + 0.01,
+      isExceedingCeiling: rawTotalDisc > applicableCeiling + 0.01,
     };
   });
   

@@ -17,23 +17,27 @@ import {
   HStack,
   Alert,
   AlertIcon,
-  Switch
 } from "@chakra-ui/react";
 import { Sparkles, ShieldAlert, AlertTriangle, Check, Flame } from "lucide-react";
 
 export const STANDARD_DISCOUNT_CEILING = 50.0; // Tope estándar ordinario (50.0%)
 export const MAX_DISCOUNT_CEILING = 56.0;      // Tope máximo absoluto por volumen / mayoreo (56.0%)
+export const VOLUME_MIN_QUANTITY = 100;        // Cantidad mínima estricta para mayoreo (>100 uds)
 
 export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount }) {
   const [currentDisc, setCurrentDisc] = useState(0);
   const [priceInputStr, setPriceInputStr] = useState("0.00");
-  const [isVolumeMode, setIsVolumeMode] = useState(false);
 
   const basePrice = Number(item?.price || item?.unitPrice || 0);
   const sapDisc = Number(item?.discount || item?.sapDiscount || 0);
   const promoDisc = Number(item?.promoDiscount || 0);
   const baseFixedDisc = sapDisc + promoDisc;
-  const qty = Number(item?.quantity || 1);
+  const qty = Number(item?.quantity || item?.Quantity || 1);
+
+  // REGLA ESTRICTA DE NEGOCIO:
+  // El modo mayoreo (>50% a 56%) SOLO está disponible si la cantidad de productos es MAYOR a 100 (>100 uds)
+  const isEligibleForVolume = qty > VOLUME_MIN_QUANTITY;
+  const applicableCeiling = isEligibleForVolume ? MAX_DISCOUNT_CEILING : STANDARD_DISCOUNT_CEILING;
 
   // Precio estándar con descuento base (SAP + Promo)
   const priceWithBase = Number((basePrice * (1 - baseFixedDisc / 100)).toFixed(2));
@@ -41,10 +45,10 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
   // Precios límite
   const priceAtStandard50 = Number((basePrice * (1 - STANDARD_DISCOUNT_CEILING / 100)).toFixed(2));
   const priceAtVolume56 = Number((basePrice * (1 - MAX_DISCOUNT_CEILING / 100)).toFixed(2));
+  const priceFloor = isEligibleForVolume ? priceAtVolume56 : priceAtStandard50;
 
-  // Descuento adicional máximo permitido para alcanzar el tope de 56%
-  const maxAllowedAddDisc = Math.max(0, Number((MAX_DISCOUNT_CEILING - baseFixedDisc).toFixed(2)));
-  // Descuento adicional para alcanzar el 50% estándar
+  // Descuento adicional máximo permitido según si califica a mayoreo (>100 uds) o no
+  const maxAllowedAddDisc = Math.max(0, Number((applicableCeiling - baseFixedDisc).toFixed(2)));
   const standardAddDisc = Math.max(0, Number((STANDARD_DISCOUNT_CEILING - baseFixedDisc).toFixed(2)));
 
   useEffect(() => {
@@ -53,14 +57,8 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
       setCurrentDisc(existingAddDisc);
       const effectivePrice = basePrice * (1 - (baseFixedDisc + existingAddDisc) / 100);
       setPriceInputStr(effectivePrice.toFixed(2));
-      // Si ya supera el 50% o la cantidad es >= 50, activar modo volumen automáticamente
-      if ((baseFixedDisc + existingAddDisc) > STANDARD_DISCOUNT_CEILING || qty >= 50) {
-        setIsVolumeMode(true);
-      } else {
-        setIsVolumeMode(false);
-      }
     }
-  }, [item, isOpen, basePrice, baseFixedDisc, maxAllowedAddDisc, qty]);
+  }, [item, isOpen, basePrice, baseFixedDisc, maxAllowedAddDisc]);
 
   if (!item) return null;
 
@@ -70,8 +68,8 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
   const finalUnitPrice = basePrice * (1 - rawTotalDisc / 100);
   const finalLineTotal = finalUnitPrice * qty;
 
-  const isExceedingVolumeCeiling = effectiveTotalDiscPct > MAX_DISCOUNT_CEILING + 0.01;
-  const isVolumeDiscount = effectiveTotalDiscPct > STANDARD_DISCOUNT_CEILING + 0.01;
+  const isExceedingCeiling = effectiveTotalDiscPct > applicableCeiling + 0.01;
+  const isVolumeDiscount = isEligibleForVolume && effectiveTotalDiscPct > STANDARD_DISCOUNT_CEILING + 0.01;
   const requiresApproval = currentDisc > 0 || isVolumeDiscount;
 
   // Al escribir en el input de precio final deseado
@@ -99,9 +97,6 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
       const rawAddDisc = calculatedTotalDisc - baseFixedDisc;
       const clampedAddDisc = Math.max(0, Math.min(maxAllowedAddDisc, Number(rawAddDisc.toFixed(2))));
       setCurrentDisc(clampedAddDisc);
-      if ((baseFixedDisc + clampedAddDisc) > STANDARD_DISCOUNT_CEILING) {
-        setIsVolumeMode(true);
-      }
     }
   };
 
@@ -120,21 +115,15 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
       return;
     }
 
-    // Si intenta bajar de precio por debajo del tope máximo absoluto del 56%
-    if (valNum < priceAtVolume56) {
-      valNum = priceAtVolume56;
+    // Si intenta bajar de precio por debajo del piso permitido para este producto y cantidad
+    if (valNum < priceFloor) {
+      valNum = priceFloor;
       setCurrentDisc(maxAllowedAddDisc);
-      setPriceInputStr(priceAtVolume56.toFixed(2));
-      setIsVolumeMode(true);
+      setPriceInputStr(priceFloor.toFixed(2));
       return;
     }
 
-    // Si no está en modo volumen ni lleva >= 50 unidades y baja de 50%, activar modo volumen
-    if (valNum < priceAtStandard50) {
-      setIsVolumeMode(true);
-    }
-
-    // Si es mayor al precio estándar
+    // Si es mayor al precio estándar con base
     if (valNum > priceWithBase) {
       valNum = priceWithBase;
       setCurrentDisc(0);
@@ -152,14 +141,11 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
   };
 
   // Botones de ajuste rápido
-  const handleQuickSelect = (addDiscVal, forceVolume = false) => {
+  const handleQuickSelect = (addDiscVal) => {
     const valid = Math.max(0, Math.min(maxAllowedAddDisc, Number(addDiscVal || 0)));
     setCurrentDisc(valid);
     const targetPrice = basePrice * (1 - (baseFixedDisc + valid) / 100);
     setPriceInputStr(targetPrice.toFixed(2));
-    if (forceVolume || (baseFixedDisc + valid) > STANDARD_DISCOUNT_CEILING) {
-      setIsVolumeMode(true);
-    }
   };
 
   const handleConfirm = () => {
@@ -182,7 +168,7 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
               </Flex>
               <Box>
                 <Text fontSize="sm" fontWeight="900" lineHeight="1.2">
-                  Ajuste de Precio Final ({isVolumeDiscount ? "Volumen hasta 56%" : "Estándar 50%"})
+                  Ajuste de Precio Final ({isVolumeDiscount ? "Mayoreo hasta 56%" : "Estándar 50%"})
                 </Text>
                 <Text fontSize="10px" color="emerald.300" fontWeight="600" noOfLines={1}>
                   {item.code || item.productCode || item.itemCode} {item.name || item.description}
@@ -231,84 +217,135 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
 
             {/* Accesos Rápidos Estratégicos */}
             <Box>
-              <Flex justify="space-between" align="center" mb={1.5}>
-                <Text fontSize="10px" fontWeight="800" color="gray.600" textTransform="uppercase" letterSpacing="wide">
+              <Flex justify="space-between" align="center" mb={2} wrap="wrap" gap={1.5}>
+                <Text fontSize="10.5px" fontWeight="800" color="gray.700" textTransform="uppercase" letterSpacing="wide">
                   ⚡ Ajuste Rápido de Precio:
                 </Text>
-                <HStack spacing={1.5}>
-                  <Text fontSize="10px" fontWeight="700" color={isVolumeMode ? "orange.700" : "gray.500"}>
-                    📦 Modo Mayoreo (&gt;50% a 56%)
-                  </Text>
-                  <Switch
-                    size="sm"
-                    colorScheme="orange"
-                    isChecked={isVolumeMode || qty >= 50}
-                    onChange={(e) => setIsVolumeMode(e.target.checked)}
-                  />
-                </HStack>
+                {isEligibleForVolume ? (
+                  <Badge colorScheme="orange" bg="orange.50" color="orange.800" border="1px solid" borderColor="orange.300" fontSize="10px" px={2.5} py={0.5} borderRadius="full" fontWeight="800">
+                    📦 Mayoreo Desbloqueado ({qty} uds &gt; 100)
+                  </Badge>
+                ) : (
+                  <Badge colorScheme="green" bg="emerald.50" color="emerald.800" border="1px solid" borderColor="emerald.200" fontSize="10px" px={2.5} py={0.5} borderRadius="full" fontWeight="700">
+                    Tope Estándar (50%)
+                  </Badge>
+                )}
               </Flex>
 
-              <Grid templateColumns={{ base: "repeat(2, 1fr)", sm: isVolumeMode || qty >= 50 ? "repeat(4, 1fr)" : "repeat(3, 1fr)" }} gap={1.5}>
-                <Button
-                  size="xs"
-                  h="32px"
-                  variant={currentDisc === 0 ? "solid" : "outline"}
-                  colorScheme={currentDisc === 0 ? "green" : "gray"}
-                  bg={currentDisc === 0 ? "#126C36" : "white"}
-                  color={currentDisc === 0 ? "white" : "gray.700"}
-                  onClick={() => handleQuickSelect(0)}
-                  borderRadius="lg"
-                  fontWeight="800"
-                >
-                  0% Base
-                </Button>
-                <Button
-                  size="xs"
-                  h="32px"
-                  variant={Math.abs(currentDisc - 5) < 0.2 ? "solid" : "outline"}
-                  colorScheme={Math.abs(currentDisc - 5) < 0.2 ? "purple" : "gray"}
-                  bg={Math.abs(currentDisc - 5) < 0.2 ? "purple.600" : "white"}
-                  color={Math.abs(currentDisc - 5) < 0.2 ? "white" : "gray.700"}
-                  onClick={() => handleQuickSelect(5)}
-                  borderRadius="lg"
-                  fontWeight="800"
-                >
-                  +5% Adic.
-                </Button>
-                <Button
-                  size="xs"
-                  h="32px"
-                  variant={Math.abs(currentDisc - standardAddDisc) < 0.1 ? "solid" : "outline"}
-                  colorScheme="blue"
-                  bg={Math.abs(currentDisc - standardAddDisc) < 0.1 ? "blue.600" : "white"}
-                  color={Math.abs(currentDisc - standardAddDisc) < 0.1 ? "white" : "blue.800"}
-                  borderColor="blue.300"
-                  onClick={() => handleQuickSelect(standardAddDisc)}
-                  borderRadius="lg"
-                  fontWeight="900"
-                  title={`Aplica el precio para alcanzar el 50% estándar ($${priceAtStandard50.toFixed(2)})`}
-                >
-                  🎯 Tope 50% (${priceAtStandard50.toFixed(2)})
-                </Button>
-
-                {(isVolumeMode || qty >= 50) && (
+              {/* Si la cantidad NO es mayor a 100: EXACTAMENTE 3 botones estándar en 3 columnas amplias */}
+              {!isEligibleForVolume ? (
+                <Grid templateColumns="repeat(3, 1fr)" gap={2}>
                   <Button
-                    size="xs"
-                    h="32px"
+                    size="sm"
+                    h="36px"
+                    variant={currentDisc === 0 ? "solid" : "outline"}
+                    colorScheme={currentDisc === 0 ? "green" : "gray"}
+                    bg={currentDisc === 0 ? "#126C36" : "white"}
+                    color={currentDisc === 0 ? "white" : "gray.700"}
+                    onClick={() => handleQuickSelect(0)}
+                    borderRadius="lg"
+                    fontWeight="800"
+                    fontSize="xs"
+                  >
+                    0% Base
+                  </Button>
+                  <Button
+                    size="sm"
+                    h="36px"
+                    variant={Math.abs(currentDisc - 5) < 0.2 ? "solid" : "outline"}
+                    colorScheme={Math.abs(currentDisc - 5) < 0.2 ? "purple" : "gray"}
+                    bg={Math.abs(currentDisc - 5) < 0.2 ? "purple.600" : "white"}
+                    color={Math.abs(currentDisc - 5) < 0.2 ? "white" : "gray.700"}
+                    onClick={() => handleQuickSelect(5)}
+                    borderRadius="lg"
+                    fontWeight="800"
+                    fontSize="xs"
+                  >
+                    +5% Adic.
+                  </Button>
+                  <Button
+                    size="sm"
+                    h="36px"
+                    variant={Math.abs(currentDisc - standardAddDisc) < 0.1 ? "solid" : "outline"}
+                    colorScheme="blue"
+                    bg={Math.abs(currentDisc - standardAddDisc) < 0.1 ? "blue.600" : "white"}
+                    color={Math.abs(currentDisc - standardAddDisc) < 0.1 ? "white" : "blue.800"}
+                    borderColor="blue.300"
+                    onClick={() => handleQuickSelect(standardAddDisc)}
+                    borderRadius="lg"
+                    fontWeight="900"
+                    fontSize="xs"
+                    whiteSpace="nowrap"
+                    title={`Aplica el precio para alcanzar el 50% estándar ($${priceAtStandard50.toFixed(2)})`}
+                  >
+                    🎯 Tope 50% (${priceAtStandard50.toFixed(2)})
+                  </Button>
+                </Grid>
+              ) : (
+                /* Si la cantidad ES mayor a 100: Grilla ordenada 2x2 para que NUNCA colisionen ni se superpongan */
+                <Grid templateColumns="repeat(2, 1fr)" gap={2}>
+                  <Button
+                    size="sm"
+                    h="36px"
+                    variant={currentDisc === 0 ? "solid" : "outline"}
+                    colorScheme={currentDisc === 0 ? "green" : "gray"}
+                    bg={currentDisc === 0 ? "#126C36" : "white"}
+                    color={currentDisc === 0 ? "white" : "gray.700"}
+                    onClick={() => handleQuickSelect(0)}
+                    borderRadius="lg"
+                    fontWeight="800"
+                    fontSize="xs"
+                  >
+                    0% Base (${priceWithBase.toFixed(2)})
+                  </Button>
+                  <Button
+                    size="sm"
+                    h="36px"
+                    variant={Math.abs(currentDisc - 5) < 0.2 ? "solid" : "outline"}
+                    colorScheme={Math.abs(currentDisc - 5) < 0.2 ? "purple" : "gray"}
+                    bg={Math.abs(currentDisc - 5) < 0.2 ? "purple.600" : "white"}
+                    color={Math.abs(currentDisc - 5) < 0.2 ? "white" : "gray.700"}
+                    onClick={() => handleQuickSelect(5)}
+                    borderRadius="lg"
+                    fontWeight="800"
+                    fontSize="xs"
+                  >
+                    +5% Adic. (${(basePrice * (1 - (baseFixedDisc + 5) / 100)).toFixed(2)})
+                  </Button>
+                  <Button
+                    size="sm"
+                    h="36px"
+                    variant={Math.abs(currentDisc - standardAddDisc) < 0.1 ? "solid" : "outline"}
+                    colorScheme="blue"
+                    bg={Math.abs(currentDisc - standardAddDisc) < 0.1 ? "blue.600" : "white"}
+                    color={Math.abs(currentDisc - standardAddDisc) < 0.1 ? "white" : "blue.800"}
+                    borderColor="blue.300"
+                    onClick={() => handleQuickSelect(standardAddDisc)}
+                    borderRadius="lg"
+                    fontWeight="900"
+                    fontSize="xs"
+                    title={`Aplica el precio para alcanzar el 50% estándar ($${priceAtStandard50.toFixed(2)})`}
+                  >
+                    🎯 Tope 50% (${priceAtStandard50.toFixed(2)})
+                  </Button>
+                  <Button
+                    size="sm"
+                    h="36px"
                     variant={Math.abs(currentDisc - maxAllowedAddDisc) < 0.1 ? "solid" : "outline"}
                     colorScheme="orange"
                     bg={Math.abs(currentDisc - maxAllowedAddDisc) < 0.1 ? "orange.600" : "white"}
                     color={Math.abs(currentDisc - maxAllowedAddDisc) < 0.1 ? "white" : "orange.800"}
                     borderColor="orange.400"
-                    onClick={() => handleQuickSelect(maxAllowedAddDisc, true)}
+                    onClick={() => handleQuickSelect(maxAllowedAddDisc)}
                     borderRadius="lg"
                     fontWeight="900"
+                    fontSize="xs"
                     title={`Aplica el precio mínimo para alcanzar el tope máximo de mayoreo del 56% ($${priceAtVolume56.toFixed(2)})`}
                   >
                     🔥 Mayoreo 56% (${priceAtVolume56.toFixed(2)})
                   </Button>
-                )}
-              </Grid>
+                </Grid>
+              )}
             </Box>
 
             {/* Input Único de Monto: Precio Final Unitario Deseado */}
@@ -317,7 +354,11 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
                 <Flex justify="space-between" align="center" fontSize="11px" fontWeight="700" color="gray.600">
                   <Text textTransform="uppercase" letterSpacing="wide">💵 Precio Final Deseado ($ USD):</Text>
                   <Text color="gray.500">
-                    Tope 50%: <strong style={{ color: "#2563eb" }}>${priceAtStandard50.toFixed(2)}</strong> | Mín 56%: <strong style={{ color: "#c2410c" }}>${priceAtVolume56.toFixed(2)}</strong>
+                    {isEligibleForVolume ? (
+                      <>Tope 50%: <strong style={{ color: "#2563eb" }}>${priceAtStandard50.toFixed(2)}</strong> | Mín 56%: <strong style={{ color: "#c2410c" }}>${priceAtVolume56.toFixed(2)}</strong></>
+                    ) : (
+                      <>Tope 50%: <strong style={{ color: "#2563eb" }}>${priceAtStandard50.toFixed(2)}</strong></>
+                    )}
                   </Text>
                 </Flex>
 
@@ -350,10 +391,10 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
                     fontWeight="900"
                     fontSize="2xl"
                     borderRadius="xl"
-                    bg={isExceedingVolumeCeiling ? "red.50" : isVolumeDiscount ? "orange.50" : "emerald.50"}
-                    borderColor={isExceedingVolumeCeiling ? "red.400" : isVolumeDiscount ? "orange.400" : "emerald.400"}
+                    bg={isExceedingCeiling ? "red.50" : isVolumeDiscount ? "orange.50" : "emerald.50"}
+                    borderColor={isExceedingCeiling ? "red.400" : isVolumeDiscount ? "orange.400" : "emerald.400"}
                     focusBorderColor={isVolumeDiscount ? "orange.600" : "emerald.600"}
-                    placeholder={priceAtVolume56.toFixed(2)}
+                    placeholder={priceFloor.toFixed(2)}
                   />
                   <Flex
                     align="center"
@@ -408,23 +449,24 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
                 </Flex>
                 <Flex justify="space-between" align="center" pt={1} borderTop="1px dashed" borderColor="whiteAlpha.300">
                   <Text color="emerald.200" fontSize="10px">Descuento Total Acumulado:</Text>
-                  <Text fontFamily="mono" fontWeight="900" fontSize="11px" color={isExceedingVolumeCeiling ? "#fca5a5" : isVolumeDiscount ? "#fdba74" : "#a7f3d0"}>
-                    {effectiveTotalDiscPct}% (Tope Estándar: {STANDARD_DISCOUNT_CEILING}% • Tope Volumen: {MAX_DISCOUNT_CEILING}%)
+                  <Text fontFamily="mono" fontWeight="900" fontSize="11px" color={isExceedingCeiling ? "#fca5a5" : isVolumeDiscount ? "#fdba74" : "#a7f3d0"}>
+                    {effectiveTotalDiscPct}% ({isEligibleForVolume ? `Tope Estándar: ${STANDARD_DISCOUNT_CEILING}% • Tope Volumen: ${MAX_DISCOUNT_CEILING}%` : `Tope Estándar: ${STANDARD_DISCOUNT_CEILING}%`})
                   </Text>
                 </Flex>
               </VStack>
             </Box>
 
             {/* Semáforo de Validación y Aprobación Comercial */}
-            {isExceedingVolumeCeiling ? (
+            {isExceedingCeiling ? (
               <Alert status="error" borderRadius="xl" py={2.5} px={3} bg="red.50" border="1.5px solid" borderColor="red.400">
                 <AlertIcon as={ShieldAlert} color="red.600" />
                 <Box fontSize="11px">
                   <Text fontWeight="900" color="red.900">
-                    ⛔ BLOQUEADO: Supera el Tope Máximo Absoluto del {MAX_DISCOUNT_CEILING}%
+                    ⛔ BLOQUEADO: Supera el Límite Permitido ({applicableCeiling}%)
                   </Text>
                   <Text color="red.800" fontWeight="600">
-                    El precio (${Number(priceInputStr || 0).toFixed(2)}) genera un descuento total de {effectiveTotalDiscPct}%. El precio mínimo absoluto permitido es ${priceAtVolume56.toFixed(2)}.
+                    El precio (${Number(priceInputStr || 0).toFixed(2)}) genera un descuento total de {effectiveTotalDiscPct}%. El precio mínimo permitido para esta línea es ${priceFloor.toFixed(2)}.
+                    {!isEligibleForVolume && ` Recuerda que los descuentos mayores al 50% requieren más de 100 unidades (actual: ${qty} uds).`}
                   </Text>
                 </Box>
               </Alert>
@@ -433,7 +475,7 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
                 <AlertIcon as={Flame} color="#ea580c" />
                 <Box fontSize="11px">
                   <Text fontWeight="900" color="#9a3412">
-                    🔥 ALERTA: Descuento Especial por Volumen ({effectiveTotalDiscPct}%)
+                    🔥 ALERTA: Descuento Especial por Volumen ({effectiveTotalDiscPct}%) Habilitado ({qty} uds &gt; 100)
                   </Text>
                   <Text color="#c2410c" fontWeight="700">
                     Este descuento supera el tope estándar del {STANDARD_DISCOUNT_CEILING}% hasta un {effectiveTotalDiscPct}% (Tope Máx: {MAX_DISCOUNT_CEILING}%). Se notificará como Mayoreo y requerirá aprobación administrativa explícita de Enrique.
@@ -478,7 +520,7 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
             color="white"
             _hover={{ bg: isVolumeDiscount ? "#c2410c" : "#0e572b" }}
             onClick={handleConfirm}
-            isDisabled={isExceedingVolumeCeiling}
+            isDisabled={isExceedingCeiling}
             fontWeight="900"
             px={5}
             borderRadius="lg"

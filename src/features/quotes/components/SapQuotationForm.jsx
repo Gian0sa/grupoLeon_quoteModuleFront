@@ -1553,38 +1553,40 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
   return (
     <VStack align="stretch" spacing={5} pb={10} maxW="100%" overflowX="hidden">
-      {/* ── BANNER MODO PRUEBAS (SANDBOX) COMPACTO ── */}
-      <Alert
-        status="info"
-        variant="subtle"
-        borderRadius="lg"
-        py={{ base: 1.5, md: 2 }}
-        px={{ base: 2.5, md: 3 }}
-        border="1px solid"
-        borderColor="blue.200"
-        bg="blue.50/80"
-        fontSize={{ base: "10px", md: "xs" }}
-      >
-        <AlertIcon boxSize={{ base: "14px", md: "16px" }} />
-        <Box flex="1">
-          <Flex align="center" justify="space-between" flexWrap="wrap" gap={1}>
-            <HStack spacing={1.5} align="center">
-              <Text fontWeight="800" textTransform="uppercase" letterSpacing="tight" color="blue.900" fontSize={{ base: "10px", md: "11px" }}>
-                MODO PRUEBAS (SANDBOX)
+      {/* ── BANNER MODO PRUEBAS (SANDBOX) COMPACTO (Solo si está configurado en entorno) ── */}
+      {import.meta.env.VITE_SHOW_SANDBOX_BANNER === "true" && (
+        <Alert
+          status="info"
+          variant="subtle"
+          borderRadius="lg"
+          py={{ base: 1.5, md: 2 }}
+          px={{ base: 2.5, md: 3 }}
+          border="1px solid"
+          borderColor="blue.200"
+          bg="blue.50/80"
+          fontSize={{ base: "10px", md: "xs" }}
+        >
+          <AlertIcon boxSize={{ base: "14px", md: "16px" }} />
+          <Box flex="1">
+            <Flex align="center" justify="space-between" flexWrap="wrap" gap={1}>
+              <HStack spacing={1.5} align="center">
+                <Text fontWeight="800" textTransform="uppercase" letterSpacing="tight" color="blue.900" fontSize={{ base: "10px", md: "11px" }}>
+                  MODO PRUEBAS (SANDBOX)
+                </Text>
+                <Badge colorScheme="green" fontSize={{ base: "8px", md: "9px" }} px={1.5} py={0.2} borderRadius="full">
+                  Sin Riesgo en SAP
+                </Badge>
+              </HStack>
+              <Text fontSize={{ base: "10px", md: "xs" }} color="blue.700" fontWeight="500" display={{ base: "none", sm: "block" }}>
+                Consultas en tiempo real de SAP. Guardado y conversión operan en base de datos web y memoria local.
               </Text>
-              <Badge colorScheme="green" fontSize={{ base: "8px", md: "9px" }} px={1.5} py={0.2} borderRadius="full">
-                Sin Riesgo en SAP
-              </Badge>
-            </HStack>
-            <Text fontSize={{ base: "10px", md: "xs" }} color="blue.700" fontWeight="500" display={{ base: "none", sm: "block" }}>
-              Consultas en tiempo real de SAP. Guardado y conversión operan en base de datos web y memoria local.
+            </Flex>
+            <Text fontSize="10px" color="blue.700" fontWeight="500" display={{ base: "block", sm: "none" }} mt={0.5}>
+              Consultas en tiempo real. Guardado local en memoria.
             </Text>
-          </Flex>
-          <Text fontSize="10px" color="blue.700" fontWeight="500" display={{ base: "block", sm: "none" }} mt={0.5}>
-            Consultas en tiempo real. Guardado local en memoria.
-          </Text>
-        </Box>
-      </Alert>
+          </Box>
+        </Alert>
+      )}
 
       {/* ── BANNER COTIZACIÓN OBSERVADA / EN CORRECCIÓN ── */}
       {isObservedOrInCorrection && (
@@ -1641,10 +1643,12 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
             </Flex>
             <Box>
               <Heading size="sm" color="emerald.900" fontWeight="800" letterSpacing="tight">
-                SOLICITUD DE PEDIDO DE VENTA
+                {docType === "PEDIDO_CLIENTE" ? "SOLICITUD DE PEDIDO DE VENTA" : "NUEVA COTIZACIÓN (OFERTA DE VENTA)"}
               </Heading>
               <Text fontSize="xs" color="gray.500" display={{ base: "none", md: "block" }}>
-                Gestión comercial de requerimiento de pedido y despacho
+                {docType === "PEDIDO_CLIENTE"
+                  ? "Gestión comercial de requerimiento de pedido y despacho"
+                  : "Elaboración de propuesta comercial y precios para el cliente"}
               </Text>
             </Box>
           </HStack>
@@ -1697,19 +1701,21 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                 Estado: {approvalStatus ? (approvalStatus === "APROBADO_COMERCIAL" ? "APROBADO" : approvalStatus) : "Borrador (Abierto)"}
               </Box>
             </Badge>
-            <Badge
-              bg="#f5f3ff"
-              color="#6b21a8"
-              border="1px solid"
-              borderColor="#ddd6fe"
-              px={2.5}
-              py={1}
-              borderRadius="md"
-              fontSize="xs"
-              fontWeight="800"
-            >
-              💾 Autoguardado Activo
-            </Badge>
+            {Boolean(client && products && products.length > 0 && !isAdminReviewing && !isReadOnly) && (
+              <Badge
+                bg="#f5f3ff"
+                color="#6b21a8"
+                border="1px solid"
+                borderColor="#ddd6fe"
+                px={2.5}
+                py={1}
+                borderRadius="md"
+                fontSize="xs"
+                fontWeight="800"
+              >
+                💾 Autoguardado Activo
+              </Badge>
+            )}
             {isAdmin && isSubmittedQuote && !isReadOnly && (
               <Button
                 size="xs"
@@ -1729,7 +1735,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         {/* ── BÚSQUEDA DE CLIENTE Y CAMPOS PROGRESIVOS NATIVOS ── */}
         {revealTabs ? (
           <Grid templateColumns={{ base: "1fr", lg: "repeat(2, 1fr)" }} gap={6}>
-            {/* Columna Izquierda: Datos de Cliente y Moneda */}
+            {/* Columna Izquierda: Datos de Cliente SAP */}
             <VStack align="stretch" spacing={3}>
               {isSellerFieldsLocked ? (
                 <Box p={3.5} bg="#f0fdf4" borderRadius="xl" border="1.5px solid" borderColor="#bbf7d0" boxShadow="xs">
@@ -1754,9 +1760,44 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
               ) : (
                 <ClientAutocomplete client={client} setClient={setClient} />
               )}
+            </VStack>
 
-              {/* Persona de contacto y OC Cliente (Fase Pedido) */}
+            {/* Columna Derecha: Parámetros del Documento (Grid 2x2 Simétrico) */}
+            <VStack align="stretch" spacing={3}>
               <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={3}>
+                <FormControl>
+                  <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="gray.700" mb={1}>
+                    Válido Hasta / Vencimiento {isSellerFieldsLocked && "🔒"}
+                  </FormLabel>
+                  <Input
+                    type="date"
+                    size="sm"
+                    borderRadius="md"
+                    value={docDueDate}
+                    onChange={(e) => setDocDueDate(e.target.value)}
+                    bg={isSellerFieldsLocked ? "gray.100" : "white"}
+                    isDisabled={isSellerFieldsLocked}
+                    cursor={isSellerFieldsLocked ? "not-allowed" : "default"}
+                  />
+                </FormControl>
+
+                <FormControl>
+                  <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="gray.700" mb={1}>
+                    Fecha de Contabilización 🔒
+                  </FormLabel>
+                  <Input
+                    type="date"
+                    size="sm"
+                    borderRadius="md"
+                    value={docDate}
+                    isReadOnly
+                    isDisabled
+                    bg="gray.100"
+                    cursor="not-allowed"
+                    title="La fecha de contabilización es automática según la fecha de creación en SAP"
+                  />
+                </FormControl>
+
                 <FormControl>
                   <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="gray.700" mb={1}>
                     Persona de Contacto {isSellerFieldsLocked && "🔒"}
@@ -1805,44 +1846,6 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                     bg="gray.100"
                     cursor="not-allowed"
                     title="El número correlativo web se asigna automáticamente y se sincroniza con SAP"
-                  />
-                </FormControl>
-              </Grid>
-            </VStack>
-
-            {/* Columna Derecha: Fechas de Contabilización y Vencimiento */}
-            <VStack align="stretch" spacing={3}>
-              <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={3}>
-                <FormControl>
-                  <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="gray.700" mb={1}>
-                    Válido Hasta / Vencimiento {isSellerFieldsLocked && "🔒"}
-                  </FormLabel>
-                  <Input
-                    type="date"
-                    size="sm"
-                    borderRadius="md"
-                    value={docDueDate}
-                    onChange={(e) => setDocDueDate(e.target.value)}
-                    bg={isSellerFieldsLocked ? "gray.100" : "white"}
-                    isDisabled={isSellerFieldsLocked}
-                    cursor={isSellerFieldsLocked ? "not-allowed" : "default"}
-                  />
-                </FormControl>
-
-                <FormControl>
-                  <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="gray.700" mb={1}>
-                    Fecha de Contabilización 🔒
-                  </FormLabel>
-                  <Input
-                    type="date"
-                    size="sm"
-                    borderRadius="md"
-                    value={docDate}
-                    isReadOnly
-                    isDisabled
-                    bg="gray.100"
-                    cursor="not-allowed"
-                    title="La fecha de contabilización es automática según la fecha de creación en SAP"
                   />
                 </FormControl>
               </Grid>
