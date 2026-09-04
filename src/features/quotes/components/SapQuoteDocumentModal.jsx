@@ -74,8 +74,8 @@ const normalizeItem = (item) => {
     finalUnitPrice = Number((lineTotalNum / qty).toFixed(2));
   } else {
     const listPrice = Number(item.price ?? item.unitPrice ?? item.Price ?? item.UnitPrice ?? item.importe ?? 0);
-    const priceAfterSap = listPrice * (1 - sapDisc / 100);
-    finalUnitPrice = Number((priceAfterSap * (1 - addDisc / 100)).toFixed(2));
+    const totalDisc = Math.min(100, sapDisc + addDisc);
+    finalUnitPrice = Number((listPrice * (1 - totalDisc / 100)).toFixed(2));
     lineTotalNum = Number((qty * finalUnitPrice).toFixed(2));
   }
 

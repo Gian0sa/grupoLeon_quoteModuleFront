@@ -166,18 +166,28 @@ export const getTransports = async () => {
 };
 
 export const getPaymentType = async () => {
+    const DEFAULT_PAYMENT_OPTIONS = [
+        { GroupNum: -1, GroupNumber: -1, PymntGroup: "Contado", PaymentTermsGroupName: "Contado" },
+        { GroupNum: 1, GroupNumber: 1, PymntGroup: "Crédito 15 Días", PaymentTermsGroupName: "Crédito 15 Días" },
+        { GroupNum: 2, GroupNumber: 2, PymntGroup: "Crédito 30 Días", PaymentTermsGroupName: "Crédito 30 Días" },
+        { GroupNum: 3, GroupNumber: 3, PymntGroup: "Crédito 45 Días", PaymentTermsGroupName: "Crédito 45 Días" },
+        { GroupNum: 4, GroupNumber: 4, PymntGroup: "Crédito 60 Días", PaymentTermsGroupName: "Crédito 60 Días" },
+    ];
     try {
         const response = await axiosInstance.get(`/quoteModule/clients/payment-terms`);
         const list = response.data?.value || response.data || [];
-        return list.map(item => ({
-            GroupNum: item.GroupNum ?? item.GroupNumber ?? item.value,
-            GroupNumber: item.GroupNumber ?? item.GroupNum ?? item.value,
-            PymntGroup: item.PymntGroup || item.PaymentTermsGroupName || item.label || "Contado",
-            PaymentTermsGroupName: item.PaymentTermsGroupName || item.PymntGroup || item.label || "Contado"
-        }));
+        if (Array.isArray(list) && list.length > 0) {
+            return list.map(item => ({
+                GroupNum: item.GroupNum ?? item.GroupNumber ?? item.value,
+                GroupNumber: item.GroupNumber ?? item.GroupNum ?? item.value,
+                PymntGroup: item.PymntGroup || item.PaymentTermsGroupName || item.label || "Contado",
+                PaymentTermsGroupName: item.PaymentTermsGroupName || item.PymntGroup || item.label || "Contado"
+            }));
+        }
+        return DEFAULT_PAYMENT_OPTIONS;
     } catch (err) {
-        console.warn("⚠️ Aviso al obtener condiciones de pago de SAP:", err?.message);
-        return [];
+        console.warn("⚠️ Aviso al obtener condiciones de pago de SAP (usando fallback):", err?.message);
+        return DEFAULT_PAYMENT_OPTIONS;
     }
 };
 

@@ -96,11 +96,20 @@ export const useIgvRate = () => {
     return { igvRate: 0.18, isLoading: false };
 };
 
-// export const useGetExchangeRate = () => {
-//     const { data, isLoading, error } = useQuery({
-//         queryKey: ["ExchangeRatio"],
-//         queryFn: () => getDeliveryForms(),
-//     })
-//     return { dataDeliveryForms: data, isLoadingDeliveryForms: isLoading, errorDeliveryForms: error }
+import { fetchActivePromotions } from "../../services/promotionService";
 
-// }
+export const useGetPromotions = () => {
+    const { data, isLoading, isFetching, refetch } = useQuery({
+        queryKey: ["productPromotions"],
+        queryFn: fetchActivePromotions,
+        staleTime: 60000,
+        refetchOnWindowFocus: true,
+    });
+    return {
+        promotions: data?.list || [],
+        promotionsMap: data?.map || {},
+        isLoading,
+        isFetching,
+        refetch,
+    };
+};

@@ -17,6 +17,7 @@ import {
   AlertTitle,
   AlertDescription,
   Badge,
+  Progress,
 } from "@chakra-ui/react";
 import { ChevronLeftIcon, ChevronRightIcon } from "@chakra-ui/icons";
 import { format } from "date-fns";
@@ -39,8 +40,6 @@ import { SalesStats } from "../components/SalesStats";
 import { SurfaceChartCard } from "../components/SurfaceChartCard";
 import { DashboardCommercialPanel } from "../components/DashboardCommercialPanel";
 import SellerSelect from "../../../components/SellerSelect";
-import { AnimatePresence } from "framer-motion";
-import { LoginTransitionScreen } from "../../auth/components/LoginTransitionScreen";
 
 const MONTH_NAMES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -242,25 +241,23 @@ export function DashboardPage() {
   ];
 
   const pageBg = useColorModeValue("gray.50", "gray.900");
-  const [initialLoadingComplete, setInitialLoadingComplete] = useState(false);
-
-  // ✅ Todos los datos clave de SAP (resumenData de cuotas/pedidos/metas) deben estar listos
-  const isDashboardReady = (Boolean(resumenData) || Boolean(error)) && !isLoading;
-
-  // Splash activo durante la carga inicial para evitar mostrar cualquier skeleton gris
-  const isInitialSplash = !initialLoadingComplete;
 
   return (
     <Box w="full" minH="100vh" bg={pageBg} position="relative" overflowX="hidden">
-      <AnimatePresence>
-        {isInitialSplash && (
-          <LoginTransitionScreen
-            username={username}
-            isReady={isDashboardReady}
-            onComplete={() => setInitialLoadingComplete(true)}
-          />
-        )}
-      </AnimatePresence>
+      {/* Indicador de carga superior sutil y no invasivo */}
+      {isLoading && (
+        <Progress
+          size="xs"
+          isIndeterminate
+          colorScheme="green"
+          position="fixed"
+          top={0}
+          left={0}
+          right={0}
+          zIndex={9999}
+          bg="transparent"
+        />
+      )}
 
       {/* Header Integrado */}
       <TopHeaderBanner

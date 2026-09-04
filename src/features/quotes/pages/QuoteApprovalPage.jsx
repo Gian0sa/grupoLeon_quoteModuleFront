@@ -138,6 +138,9 @@ const isDraftOwnedByCurrentUser = (q, currentUsername, currentUserId) => {
 export const isQuoteFromSap = (q) => {
   if (!q) return false;
   const status = String(q.approvalStatus || q.state || q.status || "").toUpperCase().trim();
+  if (["ENVIADO", "PENDIENTE_APROBACION", "EN_PROCESO", "PENDIENTE_FACTURACION", "BORRADOR", "GENERADO", "DRAFT", "draft", "OBSERVADO", "EN_EDICION", "RECHAZADO"].includes(status)) {
+    return false;
+  }
   const sapDocNum = q.sapDocNum || q.DocNum || q.totals?.DocNum || q.totals?.sapDocNum;
   
   if (q.isSapDirect || q.isSap || q.totals?.isSapDirect) return true;
@@ -373,12 +376,23 @@ export function QuoteApprovalPage() {
       const local = stored ? JSON.parse(stored) : [];
 
       // Limpiar documentos fantasma vacíos (COT-000000 o sin items ni cliente)
+      // y sanear cotizaciones no aprobadas que hayan arrastrado por error atributos de SAP
+      // Limpiar documentos fantasma vacíos y cotizaciones ya emitidas a SAP de la memoria local
+      let hadChanges = false;
       const cleanLocal = local.filter(q => {
         const isPhantom = String(q.docNumber || "").trim() === "COT-000000" && (!q.products || q.products.length === 0) && Number(q.totals?.grandTotalUSD || 0) === 0;
-        return !isPhantom;
+        if (isPhantom) return false;
+        const qStatus = String(q.approvalStatus || q.state || q.status || "").toUpperCase().trim();
+        const isEmitted = Boolean(q.sapDocNum || q.DocNum || q.isSapDirect || q.totals?.sapDocNum || q.totals?.DocNum || q.totals?.isSapDirect || qStatus === "EMITIDO" || qStatus === "PEDIDO_EMITIDO");
+        const isAlreadyInSapDoc = ["COT-019836", "COT-019838", "COT-019841"].includes(String(q.docNumber || ""));
+        if (isEmitted || isAlreadyInSapDoc) {
+          hadChanges = true;
+          return false;
+        }
+        return true;
       });
 
-      if (cleanLocal.length !== local.length) {
+      if (cleanLocal.length !== local.length || hadChanges) {
         localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(cleanLocal));
       }
 
@@ -431,9 +445,15 @@ export function QuoteApprovalPage() {
               state: finalStatus,
               approvalStatus: finalStatus,
               isCancelled: sq.isCancelled || finalStatus === "CANCELADO" || finalStatus === "ANULADO",
-              isSapDirect: Boolean(sq.isSapDirect || sq.totals?.isSapDirect),
-              sapDocNum: sq.sapDocNum || sq.totals?.sapDocNum || (sq.isSapDirect ? (sq.DocNum || sq.totals?.DocNum) : null),
-              DocNum: (sq.isSapDirect || sq.totals?.isSapDirect) ? (sq.DocNum || sq.totals?.DocNum || sq.sapDocNum || sq.totals?.sapDocNum) : null,
+              isSapDirect: (finalStatus === "ENVIADO" || finalStatus === "PENDIENTE_APROBACION" || finalStatus === "BORRADOR" || finalStatus === "OBSERVADO" || finalStatus === "RECHAZADO")
+                ? false
+                : Boolean(sq.isSapDirect || sq.totals?.isSapDirect),
+              sapDocNum: (finalStatus === "ENVIADO" || finalStatus === "PENDIENTE_APROBACION" || finalStatus === "BORRADOR" || finalStatus === "OBSERVADO" || finalStatus === "RECHAZADO")
+                ? null
+                : (sq.sapDocNum || sq.totals?.sapDocNum || (sq.isSapDirect ? (sq.DocNum || sq.totals?.DocNum) : null)),
+              DocNum: (finalStatus === "ENVIADO" || finalStatus === "PENDIENTE_APROBACION" || finalStatus === "BORRADOR" || finalStatus === "OBSERVADO" || finalStatus === "RECHAZADO")
+                ? null
+                : ((sq.isSapDirect || sq.totals?.isSapDirect) ? (sq.DocNum || sq.totals?.DocNum || sq.sapDocNum || sq.totals?.sapDocNum) : null),
               // Campos de observación: si ya fue levantada (ENVIADO), limpiar la razón de observación antigua
               observationReason: (finalStatus === "ENVIADO" || finalStatus === "APROBADO_COMERCIAL" || finalStatus === "APROBADO" || finalStatus === "CANCELADO")
                 ? null
@@ -544,9 +564,15 @@ export function QuoteApprovalPage() {
                 state: finalStatus,
                 approvalStatus: finalStatus,
                 isCancelled: isCancelledInServer || Boolean(localMatch.isCancelled),
-                isSapDirect: Boolean(sq.isSapDirect || sq.totals?.isSapDirect),
-                sapDocNum: sq.sapDocNum || sq.totals?.sapDocNum || (sq.isSapDirect ? (sq.DocNum || sq.totals?.DocNum) : null),
-                DocNum: (sq.isSapDirect || sq.totals?.isSapDirect) ? (sq.DocNum || sq.totals?.DocNum || sq.sapDocNum || sq.totals?.sapDocNum) : null,
+                isSapDirect: (finalStatus === "ENVIADO" || finalStatus === "PENDIENTE_APROBACION" || finalStatus === "BORRADOR" || finalStatus === "OBSERVADO" || finalStatus === "RECHAZADO")
+                  ? false
+                  : Boolean(sq.isSapDirect || sq.totals?.isSapDirect),
+                sapDocNum: (finalStatus === "ENVIADO" || finalStatus === "PENDIENTE_APROBACION" || finalStatus === "BORRADOR" || finalStatus === "OBSERVADO" || finalStatus === "RECHAZADO")
+                  ? null
+                  : (sq.sapDocNum || sq.totals?.sapDocNum || (sq.isSapDirect ? (sq.DocNum || sq.totals?.DocNum) : null)),
+                DocNum: (finalStatus === "ENVIADO" || finalStatus === "PENDIENTE_APROBACION" || finalStatus === "BORRADOR" || finalStatus === "OBSERVADO" || finalStatus === "RECHAZADO")
+                  ? null
+                  : ((sq.isSapDirect || sq.totals?.isSapDirect) ? (sq.DocNum || sq.totals?.DocNum || sq.sapDocNum || sq.totals?.sapDocNum) : null),
                 // Mantener datos ricos del servidor que no estén en local
                 products: (sq.products && sq.products.length > 0) ? sq.products : (localMatch.products || localMatch.items || []),
                 client: sq.client || localMatch.client,
@@ -621,9 +647,20 @@ export function QuoteApprovalPage() {
       return qDocNum === idStr || qId === idStr || isMatchingDoc(q, idStr);
     };
 
-    // Bloqueo de seguridad: No se permite eliminar ni anular cotizaciones originadas o sincronizadas con SAP
+    // Si la cotización fue emitida a SAP, se retira de inmediato de la vista y almacenamiento local
     const targetQuote = quotes.find(isMatchingItem);
     const stUpper = String(currentStatus || targetQuote?.approvalStatus || targetQuote?.state || targetQuote?.status || "").toUpperCase();
+
+    if (stUpper === "EMITIDO" || currentStatus === "EMITIDO") {
+      setQuotes((prev) => prev.filter((q) => !isMatchingItem(q)));
+      queryClient.setQueryData(["quotes"], (old) => (Array.isArray(old) ? old.filter((q) => !isMatchingItem(q)) : []));
+      const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
+      const updated = saved.filter((q) => !isMatchingItem(q));
+      localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updated));
+      window.dispatchEvent(new Event("localQuotesUpdated"));
+      return;
+    }
+
     if (isQuoteFromSap(targetQuote)) {
       toast({
         title: "⚠️ Acción no permitida",
@@ -1385,14 +1422,16 @@ export function QuoteApprovalPage() {
     }
 
     // 3. Pestañas Operativas del Día a Día (Carga Rápida)
-    return visibleQuotes.filter((q) => {
+    // 3. Pestañas Operativas del Día a Día (Carga Rápida)
+    const result = visibleQuotes.filter((q) => {
       const currentStatus = q.approvalStatus || q.state || q.status || "GENERADO";
       const isDraft = isDraftState(currentStatus);
       const isCancelled = isCancelledState(currentStatus);
+      const isEmitted = Boolean(q.sapDocNum || q.DocNum || q.isSapDirect || currentStatus === "EMITIDO" || currentStatus === "PEDIDO_EMITIDO");
 
       // Filtro por pestaña operativa:
       if (selectedTab === "ALL") {
-        if (isDraft || isCancelled) return false;
+        if (isDraft || isCancelled || isEmitted) return false;
       } else if (selectedTab === "GENERADO") {
         if (!isDraft) return false;
       } else if (selectedTab === "ENVIADO") {
@@ -1408,6 +1447,16 @@ export function QuoteApprovalPage() {
       }
 
       return true;
+    });
+
+    // Ordenamiento numérico estricto descendente por número de documento (COT-XXXXXX)
+    return result.sort((a, b) => {
+      const numA = parseInt(String(a.docNumber || a.id || "").replace(/[^0-9]/g, "") || "0", 10);
+      const numB = parseInt(String(b.docNumber || b.id || "").replace(/[^0-9]/g, "") || "0", 10);
+      if (numA !== numB) return numB - numA;
+      const dateA = new Date(a.createdAt || a.docDate || 0).getTime();
+      const dateB = new Date(b.createdAt || b.docDate || 0).getTime();
+      return dateB - dateA;
     });
   }, [
     quotes,
@@ -1438,6 +1487,7 @@ export function QuoteApprovalPage() {
       const st = q.approvalStatus || q.state || q.status || "GENERADO";
       const isDraft = isDraftState(st);
       const isCancelled = isCancelledState(st);
+      const isEmitted = Boolean(q.sapDocNum || q.DocNum || q.isSapDirect || st === "EMITIDO" || st === "PEDIDO_EMITIDO");
 
       // Si es Vendedor, solo computar sus propias cotizaciones (incluyendo borradores)
       if (!isAdminUser) {
@@ -1455,7 +1505,7 @@ export function QuoteApprovalPage() {
         res.ANULADO++;
         res.RECHAZADO++;
       } else {
-        res.ALL++;
+        if (!isEmitted) res.ALL++;
         if (["ENVIADO", "EN_PROCESO", "PENDIENTE_APROBACION"].includes(st)) res.ENVIADO++;
         else if (["APROBADO_COMERCIAL", "APROBADO_CREDITOS"].includes(st)) res.APROBADO_COMERCIAL++;
         else if (["PENDIENTE_FACTURACION", "EN_FACTURACION"].includes(st)) res.PENDIENTE_FACTURACION++;
@@ -1466,96 +1516,133 @@ export function QuoteApprovalPage() {
   }, [quotes, isAdminUser, activeCurrentUsername, activeCurrentUserId]);
 
   const renderStatusBadge = (status, q = null) => {
-    switch (status) {
-      case "GENERADO":
-      case "DRAFT":
-      case "draft":
-      case "BORRADOR":
-      case "borrador":
-        return (
-          <Badge bg="#eff6ff" color="#1e40af" border="1.5px solid #bfdbfe" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
-            1. Borrador 📝
-          </Badge>
-        );
-      case "PENDIENTE_APROBACION":
-      case "ENVIADO":
-        return (
-          <Badge bg="#e0f2fe" color="#0369a1" border="1.5px solid #bae6fd" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
-            1. Pend. Aprobación ⏳
-          </Badge>
-        );
-      case "EN_PROCESO":
-        return (
-          <Badge bg="#f3e8ff" color="#6b21a8" border="1.5px solid #e9d5ff" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
-            En Revisión 🔍
-          </Badge>
-        );
-      case "APROBADO_COMERCIAL":
-        return (
-          <Badge bg="#fef9c3" color="#854d0e" border="1.5px solid #fef08a" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
-            2. Aprob. Comercial 📢
-          </Badge>
-        );
-      case "EN_FACTURACION":
-      case "PENDIENTE_FACTURACION":
-        return (
-          <Badge bg="#f5f3ff" color="#5b21b6" border="1.5px solid #ddd6fe" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
-            3. Pnd. Facturación 💳
-          </Badge>
-        );
-      case "EMITIDO":
-      case "EMITIDO_SAP":
-      case "PEDIDO_EMITIDO":
-      case "FACTURADO":
-      case "COMPLETADO":
-      case "APROBADO": {
-        const hasSap = Boolean(q?.isSapDirect || q?.totals?.isSapDirect || q?.sapDocNum || q?.totals?.sapDocNum || status === "EMITIDO" || status === "EMITIDO_SAP" || status === "PEDIDO_EMITIDO");
-        if (hasSap) {
+    const getMainBadge = () => {
+      switch (status) {
+        case "GENERADO":
+        case "DRAFT":
+        case "draft":
+        case "BORRADOR":
+        case "borrador":
           return (
-            <Badge bg="#dcfce7" color="#166534" border="1.5px solid #bbf7d0" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
-              🔒 4. Pedido Emitido SAP ✓
+            <Badge bg="#eff6ff" color="#1e40af" border="1.5px solid #bfdbfe" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
+              1. Borrador 📝
+            </Badge>
+          );
+        case "PENDIENTE_APROBACION":
+        case "ENVIADO":
+          return (
+            <Badge bg="#e0f2fe" color="#0369a1" border="1.5px solid #bae6fd" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
+              1. Pend. Aprobación ⏳
+            </Badge>
+          );
+        case "EN_PROCESO":
+          return (
+            <Badge bg="#f3e8ff" color="#6b21a8" border="1.5px solid #e9d5ff" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
+              En Revisión 🔍
+            </Badge>
+          );
+        case "APROBADO_COMERCIAL":
+          return (
+            <Badge bg="#fef9c3" color="#854d0e" border="1.5px solid #fef08a" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
+              2. Aprob. Comercial 📢
+            </Badge>
+          );
+        case "EN_FACTURACION":
+        case "PENDIENTE_FACTURACION":
+          return (
+            <Badge bg="#f5f3ff" color="#5b21b6" border="1.5px solid #ddd6fe" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
+              3. Pnd. Facturación 💳
+            </Badge>
+          );
+        case "EMITIDO":
+        case "EMITIDO_SAP":
+        case "PEDIDO_EMITIDO":
+        case "FACTURADO":
+        case "COMPLETADO":
+        case "APROBADO": {
+          const hasSap = Boolean(q?.isSapDirect || q?.totals?.isSapDirect || q?.sapDocNum || q?.totals?.sapDocNum || status === "EMITIDO" || status === "EMITIDO_SAP" || status === "PEDIDO_EMITIDO");
+          if (hasSap) {
+            return (
+              <Badge bg="#dcfce7" color="#166534" border="1.5px solid #bbf7d0" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
+                🔒 4. Pedido Emitido SAP ✓
+              </Badge>
+            );
+          }
+          return (
+            <Badge bg="#dcfce7" color="#15803d" border="1.5px solid #86efac" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
+              ✅ 4. Pedido Aprobado
             </Badge>
           );
         }
-        return (
-          <Badge bg="#dcfce7" color="#15803d" border="1.5px solid #86efac" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
-            ✅ 4. Pedido Aprobado
-          </Badge>
-        );
+        case "ANULADO":
+          return (
+            <Badge bg="#fef2f2" color="#b91c1c" border="1.5px solid #fca5a5" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
+              ❌ Anulado (Aplicativo)
+            </Badge>
+          );
+        case "CANCELADO":
+          return (
+            <Badge bg="#fee2e2" color="#991b1b" border="1.5px solid #f87171" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
+              🚫 Cancelado en SAP
+            </Badge>
+          );
+        case "RECHAZADO":
+          return (
+            <Badge bg="#fee2e2" color="#991b1b" border="1.5px solid #fecaca" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
+              Rechazado ❌
+            </Badge>
+          );
+        case "OBSERVADO":
+          return (
+            <Badge bg="#fef3c7" color="#d97706" border="1.5px solid #fcd34d" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
+              Observado 💬
+            </Badge>
+          );
+        case "EN_EDICION":
+          return (
+            <Badge bg="#ffedd5" color="#ea580c" border="1.5px solid #fdba74" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
+              En Corrección ↩️
+            </Badge>
+          );
+        default:
+          return <Badge px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="800">{status}</Badge>;
       }
-      case "ANULADO":
-        return (
-          <Badge bg="#fef2f2" color="#b91c1c" border="1.5px solid #fca5a5" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
-            ❌ Anulado (Aplicativo)
-          </Badge>
-        );
-      case "CANCELADO":
-        return (
-          <Badge bg="#fee2e2" color="#991b1b" border="1.5px solid #f87171" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
-            🚫 Cancelado en SAP
-          </Badge>
-        );
-      case "RECHAZADO":
-        return (
-          <Badge bg="#fee2e2" color="#991b1b" border="1.5px solid #fecaca" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
-            Rechazado ❌
-          </Badge>
-        );
-      case "OBSERVADO":
-        return (
-          <Badge bg="#fef3c7" color="#d97706" border="1.5px solid #fcd34d" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
-            Observado 💬
-          </Badge>
-        );
-      case "EN_EDICION":
-        return (
-          <Badge bg="#ffedd5" color="#ea580c" border="1.5px solid #fdba74" px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="900" textTransform="uppercase" letterSpacing="wider">
-            En Corrección ↩️
-          </Badge>
-        );
-      default:
-        return <Badge px={3} py={1.5} borderRadius="full" fontSize="xs" fontWeight="800">{status}</Badge>;
-    }
+    };
+
+    const mainBadge = getMainBadge();
+    const hasVolume = Boolean(
+      q?.hasVolumeDiscount ||
+      q?.totals?.hasVolumeDiscount ||
+      (Array.isArray(q?.products || q?.items) && (q?.products || q?.items).some(p => {
+        const s = Number(p.discount || p.sapDiscount || 0);
+        const pr = Number(p.promoDiscount || 0);
+        const a = Number(p.lineDiscount || 0);
+        return (s + pr + a) > 50.01;
+      }))
+    );
+
+    if (!hasVolume) return mainBadge;
+
+    return (
+      <VStack spacing={1} align="start">
+        {mainBadge}
+        <Badge
+          bg="#fff7ed"
+          color="#c2410c"
+          border="1.5px solid #fdba74"
+          px={2.5}
+          py={0.5}
+          borderRadius="full"
+          fontSize="9.5px"
+          fontWeight="900"
+          textTransform="uppercase"
+          letterSpacing="wider"
+          boxShadow="xs"
+        >
+          🔥 Mayoreo (&gt;50% a 56%)
+        </Badge>
+      </VStack>
+    );
   };
   // Botones de acción por fila, con diseño ultra elegante y optimizado para móvil y escritorio
   const renderRowActions = (q, docId, status, { stack = false } = {}) => {

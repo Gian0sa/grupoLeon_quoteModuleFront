@@ -121,6 +121,32 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
   const quoteId = quote?.docNumber || quote?.id;
   const { data: serverQuote } = useGetQuoteById(quoteId);
 
+  // Resetear cualquier resultado de sincronización de SAP previo al cambiar de cotización o cerrar
+  React.useEffect(() => {
+    if (!isOpen) {
+      setSapSyncResult(null);
+    }
+  }, [isOpen]);
+
+  React.useEffect(() => {
+    setSapSyncResult(null);
+  }, [quoteId]);
+
+  // Lista de estados no aprobados / pendientes: NUNCA deben asociarse ni mostrar insignias de SAP
+  const UNAPPROVED_STATUSES = React.useMemo(() => [
+    "ENVIADO",
+    "PENDIENTE_APROBACION",
+    "EN_PROCESO",
+    "PENDIENTE_FACTURACION",
+    "BORRADOR",
+    "GENERADO",
+    "DRAFT",
+    "draft",
+    "OBSERVADO",
+    "EN_EDICION",
+    "RECHAZADO"
+  ], []);
+
   // Extractor exhaustivo de ítems desde cualquier estructura
   const extractItems = (doc) => {
     if (!doc) return [];
@@ -146,11 +172,18 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
     let full = { ...quote };
 
     const quoteIdentifier = String(quote.docNumber || quote.id || "");
+    const initialRawStatus = String(full.approvalStatus || full.status || full.state || "GENERADO").toUpperCase().trim();
+    const isInitialUnapproved = UNAPPROVED_STATUSES.includes(initialRawStatus);
+
     let freshestStatus = full.approvalStatus || full.status || full.state || "GENERADO";
     let freshestHistory = Array.isArray(full.historyLog) && full.historyLog.length > 0 ? full.historyLog : null;
     let freshestTotals = full.totals || null;
-    // Solo leer sapDocNum legítimo del objeto original si es directo o si viene del sync
-    let freshestSapDocNum = (quote?.isSapDirect ? (quote.sapDocNum || quote.DocNum || quote.totals?.sapDocNum) : null) || sapSyncResult?.docNum || null;
+    
+    // Solo leer sapDocNum legítimo si NO es un estado pendiente/borrador y si coincide el sync
+    const currentSyncResult = (sapSyncResult?.quoteId && String(sapSyncResult.quoteId) === quoteIdentifier) ? sapSyncResult : null;
+    let freshestSapDocNum = !isInitialUnapproved
+      ? ((quote?.isSapDirect ? (quote.sapDocNum || quote.DocNum || quote.totals?.sapDocNum) : null) || currentSyncResult?.docNum || null)
+      : null;
 
     // 1. Buscar en la caché de React Query (['quotes'])
     try {
@@ -159,14 +192,19 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         const foundInCache = cachedQuotes.find(q => String(q.id || q.docNumber) === quoteIdentifier);
         if (foundInCache) {
           full = { ...foundInCache, ...full };
+          const cacheStatus = String(foundInCache.approvalStatus || foundInCache.status || "").toUpperCase().trim();
           if (foundInCache.approvalStatus || foundInCache.status) {
-            freshestStatus = foundInCache.approvalStatus || foundInCache.status;
+            if (!isInitialUnapproved || UNAPPROVED_STATUSES.includes(cacheStatus)) {
+              freshestStatus = foundInCache.approvalStatus || foundInCache.status;
+            }
           }
           if (Array.isArray(foundInCache.historyLog) && foundInCache.historyLog.length > (freshestHistory?.length || 0)) {
             freshestHistory = foundInCache.historyLog;
           }
           if (foundInCache.totals) freshestTotals = { ...foundInCache.totals, ...(freshestTotals || {}) };
-          if (foundInCache.isSapDirect && foundInCache.sapDocNum) freshestSapDocNum = foundInCache.sapDocNum;
+          if (!isInitialUnapproved && foundInCache.isSapDirect && foundInCache.sapDocNum) {
+            freshestSapDocNum = foundInCache.sapDocNum;
+          }
         }
       }
     } catch {}
@@ -177,22 +215,30 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
       const foundInLocal = localQuotes.find(q => String(q.id || q.docNumber) === quoteIdentifier);
       if (foundInLocal) {
         full = { ...foundInLocal, ...full };
+        const localStatus = String(foundInLocal.approvalStatus || foundInLocal.status || "").toUpperCase().trim();
         if (foundInLocal.approvalStatus || foundInLocal.status) {
-          freshestStatus = foundInLocal.approvalStatus || foundInLocal.status;
+          if (!isInitialUnapproved || UNAPPROVED_STATUSES.includes(localStatus)) {
+            freshestStatus = foundInLocal.approvalStatus || foundInLocal.status;
+          }
         }
         if (Array.isArray(foundInLocal.historyLog) && foundInLocal.historyLog.length > (freshestHistory?.length || 0)) {
           freshestHistory = foundInLocal.historyLog;
         }
         if (foundInLocal.totals) freshestTotals = { ...foundInLocal.totals, ...(freshestTotals || {}) };
-        if (foundInLocal.isSapDirect && foundInLocal.sapDocNum) freshestSapDocNum = foundInLocal.sapDocNum;
+        if (!isInitialUnapproved && foundInLocal.isSapDirect && foundInLocal.sapDocNum) {
+          freshestSapDocNum = foundInLocal.sapDocNum;
+        }
       }
     } catch {}
 
     // 3. Enriquecer con serverQuote SOLO para productos o datos faltantes, SIN degradar el estado
     if (serverQuote) {
       const serverStatus = serverQuote.approvalStatus || serverQuote.status;
+      const upperServerStatus = String(serverStatus || "").toUpperCase().trim();
       // Solo actualizar estado si el servidor tiene un avance real posterior (ej. SAP emitido)
       if (serverStatus && ["APROBADO", "APROBADO_COMERCIAL", "EMITIDO_SAP", "COMPLETADO", "FACTURADO"].includes(serverStatus)) {
+        freshestStatus = serverStatus;
+      } else if (UNAPPROVED_STATUSES.includes(upperServerStatus)) {
         freshestStatus = serverStatus;
       }
       const serverItems = extractItems(serverQuote);
@@ -255,7 +301,32 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
       if (serverQuote.isLetra !== undefined && full.isLetra === undefined) full.isLetra = serverQuote.isLetra;
       if (serverQuote.comment && !full.comment) full.comment = serverQuote.comment;
       if (serverQuote.deliveryDate && !full.deliveryDate) full.deliveryDate = serverQuote.deliveryDate;
-      if (serverQuote.sapDocNum) {
+      if (serverQuote.refNumber && !full.refNumber) full.refNumber = serverQuote.refNumber;
+      if (serverQuote.contactPerson && !full.contactPerson) full.contactPerson = serverQuote.contactPerson;
+      if (serverQuote.opNum && !full.opNum) full.opNum = serverQuote.opNum;
+      if (serverQuote.paymentMethod && !full.paymentMethod) full.paymentMethod = serverQuote.paymentMethod;
+      if (serverQuote.bankAccount && !full.bankAccount) full.bankAccount = serverQuote.bankAccount;
+      if (serverQuote.sunatOpType && !full.sunatOpType) full.sunatOpType = serverQuote.sunatOpType;
+      if (serverQuote.observations && !full.observations) full.observations = serverQuote.observations;
+      if (serverQuote.whsCode && !full.whsCode) full.whsCode = serverQuote.whsCode;
+
+      // También extraer desde totals si vinieron encapsulados en JSON
+      const sTotals = serverQuote.totals || {};
+      if (sTotals.refNumber && !full.refNumber) full.refNumber = sTotals.refNumber;
+      if (sTotals.contactPerson && !full.contactPerson) full.contactPerson = sTotals.contactPerson;
+      if (sTotals.opNum && !full.opNum) full.opNum = sTotals.opNum;
+      if (sTotals.paymentMethod && !full.paymentMethod) full.paymentMethod = sTotals.paymentMethod;
+      if (sTotals.bankAccount && !full.bankAccount) full.bankAccount = sTotals.bankAccount;
+      if (sTotals.sunatOpType && !full.sunatOpType) full.sunatOpType = sTotals.sunatOpType;
+      if (sTotals.saleCondition && !full.saleCondition) full.saleCondition = sTotals.saleCondition;
+      if (sTotals.documentType && !full.documentType) full.documentType = sTotals.documentType;
+      if (sTotals.creditTerm && !full.creditTerm) full.creditTerm = sTotals.creditTerm;
+      if (sTotals.isLetra !== undefined && full.isLetra === undefined) full.isLetra = sTotals.isLetra;
+      if (sTotals.whsCode && !full.whsCode) full.whsCode = sTotals.whsCode;
+      if (sTotals.comment && !full.comment) full.comment = sTotals.comment;
+      if (sTotals.observations && !full.observations) full.observations = sTotals.observations;
+
+      if (serverQuote.sapDocNum && !UNAPPROVED_STATUSES.includes(upperServerStatus)) {
         freshestSapDocNum = serverQuote.sapDocNum;
       }
       if (Array.isArray(serverQuote.historyLog) && serverQuote.historyLog.length > (freshestHistory?.length || 0)) {
@@ -263,10 +334,16 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
       }
     }
 
-    // 4. Si se acaba de sincronizar con SAP en esta sesión
-    if (sapSyncResult?.docNum) {
-      freshestSapDocNum = sapSyncResult.docNum;
+    // 4. Si se acaba de sincronizar con SAP en esta sesión ESPECÍFICAMENTE para esta cotización
+    if (currentSyncResult?.docNum) {
+      freshestSapDocNum = currentSyncResult.docNum;
       freshestStatus = "APROBADO";
+    }
+
+    // Si el estado final es no aprobado (ENVIADO, BORRADOR, etc.), NUNCA debe tener SAP DocNum
+    const isFinalUnapproved = UNAPPROVED_STATUSES.includes(String(freshestStatus).toUpperCase().trim());
+    if (isFinalUnapproved) {
+      freshestSapDocNum = null;
     }
 
     // 5. Aplicar campos consolidados
@@ -275,7 +352,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
     full.state = freshestStatus;
     if (freshestHistory) full.historyLog = freshestHistory;
     if (freshestTotals) full.totals = freshestTotals;
-    if (freshestSapDocNum) {
+    if (freshestSapDocNum && !isFinalUnapproved) {
       full.sapDocNum = freshestSapDocNum;
       full.DocNum = freshestSapDocNum;
       full.isSapDirect = true;
@@ -283,11 +360,20 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
       full.totals.sapDocNum = freshestSapDocNum;
       full.totals.DocNum = freshestSapDocNum;
       full.totals.isSapDirect = true;
+    } else {
+      full.sapDocNum = null;
+      full.DocNum = null;
+      full.isSapDirect = false;
+      if (full.totals) {
+        full.totals.sapDocNum = null;
+        full.totals.DocNum = null;
+        full.totals.isSapDirect = false;
+      }
     }
 
     full.products = extractItems(full);
     return full;
-  }, [quote, serverQuote, quoteId, queryClient, sapSyncResult]);
+  }, [quote, serverQuote, quoteId, queryClient, sapSyncResult, UNAPPROVED_STATUSES]);
 
   // Consulta de Stock en tiempo real directamente a SAP al abrir la cotización
   React.useEffect(() => {
@@ -411,23 +497,32 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
     return `${hours}h ${mins}m`;
   };
 
-  const syncedDocNum = effectiveQuote.sapDocNum
-    || effectiveQuote.totals?.sapDocNum
-    || sapSyncResult?.docNum
-    || (effectiveQuote.isSapDirect ? (effectiveQuote.DocNum || effectiveQuote.docNumber) : null)
-    || (effectiveQuote.DocNum && !String(effectiveQuote.DocNum).startsWith("COT-") ? effectiveQuote.DocNum : null)
-    || (effectiveQuote.docNumber && !String(effectiveQuote.docNumber).startsWith("COT-") && !isNaN(Number(effectiveQuote.docNumber)) ? effectiveQuote.docNumber : null);
+  const isUnapprovedDoc = UNAPPROVED_STATUSES.includes(String(status).toUpperCase().trim());
 
-  const isAlreadySyncedToSap = Boolean(
+  const currentScopedSyncDocNum = (sapSyncResult?.quoteId && String(sapSyncResult.quoteId) === String(effectiveQuote?.docNumber || quoteId))
+    ? sapSyncResult.docNum
+    : null;
+
+  const syncedDocNum = isUnapprovedDoc
+    ? null
+    : (
+        currentScopedSyncDocNum
+        || effectiveQuote.sapDocNum
+        || effectiveQuote.totals?.sapDocNum
+        || (effectiveQuote.isSapDirect ? (effectiveQuote.DocNum || effectiveQuote.docNumber) : null)
+        || (effectiveQuote.DocNum && !String(effectiveQuote.DocNum).startsWith("COT-") && !isNaN(Number(effectiveQuote.DocNum)) ? Number(effectiveQuote.DocNum) : null)
+      );
+
+  const isAlreadySyncedToSap = !isUnapprovedDoc && Boolean(
     syncedDocNum ||
     effectiveQuote.isSapDirect ||
     effectiveQuote.totals?.isSapDirect ||
     effectiveQuote.sapDocNum ||
     effectiveQuote.totals?.sapDocNum ||
-    sapSyncResult?.docNum
+    currentScopedSyncDocNum
   );
 
-  const isDirectSap = Boolean(
+  const isDirectSap = !isUnapprovedDoc && Boolean(
     effectiveQuote.isSapDirect ||
     effectiveQuote.totals?.isSapDirect ||
     isAlreadySyncedToSap
@@ -894,13 +989,22 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         U_VS_TIPO_FACT: effectiveQuote.sunatOpType || effectiveQuote.U_VS_TIPO_FACT || "0101",
         U_VS_AFEDET: effectiveQuote.U_VS_AFEDET || "N",
         U_VS_BANCO: effectiveQuote.bankAccount || effectiveQuote.U_VS_BANCO || "BCP_SOLES",
-        saleCondition: effectiveQuote.saleCondition,
-        documentType: effectiveQuote.documentType,
-        creditTerm: effectiveQuote.creditTerm,
-        isLetra: effectiveQuote.isLetra,
-        opNum: effectiveQuote.opNum,
+        saleCondition: effectiveQuote.saleCondition || effectiveQuote.totals?.saleCondition,
+        documentType: effectiveQuote.documentType || effectiveQuote.totals?.documentType,
+        creditTerm: effectiveQuote.creditTerm || effectiveQuote.totals?.creditTerm,
+        isLetra: effectiveQuote.isLetra !== undefined ? effectiveQuote.isLetra : effectiveQuote.totals?.isLetra,
+        opNum: effectiveQuote.opNum || effectiveQuote.totals?.opNum,
+        refNumber: effectiveQuote.refNumber || effectiveQuote.totals?.refNumber || effectiveQuote.NumAtCard || null,
+        contactPerson: effectiveQuote.contactPerson || effectiveQuote.totals?.contactPerson || effectiveQuote.ContactPerson || null,
+        whsCode: effectiveQuote.whsCode || effectiveQuote.totals?.whsCode || "014",
+        observations: effectiveQuote.observations || effectiveQuote.totals?.observations || null,
         products: sanitizedProducts,
-        comment: effectiveQuote.observations || effectiveQuote.comment || `Cotización Web ${effectiveQuote.docNumber}`,
+        comment: [
+          effectiveQuote.comment,
+          effectiveQuote.observations,
+          effectiveQuote.totals?.comment,
+          effectiveQuote.totals?.observations
+        ].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(" | ") || `Cotización Web ${effectiveQuote.docNumber}`,
       };
 
       const res = await axiosInstance.post("/quoteModule/quotes/sap/order", quotePayload);
@@ -950,6 +1054,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
       // Guardar detalle para el modal de éxito visual
       setSapSyncResult({
+        quoteId: effectiveQuote.docNumber || effectiveQuote.id || quoteId,
         docNum: sapDocNum,
         docEntry: sapDocEntry,
         cardCode: sapData.CardCode || quotePayload.clientDocument,
@@ -963,61 +1068,38 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
       });
       setIsSapSuccessModalOpen(true);
 
-      // Actualizar localStorage y caché local con los identificadores oficiales de SAP
+      // ─── Post-Emisión Oficial a SAP: Purgar de localStorage y de la tabla de aprobaciones ───
       if (sapDocNum) {
+        const targetDocNum = String(quotePayload.docNumber || effectiveQuote.docNumber || "");
+        const targetId = String(quotePayload.id || effectiveQuote.id || "");
+
         try {
           const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
-          const updatedSaved = saved.map((q) => {
-            if (String(q.id || q.docNumber) === String(quotePayload.id || quotePayload.docNumber)) {
-              return {
-                ...q,
-                sapDocNum,
-                DocNum: sapDocNum,
-                sapDocEntry,
-                isSapDirect: true,
-                status: "APROBADO",
-                approvalStatus: "APROBADO",
-                totals: {
-                  ...(q.totals || {}),
-                  sapDocNum,
-                  DocNum: sapDocNum,
-                  sapDocEntry,
-                  isSapDirect: true,
-                },
-              };
-            }
-            return q;
+          const updatedSaved = saved.filter(q => {
+            const qDoc = String(q.docNumber || "");
+            const qId = String(q.id || "");
+            return qDoc !== targetDocNum && qId !== targetId && qDoc !== targetId && qId !== targetDocNum;
           });
           localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updatedSaved));
+          window.dispatchEvent(new Event("localQuotesUpdated"));
         } catch (e) {}
-      }
 
-      // Notificar al componente padre para que actualice la lista de cotizaciones inmediatamente
-      if (onUpdateStatus) {
-        onUpdateStatus(
-          {
-            ...effectiveQuote,
-            sapDocNum,
-            DocNum: sapDocNum,
-            sapDocEntry,
-            isSapDirect: true,
-            status: "APROBADO",
-            approvalStatus: "APROBADO",
-            totals: {
-              ...(effectiveQuote.totals || {}),
-              sapDocNum,
-              DocNum: sapDocNum,
-              sapDocEntry,
-              isSapDirect: true,
-            },
-          },
-          "APROBADO",
-          `Orden de Venta Oficial #${sapDocNum} registrada en SAP B1`
-        );
-      }
+        // Notificar al componente padre para que la elimine de la pantalla de cotizaciones pendientes
+        if (onDeleteQuote) {
+          onDeleteQuote(targetDocNum || targetId, "EMITIDO");
+        }
 
-      // Invalidar consultas del servidor
-      queryClient.invalidateQueries(["quotes"]);
+        // Limpiar React Query Cache para que desaparezca inmediatamente
+        queryClient.setQueriesData({ queryKey: ["quotes"] }, (old) => {
+          if (!Array.isArray(old)) return [];
+          return old.filter(q => {
+            const qDoc = String(q.docNumber || "");
+            const qId = String(q.id || "");
+            return qDoc !== targetDocNum && qId !== targetId && qDoc !== targetId && qId !== targetDocNum;
+          });
+        });
+        queryClient.invalidateQueries(["quotes"]);
+      }
 
       toast({
         title: "⚡ Orden de Venta Sincronizada con Éxito en SAP B1",
@@ -1523,7 +1605,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
               )
             ) : status === "APROBADO" ? (
               (() => {
-                const sapDoc = isAlreadySyncedToSap ? (syncedDocNum || true) : null;
+                const sapDoc = (isAlreadySyncedToSap && syncedDocNum) ? syncedDocNum : null;
                 return (
                   <Box bg={sapDoc ? "teal.50" : "emerald.50"} p={4} borderRadius="xl" border="2px solid" borderColor={sapDoc ? "teal.500" : "emerald.500"} boxShadow="sm" mb={5}>
                     <Flex align="center" justify="space-between" wrap="wrap" gap={3}>
@@ -2507,9 +2589,11 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                       <VStack align="stretch" spacing={3}>
                         {displayProducts.map((item, idx) => {
                           const sapDisc = Number(item.sapDiscount ?? item.discount ?? 0);
+                          const promoDisc = Number(item.promoDiscount ?? 0);
                           const addDisc = Number(item.lineDiscount ?? 0);
-                          const totalDisc = Number(item.discountPercent ?? sapDisc);
-                          const reqAppr = addDisc > 0;
+                          const totalDisc = Number(item.discountPercent ?? Math.min(56, sapDisc + promoDisc + addDisc));
+                          const isVolume = totalDisc > 50;
+                          const reqAppr = addDisc > 0 || isVolume;
                           const { isOutOfStock } = getItemStockInfo(item);
 
                           return (
@@ -2519,7 +2603,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                               bg="gray.50"
                               borderRadius="xl"
                               border="1px solid"
-                              borderColor="gray.200"
+                              borderColor={isVolume ? "orange.300" : promoDisc > 0 ? "amber.300" : "gray.200"}
                             >
                               <Flex justify="space-between" align="start" gap={2} mb={1}>
                                 <Badge colorScheme="blue" variant="solid" fontSize="10px" borderRadius="md" px={1.5} fontFamily="mono">
@@ -2533,6 +2617,16 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                 <Text fontSize="12px" fontWeight="700" color="gray.900">
                                   {item.description || item.ItemDescription || item.name || "Artículo"}
                                 </Text>
+                                {promoDisc > 0 && (
+                                  <Badge bg="amber.400" color="amber.950" fontSize="9px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
+                                    🏷️ OFERTA DEL MES: -{promoDisc}% EXTRA
+                                  </Badge>
+                                )}
+                                {isVolume && (
+                                  <Badge bg="#ea580c" color="white" fontSize="9px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
+                                    🔥 MAYOREO ESPECIAL ({totalDisc}%)
+                                  </Badge>
+                                )}
                                 {isOutOfStock && (
                                   <Badge colorScheme="red" bg="#fee2e2" color="#991b1b" border="1px solid" borderColor="#fca5a5" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="800">
                                     ⚠️ SIN STOCK DISPONIBLE (Pendiente a Importación)
@@ -2540,11 +2634,17 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                 )}
                               </VStack>
 
-                              <Grid templateColumns="repeat(3, 1fr)" gap={1.5} fontSize="10px" bg="white" p={2} borderRadius="lg" border="1px solid" borderColor="gray.200" mb={1.5}>
+                              <Grid templateColumns={promoDisc > 0 ? "repeat(4, 1fr)" : "repeat(3, 1fr)"} gap={1} fontSize="10px" bg="white" p={2} borderRadius="lg" border="1px solid" borderColor="gray.200" mb={1.5}>
                                 <Box textAlign="center">
                                   <Text color="gray.500" fontWeight="700">Desc. SAP</Text>
                                   <Badge colorScheme="green" fontSize="9px">{sapDisc}%</Badge>
                                 </Box>
+                                {promoDisc > 0 && (
+                                  <Box textAlign="center" borderLeft="1px solid" borderColor="gray.200">
+                                    <Text color="gray.500" fontWeight="700">Promo</Text>
+                                    <Badge colorScheme="amber" bg="amber.100" color="amber.900" fontSize="9px">-{promoDisc}%</Badge>
+                                  </Box>
+                                )}
                                 <Box textAlign="center" borderLeft="1px solid" borderRight="1px solid" borderColor="gray.200">
                                   <Text color="gray.500" fontWeight="700">Desc. Adic.</Text>
                                   <Badge colorScheme={addDisc > 0 ? "purple" : "gray"} fontSize="9px">
@@ -2553,15 +2653,15 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                 </Box>
                                 <Box textAlign="center">
                                   <Text color="gray.500" fontWeight="700">Desc. Total</Text>
-                                  <Badge colorScheme="blue" fontSize="9px" fontWeight="900">{totalDisc}%</Badge>
+                                  <Badge colorScheme={isVolume ? "orange" : "blue"} fontSize="9px" fontWeight="900">{totalDisc}%</Badge>
                                 </Box>
                               </Grid>
 
                               <Flex justify="space-between" align="center" fontSize="11px" color="gray.600" pt={1.5} borderTop="1px dashed" borderColor="gray.200">
                                 <Text>Cant: <Text as="span" fontWeight="800" color="gray.900">{item.quantity} uds</Text></Text>
                                 <Text>P. Lista: <Text as="span" fontWeight="800" color="gray.900">${item.price.toFixed(2)}</Text></Text>
-                                <Badge colorScheme={reqAppr ? "orange" : "green"} fontSize="9px" px={1.5}>
-                                  {reqAppr ? "⚠️ Req. Aprobación" : "🟢 Estándar"}
+                                <Badge colorScheme={isVolume ? "orange" : reqAppr ? "orange" : "green"} fontSize="9px" px={1.5}>
+                                  {isVolume ? "🔥 Mayoreo >50%" : reqAppr ? "⚠️ Req. Aprobación" : "🟢 Estándar"}
                                 </Badge>
                               </Flex>
                             </Box>
@@ -2590,9 +2690,11 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                           <Tbody fontSize="xs">
                             {displayProducts.map((item, idx) => {
                               const sapDisc = Number(item.sapDiscount ?? item.discount ?? 0);
+                              const promoDisc = Number(item.promoDiscount ?? 0);
                               const addDisc = Number(item.lineDiscount ?? 0);
-                              const totalDisc = Number(item.discountPercent ?? sapDisc);
-                              const reqAppr = addDisc > 0;
+                              const totalDisc = Number(item.discountPercent ?? Math.min(56, sapDisc + promoDisc + addDisc));
+                              const isVolume = totalDisc > 50;
+                              const reqAppr = addDisc > 0 || isVolume;
                               const { isOutOfStock } = getItemStockInfo(item);
 
                               return (
@@ -2601,6 +2703,16 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                   <Td fontWeight="600" color="gray.900" px={2.5} minW="160px" whiteSpace="normal">
                                     <VStack align="start" spacing={1}>
                                       <Text>{item.description || item.ItemDescription || item.name || "Artículo"}</Text>
+                                      {promoDisc > 0 && (
+                                        <Badge bg="amber.400" color="amber.950" fontSize="9px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
+                                          🏷️ OFERTA DEL MES: -{promoDisc}% EXTRA
+                                        </Badge>
+                                      )}
+                                      {isVolume && (
+                                        <Badge bg="#ea580c" color="white" fontSize="9px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
+                                          🔥 MAYOREO ESPECIAL ({totalDisc}%)
+                                        </Badge>
+                                      )}
                                       {isOutOfStock && (
                                         <Badge colorScheme="red" bg="#fee2e2" color="#991b1b" border="1px solid" borderColor="#fca5a5" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="800">
                                           ⚠️ SIN STOCK DISPONIBLE (Pendiente a Importación)
@@ -2614,25 +2726,32 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                     <Badge colorScheme="green" fontSize="10px" px={1.5}>{sapDisc}%</Badge>
                                   </Td>
                                   <Td textAlign="center" px={2}>
-                                    <Badge colorScheme={addDisc > 0 ? "purple" : "gray"} fontSize="10px" px={1.5}>
-                                      {addDisc > 0 ? `+${addDisc}%` : "0%"}
-                                    </Badge>
+                                    <VStack spacing={0.5}>
+                                      {promoDisc > 0 && (
+                                        <Badge colorScheme="amber" bg="amber.100" color="amber.900" fontSize="9px" px={1.5}>
+                                          Promo -{promoDisc}%
+                                        </Badge>
+                                      )}
+                                      <Badge colorScheme={addDisc > 0 ? "purple" : "gray"} fontSize="10px" px={1.5}>
+                                        {addDisc > 0 ? `+${addDisc}%` : "0%"}
+                                      </Badge>
+                                    </VStack>
                                   </Td>
                                   <Td textAlign="center" fontWeight="900" px={2}>
-                                    <Badge colorScheme="blue" fontSize="10px" px={1.5} fontWeight="900">
+                                    <Badge colorScheme={isVolume ? "orange" : "blue"} fontSize="10px" px={1.5} fontWeight="900">
                                       {totalDisc}%
                                     </Badge>
                                   </Td>
                                   <Td textAlign="center" px={2}>
                                     <Badge
-                                      colorScheme={reqAppr ? "orange" : "green"}
+                                      colorScheme={isVolume ? "orange" : reqAppr ? "orange" : "green"}
                                       fontSize="10px"
                                       px={2}
                                       py={0.5}
                                       borderRadius="full"
                                       fontWeight="800"
                                     >
-                                      {reqAppr ? "⚠️ Requiere" : "🟢 No"}
+                                      {isVolume ? "🔥 Mayoreo >50%" : reqAppr ? "⚠️ Requiere" : "🟢 No"}
                                     </Badge>
                                   </Td>
                                   <Td textAlign="right" fontWeight="850" color="emerald.900" fontFamily="mono" px={2.5}>${item.lineTotal.toFixed(2)}</Td>

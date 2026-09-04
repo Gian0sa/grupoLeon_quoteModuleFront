@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
-import { Box, Text, HStack, Badge } from "@chakra-ui/react";
+import { Box, Text, HStack, Badge, Flex } from "@chakra-ui/react";
 import Select from "react-select";
 import { useProductsPriceList } from "../../products/hooks/queries/productQueries";
+import { useGetPromotions } from "../hooks/queries/quotesQueries";
 import { useDebounce } from "../../../shared/hooks/useDebounce";
 
 const MIN_CHARS = 2;
@@ -23,14 +24,12 @@ function normalizeString(str) {
 }
 
 /**
- * Autocompletado inteligente de artículos contra SAP.
- * 
- * Inicia la búsqueda desde 2 caracteres con debounce ultrarrápido de 200ms.
- * Insensible a mayúsculas, minúsculas, tildes, guiones, puntos y espacios.
+ * Autocompletado inteligente de artículos contra SAP con soporte para Ofertas del Mes.
  */
 export default function ItemAutocomplete({ onSelect, isDisabled = false, placeholder }) {
   const [inputValue, setInputValue] = useState("");
   const debouncedTerm = useDebounce(inputValue, DEBOUNCE_MS);
+  const { promotionsMap } = useGetPromotions();
 
   const term = debouncedTerm.trim();
   const shouldSearch = term.length >= MIN_CHARS;
@@ -48,38 +47,31 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
 
     const searchRawLower = term.toLowerCase();
     const searchClean = normalizeString(term);
-    const searchTerms = searchRawLower.split(/[\s\-._/]+/).filter(Boolean);
-    const searchTermsClean = searchTerms.map(normalizeString).filter(Boolean);
+    const searchTermsClean = searchRawLower.split(/[\s\-._/]+/).map(normalizeString).filter(Boolean);
 
-    // Ranking e Coincidencias Insensibles a Símbolos y Mayúsculas/Minúsculas
     const sortedRecords = [...records].sort((a, b) => {
-      const codeRaw = (a.ITEM_CODE || "").toLowerCase();
       const codeClean = normalizeString(a.ITEM_CODE);
-      const nameRaw = (a.ITEM_NAME || "").toLowerCase();
       const nameClean = normalizeString(a.ITEM_NAME);
 
-      const codeRawB = (b.ITEM_CODE || "").toLowerCase();
-      const codeCleanB = normalizeString(b.ITEM_CODE);
-      const nameRawB = (b.ITEM_NAME || "").toLowerCase();
-      const nameCleanB = normalizeString(b.ITEM_NAME);
+      const aCodeExact = codeClean === searchClean;
+      const bCodeExact = b.ITEM_CODE && normalizeString(b.ITEM_CODE) === searchClean;
+      if (aCodeExact && !bCodeExact) return -1;
+      if (!aCodeExact && bCodeExact) return 1;
 
-      // 1. Coincidencia exacta de código (limpio de símbolos)
-      if (codeClean === searchClean && codeCleanB !== searchClean) return -1;
-      if (codeCleanB === searchClean && codeClean !== searchClean) return 1;
+      const aCodeStarts = codeClean.startsWith(searchClean);
+      const bCodeStarts = b.ITEM_CODE && normalizeString(b.ITEM_CODE).startsWith(searchClean);
+      if (aCodeStarts && !bCodeStarts) return -1;
+      if (!aCodeStarts && bCodeStarts) return 1;
 
-      // 2. Inicio de código (limpio)
-      if (codeClean.startsWith(searchClean) && !codeCleanB.startsWith(searchClean)) return -1;
-      if (codeCleanB.startsWith(searchClean) && !codeClean.startsWith(searchClean)) return 1;
+      const aNameStarts = nameClean.startsWith(searchClean);
+      const bNameStarts = b.ITEM_NAME && normalizeString(b.ITEM_NAME).startsWith(searchClean);
+      if (aNameStarts && !bNameStarts) return -1;
+      if (!aNameStarts && bNameStarts) return 1;
 
-      // 3. Contiene en código (limpio)
-      if (codeClean.includes(searchClean) && !codeCleanB.includes(searchClean)) return -1;
-      if (codeCleanB.includes(searchClean) && !codeClean.includes(searchClean)) return 1;
-
-      // 4. Coincidencia multi-término en el nombre (insensible a guiones y símbolos)
-      const matchesAllA = searchTermsClean.every(t => nameClean.includes(t) || codeClean.includes(t));
-      const matchesAllB = searchTermsClean.every(t => nameCleanB.includes(t) || codeCleanB.includes(t));
-      if (matchesAllA && !matchesAllB) return -1;
-      if (matchesAllB && !matchesAllA) return 1;
+      const aMatchesAll = searchTermsClean.every(t => codeClean.includes(t) || nameClean.includes(t));
+      const bMatchesAll = b.ITEM_CODE && searchTermsClean.every(t => normalizeString(b.ITEM_CODE).includes(t) || normalizeString(b.ITEM_NAME || "").includes(t));
+      if (aMatchesAll && !bMatchesAll) return -1;
+      if (!aMatchesAll && bMatchesAll) return 1;
 
       return 0;
     });
@@ -99,6 +91,10 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
     const stockVal = hasValidStock ? Number(rawStock) : null;
     const isAgotado = hasValidStock && stockVal === 0;
 
+    const promo = promotionsMap ? promotionsMap[r.ITEM_CODE] : null;
+    const promoDiscount = promo ? Number(promo.discountPct || 0) : 0;
+    const campaignName = promo?.campaignName || (promoDiscount > 0 ? "Oferta del Mes" : undefined);
+
     onSelect?.({
       id: r.ITEM_CODE,
       name: r.ITEM_NAME,
@@ -106,6 +102,8 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
       price: Number(r.PRECIO_LISTA) || 0,
       importe: Number(r.PRECIO_DESCUENTO ?? r.PRECIO_LISTA) || 0,
       discount: Number(r.DESCUENTO_PCT) || 0,
+      promoDiscount,
+      campaignName,
       stock: stockVal,
       stockChecked: hasValidStock,
       isAgotado,
@@ -142,11 +140,19 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
           const r = option.record;
           if (!r) return option.label;
           const stock = Number(r.STOCK_DISPONIBLE) || 0;
+          const promo = promotionsMap ? promotionsMap[r.ITEM_CODE] : null;
           return (
             <Box>
-              <Text fontSize="xs" fontWeight="700" color="gray.900" noOfLines={1}>
-                {r.ITEM_NAME}
-              </Text>
+              <Flex justify="space-between" align="center">
+                <Text fontSize="xs" fontWeight="700" color="gray.900" noOfLines={1}>
+                  {r.ITEM_NAME}
+                </Text>
+                {promo && (
+                  <Badge bg="amber.400" color="amber.950" fontSize="0.65rem" px={1.5} py={0.2} borderRadius="md" fontWeight="900" flexShrink={0} ml={2}>
+                    🏷️ OFERTA: -{promo.discountPct}%
+                  </Badge>
+                )}
+              </Flex>
               <HStack spacing={2} mt={0.5}>
                 <Text fontSize="0.7rem" fontWeight="800" color="emerald.700" fontFamily="mono">{r.ITEM_CODE}</Text>
                 {r.MARCA && <Text fontSize="0.7rem" color="gray.500">· {r.MARCA}</Text>}

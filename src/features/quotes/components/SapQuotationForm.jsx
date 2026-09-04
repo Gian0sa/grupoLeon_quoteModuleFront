@@ -543,6 +543,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         SlpCode: effectiveSlpCode,
         salesEmployeeCode: effectiveSlpCode,
         salesPersonCode: effectiveSlpCode,
+        sapDocNum: null,
+        DocNum: null,
+        isSapDirect: false,
       },
       whsCode: "014",
       contactPerson,
@@ -583,9 +586,13 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       status: currentStatus,
       state: currentStatus,
       approvalStatus: currentStatus,
+      sapDocNum: null,
+      DocNum: null,
+      isSapDirect: false,
       rejectionReason: existingDoc?.rejectionReason || null,
       historyLog: updatedHistory,
-      opNum: opNum || existingDoc?.opNum || null
+      opNum: opNum || existingDoc?.opNum || null,
+      observations: observations || existingDoc?.observations || null,
     };
 
     const isExisting = Boolean(existingDoc);
@@ -890,11 +897,19 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       status: "APROBADO",
       state: "APROBADO",
       approvalStatus: "APROBADO",
+      sapDocNum: null,
+      DocNum: null,
+      isSapDirect: false,
       approvedAt: nowIso,
       approvedBy: adminName,
       client,
       products,
-      totals,
+      totals: {
+        ...(totals || {}),
+        sapDocNum: null,
+        DocNum: null,
+        isSapDirect: false,
+      },
       selectedDeliveryForm,
       selectedTransport,
       selectedPoint,
@@ -1412,7 +1427,33 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     try {
       setIsSubmittingSap(true);
       const targetDocEntry = initialData?.sapDocEntry || initialData?.DocEntry || initialData?.docEntry || 22;
-      const payload = { client, products, docDueDate, docDate, comment };
+      const payload = {
+        client,
+        products,
+        docDueDate,
+        docDate,
+        comment,
+        observations,
+        refNumber,
+        contactPerson,
+        saleCondition,
+        documentType,
+        isLetra,
+        creditTerm,
+        deliveryDate,
+        deliveryForm: selectedDeliveryForm,
+        transport: selectedTransport,
+        deliveryPoint: selectedPoint,
+        paymentType: selectedPaymentType,
+        paymentMethod,
+        bankAccount,
+        sunatOpType,
+        opNum,
+        sellerName: finalSellerName,
+        SlpCode: effectiveSlpCode,
+        slpCode: effectiveSlpCode,
+        whsCode: whsCode || "014",
+      };
       const res = await axiosInstance.post(`/quoteModule/quotes/sap/${targetDocEntry}/copy-to-order`, payload);
       const orderData = res.data?.data || {};
       const newNum = orderData.DocNum ? `OV-${orderData.DocNum}` : `OV-${Date.now().toString().slice(-6)}`;
@@ -1443,7 +1484,33 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     try {
       setIsSubmittingSap(true);
       const targetDocEntry = initialData?.sapDocEntry || initialData?.DocEntry || initialData?.docEntry || 22;
-      const payload = { client, products, docDueDate, docDate, comment };
+      const payload = {
+        client,
+        products,
+        docDueDate,
+        docDate,
+        comment,
+        observations,
+        refNumber,
+        contactPerson,
+        saleCondition,
+        documentType,
+        isLetra,
+        creditTerm,
+        deliveryDate,
+        deliveryForm: selectedDeliveryForm,
+        transport: selectedTransport,
+        deliveryPoint: selectedPoint,
+        paymentType: selectedPaymentType,
+        paymentMethod,
+        bankAccount,
+        sunatOpType,
+        opNum,
+        sellerName: finalSellerName,
+        SlpCode: effectiveSlpCode,
+        slpCode: effectiveSlpCode,
+        whsCode: whsCode || "014",
+      };
       const res = await axiosInstance.post(`/quoteModule/quotes/sap/${targetDocEntry}/copy-to-invoice`, payload);
       const invoiceData = res.data?.data || {};
       const newNum = invoiceData.DocNum ? `FT-${invoiceData.DocNum}` : `FT-${Date.now().toString().slice(-6)}`;

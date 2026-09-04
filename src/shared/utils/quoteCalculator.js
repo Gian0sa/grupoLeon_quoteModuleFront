@@ -1,5 +1,6 @@
 // Calculadora matemática unificada de totales de cotización/pedido para Grupo León / SAP B1
-export const MAX_DISCOUNT_CEILING = 55.0; // Tope máximo comercial configurable (55.0%)
+export const STANDARD_DISCOUNT_CEILING = 50.0; // Tope comercial estándar ordinario (50.0%)
+export const MAX_DISCOUNT_CEILING = 56.0;      // Tope máximo absoluto para volumen / mayoreo (56.0%)
 
 export function calculateQuoteTotals(products = [], exchangeRate = 3.76) {
   const tc = Number(exchangeRate) || 3.76;
@@ -8,6 +9,7 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.76) {
   let totalDiscountUSD = 0;  // Suma de montos descontados
   let netSubtotalUSD = 0;    // Base imponible neta (Suma de líneas con descuento)
   let hasAdditionalDiscount = false;
+  let hasVolumeDiscount = false; // Descuentos mayores a 50% hasta 56% por volumen
   let hasExceededDiscountCeiling = false;
 
   const normalizedProducts = (products || []).map((p) => {
@@ -15,26 +17,32 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.76) {
     const listPrice = Math.max(0, Number(p.price ?? p.Price ?? p.unitPrice ?? p.UnitPrice ?? p.importe ?? p.itemPrice ?? 0));
 
     // Descuento base de SAP (%)
-    const sapDisc = Math.max(0, Math.min(100, Number(p.discount ?? p.discountPercent ?? p.DiscountPercent ?? 0)));
+    const sapDisc = Math.max(0, Math.min(100, Number(p.discount ?? p.sapDiscount ?? 0)));
+    // Descuento por Promoción / Oferta del Mes (%)
+    const promoDisc = Math.max(0, Math.min(100, Number(p.promoDiscount ?? p.PromoDiscount ?? 0)));
     // Descuento adicional de línea (%)
     const addDisc = Math.max(0, Math.min(100, Number(p.lineDiscount ?? p.LineDiscount ?? 0)));
 
-    if (addDisc > 0) {
+    if (addDisc > 0 || promoDisc > 0) {
       hasAdditionalDiscount = true;
     }
 
     const grossLine = qty * listPrice;
     
-    // Cálculo en cascada / compuesto:
-    // 1. Precio con descuento SAP base
-    const priceAfterSap = listPrice * (1 - sapDisc / 100);
-    // 2. Descuento adicional aplicado sobre el precio ya descontado de SAP
-    const discountedUnitPrice = priceAfterSap * (1 - addDisc / 100);
+    // Cálculo sumatorio directo (Desc. SAP + Desc. Promo + Desc. Adicional) con tope máximo de 56%
+    const rawTotalDisc = sapDisc + promoDisc + addDisc;
+    const totalDisc = Math.min(MAX_DISCOUNT_CEILING, Math.max(0, rawTotalDisc));
+    const discountedUnitPrice = listPrice * (1 - totalDisc / 100);
     const netLine = qty * discountedUnitPrice;
     const discAmount = Math.max(0, grossLine - netLine);
-    const effectiveDiscPct = grossLine > 0 ? (discAmount / grossLine) * 100 : 0;
+    const effectiveDiscPct = grossLine > 0 ? (discAmount / grossLine) * 100 : totalDisc;
 
-    if (effectiveDiscPct > MAX_DISCOUNT_CEILING + 0.01) {
+    const isVolumeLine = totalDisc > STANDARD_DISCOUNT_CEILING + 0.01;
+    if (isVolumeLine) {
+      hasVolumeDiscount = true;
+    }
+
+    if (rawTotalDisc > MAX_DISCOUNT_CEILING + 0.01) {
       hasExceededDiscountCeiling = true;
     }
 
@@ -48,14 +56,17 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.76) {
       price: listPrice,
       unitPrice: listPrice,
       sapDiscount: sapDisc,
+      promoDiscount: promoDisc,
+      campaignName: p.campaignName || (promoDisc > 0 ? "Oferta del Mes" : undefined),
       lineDiscount: addDisc,
-      discountPercent: Number(effectiveDiscPct.toFixed(2)),
+      discountPercent: Number(totalDisc.toFixed(2)),
       discount: sapDisc,
       discountAmount: Number(discAmount.toFixed(2)),
       discountedUnitPrice: Number(discountedUnitPrice.toFixed(4)),
       lineTotal: Number(netLine.toFixed(2)),
-      requiresApproval: addDisc > 0,
-      isExceedingCeiling: effectiveDiscPct > MAX_DISCOUNT_CEILING + 0.01,
+      requiresApproval: addDisc > 0 || isVolumeLine,
+      isVolumeDiscount: isVolumeLine,
+      isExceedingCeiling: rawTotalDisc > MAX_DISCOUNT_CEILING + 0.01,
     };
   });
   
@@ -81,8 +92,10 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.76) {
     discPct: Number(discPct.toFixed(2)),
     tc,
     hasAdditionalDiscount,
+    hasVolumeDiscount,
     hasExceededDiscountCeiling,
-    requiresDiscountApproval: hasAdditionalDiscount,
+    requiresDiscountApproval: hasAdditionalDiscount || hasVolumeDiscount,
+    standardDiscountCeiling: STANDARD_DISCOUNT_CEILING,
     maxDiscountCeiling: MAX_DISCOUNT_CEILING,
   };
 }

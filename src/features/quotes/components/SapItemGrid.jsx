@@ -4,7 +4,7 @@ import {
   IconButton, Input, Text, Button,
   HStack, Badge, Flex, VStack, Divider, Grid
 } from "@chakra-ui/react";
-import { Trash2, Package, Sparkles } from "lucide-react";
+import { Trash2, Package, Sparkles, Flame } from "lucide-react";
 import ItemAutocomplete from "./ItemAutocomplete";
 import { DiscountPopoverModal } from "./DiscountPopoverModal";
 import PackagingHelper from "./PackagingHelper";
@@ -62,6 +62,8 @@ export default function SapItemGrid({
       isTestFallback: !hasSapPrice,
       isPriceFromSap: hasSapPrice,
       discount: selectedItem.discount || 0,
+      promoDiscount: selectedItem.promoDiscount || 0,
+      campaignName: selectedItem.campaignName,
       whsCode: whsCode || "014",
       taxCode: "I18",
       stock: selectedItem.stock,
@@ -134,16 +136,18 @@ export default function SapItemGrid({
           products.map((item, index) => {
             const qty = Number(item.quantity || 1);
             const price = Number(item.price ?? item.unitPrice ?? 0);
-            const sapDisc = Number(item.discount || 0);
+            const sapDisc = Number(item.discount || item.sapDiscount || 0);
+            const promoDisc = Number(item.promoDiscount || 0);
             const addDisc = Number(item.lineDiscount || 0);
-            const priceAfterSap = price * (1 - sapDisc / 100);
-            const finalUnitPrice = priceAfterSap * (1 - addDisc / 100);
+            const totalDisc = Math.min(56, sapDisc + promoDisc + addDisc);
+            const finalUnitPrice = price * (1 - totalDisc / 100);
             const lineTotal = qty * finalUnitPrice;
             const itemName = item.name || item.productName || item.description || item.ItemName || item.ItemDescription || "Artículo General";
             const itemCode = item.code || item.productCode || item.itemCode || "";
+            const isVolume = totalDisc > 50;
 
             return (
-              <Box key={item.id || index} p={3} bg="white" borderRadius="xl" border="1px solid" borderColor="emerald.200" boxShadow="xs">
+              <Box key={item.id || index} p={3} bg="white" borderRadius="xl" border="1px solid" borderColor={isVolume ? "orange.300" : promoDisc > 0 ? "amber.300" : "emerald.200"} boxShadow="xs">
                 <Flex align="start" justify="space-between" gap={2} mb={2}>
                   <Box flex="1" minW={0}>
                     <Flex align="center" wrap="wrap" gap={1.5}>
@@ -172,6 +176,23 @@ export default function SapItemGrid({
                         </Badge>
                       )}
                     </Flex>
+                    {promoDisc > 0 && (
+                      <Box w="full" bg="#fffbeb" border="1px dashed #f59e0b" p={1.5} borderRadius="md" mt={1.5}>
+                        <Flex justify="space-between" align="center" wrap="wrap" gap={1}>
+                          <Badge bg="amber.400" color="amber.950" fontSize="10px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
+                            🏷️ OFERTA DEL MES: -{promoDisc}% EXTRA
+                          </Badge>
+                          <Text fontSize="10px" color="gray.600">
+                            P. Reg: <Text as="s">${price.toFixed(2)}</Text> ➔ Oferta: <strong style={{ color: "#b45309" }}>${(price * (1 - (sapDisc + promoDisc) / 100)).toFixed(2)}</strong>
+                          </Text>
+                        </Flex>
+                      </Box>
+                    )}
+                    {isVolume && (
+                      <Badge bg="#ea580c" color="white" fontSize="10px" px={2} py={0.5} borderRadius="md" fontWeight="900" mt={1}>
+                        🔥 MAYOREO ({totalDisc}%)
+                      </Badge>
+                    )}
                   </Box>
                   {!isReadOnly && (
                     <IconButton
@@ -241,10 +262,10 @@ export default function SapItemGrid({
                     <Button
                       size="xs"
                       h="22px"
-                      bg="#eff6ff"
-                      color="#1e40af"
+                      bg={isVolume ? "#fff7ed" : "#eff6ff"}
+                      color={isVolume ? "#c2410c" : "#1e40af"}
                       border="1px solid"
-                      borderColor="#93c5fd"
+                      borderColor={isVolume ? "#fdba74" : "#93c5fd"}
                       isDisabled={isReadOnly}
                       onClick={() => handleOpenDiscountModal(item)}
                       fontWeight="900"
@@ -252,7 +273,7 @@ export default function SapItemGrid({
                       px={1}
                       borderRadius="md"
                     >
-                      {addDisc}% ⚡
+                      {addDisc > 0 ? `+${addDisc}% ⚡` : "0%"}
                     </Button>
                   </Box>
                 </Grid>
@@ -318,13 +339,15 @@ export default function SapItemGrid({
                 products.map((item, index) => {
                   const qty = Number(item.quantity || 1);
                   const price = Number(item.price ?? item.unitPrice ?? 0);
-                  const sapDisc = Number(item.discount || 0);
+                  const sapDisc = Number(item.discount || item.sapDiscount || 0);
+                  const promoDisc = Number(item.promoDiscount || 0);
                   const addDisc = Number(item.lineDiscount || 0);
-                  const priceAfterSap = price * (1 - sapDisc / 100);
-                  const finalUnitPrice = priceAfterSap * (1 - addDisc / 100);
+                  const totalDisc = Math.min(56, sapDisc + promoDisc + addDisc);
+                  const finalUnitPrice = price * (1 - totalDisc / 100);
                   const lineTotal = qty * finalUnitPrice;
                   const itemName = item.name || item.productName || item.description || item.ItemName || item.ItemDescription || "Artículo General";
                   const itemCode = item.code || item.productCode || item.itemCode || "";
+                  const isVolume = totalDisc > 50;
 
                   return (
                     <Tr key={item.id || index} _hover={{ bg: "gray.50" }} transition="background 0.2s">
@@ -355,6 +378,23 @@ export default function SapItemGrid({
                               </Badge>
                             )}
                           </HStack>
+                          {promoDisc > 0 && (
+                            <Box bg="#fffbeb" border="1px dashed #f59e0b" p={1.5} borderRadius="md" mt={1} maxW="380px">
+                              <Flex justify="space-between" align="center" gap={1.5}>
+                                <Badge bg="amber.400" color="amber.950" fontSize="9px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
+                                  🏷️ OFERTA DEL MES: -{promoDisc}% EXTRA
+                                </Badge>
+                                <Text fontSize="10px" color="gray.600">
+                                  P. Reg: <Text as="s">${price.toFixed(2)}</Text> ➔ Oferta: <strong style={{ color: "#b45309" }}>${(price * (1 - (sapDisc + promoDisc) / 100)).toFixed(2)}</strong>
+                                </Text>
+                              </Flex>
+                            </Box>
+                          )}
+                          {isVolume && (
+                            <Badge bg="#ea580c" color="white" fontSize="9px" px={1.5} py={0.2} borderRadius="md" fontWeight="900" mt={0.5}>
+                              🔥 MAYOREO ESPECIAL ({totalDisc}%)
+                            </Badge>
+                          )}
                         </VStack>
                       </Td>
                       <Td px={2} textAlign="center">
@@ -405,10 +445,10 @@ export default function SapItemGrid({
                       <Td px={2} textAlign="center">
                         <Button
                           size="xs"
-                          bg="#eff6ff"
-                          color="#1e40af"
+                          bg={isVolume ? "#fff7ed" : "#eff6ff"}
+                          color={isVolume ? "#c2410c" : "#1e40af"}
                           border="1px solid"
-                          borderColor="#93c5fd"
+                          borderColor={isVolume ? "#fdba74" : "#93c5fd"}
                           isDisabled={isReadOnly}
                           onClick={() => handleOpenDiscountModal(item)}
                           fontWeight="900"
@@ -418,7 +458,7 @@ export default function SapItemGrid({
                           borderRadius="md"
                           title="Toca para desplegar el selector de descuentos"
                         >
-                          {addDisc}% ⚡
+                          {addDisc > 0 ? `+${addDisc}% ⚡` : "0%"}
                         </Button>
                       </Td>
                       <Td px={3} textAlign="right" fontWeight="900" fontSize="xs" color="emerald.700">

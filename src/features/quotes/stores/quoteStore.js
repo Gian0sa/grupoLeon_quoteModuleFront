@@ -31,8 +31,10 @@ export const normalizeQuoteItem = (item) => {
   // Auto-fallback en catálogo de pruebas si no viene precio configurado (0) -> $25.00
   // Cuando se conecta a la ruta real de SAP (precio > 0), usará directamente el precio real de SAP
   const price = rawPrice > 0 ? rawPrice : 25.0;
-  const discount = Number(item.discount ?? item.Discount ?? 0);
+  const discount = Number(item.discount ?? item.Discount ?? item.sapDiscount ?? 0);
   const lineDiscount = Number(item.lineDiscount ?? item.LineDiscount ?? 0);
+  const totalDisc = Math.min(55, Number((discount + lineDiscount).toFixed(2)));
+  const discountedUnitPrice = Number((price * (1 - totalDisc / 100)).toFixed(4));
 
   // Permitir temporalmente string vacío al tipear para que el usuario pueda borrar y cambiar la cantidad libremente
   const rawQty = item.quantity ?? item.Quantity;
@@ -69,7 +71,10 @@ export const normalizeQuoteItem = (item) => {
     price,
     unitPrice: price,
     discount,
+    sapDiscount: discount,
     lineDiscount,
+    discountPercent: totalDisc,
+    discountedUnitPrice,
     quantity: quantity === "" ? "" : (isNaN(Number(quantity)) || Number(quantity) < 1 ? 1 : Number(quantity)),
     stock,
     stockChecked: item.stockChecked !== undefined ? item.stockChecked : (rawStock !== undefined && rawStock !== null),

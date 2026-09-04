@@ -132,23 +132,38 @@ export function LateralMenu() {
             onClick={() => {
               if (external) {
                 window.open(path, '_blank');
+                onClose();
               } else {
-                navigate(path);
+                onClose();
+                setTimeout(() => {
+                  navigate(path);
+                }, 30);
               }
-              onClose();
             }}
             bg={isActive ? HEADER_MAIN_BG : "transparent"}
             color={isActive ? "white" : "gray.700"}
             boxShadow={isActive ? "0 4px 14px rgba(18, 108, 54, 0.25)" : "none"}
+            outline="none"
             _focus={{
               boxShadow: "none",
+              outline: "none",
               bg: isActive ? HEADER_MAIN_BG : "transparent",
+            }}
+            _focusVisible={{
+              boxShadow: "none",
+              outline: "none",
             }}
             _active={{
               bg: "#0e572b",
               color: "white",
+              "& svg": { color: "white" },
+              "& span": { color: "white" },
+              "& .chakra-button__icon > div": { bg: "whiteAlpha.300" },
             }}
             sx={{
+              WebkitTapHighlightColor: "transparent !important",
+              touchAction: "manipulation",
+              userSelect: "none",
               "@media (hover: hover) and (pointer: fine)": {
                 "&:hover": {
                   bg: HEADER_MAIN_BG,
@@ -430,8 +445,11 @@ export function LateralMenu() {
               onClick={handleLogout}
               boxShadow="0 4px 14px rgba(220, 38, 38, 0.25)"
               _hover={{ bg: "#991b1b" }}
-              _active={{ transform: "scale(0.98)" }}
-              sx={{ touchAction: "manipulation" }}
+              _focus={{ boxShadow: "none", outline: "none" }}
+              _focusVisible={{ boxShadow: "none", outline: "none" }}
+              _active={{ transform: "scale(0.98)", bg: "#7f1d1d" }}
+              outline="none"
+              sx={{ WebkitTapHighlightColor: "transparent !important", touchAction: "manipulation" }}
             >
               Cerrar sesión
             </Button>
