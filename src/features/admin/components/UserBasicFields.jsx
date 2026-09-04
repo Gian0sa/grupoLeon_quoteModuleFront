@@ -10,7 +10,8 @@ import {
   Box,
   Flex,
   Text,
-  HStack
+  HStack,
+  Badge,
 } from "@chakra-ui/react";
 import { User, Mail, Hash, Lock, ShieldCheck } from "lucide-react";
 
@@ -57,25 +58,30 @@ export default function UserBasicFields({ formData, errors, onChange }) {
           {errors?.email && <FormErrorMessage fontSize="xs">{errors.email}</FormErrorMessage>}
         </FormControl>
 
-        {/* Código de Vendedor SAP */}
+        {/* Código de Vendedor SAP (Solo Lectura / Identificador Oficial SAP) */}
         <FormControl>
-          <FormLabel fontSize="xs" fontWeight="800" color="gray.700" mb={1}>
-            Código Vendedor SAP (Opcional)
-          </FormLabel>
+          <Flex justify="space-between" align="center" mb={1}>
+            <FormLabel fontSize="xs" fontWeight="800" color="gray.700" mb={0}>
+              Código Vendedor SAP
+            </FormLabel>
+            <Badge colorScheme="teal" fontSize="9px" px={1.5} py={0.2} borderRadius="md">
+              🔒 Oficial SAP
+            </Badge>
+          </Flex>
           <Input
             name="salesEmployeeCode"
-            type="number"
-            value={formData.salesEmployeeCode ?? ""}
-            onChange={onChange}
-            bg="white"
+            value={formData.salesEmployeeCode ? `Vendedor SAP #${formData.salesEmployeeCode}` : "Sin código asignado"}
+            isReadOnly
+            bg="gray.100"
+            color="gray.800"
+            fontWeight="800"
             borderRadius="lg"
             borderColor="gray.300"
-            _focus={{ borderColor: "green.500", boxShadow: "0 0 0 1px #16a34a" }}
             fontSize="sm"
-            placeholder="Ej. 14"
+            cursor="not-allowed"
           />
           <FormHelperText fontSize="10px" color="gray.500">
-            Asocia las cotizaciones y pedidos de SAP a este vendedor.
+            Identificador nativo de SAP Business One vinculado a la cuenta.
           </FormHelperText>
         </FormControl>
 

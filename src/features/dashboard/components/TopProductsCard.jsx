@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import {
   Box,
   Flex,
@@ -20,12 +20,15 @@ import {
   FiCheck,
 } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
-import { useProductsPriceList } from "../../products/hooks/queries/productQueries";
 import { useTopSelledProducts } from "../hooks/queries/dashboardQueries";
-import { fetchPriceListByItemCodes } from "../../clients/services/clientService";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 
-export function TopProductsCard() {
+const MONTH_NAMES = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+];
+
+export function TopProductsCard({ year, month, sellerCode, sellerName, canFilterSellers }) {
   const navigate = useNavigate();
   const toast = useToast();
   const [copiedCode, setCopiedCode] = useState(null);
@@ -36,28 +39,44 @@ export function TopProductsCard() {
   const salesEmployeeCode = useAuthStore((state) => state.salesEmployeeCode);
 
   const isAdmin = role === "ADMIN" || username?.toLowerCase() === "enrique" || role === "FACTURACION";
-  const isSeller = !isAdmin;
+  const isSeller = !isAdmin && !canFilterSellers;
 
-  // Venta Mensual (Mes actual en curso)
+  // Periodo dinámico recibido por props o fallback a hoy
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth() + 1; // 1 a 12
 
-  // 1. Consultar Reporte de Órdenes SAP para el mes actual
-  const { data: topSelledData, isLoading: isLoadingTopReport } = useTopSelledProducts({
-    yearFrom: currentYear,
-    monthFrom: currentMonth,
-    monthTo: currentMonth,
-    slpCode: isSeller && salesEmployeeCode ? salesEmployeeCode : undefined,
+  const effectiveYear = year || currentYear;
+  const effectiveMonth = month || currentMonth;
+
+  // Código de vendedor dinámico
+  let effectiveSlpCode = undefined;
+  if (canFilterSellers || isAdmin) {
+    effectiveSlpCode = sellerCode && Number(sellerCode) !== 0 ? Number(sellerCode) : undefined;
+  } else if (salesEmployeeCode) {
+    effectiveSlpCode = Number(salesEmployeeCode);
+  }
+
+  // 1. Consultar Reporte de Órdenes SAP para el período y vendedor seleccionados
+  const { data: topSelledData, isLoading } = useTopSelledProducts({
+    yearFrom: effectiveYear,
+    monthFrom: effectiveMonth,
+    monthTo: effectiveMonth,
+    slpCode: effectiveSlpCode,
   });
 
-  // 2. Consultar productos del catálogo SAP general (para fallback si faltan elementos)
-  const { data: catalogData, isLoading: isLoadingCatalog } = useProductsPriceList({
-    page: 1,
-    stock: "Y",
-  });
+  const isAllSellers = !effectiveSlpCode;
+  const isCurrentMonth = effectiveYear === currentYear && effectiveMonth === currentMonth;
+  const monthName = MONTH_NAMES[effectiveMonth - 1] || "";
+  const periodTag = isCurrentMonth ? "MES" : `${monthName.toUpperCase()} ${effectiveYear}`;
 
-  const productsList = catalogData?.records || catalogData?.items || catalogData?.products || catalogData?.data || [];
+  const badgeText = isAllSellers
+    ? `🌐 TOP EMPRESA (${periodTag})`
+    : `🔥 TOP ${sellerName ? sellerName.split(" ")[0].toUpperCase() : (isSeller ? "MIS PRODUCTOS" : "VENDEDOR")} (${periodTag})`;
+
+  const subtitleText = isAllSellers
+    ? `Los productos más vendidos a nivel empresa (${monthName} ${effectiveYear})`
+    : `Productos más vendidos de ${sellerName || "este vendedor"} (${monthName} ${effectiveYear})`;
 
   // Extractor inteligente de marca
   const extractBrand = (prod) => {
@@ -70,10 +89,10 @@ export function TopProductsCard() {
       }
     }
 
-    const fullName = String(prod.Nombre_Producto || prod.ITEM_NAME || prod.itemName || prod.name || prod.productName || prod.Descripcion || "").toUpperCase();
+    const fullName = String(prod.Descripcion_Producto || prod.Nombre_Producto || prod.ITEM_NAME || prod.itemName || prod.name || prod.productName || prod.Descripcion || "").toUpperCase();
     const codeStr = String(prod.Codigo_Producto || prod.ITEM_CODE || prod.itemCode || prod.code || prod.SIGLA || "").toUpperCase();
 
-    const knownBrands = ["WYNNNS", "DARUMA", "MALCO", "BOSCH", "DENSO", "NGK", "MOBIL", "SHELL", "TOTAL", "CASTROL", "MOTUL", "VALVOLINE", "MAHLE", "MANN"];
+    const knownBrands = ["WYNNNS", "DARUMA", "MALCO", "BOSCH", "DENSO", "NGK", "MOBIL", "SHELL", "TOTAL", "CASTROL", "MOTUL", "VALVOLINE", "MAHLE", "MANN", "PRESTONE", "WAGNER"];
     for (const b of knownBrands) {
       if (fullName.includes(b) || codeStr.includes(b)) return b;
     }
@@ -83,113 +102,37 @@ export function TopProductsCard() {
     return "GENÉRICO";
   };
 
-  // 3. Extraer los códigos de productos top reportados por SAP
-  const topItemCodes = useMemo(() => {
-    const rawList = Array.isArray(topSelledData)
-      ? topSelledData
-      : (topSelledData?.data || topSelledData?.records || []);
-
-    return rawList
-      .map((item) => item.Codigo_Producto || item.ITEM_CODE || item.itemCode || item.code)
-      .filter(Boolean)
-      .slice(0, 5);
-  }, [topSelledData]);
-
-  // 4. Automatización: Enriquecer los códigos consultando `priceListByItemCodes` para obtener Nombres Reales, Siglas y Marcas
-  const [enrichedPriceList, setEnrichedPriceList] = useState([]);
-  const [isEnriching, setIsEnriching] = useState(false);
-
-  useEffect(() => {
-    if (topItemCodes.length === 0) {
-      setEnrichedPriceList([]);
-      return;
-    }
-    let isMounted = true;
-    setIsEnriching(true);
-
-    fetchPriceListByItemCodes({ itemCodes: topItemCodes })
-      .then((res) => {
-        if (!isMounted) return;
-        const list = Array.isArray(res) ? res : (res?.data || res?.items || res?.records || []);
-        setEnrichedPriceList(list);
-      })
-      .catch((err) => {
-        console.warn("⚠️ No se pudo obtener información detallada del catálogo SAP por itemCodes:", err.message);
-        if (isMounted) setEnrichedPriceList([]);
-      })
-      .finally(() => {
-        if (isMounted) setIsEnriching(false);
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [topItemCodes]);
-
   const itemCount = useBreakpointValue({ base: 3, lg: 3 }) || 3;
-  const isLoading = isLoadingTopReport || isEnriching || isLoadingCatalog;
 
-  // 5. Construir lista final con Nombres Reales (NUNCA el código numérico)
+  // 2. Construir lista final con Nombres y Métricas Reales directo de SAP
   const displayProducts = useMemo(() => {
     const rawList = Array.isArray(topSelledData)
       ? topSelledData
       : (topSelledData?.data || topSelledData?.records || []);
 
-    const enrichedMap = new Map();
-    enrichedPriceList.forEach((item) => {
-      const code = item.ITEM_CODE || item.itemCode || item.code || item.Codigo || item.SIGLA;
-      if (code) enrichedMap.set(String(code).trim().toUpperCase(), item);
-    });
-
     const mapped = rawList.map((topItem) => {
       const code = String(topItem.Codigo_Producto || topItem.ITEM_CODE || topItem.itemCode || topItem.code || "").trim().toUpperCase();
-      const sapDetail = enrichedMap.get(code) || productsList.find(p => String(p.ITEM_CODE || p.itemCode || p.SIGLA || "").trim().toUpperCase() === code);
-
-      const rawName = sapDetail?.ITEM_NAME || sapDetail?.itemName || sapDetail?.Descripcion || sapDetail?.description || sapDetail?.name || topItem.Nombre_Producto;
-      const cleanName = (rawName && String(rawName).trim().toUpperCase() !== code)
-        ? rawName
-        : (sapDetail?.description || topItem.Nombre_Producto || `Producto ${code}`);
-
-      const sigla = sapDetail?.SIGLA || sapDetail?.sigla || sapDetail?.Sigla || code;
-      const brand = extractBrand(sapDetail || topItem);
-      const stock = Number(sapDetail?.STOCK_DISPONIBLE ?? sapDetail?.stock ?? sapDetail?.Stock ?? topItem.Stock_Actual_Almacen_014 ?? 0);
-      const price = Number(sapDetail?.PRECIO_LISTA ?? sapDetail?.price ?? sapDetail?.Precio ?? topItem.Precio_Unidad ?? topItem.Monto_Total_Vendido ?? 0);
+      const rawName = topItem.Descripcion_Producto || topItem.Nombre_Producto || topItem.ITEM_NAME || topItem.itemName;
+      const cleanName = rawName || `Producto ${code}`;
+      const brand = extractBrand(topItem);
+      const stock = Number(topItem.Stock_Actual_Almacen_014 ?? topItem.STOCK_DISPONIBLE ?? 0);
+      const qty = Number(topItem.Cantidad_Total_Pedida || topItem.totalQty || 1);
+      const totalAmount = Number(topItem.Monto_Total_Vendido || 0);
+      const unitPrice = qty > 0 && totalAmount > 0 ? (totalAmount / qty) : Number(topItem.Precio_Unidad || topItem.PRECIO_LISTA || 0);
 
       return {
         ITEM_CODE: code,
         ITEM_NAME: cleanName,
-        SIGLA: sigla,
+        SIGLA: code,
         MARCA: brand,
         STOCK_DISPONIBLE: stock,
-        PRECIO_LISTA: price,
-        totalQty: Number(topItem.Cantidad_Total_Pedida || topItem.totalQty || 1),
+        PRECIO_LISTA: unitPrice,
+        totalQty: qty,
       };
     }).filter(p => p.ITEM_CODE);
 
-    if (mapped.length >= itemCount) {
-      return mapped.slice(0, itemCount);
-    }
-
-    // Rellenar con catálogo general SAP si aún no alcanza 3 ítems
-    const usedCodes = new Set(mapped.map(p => p.ITEM_CODE));
-    const sapFill = productsList
-      .filter(p => {
-        const code = String(p.ITEM_CODE || p.itemCode || p.SIGLA || "").trim().toUpperCase();
-        return code && !usedCodes.has(code);
-      })
-      .slice(0, itemCount - mapped.length)
-      .map(p => ({
-        ITEM_CODE: p.ITEM_CODE || p.itemCode || p.SIGLA,
-        ITEM_NAME: p.ITEM_NAME || p.itemName || p.description,
-        SIGLA: p.SIGLA || p.ITEM_CODE || "",
-        MARCA: extractBrand(p),
-        STOCK_DISPONIBLE: Number(p.STOCK_DISPONIBLE ?? p.stock ?? 0),
-        PRECIO_LISTA: Number(p.PRECIO_LISTA ?? p.price ?? 0),
-        totalQty: 0
-      }));
-
-    return [...mapped, ...sapFill].slice(0, itemCount);
-  }, [topSelledData, enrichedPriceList, productsList, itemCount]);
+    return mapped.slice(0, itemCount);
+  }, [topSelledData, itemCount]);
 
   const handleCopyCode = (code, e) => {
     e.stopPropagation();
@@ -298,7 +241,7 @@ export function TopProductsCard() {
                   Top Productos
                 </Text>
                 <Badge
-                  colorScheme={isSeller ? "green" : "blue"}
+                  colorScheme={isAllSellers ? "blue" : "green"}
                   borderRadius="full"
                   px={2}
                   py={0.2}
@@ -306,13 +249,11 @@ export function TopProductsCard() {
                   fontWeight="800"
                   flexShrink={0}
                 >
-                  {isSeller ? "🔥 MIS MÁS VENDIDOS (MES)" : "🌐 TOP EMPRESA (MES)"}
+                  {badgeText}
                 </Badge>
               </HStack>
               <Text fontSize="11px" color="gray.500" display={{ base: "none", xl: "block" }} noOfLines={1}>
-                {isSeller
-                  ? "Tus productos con mayor récord de ventas este mes"
-                  : "Los productos más vendidos a nivel empresa este mes"}
+                {subtitleText}
               </Text>
             </Box>
           </HStack>
@@ -459,7 +400,9 @@ export function TopProductsCard() {
           >
             <Icon as={FiPackage} boxSize={7} color="gray.400" mb={2} />
             <Text fontSize="xs" color="gray.700" fontWeight="bold">
-              Cargando catálogo destacado...
+              {effectiveSlpCode
+                ? `Sin ventas de productos registradas para ${sellerName || "este vendedor"} en ${monthName} ${effectiveYear}.`
+                : `Sin ventas de productos registradas en ${monthName} ${effectiveYear}.`}
             </Text>
           </Flex>
         )}

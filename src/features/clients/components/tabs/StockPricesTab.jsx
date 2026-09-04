@@ -23,6 +23,12 @@ export function StockPricesTab({
 }) {
   const isMobile = useBreakpointValue({ base: true, md: false });
 
+  const formatPrice = (val) => {
+    if (val === null || val === undefined || val === "") return "-";
+    const n = Number(val);
+    return isNaN(n) ? String(val) : `$/ ${n.toFixed(2)}`;
+  };
+
   /* ================= MOBILE VIEW ================= */
   if (isMobile) {
     return (
@@ -77,9 +83,7 @@ export function StockPricesTab({
                     Precio
                   </Text>
                   <Text fontWeight="bold" color="green.600">
-                    {item.priceInfo?.PRECIO_LISTA
-                      ? `$/ ${item.priceInfo.PRECIO_LISTA.toFixed(2)}`
-                      : "-"}
+                    {formatPrice(item.priceInfo?.PRECIO_LISTA)}
                   </Text>
                 </VStack>
 
@@ -134,9 +138,7 @@ export function StockPricesTab({
                     : item.priceInfo?.STOCK_DISPONIBLE ?? "-"}
                 </Td>
                 <Td isNumeric>
-                  {item.priceInfo?.PRECIO_LISTA
-                    ? `$/ ${item.priceInfo.PRECIO_LISTA.toFixed(2)}`
-                    : "-"}
+                  {formatPrice(item.priceInfo?.PRECIO_LISTA)}
                 </Td>
                 <Td>{item.priceInfo?.MARCA || "-"}</Td>
               </Tr>

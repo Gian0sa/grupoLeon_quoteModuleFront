@@ -39,7 +39,7 @@ import {
 } from "react-icons/md";
 
 import { useDisclosure } from '@chakra-ui/react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 import { useAuthStore } from '../../auth/stores/useAuthStore';
 import { useHasAccess } from '../../../shared/utils/permissions';
@@ -50,8 +50,14 @@ export function LateralMenu() {
   const { isOpen, onOpen, onClose } = useDisclosure();
   const btnRef = useRef();
   const navigate = useNavigate();
+  const location = useLocation();
   const { username, isAuthenticated } = useAuthStore();
   const { logout } = useAuthMutations();
+
+  // Cerrar menú automáticamente al cambiar de página
+  React.useEffect(() => {
+    onClose();
+  }, [location.pathname]);
 
   const hasAccess = useHasAccess();
   const hasAdminAccess = hasAccess("PUT:/profile/admin/:userId");
@@ -62,11 +68,10 @@ export function LateralMenu() {
 
   const applicationOptions = [
     { label: 'Gestión de Cotizaciones', icon: MdRequestQuote, path: '/historyquotes', access: 'POST:/quotations' },
-    { label: 'Crear usuario', icon: MdPersonAdd, path: '/register', access: 'POST:/register' },
     { label: 'Solicitudes', icon: MdAssignmentTurnedIn, path: '#', access: 'GET:/requests' },
     { label: 'Pedidos', icon: MdLocalShipping, path: '/reports', access: 'GET:/reports' },
     { label: 'Cuentas por cobrar', icon: MdAccountBalanceWallet, path: '/receivable', access: 'GET:/receivable' },
-    { label: 'Lista de precios', icon: MdPriceChange, path: '/productsPriceList', access: 'GET:/receivable' },
+    { label: 'Lista de precios', icon: MdPriceChange, path: '/productsPriceList', access: 'GET:/priceList' },
     { label: 'Catálogo de productos', icon: MdInventory2, path: '/catalog', access: 'GET:/catalogProducts' },
     { label: 'Importaciones', icon: MdFileUpload, path: '/importaciones', access: 'GET:/purchaseOrdersImportacion' },
     { label: 'Registro de visitas', icon: MdLocationOn, path: '/visitLog', access: 'POST:/visit-logs' },
@@ -83,7 +88,7 @@ export function LateralMenu() {
   ];
 
   const adminOptions = [
-    { label: 'Actualizar usuario', icon: MdPerson, path: '/profileAdmin', access: 'PUT:/profile/admin/:userId' },
+    { label: 'Gestión de Usuarios', icon: MdPerson, path: '/profileAdmin', access: 'PUT:/profile/admin/:userId' },
     { label: 'Actualizar servicios', icon: MdHelp, path: '#', access: 'PUT:/services/:id' },
     { label: 'Gestionar Notificaciones', icon: MdAssignment, path: '/notification', access: 'PUT:/profile/admin/:userId' },
     { label: 'Control de Asistencias (Admin)', icon: MdAccessTime, path: '/admin/attendance', access: 'PUT:/profile/admin/:userId' }
@@ -92,62 +97,104 @@ export function LateralMenu() {
   const renderMenuOptions = (options, accentColor = "green") =>
     options
       .filter(({ access }) => !access || hasAccess(access))
-      .map(({ label, icon, path, external }, index) => (
-        <Button
-          key={index}
-          variant="ghost"
-          justifyContent="flex-start"
-          leftIcon={
-            <Flex
-              w="34px"
-              h="34px"
-              align="center"
-              justify="center"
-              borderRadius="xl"
-              bg={`${accentColor}.50`}
-              flexShrink={0}
-            >
-              <Icon as={icon} color={`${accentColor}.600`} boxSize={4} />
-            </Flex>
-          }
-          rightIcon={<Icon as={MdChevronRight} color="gray.400" boxSize={4} />}
-          onClick={() => {
-            if (external) {
-              window.open(path, '_blank');
-            } else {
-              navigate(path);
+      .map(({ label, icon, path, external }, index) => {
+        const isActive = !external && location.pathname === path;
+
+        return (
+          <Button
+            key={index}
+            variant="ghost"
+            justifyContent="flex-start"
+            leftIcon={
+              <Flex
+                w="34px"
+                h="34px"
+                align="center"
+                justify="center"
+                borderRadius="xl"
+                bg={isActive ? "whiteAlpha.200" : `${accentColor}.50`}
+                flexShrink={0}
+              >
+                <Icon
+                  as={icon}
+                  color={isActive ? "white" : `${accentColor}.600`}
+                  boxSize={4}
+                />
+              </Flex>
             }
-            onClose();
-          }}
-          _hover={{
-            bg: HEADER_MAIN_BG,
-            color: "white",
-            boxShadow: "0 4px 14px rgba(18, 108, 54, 0.25)",
-          }}
-          _active={{
-            bg: "#0e572b",
-            color: "white",
-          }}
-          h="46px"
-          color="gray.700"
-          w="full"
-          borderRadius="xl"
-          px={2}
-        >
-          <Text
-            as="span"
-            fontWeight="500"
-            fontSize="14px"
-            whiteSpace="nowrap"
-            overflow="hidden"
-            textOverflow="ellipsis"
-            flex="1"
-            textAlign="left"
+            rightIcon={
+              <Icon
+                as={MdChevronRight}
+                color={isActive ? "whiteAlpha.800" : "gray.400"}
+                boxSize={4}
+              />
+            }
+            onClick={() => {
+              if (external) {
+                window.open(path, '_blank');
+                onClose();
+              } else {
+                onClose();
+                setTimeout(() => {
+                  navigate(path);
+                }, 30);
+              }
+            }}
+            bg={isActive ? HEADER_MAIN_BG : "transparent"}
+            color={isActive ? "white" : "gray.700"}
+            boxShadow={isActive ? "0 4px 14px rgba(18, 108, 54, 0.25)" : "none"}
+            outline="none"
+            _focus={{
+              boxShadow: "none",
+              outline: "none",
+              bg: isActive ? HEADER_MAIN_BG : "transparent",
+            }}
+            _focusVisible={{
+              boxShadow: "none",
+              outline: "none",
+            }}
+            _active={{
+              bg: "#0e572b",
+              color: "white",
+              "& svg": { color: "white" },
+              "& span": { color: "white" },
+              "& .chakra-button__icon > div": { bg: "whiteAlpha.300" },
+            }}
+            sx={{
+              WebkitTapHighlightColor: "transparent !important",
+              touchAction: "manipulation",
+              userSelect: "none",
+              "@media (hover: hover) and (pointer: fine)": {
+                "&:hover": {
+                  bg: HEADER_MAIN_BG,
+                  color: "white",
+                  boxShadow: "0 4px 14px rgba(18, 108, 54, 0.25)",
+                  "& svg": { color: "white" },
+                  "& span": { color: "white" },
+                  "& .chakra-button__icon > div": { bg: "whiteAlpha.200" },
+                },
+              },
+            }}
+            h="46px"
+            w="full"
+            borderRadius="xl"
+            px={2}
           >
-            {label}
-          </Text>
-        </Button>
-      ));
+            <Text
+              as="span"
+              fontWeight={isActive ? "700" : "500"}
+              fontSize="14px"
+              whiteSpace="nowrap"
+              overflow="hidden"
+              textOverflow="ellipsis"
+              flex="1"
+              textAlign="left"
+            >
+              {label}
+            </Text>
+          </Button>
+        );
+      });
 
   const SectionLabel = ({ children, icon, color = "gray" }) => (
     <HStack spacing={2} px={2} mb={2} mt={1}>
@@ -177,8 +224,10 @@ export function LateralMenu() {
         w={{ base: "42px", md: "48px" }}
         h={{ base: "42px", md: "48px" }}
         _hover={{ bg: "whiteAlpha.300" }}
+        _active={{ bg: "whiteAlpha.400" }}
         onClick={onOpen}
         aria-label="Abrir menú"
+        sx={{ touchAction: "manipulation" }}
       />
 
       <Drawer
@@ -187,21 +236,28 @@ export function LateralMenu() {
         onClose={onClose}
         finalFocusRef={btnRef}
         size="md"
-        blockScrollOnMount={true}
+        blockScrollOnMount={false}
         preserveScrollBarGap={false}
         autoFocus={false}
+        trapFocus={false}
+        returnFocusOnClose={false}
       >
         {/* Sin backdropFilter para respuesta ultra veloz de 60fps en móviles */}
         <DrawerOverlay bg="blackAlpha.600" transition="opacity 0.15s ease-out" />
         <DrawerContent
           bg="white"
           maxW="340px"
+          h="100dvh"
+          maxH="100dvh"
+          display="flex"
+          flexDirection="column"
           borderLeftRadius="2xl"
           boxShadow="-8px 0 40px rgba(0,0,0,0.12)"
-          style={{ willChange: "transform", transform: "translateZ(0)" }}
+          overflow="hidden"
+          style={{ willChange: "transform", transform: "translate3d(0, 0, 0)" }}
         >
           {/* Header con perfil integrado */}
-          <DrawerHeader p={0}>
+          <DrawerHeader p={0} flexShrink={0}>
             <Box
               bg="#126C36"
               boxShadow="0 10px 30px rgba(18, 108, 54, 0.4)"
@@ -325,8 +381,19 @@ export function LateralMenu() {
           </DrawerHeader>
 
           {/* Cuerpo del menú con scroll fluido optimizado */}
-          <DrawerBody px={3} py={4}>
-            <VStack spacing={4} align="stretch">
+          <DrawerBody 
+            px={3} 
+            py={3}
+            flex="1"
+            overflowY="auto"
+            overscrollBehavior="contain"
+            sx={{
+              WebkitOverflowScrolling: "touch",
+              "&::-webkit-scrollbar": { width: "4px" },
+              "&::-webkit-scrollbar-thumb": { bg: "gray.200", borderRadius: "full" },
+            }}
+          >
+            <VStack spacing={4} align="stretch" pb={2}>
               {/* SECCIÓN 1: Aplicación */}
               <Box>
                 <SectionLabel icon color="green">Aplicación</SectionLabel>
@@ -355,8 +422,17 @@ export function LateralMenu() {
             </VStack>
           </DrawerBody>
 
-          {/* Footer con Botón de Cerrar Sesión */}
-          <DrawerFooter borderTop="1px solid" borderColor="gray.100" p={4}>
+          {/* Footer con Botón de Cerrar Sesión fijo y seguro que nunca desaparece */}
+          <DrawerFooter 
+            borderTop="1px solid" 
+            borderColor="gray.100" 
+            p={4}
+            pb="calc(14px + env(safe-area-inset-bottom, 0px))"
+            flexShrink={0}
+            bg="white"
+            zIndex={10}
+            boxShadow="0 -4px 16px rgba(0,0,0,0.05)"
+          >
             <Button
               bg="linear-gradient(135deg, #b91c1c 0%, #dc2626 50%, #ef4444 100%)"
               color="white"
@@ -369,6 +445,11 @@ export function LateralMenu() {
               onClick={handleLogout}
               boxShadow="0 4px 14px rgba(220, 38, 38, 0.25)"
               _hover={{ bg: "#991b1b" }}
+              _focus={{ boxShadow: "none", outline: "none" }}
+              _focusVisible={{ boxShadow: "none", outline: "none" }}
+              _active={{ transform: "scale(0.98)", bg: "#7f1d1d" }}
+              outline="none"
+              sx={{ WebkitTapHighlightColor: "transparent !important", touchAction: "manipulation" }}
             >
               Cerrar sesión
             </Button>

@@ -577,21 +577,24 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
       numDocUpper.startsWith("LT-")
     );
     const ubicacion = safeText(d.ubicacion || d.UBICACION || d.ESTADO, "").toUpperCase();
+    const ubicacionRaw = String(d.ubicacion || d.UBICACION || d.ESTADO || "").trim().toUpperCase();
     const condUpper = condicion.toUpperCase();
     const enBanco = Boolean(
       d.enBanco ||
       (isLetra && (
-        (codigoUnico && codigoUnico.length >= 6) ||
-        ubicacion.includes("BANCO") ||
-        ubicacion.includes("COBRANZA") ||
+        ubicacionRaw === "1" ||
+        ubicacionRaw.includes("BANCO") ||
+        ubicacionRaw.includes("COBRANZA") ||
         condUpper.includes("BANCO")
       ))
     );
     const isVD = Boolean(
       d.isVD ||
       (isLetra && !enBanco && (
-        ubicacion.includes("VD") ||
-        ubicacion.includes("CARTERA") ||
+        ubicacionRaw === "0" ||
+        ubicacionRaw === "VD" ||
+        ubicacionRaw.includes("CARTERA") ||
+        ubicacionRaw.includes("VD") ||
         condUpper.includes("VD") ||
         condUpper.includes("CARTERA") ||
         !codigoUnico ||

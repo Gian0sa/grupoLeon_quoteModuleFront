@@ -20,8 +20,37 @@
   }
 }
 
+/* Eliminación completa del destello azul táctil nativo en Android (Chrome, MIUI, WebKit) */
+*,
+*::before,
+*::after {
+  -webkit-tap-highlight-color: transparent !important;
+}
 
-/* Global Subtle Scrollbar */
+/* Optimización de respuesta táctil instantánea y prevención de outlines de foco en gama baja */
+button,
+a,
+input,
+select,
+textarea,
+[role="button"],
+.chakra-button {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent !important;
+  outline: none;
+}
+
+button:focus,
+button:focus-visible,
+[role="button"]:focus,
+[role="button"]:focus-visible,
+.chakra-button:focus,
+.chakra-button:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+
 ::-webkit-scrollbar {
     width: 4px;
     height: 4px;

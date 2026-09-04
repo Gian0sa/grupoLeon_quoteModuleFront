@@ -26,8 +26,6 @@ export function useAuthMutations() {
         salesEmployeeCode: res.salesEmployeeCode,
         endpoints: res.endpoints,
       });
-
-      navigate("/dashboard");
     },
 
     onError: (error) => {

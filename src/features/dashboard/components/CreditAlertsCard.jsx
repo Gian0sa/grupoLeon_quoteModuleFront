@@ -22,12 +22,25 @@ import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { useGetAccountsReceivable } from "../../receivable/hooks/receivableQueries";
 
-export function CreditAlertsCard() {
+export function CreditAlertsCard({ selectedSeller, canFilterSellers }) {
   const navigate = useNavigate();
   const { username, salesEmployeeCode } = useAuthStore();
 
   const isSellerProfile = !!salesEmployeeCode;
-  const vendedorNombre = isSellerProfile ? username : "";
+
+  // Si es un vendedor regular (sin permisos de filtro), ve su propia cartera
+  // Si tiene permisos de filtro (Admin, Supervisor, etc.):
+  // - Si eligió un vendedor específico: filtra por dicho vendedor
+  // - Si eligió "Todos los vendedores" (value 0): consulta general de la empresa
+  let vendedorNombre = "";
+  if (isSellerProfile && !canFilterSellers) {
+    vendedorNombre = username;
+  } else if (selectedSeller && selectedSeller.value !== 0) {
+    const rawLabel = selectedSeller.label || "";
+    vendedorNombre = rawLabel.includes(".") ? rawLabel.split(".")[1]?.trim() : rawLabel.trim();
+  } else {
+    vendedorNombre = "";
+  }
 
   // Habilitar la consulta siempre para obtener el listado de clientes
   const { data, isLoading } = useGetAccountsReceivable(
@@ -149,7 +162,7 @@ export function CreditAlertsCard() {
                       <Icon as={FiBriefcase} boxSize={4} />
                     </Flex>
                     <Box minW={0} flex={1}>
-                      <HStack spacing={2} mb={0.5} flexWrap="nowrap">
+                      <HStack spacing={1.5} mb={0.5} flexWrap="wrap">
                         <Text
                           fontWeight="750"
                           fontSize={{ base: "xs", sm: "sm" }}
@@ -216,7 +229,9 @@ export function CreditAlertsCard() {
           ¡Excelente estado!
         </Text>
         <Text fontSize="xs" color="gray.500" mt={0.5}>
-          No tienes ningún cliente con facturas vencidas.
+          {vendedorNombre
+            ? `No hay clientes con facturas vencidas para ${vendedorNombre}.`
+            : "No hay clientes con facturas vencidas en la cartera general."}
         </Text>
       </Flex>
     );
@@ -228,7 +243,7 @@ export function CreditAlertsCard() {
       h="100%"
       bg="white"
       borderRadius="3xl"
-      p={{ base: 4, sm: 5, md: 5 }}
+      p={{ base: 3.5, sm: 4.5, md: 5 }}
       boxShadow="0 10px 30px rgba(0,0,0,0.04)"
       transition="transform 0.2s, box-shadow 0.2s"
       _hover={{ boxShadow: "0 12px 35px rgba(0,0,0,0.07)" }}
@@ -266,7 +281,7 @@ export function CreditAlertsCard() {
                 </Text>
                 {criticalClients.length > 0 && (
                   <Badge
-                    colorScheme="red"
+                    colorScheme={vendedorNombre ? "purple" : "red"}
                     borderRadius="full"
                     px={2.5}
                     py={0.5}
@@ -274,12 +289,16 @@ export function CreditAlertsCard() {
                     fontWeight="800"
                     flexShrink={0}
                   >
-                    {criticalClients.length} CRÍTICOS
+                    {vendedorNombre ? `${vendedorNombre.toUpperCase()} (${criticalClients.length})` : `${criticalClients.length} CRÍTICOS`}
                   </Badge>
                 )}
               </Flex>
               <Text fontSize="xs" color="gray.500" display={{ base: "none", xl: "block" }} noOfLines={1}>
-                Estado de cuenta de clientes a tu cargo
+                {isSellerProfile && !canFilterSellers
+                  ? "Estado de cuenta de clientes a tu cargo"
+                  : vendedorNombre
+                    ? `Clientes en mora asignados a ${vendedorNombre}`
+                    : "Clientes con mayor saldo vencido a nivel empresa"}
               </Text>
             </Box>
           </HStack>

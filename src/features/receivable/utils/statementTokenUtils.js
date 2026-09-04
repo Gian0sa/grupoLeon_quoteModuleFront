@@ -112,19 +112,21 @@ export const buildStatementPayload = (debtData) => {
     
     // Identificar si la letra está en Cartera (Vía Directa = VD) o en el Banco
     const idUnico = (d.idUnico || d.ID_UNICO || d.letraSAP || "").trim();
-    const ubicacion = (d.ubicacion || d.UBICACION || d.ESTADO || "").toUpperCase();
-    const condicion = (d.condicionPago || d.CONDICION || "").toUpperCase();
+    const ubicacionRaw = String(d.ubicacion || d.UBICACION || d.ESTADO || "").trim().toUpperCase();
+    const condicion = String(d.condicionPago || d.CONDICION || "").toUpperCase();
     
     const enBanco = isLetra && Boolean(
-      (idUnico && idUnico.length >= 6) ||
-      ubicacion.includes("BANCO") ||
-      ubicacion.includes("COBRANZA") ||
+      ubicacionRaw === "1" ||
+      ubicacionRaw.includes("BANCO") ||
+      ubicacionRaw.includes("COBRANZA") ||
       condicion.includes("BANCO")
     );
 
-    const isVD = isLetra && !enBanco && (
-      ubicacion.includes("VD") ||
-      ubicacion.includes("CARTERA") ||
+    const isVD = isLetra && !enBanco && Boolean(
+      ubicacionRaw === "0" ||
+      ubicacionRaw === "VD" ||
+      ubicacionRaw.includes("CARTERA") ||
+      ubicacionRaw.includes("VD") ||
       condicion.includes("VD") ||
       condicion.includes("CARTERA") ||
       !idUnico ||

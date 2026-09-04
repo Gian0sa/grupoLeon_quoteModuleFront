@@ -22,7 +22,7 @@ import { QuoteDetailDrawer } from "../features/quotes/components/QuoteDetailDraw
 import { useAuthStore } from "../features/auth/stores/useAuthStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNotifications } from "../features/quotes/hooks/queries/quotesQueries";
-import { markNotificationAsRead, clearNotifications } from "../features/quotes/services/quoteService";
+import { markNotificationAsRead, deleteNotification, clearNotifications, updateQuote } from "../features/quotes/services/quoteService";
 
 export function NotificationDrawer({ isOpen, onClose }) {
   const { username, userId, role } = useAuthStore();
@@ -47,18 +47,32 @@ export function NotificationDrawer({ isOpen, onClose }) {
     username
   );
 
-  // Filtra notificaciones que pertenecen SOLO al usuario en sesión
+  // Filtra notificaciones que pertenecen al usuario en sesión o su rol
   const filterForCurrentUser = (notifs) => {
-    if (!username && !userId) return [];
+    if (!username && !userId && !role) return [];
+    const userLower = (username || "").toLowerCase();
+    const roleUpper = (role || "").toUpperCase();
+    const isAdminOrEnrique = roleUpper === "ADMIN" || roleUpper === "FACTURACION" || roleUpper === "SUPERVISOR" || userLower.includes("enrique");
+
     return notifs.filter((n) => {
-      if (n.targetUsername && username) {
-        return n.targetUsername.toLowerCase() === username.toLowerCase();
-      }
-      if (n.targetRole === "FACTURACION" && (role === "ADMIN" || username?.toLowerCase() === "enrique")) {
+      const targetUser = (n.targetUsername || "").toLowerCase();
+      const targetRoleUpper = (n.targetRole || "").toUpperCase();
+
+      // 1. Coincidencia por nombre de usuario de destino
+      if (targetUser && userLower && (targetUser === userLower || userLower.includes(targetUser) || targetUser.includes(userLower))) {
         return true;
       }
-      if (n.targetUserId && userId) {
-        return String(n.targetUserId) === String(userId);
+      // 2. Coincidencia por rol de Facturación / Administración
+      if ((targetRoleUpper === "FACTURACION" || targetRoleUpper === "ADMIN") && isAdminOrEnrique) {
+        return true;
+      }
+      // 3. Coincidencia por rol de Vendedor
+      if ((targetRoleUpper === "VENDEDOR" || targetRoleUpper === "SELLER") && !isAdminOrEnrique) {
+        return true;
+      }
+      // 4. Coincidencia por ID de usuario
+      if (n.targetUserId && userId && String(n.targetUserId) === String(userId)) {
+        return true;
       }
       return false;
     });
@@ -71,7 +85,7 @@ export function NotificationDrawer({ isOpen, onClose }) {
       // La base de datos es la fuente de verdad absoluta
       combined = [...serverNotifs];
       
-      // Preservar solo notificaciones WebSocket muy recientes (< 30s) que aún no estén en serverNotifs
+      // Preservar solo notificaciones WebSocket muy recientes (< 15s) que aún no estén en serverNotifs
       try {
         const raw = localStorage.getItem("grupoLeon_notifications");
         const saved = raw ? JSON.parse(raw) : [];
@@ -80,9 +94,10 @@ export function NotificationDrawer({ isOpen, onClose }) {
           const serverIds = new Set(serverNotifs.map(s => String(s.id)));
           const serverQuoteIds = new Set(serverNotifs.map(s => String(s.quoteId)));
           const recentLocal = saved.filter(sn => {
-            const time = sn.createdAt ? new Date(sn.createdAt).getTime() : 0;
-            const isFresh = (now - time) < 30000;
-            return isFresh && !serverIds.has(String(sn.id)) && serverQuoteIds.has(String(sn.quoteId));
+            if (sn.read) return false;
+            const time = sn.createdAt || sn.timestamp ? new Date(sn.createdAt || sn.timestamp).getTime() : 0;
+            const isFresh = (now - time) < 15000;
+            return isFresh && !serverIds.has(String(sn.id)) && !serverQuoteIds.has(String(sn.quoteId));
           });
           combined = [...recentLocal, ...combined];
         }
@@ -100,8 +115,26 @@ export function NotificationDrawer({ isOpen, onClose }) {
       } catch {}
     }
 
-    const filteredByUser = filterForCurrentUser(combined);
-    return filteredByUser.filter(n => n.status !== "ANULADO" && !String(n.title || "").toLowerCase().includes("anulad"));
+    const filteredByUser = filterForCurrentUser(combined).filter(
+      (n) => n.status !== "ANULADO" && !String(n.title || "").toLowerCase().includes("anulad") && !n.read
+    );
+
+    // Deduplicación inteligente por quoteId (conserva la alerta más reciente por cotización)
+    const uniqueMap = new Map();
+    const sorted = [...filteredByUser].sort((a, b) => {
+      const tA = new Date(a.createdAt || a.timestamp || a.created_at || a.date || 0).getTime();
+      const tB = new Date(b.createdAt || b.timestamp || b.created_at || b.date || 0).getTime();
+      return tB - tA;
+    });
+
+    for (const notif of sorted) {
+      const key = String(notif.quoteId || notif.id);
+      if (!uniqueMap.has(key)) {
+        uniqueMap.set(key, notif);
+      }
+    }
+
+    return Array.from(uniqueMap.values());
   }, [serverNotifs, username, userId, role, localVersion]);
 
   const handleClearAll = async () => {
@@ -119,6 +152,9 @@ export function NotificationDrawer({ isOpen, onClose }) {
         if (n.targetUsername && username) {
           return n.targetUsername.toLowerCase() !== username.toLowerCase();
         }
+        if (n.targetRole === "FACTURACION" && (role === "ADMIN" || username?.toLowerCase() === "enrique")) {
+          return false;
+        }
         if (n.targetUserId && userId) {
           return String(n.targetUserId) !== String(userId);
         }
@@ -126,53 +162,134 @@ export function NotificationDrawer({ isOpen, onClose }) {
       });
       localStorage.setItem("grupoLeon_notifications", JSON.stringify(remaining));
       window.dispatchEvent(new Event("localNotificationsUpdated"));
+      setLocalVersion(v => v + 1);
     } catch {}
   };
 
-  const handleDeleteNotif = async (id) => {
+  const handleDeleteNotif = async (id, quoteId) => {
     try {
-      await markNotificationAsRead(id);
+      await deleteNotification(id, quoteId);
+      await markNotificationAsRead(id, quoteId);
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
     } catch (e) {
-      console.error("Error marking notif read:", e);
+      console.error("Error deleting notif:", e);
     }
 
     try {
       const raw = localStorage.getItem("grupoLeon_notifications");
       const all = raw ? JSON.parse(raw) : [];
-      const updated = all.filter((n) => n.id !== id);
+      const updated = all.filter((n) => {
+        if (id && String(n.id) === String(id)) return false;
+        if (quoteId && String(n.quoteId || n.id) === String(quoteId)) return false;
+        if (id && String(n.quoteId) === String(id)) return false;
+        return true;
+      });
       localStorage.setItem("grupoLeon_notifications", JSON.stringify(updated));
       window.dispatchEvent(new Event("localNotificationsUpdated"));
+      setLocalVersion(v => v + 1);
     } catch {}
   };
 
-  const formatTimeAgo = (isoStr) => {
-    if (!isoStr) return "Hace un momento";
-    const diffMs = Date.now() - new Date(isoStr).getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    if (diffMins < 1) return "Justo ahora";
-    if (diffMins < 60) return `Hace ${diffMins} min`;
+  const formatTimeAgo = (rawDate) => {
+    if (!rawDate) return "Reciente";
+    const date = new Date(rawDate);
+    if (isNaN(date.getTime())) return "Reciente";
+
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+
+    if (diffMs < 0) return "Justo ahora";
+
+    const diffSecs = Math.floor(diffMs / 1000);
+    const diffMins = Math.floor(diffSecs / 60);
     const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `Hace ${diffHours} h`;
-    return new Date(isoStr).toLocaleDateString();
+    const diffDays = Math.floor(diffHours / 24);
+
+    const timeStr = date.toLocaleTimeString("es-PE", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+
+    if (diffMins < 1) return `Justo ahora (${timeStr})`;
+    if (diffMins < 60) return `Hace ${diffMins} min (${timeStr})`;
+
+    const isToday = now.toDateString() === date.toDateString();
+    if (isToday) {
+      return `Hoy a las ${timeStr} • Hace ${diffHours} h`;
+    }
+
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    const isYesterday = yesterday.toDateString() === date.toDateString();
+    if (isYesterday) {
+      return `Ayer a las ${timeStr}`;
+    }
+
+    if (diffDays < 7) {
+      const dayNum = date.toLocaleDateString("es-PE", { day: "2-digit", month: "short" });
+      return `Hace ${diffDays} días • ${dayNum} (${timeStr})`;
+    }
+
+    return `${date.toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit", year: "numeric" })} • ${timeStr}`;
   };
 
-  const handleOpenQuote = (quoteObj, quoteId) => {
-    let targetDoc = quoteObj;
-    if (!targetDoc && quoteId) {
-      const savedQuotes = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
-      targetDoc = savedQuotes.find((q) => (q.id || q.docNumber) === quoteId);
+  const handleOpenQuote = (quoteObj, quoteId, notifId) => {
+    let targetDoc = quoteObj ? { ...quoteObj } : null;
+    const targetId = quoteId || quoteObj?.docNumber || quoteObj?.id;
+
+    const extractItems = (doc) => {
+      if (!doc) return [];
+      if (Array.isArray(doc.products) && doc.products.length > 0) return doc.products;
+      if (Array.isArray(doc.items) && doc.items.length > 0) return doc.items;
+      if (Array.isArray(doc.lines) && doc.lines.length > 0) return doc.lines;
+      if (doc.totals && Array.isArray(doc.totals.normalizedProducts) && doc.totals.normalizedProducts.length > 0) return doc.totals.normalizedProducts;
+      if (doc.totals && Array.isArray(doc.totals.products) && doc.totals.products.length > 0) return doc.totals.products;
+      return [];
+    };
+
+    let items = extractItems(targetDoc);
+
+    if (items.length === 0 && targetId) {
+      // 1. Buscar en caché de React Query
+      try {
+        const cachedQuotes = queryClient.getQueryData(["quotes"]);
+        if (Array.isArray(cachedQuotes)) {
+          const found = cachedQuotes.find((q) => String(q.id || q.docNumber) === String(targetId));
+          if (found) {
+            targetDoc = { ...found, ...(targetDoc || {}) };
+            items = extractItems(found);
+          }
+        }
+      } catch {}
+
+      // 2. Buscar en localStorage
+      if (items.length === 0) {
+        try {
+          const savedQuotes = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
+          const found = savedQuotes.find((q) => String(q.id || q.docNumber) === String(targetId));
+          if (found) {
+            targetDoc = { ...found, ...(targetDoc || {}) };
+            items = extractItems(found);
+          }
+        } catch {}
+      }
     }
+
     if (!targetDoc) {
       targetDoc = {
-        id: quoteId,
-        docNumber: quoteId,
-        clientName: "—",
-        sellerName: username || "—",
-        totals: { grandTotalUSD: 0 },
-        state: "ENVIADO"
+        id: targetId,
+        docNumber: targetId,
+        state: "ENVIADO",
       };
     }
+
+    targetDoc.products = items;
+
+    // Auto-descartar / marcar como leída al abrir (comportamiento smartphone)
+    handleDeleteNotif(notifId, targetId);
+
+    onClose(); // Cierra el panel de notificaciones para liberar el scroll móvil
     setSelectedQuoteForDrawer(targetDoc);
     setIsQuoteDrawerOpen(true);
   };
@@ -308,8 +425,10 @@ export function NotificationDrawer({ isOpen, onClose }) {
                       borderLeftColor={borderLeftColor}
                       bg="white"
                       boxShadow="sm"
-                      _hover={{ boxShadow: "md", transform: "translateY(-1px)" }}
+                      _hover={{ boxShadow: "md", transform: "translateY(-1px)", borderColor: "emerald.300" }}
                       transition="all 0.2s"
+                      cursor="pointer"
+                      onClick={() => handleOpenQuote(item.quoteObj, item.quoteId, item.id)}
                     >
                       <VStack align="stretch" spacing={2.5}>
                         <Flex justify="space-between" align="flex-start" gap={2}>
@@ -336,7 +455,10 @@ export function NotificationDrawer({ isOpen, onClose }) {
                               size={{ base: "sm", md: "xs" }}
                               variant="ghost"
                               colorScheme="gray"
-                              onClick={() => handleDeleteNotif(item.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteNotif(item.id, item.quoteId);
+                              }}
                               aria-label="Eliminar alerta"
                               flexShrink={0}
                               w={{ base: "40px", md: "auto" }}
@@ -345,9 +467,11 @@ export function NotificationDrawer({ isOpen, onClose }) {
                           </Tooltip>
                         </Flex>
 
-                        <HStack spacing={1} fontSize={{ base: "11px", md: "10px" }} color="gray.500">
-                          <Icon as={FiClock} boxSize={3} />
-                          <Text fontWeight="600">{formatTimeAgo(item.timestamp)}</Text>
+                        <HStack spacing={1.5} fontSize={{ base: "11px", md: "10px" }} color="gray.600">
+                          <Icon as={FiClock} boxSize={3} color="emerald.600" />
+                          <Text fontWeight="700">
+                            {formatTimeAgo(item.createdAt || item.timestamp || item.created_at || item.date)}
+                          </Text>
                         </HStack>
 
                         <Text
@@ -374,6 +498,22 @@ export function NotificationDrawer({ isOpen, onClose }) {
                           </HStack>
                         )}
 
+                        {(item.hasDiscount || String(item.title || "").includes("Descuento") || String(item.description || "").includes("DESCUENTO")) && (
+                          <Badge
+                            colorScheme="purple"
+                            variant="solid"
+                            fontSize="10px"
+                            px={2.5}
+                            py={1}
+                            borderRadius="md"
+                            fontWeight="900"
+                            w="fit-content"
+                            boxShadow="xs"
+                          >
+                            ⚡ REQUIERE APROBACIÓN DE DESCUENTO
+                          </Badge>
+                        )}
+
                         <Flex
                           justify="space-between"
                           align={{ base: "flex-start", sm: "center" }}
@@ -389,7 +529,10 @@ export function NotificationDrawer({ isOpen, onClose }) {
                             bg={!isApproved && !isRejected ? "#0f766e" : undefined}
                             _hover={!isApproved && !isRejected ? { bg: "#115e59" } : undefined}
                             leftIcon={<Icon as={FiEye} />}
-                            onClick={() => handleOpenQuote(item.quoteObj, item.quoteId)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenQuote(item.quoteObj, item.quoteId, item.id);
+                            }}
                             fontWeight="800"
                             px={3}
                             boxShadow="xs"
@@ -416,31 +559,58 @@ export function NotificationDrawer({ isOpen, onClose }) {
         isOpen={isQuoteDrawerOpen}
         onClose={() => setIsQuoteDrawerOpen(false)}
         quote={selectedQuoteForDrawer}
-        onUpdateStatus={(quoteId, newStatus, reasonNote) => {
+        onUpdateStatus={async (quoteId, newStatus, reasonNote) => {
           const savedQuotes = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
+          const idStr = String(quoteId || "").trim();
+          const cleanId = idStr.replace(/^COT-0*/i, "");
+          const nowIso = new Date().toISOString();
+
+          let targetDoc = null;
           const updated = savedQuotes.map((q) => {
-            if ((q.id || q.docNumber) === quoteId) {
+            const qDoc = String(q.docNumber || "").trim();
+            const qId = String(q.id !== undefined && q.id !== null ? q.id : "").trim();
+            const cleanDoc = qDoc.replace(/^COT-0*/i, "");
+            const cleanQId = qId.replace(/^COT-0*/i, "");
+
+            const isMatch = (qDoc && qDoc === idStr) || (qId && qId === idStr) || (cleanId && (cleanDoc === cleanId || cleanQId === cleanId));
+            if (isMatch) {
               const currentHistory = q.historyLog || [];
-              return {
+              const doc = {
                 ...q,
                 approvalStatus: newStatus,
+                status: newStatus,
                 state: newStatus,
-                rejectionReason: newStatus === "RECHAZADO" ? reasonNote : q.rejectionReason,
+                rejectionReason: newStatus === "RECHAZADO" || newStatus === "OBSERVADO" ? reasonNote : q.rejectionReason,
+                observationReason: newStatus === "OBSERVADO" ? reasonNote : q.observationReason,
+                observedAt: newStatus === "OBSERVADO" ? nowIso : q.observedAt,
+                observedBy: newStatus === "OBSERVADO" ? (username || "Administrador") : q.observedBy,
+                updatedAt: nowIso,
                 historyLog: [
-                  ...currentHistory,
                   {
                     status: newStatus,
-                    timestamp: new Date().toISOString(),
+                    timestamp: nowIso,
                     user: username || "Administrador",
                     note: reasonNote || `Cambio de estado a ${newStatus}`
-                  }
+                  },
+                  ...currentHistory
                 ]
               };
+              targetDoc = doc;
+              return doc;
             }
             return q;
           });
+
           localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updated));
           window.dispatchEvent(new Event("localQuotesUpdated"));
+
+          if (targetDoc) {
+            try {
+              await updateQuote(targetDoc);
+            } catch (e) {
+              console.error("Error sincronizando estado desde NotificationDrawer:", e);
+            }
+          }
         }}
       />
     </>

@@ -7,6 +7,7 @@ import {
   Heading,
   Input,
   VStack,
+  HStack,
   Spinner,
   Checkbox,
   Link,
@@ -18,7 +19,7 @@ import {
   Image,
   Text,
 } from "@chakra-ui/react";
-import { ViewIcon, ViewOffIcon } from "@chakra-ui/icons";
+import { ViewIcon, ViewOffIcon, DownloadIcon } from "@chakra-ui/icons";
 import { Turnstile } from "@marsidev/react-turnstile";
 import { useForm } from "react-hook-form";
 import { useAuthMutations } from "../hooks/mutations/authMutations";
@@ -48,26 +49,138 @@ export function Login() {
   const siteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY;
 
   const navigate = useNavigate();
-  const token = useAuthStore((state) => state.token);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const { login } = useAuthMutations(); // ✅ fix: hooks antes del return condicional
 
-  useEffect(() => {
-    if (token) {
-      navigate("/dashboard");
-    }
-  }, [token, navigate]);
+  // 📲 ESTADO Y CAPTURA PARA INSTALACIÓN PWA
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [isAppInstalled, setIsAppInstalled] = useState(false);
+  const [isDismissed, setIsDismissed] = useState(false);
 
-  if (token) {
+  useEffect(() => {
+    // 1. Detectar si la app ya está instalada o ejecutándose en modo standalone
+    const isStandalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      window.navigator.standalone === true;
+    if (isStandalone) {
+      setIsAppInstalled(true);
+    }
+
+    // 2. Regla de 7 días: si el usuario cerró el aviso, no mostrarlo hasta cumplirse 7 días
+    const lastDismissed = localStorage.getItem("pwa_install_dismissed_at");
+    if (lastDismissed) {
+      const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+      if (Date.now() - parseInt(lastDismissed, 10) < SEVEN_DAYS_MS) {
+        setIsDismissed(true);
+      }
+    }
+
+    // 3. Capturar el evento de instalación nativo de navegadores
+    if (window.deferredPwaPrompt) {
+      setDeferredPrompt(window.deferredPwaPrompt);
+    }
+
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      window.deferredPwaPrompt = e;
+      setDeferredPrompt(e);
+    };
+
+    const handlePwaPromptReady = () => {
+      if (window.deferredPwaPrompt) {
+        setDeferredPrompt(window.deferredPwaPrompt);
+      }
+    };
+
+    const handleAppInstalled = () => {
+      setIsAppInstalled(true);
+      setDeferredPrompt(null);
+      window.deferredPwaPrompt = null;
+      toast({
+        title: "🎉 ¡Aplicación Instalada!",
+        description: "Autopartes S.A. ya está instalada en tu dispositivo.",
+        status: "success",
+        duration: 5000,
+        isClosable: true,
+        position: "top",
+      });
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("pwaPromptReady", handlePwaPromptReady);
+    window.addEventListener("appinstalled", handleAppInstalled);
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener("pwaPromptReady", handlePwaPromptReady);
+      window.removeEventListener("appinstalled", handleAppInstalled);
+    };
+  }, [toast]);
+
+  const handleInstallApp = async () => {
+    // 1. Android / Chrome / Edge / PC: Disparar la instalación nativa del navegador directamente
+    const promptEvent = deferredPrompt || window.deferredPwaPrompt;
+    if (promptEvent) {
+      try {
+        await promptEvent.prompt();
+        const { outcome } = await promptEvent.userChoice;
+        if (outcome === "accepted") {
+          setDeferredPrompt(null);
+          window.deferredPwaPrompt = null;
+          setIsAppInstalled(true);
+        }
+        return;
+      } catch (err) {
+        console.warn("PWA prompt error:", err);
+      }
+    }
+
+    // 2. iOS (iPhone / iPad) o navegadores con Web Share API:
+    // Abre directamente la hoja nativa del sistema (Share Sheet) donde está "Agregar a inicio"
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: "Autopartes S.A.",
+          text: "Acceso directo a Autopartes S.A.",
+          url: window.location.origin,
+        });
+        return;
+      } catch (err) {
+        if (err.name !== "AbortError") {
+          console.warn("Share API error:", err);
+        }
+        return;
+      }
+    }
+
+    // 3. Fallback rápido sin modal para navegadores sin APIs
+    toast({
+      title: "Instalar aplicación",
+      description: "Presiona el menú de tu navegador (⋮ o compartir) y selecciona 'Agregar a la pantalla principal'.",
+      status: "info",
+      duration: 4000,
+      isClosable: true,
+      position: "top",
+    });
+  };
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      const savedRoute = localStorage.getItem("lastRoute");
+      const target = savedRoute && savedRoute !== "/" && savedRoute !== "/register" ? savedRoute : "/dashboard";
+      navigate(target, { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
+
+  if (isAuthenticated) {
     return (
-      <Center height="100vh">
-        <Spinner size="xl" />
+      <Center height="100vh" bg="#051f11">
+        <Spinner size="xl" color="emerald.400" thickness="4px" />
       </Center>
     );
   }
 
   const resetCaptcha = () => {
-    // En local el widget no puede resolverse; recargarlo solo reinicia el bucle
-    // de reintentos y borra el marcador que permite seguir trabajando.
     if (import.meta.env.DEV && captchaUnavailable) return;
     setCaptchaKey((prev) => prev + 1);
     setCaptchaToken(null);
@@ -82,6 +195,11 @@ export function Login() {
     login.mutate(
       { ...data, captchaToken },
       {
+        onSuccess: () => {
+          const savedRoute = localStorage.getItem("lastRoute");
+          const target = savedRoute && savedRoute !== "/" && savedRoute !== "/register" ? savedRoute : "/dashboard";
+          navigate(target, { replace: true });
+        },
         onError: (error) => {
           const message =
             error?.response?.data?.message || "Error al iniciar sesión";
@@ -95,7 +213,7 @@ export function Login() {
             position: "top",
           });
 
-          resetCaptcha(); // ✅ fix: reset real del widget
+          resetCaptcha();
         },
       }
     );
@@ -282,6 +400,36 @@ export function Login() {
             >
               Iniciar sesión
             </Button>
+
+            {/* ========================================================================= */}
+            {/* 📲 BOTÓN COMPACTO DE INSTALACIÓN PWA (Sale cada 7 días si no se instala)   */}
+            {/* ========================================================================= */}
+            {!isAppInstalled && !isDismissed && (
+              <Button
+                variant="ghost"
+                colorScheme="green"
+                color="green.800"
+                bg="green.50"
+                border="1.5px solid"
+                borderColor="green.300"
+                _hover={{ bg: "green.100", borderColor: "green.500", transform: "translateY(-1px)", boxShadow: "sm" }}
+                _active={{ bg: "green.200" }}
+                borderRadius="xl"
+                size="sm"
+                h={{ base: "38px", md: "34px" }}
+                px={4}
+                fontWeight="800"
+                fontSize={{ base: "13px", md: "12px" }}
+                leftIcon={<Image src="/icon.svg" h="18px" w="18px" borderRadius="sm" />}
+                onClick={handleInstallApp}
+                transition="all 0.2s"
+                alignSelf="center"
+                w={{ base: "full", sm: "auto" }}
+              >
+                📲 Agregar a Pantalla de Inicio
+              </Button>
+            )}
+            {/* ========================================================================= */}
           </VStack>
 
           <Flex mt={4} justify="center" align="center" fontSize="xs" color="gray.400">
@@ -360,3 +508,5 @@ export function Login() {
     </Flex>
   );
 }
+
+export default Login;

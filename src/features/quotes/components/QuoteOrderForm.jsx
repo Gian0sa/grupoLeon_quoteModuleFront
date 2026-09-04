@@ -13,6 +13,7 @@ import {
 import { useQuoteStore } from "../stores/quoteStore";
 import ItemAutocomplete from "./ItemAutocomplete";
 import ClientAutocomplete from "./ClientAutocomplete";
+import PackagingHelper from "./PackagingHelper";
 import { lineNet, round2 } from "../utils/quoteCalculations";
 import { useExchangeRate } from "../../dashboard/hooks/queries/dashboardQueries";
 import { useIgvRate, useGetWarehouses } from "../hooks/queries/quotesQueries";
@@ -20,14 +21,6 @@ import { useIgvRate, useGetWarehouses } from "../hooks/queries/quotesQueries";
 const MotionBox = motion(Box);
 
 const CURRENCIES = ["USD", "PEN"];
-const DEFAULT_WAREHOUSES = [
-  { code: "014", name: "014 - Almacén Principal" },
-  { code: "001", name: "001 - Sede Central" },
-  { code: "002", name: "002 - Sede Norte" },
-  { code: "003", name: "003 - Sede Sur" },
-  { code: "004", name: "004 - Sede Este" },
-  { code: "005", name: "005 - Sede Provincia" },
-];
 
 const money = (value, currency = "USD") =>
   Number(value || 0).toLocaleString("en-US", {
@@ -50,7 +43,7 @@ export default function QuoteOrderForm({ sellerName }) {
   } = useQuoteStore();
 
   const { warehouses: sapWarehouses } = useGetWarehouses();
-  const availableWarehouses = sapWarehouses.length > 0 ? sapWarehouses : DEFAULT_WAREHOUSES;
+  const availableWarehouses = sapWarehouses || [];
 
   const { data: rateData } = useExchangeRate({
     currency: "USD",
@@ -365,7 +358,7 @@ export default function QuoteOrderForm({ sellerName }) {
 
                       {products.map((p, idx) => {
                         const unitPrice = p.importe ?? p.price ?? 0;
-                        const net = lineNet(p.quantity, unitPrice, p.lineDiscount ?? 0);
+                        const net = lineNet(p.quantity, unitPrice, p.discount ?? 0, p.lineDiscount ?? 0);
                         const exceedsStock = Number(p.quantity) > Number(p.stock ?? 0);
 
                         return (
@@ -391,24 +384,33 @@ export default function QuoteOrderForm({ sellerName }) {
                               </Badge>
                             </Td>
                             <Td isNumeric>
-                              <NumberInput
-                                size="xs"
-                                min={1}
-                                value={p.quantity}
-                                onChange={(_, valueAsNumber) =>
-                                  updateProduct(p.id, {
-                                    quantity: Number.isNaN(valueAsNumber) ? 1 : valueAsNumber,
-                                  })
-                                }
-                                maxW="70px"
-                              >
-                                <NumberInputField textAlign="right" borderRadius="md" fontWeight="bold" />
-                              </NumberInput>
-                              {exceedsStock && (
-                                <Text fontSize="9px" color="red.500" fontWeight="bold">
-                                  ¡Supera Stock!
-                                </Text>
-                              )}
+                              <VStack align="flex-end" spacing={1}>
+                                <NumberInput
+                                  size="xs"
+                                  min={1}
+                                  value={p.quantity}
+                                  onChange={(_, valueAsNumber) =>
+                                    updateProduct(p.id, {
+                                      quantity: Number.isNaN(valueAsNumber) ? 1 : valueAsNumber,
+                                    })
+                                  }
+                                  maxW="70px"
+                                >
+                                  <NumberInputField textAlign="right" borderRadius="md" fontWeight="bold" />
+                                </NumberInput>
+                                <PackagingHelper
+                                  itemName={p.name || p.itemName || p.description}
+                                  sigla={p.sigla}
+                                  raw={p.raw || p}
+                                  currentQuantity={p.quantity || 1}
+                                  onQuantityChange={(units) => updateProduct(p.id, { quantity: units })}
+                                />
+                                {exceedsStock && (
+                                  <Text fontSize="9px" color="red.500" fontWeight="bold">
+                                    ¡Supera Stock!
+                                  </Text>
+                                )}
+                              </VStack>
                             </Td>
                             <Td isNumeric fontSize="xs" fontWeight="600">
                               {money(unitPrice, currency)}
@@ -469,7 +471,7 @@ export default function QuoteOrderForm({ sellerName }) {
                   <VStack spacing={3} align="stretch">
                     {products.map((p, idx) => {
                       const unitPrice = p.importe ?? p.price ?? 0;
-                      const net = lineNet(p.quantity, unitPrice, p.lineDiscount ?? 0);
+                      const net = lineNet(p.quantity, unitPrice, p.discount ?? 0, p.lineDiscount ?? 0);
                       const exceedsStock = Number(p.quantity) > Number(p.stock ?? 0);
 
                       return (
@@ -516,9 +518,6 @@ export default function QuoteOrderForm({ sellerName }) {
                               <Text fontSize="10px" color="gray.500">Stock Sede</Text>
                               <Badge colorScheme={exceedsStock ? "red" : "green"} fontSize="10px">
                                 {p.stock ?? 0} disp.
-                              </Badge>
-                            </Box>
-
                             <Box>
                               <Text fontSize="10px" color="gray.500">Precio Unitario</Text>
                               <Text fontSize="xs" fontWeight="700">{money(unitPrice, currency)}</Text>
@@ -526,20 +525,31 @@ export default function QuoteOrderForm({ sellerName }) {
 
                             <Box colSpan={2}>
                               <Text fontSize="10px" color="gray.500" mb={1}>Cantidad</Text>
-                              <HStack spacing={1}>
-                                <IconButton
-                                  aria-label="Restar"
-                                  icon={<Minus className="w-3 h-3" />}
-                                  size="xs"
-                                  onClick={() => updateProduct(p.id, { quantity: Math.max(1, p.quantity - 1) })}
+                              <VStack align="flex-start" spacing={1}>
+                                <HStack spacing={1}>
+                                  <IconButton
+                                    aria-label="Restar"
+                                    icon={<Minus className="w-3 h-3" />}
+                                    size="xs"
+                                    onClick={() => updateProduct(p.id, { quantity: Math.max(1, p.quantity - 1) })}
+                                  />
+                                  <Text fontSize="xs" fontWeight="800" px={2}>{p.quantity}</Text>
+                                  <IconButton
+                                    aria-label="Sumar"
+                                    icon={<Plus className="w-3 h-3" />}
+                                    size="xs"
+                                    onClick={() => updateProduct(p.id, { quantity: p.quantity + 1 })}
+                                  />
+                                </HStack>
+                                <PackagingHelper
+                                  itemName={p.name || p.itemName || p.description}
+                                  sigla={p.sigla}
+                                  raw={p.raw || p}
+                                  currentQuantity={p.quantity || 1}
+                                  onQuantityChange={(units) => updateProduct(p.id, { quantity: units })}
                                 />
-                                <Text fontSize="xs" fontWeight="800" px={2}>{p.quantity}</Text>
-                                <IconButton
-                                  aria-label="Sumar"
-                                  icon={<Plus className="w-3 h-3" />}
-                                  size="xs"
-                                  onClick={() => updateProduct(p.id, { quantity: p.quantity + 1 })}
-                                />
+                              </VStack>
+                            </Box>>
                               </HStack>
                             </Box>
 

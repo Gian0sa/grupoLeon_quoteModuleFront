@@ -29,8 +29,8 @@ export const socket = io(SOCKET_URL, {
   autoConnect: true,
   reconnection: true,
   reconnectionAttempts: Infinity,
-  reconnectionDelay: 1500,
-  withCredentials: true,
+  reconnectionDelay: 2000,
+  withCredentials: false,
 });
 
 socket.on("connect", () => {

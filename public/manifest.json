@@ -1,0 +1,27 @@
+{
+  "name": "Autopartes S.A.",
+  "short_name": "Autopartes",
+  "lang": "es",
+  "description": "Sistema Móvil y Web de Cotizaciones, Visitas y Ventas de Autopartes S.A.",
+  "start_url": "/",
+  "id": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f4a25",
+  "theme_color": "#0f4a25",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/assets/LogoAutopartes.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

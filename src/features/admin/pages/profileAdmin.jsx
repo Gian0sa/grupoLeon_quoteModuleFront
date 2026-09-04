@@ -41,6 +41,7 @@ import {
   SimpleGrid,
   Tooltip
 } from "@chakra-ui/react";
+import { useNavigate } from "react-router-dom";
 import {
   Search,
   Edit3,
@@ -49,6 +50,7 @@ import {
   UserCheck,
   UserX,
   Users,
+  UserPlus,
   ShieldCheck,
   X,
   KeyRound,
@@ -65,6 +67,7 @@ import PermissionsTreeView from "../components/PermissionsTreeView";
 import UserBasicFields from "../components/UserBasicFields";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+import { socket } from "../../../shared/lib/socket";
 
 // Componente de tarjeta para vista móvil
 function UserMobileCard({ user, onEdit }) {
@@ -265,6 +268,7 @@ function ModernPagination({ currentPage, totalPages, onPageChange, pageSize, onP
 }
 
 export function ProfileAdmin() {
+  const navigate = useNavigate();
   const { data: users, isLoading, refetch: refetchUsers } = useGetAllUsersAdmin();
   const { data: services, isLoading: isLoadingServices } = useGetServices();
   const { updateProfileAdmin } = useAuthAdminMutations();
@@ -495,9 +499,21 @@ export function ProfileAdmin() {
     updateProfileAdmin.mutate(payload, {
       onSuccess: (data) => {
         console.log("✅ [ProfileAdmin] Guardado exitoso:", data);
+
+        // Emitir evento WebSocket en tiempo real para actualización inmediata sin recargar ni cerrar sesión
+        if (socket) {
+          const updatedEndpoints = data?.user?.endpoints || [];
+          socket.emit("user:permissions:updated", {
+            userId: payload.userId,
+            username: payload.username,
+            endpoints: updatedEndpoints,
+            permittedServices: payload.permittedServices,
+          });
+        }
+
         toast({
           title: "Cambios guardados exitosamente",
-          description: `El perfil y permisos de "${formData.username}" fueron actualizados.`,
+          description: `El perfil y permisos de "${formData.username}" fueron actualizados en tiempo real.`,
           status: "success",
           duration: 3000,
           isClosable: true,
@@ -711,6 +727,20 @@ export function ProfileAdmin() {
                 >
                   {filteredUsers.length} USUARIOS
                 </Badge>
+
+                <Button
+                  leftIcon={<UserPlus className="w-4 h-4" />}
+                  colorScheme="green"
+                  bg="#126C36"
+                  _hover={{ bg: "#0e572b" }}
+                  size="sm"
+                  borderRadius="xl"
+                  fontWeight="800"
+                  boxShadow="xs"
+                  onClick={() => navigate("/register")}
+                >
+                  Nuevo Usuario
+                </Button>
               </HStack>
             </Flex>
 

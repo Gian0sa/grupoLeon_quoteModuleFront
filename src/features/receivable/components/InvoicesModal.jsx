@@ -620,11 +620,27 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
                               >
                                 🏛️ N° Único: {numeroUnico || "Registrada SAP"}
                               </Badge>
-                              {(doc.ubicacion || doc.UBICACION) && (
-                                <Badge colorScheme="blue" variant="subtle" fontSize="9px" px={1.5} borderRadius="sm">
-                                  {doc.ubicacion || doc.UBICACION}
-                                </Badge>
-                              )}
+                              {(() => {
+                                const loc = String(doc.ubicacion || doc.UBICACION || "").trim().toUpperCase();
+                                if (!loc) return null;
+                                let label = loc;
+                                let color = "blue";
+                                if (loc === "VD" || loc === "0" || loc.includes("CARTERA")) {
+                                  label = "VD";
+                                  color = "blue";
+                                } else if (loc === "1" || loc.includes("BANCO") || loc.includes("COBRANZA")) {
+                                  label = "Banco";
+                                  color = "purple";
+                                } else if (loc === "2" || loc.includes("CUSTODIA")) {
+                                  label = "Custodia";
+                                  color = "teal";
+                                }
+                                return (
+                                  <Badge colorScheme={color} variant="subtle" fontSize="9px" px={1.5} borderRadius="sm" fontWeight="800">
+                                    {label}
+                                  </Badge>
+                                );
+                              })()}
                             </HStack>
                           )}
 

@@ -81,19 +81,22 @@ export const getOrderswithStatusReports = async ({
   estadopedido = '',
   page = 0,
   pageSize = 5,
+  search = '',
 }) => {
   try {
-
     const estado = estadopedido ? `'${estadopedido}'` : "''";
+
+    const params = {
+      pagina: page,
+      pageSize,
+    };
+    if (search && search.trim()) {
+      params.search = search.trim();
+    }
 
     const response = await axiosInstance.get(
       `/reportModule/orderswithStatus/${salesPersonCode}/${estado}`,
-      {
-        params: {
-          pagina: page,
-          pageSize,
-        }
-      }
+      { params }
     );
     return response.data;
   } catch (error) {

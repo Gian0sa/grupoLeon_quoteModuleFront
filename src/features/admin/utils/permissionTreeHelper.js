@@ -55,7 +55,33 @@ export function buildPermissionTree(services = []) {
     });
   });
 
-  return Array.from(categoriesMap.values());
+  const categoryOrder = [
+    "dashboard",
+    "cotizaciones",
+    "ventas",
+    "catálogo",
+    "visitas",
+    "asistencia",
+    "clientes",
+    "compras",
+    "admin",
+    "otros"
+  ];
+
+  const result = Array.from(categoriesMap.values()).map((cat) => ({
+    ...cat,
+    services: cat.services.sort((a, b) => a.displayName.localeCompare(b.displayName))
+  }));
+
+  return result.sort((a, b) => {
+    const idxA = categoryOrder.indexOf(a.key);
+    const idxB = categoryOrder.indexOf(b.key);
+
+    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+    if (idxA !== -1) return -1;
+    if (idxB !== -1) return 1;
+    return a.name.localeCompare(b.name);
+  });
 }
 
 /**

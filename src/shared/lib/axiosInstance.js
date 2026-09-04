@@ -24,12 +24,17 @@ const processQueue = (error, token = null) => {
 // Interceptor de respuesta
 axiosInstance.interceptors.response.use((res) => res, async (error) => {
     const originalRequest = error.config;
-    const status = error.response ?. status;
+    const status = error.response?.status;
     const isJwtAuthError = status === 401;
 
-    if (! originalRequest) 
+    if (!originalRequest) 
         return Promise.reject(error);
-    
+
+    // 🔹 Si el dispositivo está sin conexión (Offline), no intentar refresh ni forzar logout
+    const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
+    if (isOffline) {
+        return Promise.reject(error);
+    }
 
     let path = "";
     try {
@@ -39,40 +44,43 @@ axiosInstance.interceptors.response.use((res) => res, async (error) => {
         path = originalRequest.url;
     }
 
-    const isAuthRoute =["/authModule/login", "/authModule/refresh-token",].includes(path);
+    const isAuthRoute = ["/authModule/login", "/authModule/refresh-token"].includes(path);
+    const authStore = useAuthStore.getState();
 
+    // 🔹 Manejo de JWT expirada (solo en línea)
+    if (isJwtAuthError && !originalRequest._retry && !isAuthRoute) {
+        originalRequest._retry = true;
 
-const authStore = useAuthStore.getState();
-
-// 🔹 Manejo de JWT expirada
-if (isJwtAuthError && ! originalRequest._retry && ! isAuthRoute) {
-    originalRequest._retry = true;
-
-    if (isRefreshing) {
-        return new Promise((resolve, reject) => failedQueue.push({resolve, reject})).then(() => axiosInstance(originalRequest));
-    }
-
-    isRefreshing = true;
-    try {
-        await axiosInstance.post("/authModule/refresh-token", {}, {withCredentials: true});
-        processQueue(null);
-        return axiosInstance(originalRequest);
-    } catch (err) {
-        console.error("❌ JWT refresh failed:", err);
-        processQueue(err);
-
-        // 🔹 Logout automático
-        try {
-            await logoutUser(); // llama backend para limpiar cookies
-        } catch (logoutErr) {
-            console.warn("Logout backend failed", logoutErr);
+        if (isRefreshing) {
+            return new Promise((resolve, reject) => failedQueue.push({resolve, reject})).then(() => axiosInstance(originalRequest));
         }
-        authStore.logout(); // limpia Zustand + localStorage
 
-        return Promise.reject(err);
-    } finally {
-        isRefreshing = false;
+        isRefreshing = true;
+        try {
+            await axiosInstance.post("/authModule/refresh-token", {}, {withCredentials: true});
+            processQueue(null);
+            return axiosInstance(originalRequest);
+        } catch (err) {
+            console.error("❌ JWT refresh failed:", err);
+            processQueue(err);
+
+            // 🔹 Logout automático solo si el token expiró definitivamente en el servidor (401 / 403) estando ONLINE
+            const refreshStatus = err?.response?.status;
+            const stillOnline = typeof navigator !== "undefined" && navigator.onLine;
+            if (stillOnline && (refreshStatus === 401 || refreshStatus === 403)) {
+                try {
+                    await logoutUser(); // llama backend para limpiar cookies
+                } catch (logoutErr) {
+                    console.warn("Logout backend failed", logoutErr);
+                }
+                authStore.logout(); // limpia Zustand + localStorage
+            }
+
+            return Promise.reject(err);
+        } finally {
+            isRefreshing = false;
+        }
     }
-}
 
-return Promise.reject(error);});
+    return Promise.reject(error);
+});

@@ -20,6 +20,7 @@ import { useSyncQueueContext } from "../context/SyncQueueProvider";
 
 import { useDisclosure } from "@chakra-ui/react";
 import { NewClientModal } from "../components/NewClientModal";
+import { getLocation } from "../utils/deviceUtils";
 
 export default function VisitLogPage() {
     const { username, salesEmployeeCode } = useAuthStore();
@@ -86,6 +87,11 @@ export default function VisitLogPage() {
         image,
         existingImageData: clientImageData,
     });
+
+    useEffect(() => {
+        // Pre-calentar el GPS y solicitar permisos desde que el usuario entra a la pantalla
+        getLocation().catch(() => {});
+    }, []);
 
     useEffect(() => {
         if (hasActiveCheckIn && activeVisit && !selectedClient) {
@@ -183,6 +189,7 @@ export default function VisitLogPage() {
                                 existingImageData={clientImageData}
                                 isLoadingExistingImage={isLoadingClientImage}
                                 fileInputKey={fileInputKey}
+                                onResetImage={resetImage}
                             />
                         )}
 

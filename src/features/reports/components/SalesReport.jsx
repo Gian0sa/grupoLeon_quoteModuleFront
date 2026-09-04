@@ -1,4 +1,5 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useMemo } from "react";
+import { useDebounce } from "../../../shared/hooks/useDebounce";
 import {
   Box,
   Text,
@@ -13,9 +14,15 @@ import {
   Skeleton,
   HStack,
   VStack,
+  Badge,
+  Input,
+  InputGroup,
+  InputLeftElement,
+  InputRightElement,
+  IconButton,
 } from "@chakra-ui/react";
 import { useDisclosure } from "@chakra-ui/react";
-import { Filter, RefreshCw } from "lucide-react";
+import { Filter, RefreshCw, Search, X } from "lucide-react";
 
 import FiltersWithSummary from "./FilterWithSummary";
 import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
@@ -39,6 +46,8 @@ export default function SalespersonReports({ salespersonId }) {
   const hasAccess = useHasAccess();
   const { data: reglas = [] } = useRules();
 
+  const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearch = useDebounce(searchTerm, 300);
   const [estadoOrdenFiltro, setEstadoOrdenFiltro] = useState("");
   const [tempEstadoOrdenFiltro, setTempEstadoOrdenFiltro] = useState("");
 
@@ -46,7 +55,7 @@ export default function SalespersonReports({ salespersonId }) {
   const [tempEndDate, setTempEndDate] = useState(null);
 
   const [pagina, setPagina] = useState(1);
-  const porPagina = 6;
+  const porPagina = 12;
   const [ordenSeleccionada, setOrdenSeleccionada] = useState(null);
 
   const [startDate, setStartDate] = useState(null);
@@ -55,6 +64,12 @@ export default function SalespersonReports({ salespersonId }) {
   const [selectedSeller, setSelectedSeller] = useState(null);
   const dynamicSalespersonId = selectedSeller?.value ?? salespersonId ?? null;
 
+  // Resetear a página 1 cuando cambia la búsqueda
+  const handleSearchChange = (val) => {
+    setSearchTerm(val);
+    setPagina(1);
+  };
+
   const refreshQueries = [
     [
       QUERY_KEYS.orderswithStatusReports,
@@ -62,6 +77,7 @@ export default function SalespersonReports({ salespersonId }) {
       estadoOrdenFiltro || "",
       pagina - 1,
       porPagina,
+      debouncedSearch,
     ],
     [QUERY_KEYS.rules],
   ];
@@ -69,15 +85,20 @@ export default function SalespersonReports({ salespersonId }) {
   const {
     data: reportData,
     isLoading: reportLoading,
+    isFetching: reportFetching,
     error: reportError,
   } = useGetOrderswithStatusReports({
     salesPersonCode: dynamicSalespersonId || 0,
     estadopedido: estadoOrdenFiltro || "",
     page: pagina - 1,
     pageSize: porPagina,
+    search: debouncedSearch,
   });
 
-  const totalPaginas = reportData?.hasMore ? pagina + 1 : pagina;
+  // Los datos ya vienen filtrados por SAP en backend (por RUC, DNI, cliente o N° orden)
+  const filteredOrders = reportData?.data || [];
+
+  const totalPaginas = reportData?.hasMore ? pagina + 1 : Math.max(pagina, 1);
 
   const {
     isOpen: isDrawerOpen,
@@ -140,7 +161,7 @@ export default function SalespersonReports({ salespersonId }) {
         )}
       </TopHeaderBanner>
 
-      {/* CUERPO: FILTROS + GRILLA DE ÓRDENES */}
+      {/* CUERPO: FILTROS + BUSCADOR + GRILLA DE ÓRDENES */}
       <Box maxW="1200px" mx="auto" px={{ base: 3, md: 6 }}>
         <ActiveFilters
           estadoOrdenFiltro={estadoOrdenFiltro}
@@ -166,33 +187,94 @@ export default function SalespersonReports({ salespersonId }) {
           }}
         />
 
-        <Flex justify="space-between" align="center" py={3} mb={2}>
-          <HStack spacing={2}>
-            <Text textStyle="cardTitle" color="gray.800">
+        {/* BARRA SUPERIOR: Contador + Buscador Rápido + Botón Filtros */}
+        <Flex
+          direction={{ base: "column", md: "row" }}
+          justify="space-between"
+          align={{ base: "stretch", md: "center" }}
+          py={3}
+          mb={3}
+          gap={3}
+        >
+          <HStack spacing={2} minW="fit-content">
+            <Text textStyle="cardTitle" color="gray.800" fontWeight="800">
               Todas las órdenes
             </Text>
             {reportData?.data?.length > 0 && (
-              <Text fontSize="xs" bg="gray.100" px={2.5} py={0.5} borderRadius="full" fontWeight="700" color="gray.600">
-                {reportData.data.length} mostradas
-              </Text>
+              <Badge
+                bg={searchTerm ? "emerald.50" : "gray.100"}
+                color={searchTerm ? "emerald.700" : "gray.600"}
+                px={2.5}
+                py={0.5}
+                borderRadius="full"
+                fontWeight="800"
+                fontSize="xs"
+                border="1px solid"
+                borderColor={searchTerm ? "emerald.200" : "gray.200"}
+              >
+                {searchTerm
+                  ? `${filteredOrders.length} encontradas`
+                  : `${reportData.data.length} mostradas`}
+              </Badge>
             )}
           </HStack>
 
-          <Button
-            ref={btnRef}
-            leftIcon={<Filter size={16} />}
-            variant="outline"
-            size="sm"
-            colorScheme="green"
-            borderRadius="full"
-            fontWeight="700"
-            fontSize="12px"
-            onClick={openDrawer}
-            boxShadow="sm"
-            _hover={{ bg: "emerald.50" }}
-          >
-            Mostrar filtros
-          </Button>
+          {/* Buscador Rápido Multi-criterio */}
+          <Flex gap={2.5} align="center" flex={{ md: 1 }} justify={{ md: "flex-end" }} maxW={{ md: "520px" }}>
+            <InputGroup size="sm" flex={1}>
+              <InputLeftElement pointerEvents="none">
+                <Search size={15} color="#16a34a" />
+              </InputLeftElement>
+              <Input
+                value={searchTerm}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                placeholder="Buscar por cliente, RUC, DNI o N° orden (#19852)..."
+                bg="white"
+                borderRadius="full"
+                borderColor="gray.200"
+                fontSize="13px"
+                fontWeight="600"
+                boxShadow="xs"
+                _focus={{
+                  borderColor: "emerald.500",
+                  boxShadow: "0 0 0 2px rgba(16, 185, 129, 0.2)",
+                }}
+                _hover={{ borderColor: "gray.300" }}
+              />
+              {searchTerm && (
+                <InputRightElement>
+                  <IconButton
+                    size="xs"
+                    variant="ghost"
+                    borderRadius="full"
+                    icon={<X size={13} />}
+                    aria-label="Limpiar búsqueda"
+                    onClick={() => handleSearchChange("")}
+                    _hover={{ bg: "gray.100" }}
+                  />
+                </InputRightElement>
+              )}
+            </InputGroup>
+
+            <Button
+              ref={btnRef}
+              leftIcon={<Filter size={15} />}
+              variant="outline"
+              size="sm"
+              colorScheme="green"
+              borderRadius="full"
+              fontWeight="800"
+              fontSize="12px"
+              onClick={openDrawer}
+              boxShadow="xs"
+              bg="white"
+              px={3.5}
+              flexShrink={0}
+              _hover={{ bg: "emerald.50", borderColor: "emerald.400" }}
+            >
+              Filtros
+            </Button>
+          </Flex>
         </Flex>
 
         {/* DRAWER DE FILTROS */}
@@ -237,8 +319,13 @@ export default function SalespersonReports({ salespersonId }) {
           </DrawerContent>
         </Drawer>
 
-        {/* LISTA DE ÓRDENES */}
-        <OrdenesLista detalle={reportData?.data || []} onVerSeguimiento={abrirModal} />
+        {/* LISTA DE ÓRDENES FILTRADAS */}
+        <OrdenesLista
+          detalle={filteredOrders}
+          onVerSeguimiento={abrirModal}
+          searchTerm={searchTerm}
+          onClearSearch={() => handleSearchChange("")}
+        />
       </Box>
 
       {/* PAGINACIÓN */}

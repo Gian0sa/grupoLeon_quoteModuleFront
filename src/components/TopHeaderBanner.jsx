@@ -81,9 +81,10 @@ export function TopHeaderBanner({
           const serverIds = new Set(serverNotifs.map(s => String(s.id)));
           const serverQuoteIds = new Set(serverNotifs.map(s => String(s.quoteId)));
           const recentLocal = saved.filter(sn => {
-            const time = sn.createdAt ? new Date(sn.createdAt).getTime() : 0;
-            const isFresh = (now - time) < 30000;
-            return isFresh && !serverIds.has(String(sn.id)) && serverQuoteIds.has(String(sn.quoteId));
+            if (sn.read) return false;
+            const time = sn.createdAt || sn.timestamp ? new Date(sn.createdAt || sn.timestamp).getTime() : 0;
+            const isFresh = (now - time) < 15000;
+            return isFresh && !serverIds.has(String(sn.id)) && !serverQuoteIds.has(String(sn.quoteId));
           });
           combined = [...recentLocal, ...combined];
         }
@@ -95,8 +96,8 @@ export function TopHeaderBanner({
       } catch {}
     }
 
-    return combined.filter((n) => {
-      if (n.status === "ANULADO" || String(n.title || "").toLowerCase().includes("anulad")) {
+    const filtered = combined.filter((n) => {
+      if (n.status === "ANULADO" || String(n.title || "").toLowerCase().includes("anulad") || n.read) {
         return false;
       }
       if (n.targetUsername && username) {
@@ -109,7 +110,10 @@ export function TopHeaderBanner({
         return String(n.targetUserId) === String(userId);
       }
       return false;
-    }).filter((n) => !n.read).length;
+    });
+
+    const uniqueQuoteKeys = new Set(filtered.map(n => String(n.quoteId || n.id)));
+    return uniqueQuoteKeys.size;
   }, [serverNotifs, username, userId, role, localVersion]);
 
   const { data: exchangeRate, isLoading: isLoadingExchangeRate } = useExchangeRate(
@@ -220,8 +224,8 @@ export function TopHeaderBanner({
             {/* Badge Tipo de Cambio USD - Solo en vista principal / cuando se habilite */}
             {showExchangeRate && (
               <Box
-                bg="whiteAlpha.200"
-                backdropFilter="blur(12px)"
+                bg={{ base: "rgba(255, 255, 255, 0.22)", md: "whiteAlpha.200" }}
+                backdropFilter={{ base: "none", md: "blur(12px)" }}
                 border="1px solid rgba(255,255,255,0.25)"
                 borderRadius="full"
                 px={{ base: 3, sm: 4 }}
@@ -271,8 +275,8 @@ export function TopHeaderBanner({
 
           {/* Bloque de acciones del Dashboard: Recargar + Notificaciones + Menú Lateral */}
           <HStack
-            bg="rgba(255, 255, 255, 0.14)"
-            backdropFilter="blur(14px)"
+            bg={{ base: "rgba(255, 255, 255, 0.20)", md: "rgba(255, 255, 255, 0.14)" }}
+            backdropFilter={{ base: "none", md: "blur(14px)" }}
             border="1px solid rgba(255, 255, 255, 0.25)"
             borderRadius="full"
             py={{ base: 1.5, md: 2 }}

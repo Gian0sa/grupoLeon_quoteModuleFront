@@ -25,20 +25,31 @@ export const updateClient = async (client) => {
   return response.data;
 }
 
-export const fetchClientProductHistory = async ({ clientQuery, slpCode }) => {
-  console.log(clientQuery, slpCode);
-    const encodedEndpoint = `/reportModule/historyClient?clientQuery=${encodeURIComponent(clientQuery)}&slpCode=${slpCode}`;
-
-    const response = await axiosInstance.get(encodedEndpoint);
-    return response.data;
+export const fetchClientProductHistory = async (params = {}) => {
+    const clientQuery = typeof params === 'string' ? params : (params?.clientQuery || params?.code || params?.CardCode || "");
+    const slpCode = typeof params === 'object' ? (params?.slpCode || "") : "";
+    if (!clientQuery) return [];
+    try {
+        const encodedEndpoint = `/reportModule/historyClient?clientQuery=${encodeURIComponent(clientQuery)}&slpCode=${slpCode}`;
+        const response = await axiosInstance.get(encodedEndpoint);
+        return response.data || [];
+    } catch (err) {
+        console.warn("ℹ️ No se pudo obtener el historial del cliente:", err.message);
+        return [];
+    }
 }
 
-export const fetchClientProductHistoryAdmin = async ({ clientQuery }) => {
-    console.log(clientQuery);
-    const encodedEndpoint = `/reportModule/historyClientAdmin?clientQuery=${encodeURIComponent(clientQuery)}`;
-
-    const response = await axiosInstance.get(encodedEndpoint);
-    return response.data;
+export const fetchClientProductHistoryAdmin = async (params = {}) => {
+    const clientQuery = typeof params === 'string' ? params : (params?.clientQuery || params?.code || params?.CardCode || "");
+    if (!clientQuery) return [];
+    try {
+        const encodedEndpoint = `/reportModule/historyClientAdmin?clientQuery=${encodeURIComponent(clientQuery)}`;
+        const response = await axiosInstance.get(encodedEndpoint);
+        return response.data || [];
+    } catch (err) {
+        console.warn("ℹ️ No se pudo obtener el historial admin del cliente:", err.message);
+        return [];
+    }
 }
 
 export const fetchPriceListByItemCodes = async ({ itemCodes }) => {

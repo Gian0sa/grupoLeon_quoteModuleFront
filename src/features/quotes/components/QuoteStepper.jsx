@@ -6,7 +6,7 @@ export const STAGES = [
   { id: "GENERADO", label: "Borrador", icon: Check },
   { id: "ENVIADO", label: "Aprob. Comercial", icon: Send },
   { id: "PENDIENTE_FACTURACION", label: "Facturación", icon: Clock },
-  { id: "APROBADO", label: "Pedido Emitido", icon: CheckCircle2 }
+  { id: "APROBADO", label: "Pedido Aprobado", icon: CheckCircle2 }
 ];
 
 export function getStageIndex(status) {

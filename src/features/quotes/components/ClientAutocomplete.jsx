@@ -5,6 +5,7 @@ import {
 import { FiSearch, FiX, FiCheckCircle } from "react-icons/fi";
 import { useClientQueries, useClientQueriesByName } from "../../clients/hooks/queries/clientQueries";
 import { adaptClientFromApi } from "../../clients/adapters/clientAdapter";
+import { fetchClientByCode } from "../../clients/services/clientService";
 import { axiosInstance } from "../../../shared/lib/axiosInstance";
 import { useDebounce } from "../../../shared/hooks/useDebounce";
 import { normalizeQuoteClient } from "../stores/quoteStore";
@@ -70,7 +71,7 @@ export default function ClientAutocomplete({ client, setClient }) {
       const cleanTerm = searchTerm.replace(/^CL/i, "").trim();
 
       axiosInstance
-        .get(`/reportModule/accounts-receivable/v2/grouped?clientName=${encodeURIComponent(cleanTerm)}`)
+        .get(`/reportModule/accountsReceivable?clientName=${encodeURIComponent(cleanTerm)}`)
         .then((res) => {
           if (!isMounted) return;
           const list = res.data?.clients?.clients || res.data?.clients || res.data || [];
@@ -120,21 +121,45 @@ export default function ClientAutocomplete({ client, setClient }) {
     if (e.key === "Enter") triggerSearch();
   };
 
-  const handleSelectClient = (clientData) => {
+  const handleSelectClient = async (clientData) => {
     const adapted = adaptClientFromApi(clientData);
-    const normalizedClient = normalizeQuoteClient({
+    const cardCode = adapted.id || clientData.CardCode || clientData.cardCode;
+
+    // Asignación inmediata para feedback visual rápido
+    const initialClient = normalizeQuoteClient({
       ...clientData,
-      CardCode: adapted.id || clientData.CardCode || clientData.cardCode,
+      CardCode: cardCode,
       CardName: adapted.firstName || clientData.CardName || clientData.clientName,
       Address: adapted.address || clientData.Address || clientData.address,
       raw: clientData,
     });
 
-    setClient(normalizedClient);
-
+    setClient(initialClient);
     setSearchTerm("");
     setSearchInput("");
     setFallbackResults([]);
+
+    // Cargar la ficha completa de SAP por CardCode para obtener ContactEmployees, ContactPerson y BPAddresses
+    if (cardCode) {
+      try {
+        const fullSapData = await fetchClientByCode(cardCode);
+        if (fullSapData) {
+          const fullAdapted = adaptClientFromApi(fullSapData);
+          const fullNormalizedClient = normalizeQuoteClient({
+            ...fullSapData,
+            CardCode: fullAdapted.id || fullSapData.CardCode || cardCode,
+            CardName: fullAdapted.firstName || fullSapData.CardName || initialClient.CardName,
+            Address: fullAdapted.address || fullSapData.Address || initialClient.Address,
+            ContactEmployees: fullSapData.ContactEmployees || fullAdapted.contactEmployees || [],
+            ContactPerson: fullSapData.ContactPerson || fullAdapted.contactPerson || null,
+            raw: fullSapData,
+          });
+          setClient(fullNormalizedClient);
+        }
+      } catch (err) {
+        console.warn("No se pudieron cargar detalles adicionales de SAP:", err);
+      }
+    }
   };
 
   const handleClear = () => {
@@ -205,7 +230,7 @@ export default function ClientAutocomplete({ client, setClient }) {
 
   // 2. BUSCADOR ÚNICO INTELIGENTE SAP (Diseño Compacto y Elegante)
   return (
-    <Box w="full" maxW={{ base: "full", md: "560px" }}>
+    <Box w="full">
       <Box p={2.5} bg="#f0fdf4" borderRadius="lg" border="1.5px dashed #86efac">
         <Box fontSize="11px" fontWeight="900" color="#166534" mb={1} letterSpacing="wider" textTransform="uppercase">
           🔍 Búsqueda Inteligente de Cliente SAP
@@ -227,27 +252,30 @@ export default function ClientAutocomplete({ client, setClient }) {
           />
           <Button
             size="sm"
-            colorScheme="green"
             bg="#0d6334"
+            color="white"
             _hover={{ bg: "#166534" }}
+            _active={{ bg: "#14532d" }}
             px={3.5}
             onClick={triggerSearch}
-            isLoading={isSearching}
-            leftIcon={<FiSearch />}
+            leftIcon={isSearching ? <Spinner size="xs" color="white" speed="0.6s" /> : <FiSearch size={14} />}
             fontSize="xs"
             fontWeight="800"
             flexShrink={0}
+            boxShadow="sm"
           >
             Buscar
           </Button>
         </Flex>
       </Box>
 
-      {/* ESTADO DE CARGA */}
+      {/* INDICADOR DE BÚSQUEDA EN CURSO */}
       {isSearching && (
-        <Flex justify="center" py={4} bg="white" mt={2} borderRadius="md" shadow="sm">
-          <Spinner color="emerald.600" size="sm" />
-          <Text fontSize="xs" color="gray.600" ml={2}>Consultando socio de negocio en SAP...</Text>
+        <Flex align="center" gap={2} mt={1.5} px={2} py={1.5} bg="emerald.50" borderRadius="md" border="1px solid" borderColor="emerald.200">
+          <Spinner color="#16a34a" size="xs" speed="0.6s" />
+          <Text fontSize="11px" color="#166534" fontWeight="700">
+            Consultando "{searchInput}" en SAP Business One...
+          </Text>
         </Flex>
       )}
 
@@ -318,9 +346,16 @@ export default function ClientAutocomplete({ client, setClient }) {
                   <Text fontWeight="700" fontSize="xs" color="emerald.900" isTruncated maxW="240px">
                     {cardName}
                   </Text>
-                  <Badge colorScheme="emerald" fontSize="0.65rem">
-                    {cardCode}
-                  </Badge>
+                  <HStack spacing={1}>
+                    {clientData.FederalTaxID && (
+                      <Badge colorScheme="purple" fontSize="0.65rem">
+                        {clientData.FederalTaxID}
+                      </Badge>
+                    )}
+                    <Badge colorScheme="emerald" fontSize="0.65rem">
+                      {cardCode}
+                    </Badge>
+                  </HStack>
                 </HStack>
                 <Text fontSize="0.7rem" color="gray.500" isTruncated>
                   {address}

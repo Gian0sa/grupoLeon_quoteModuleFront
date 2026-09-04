@@ -55,6 +55,9 @@ export function parsePackagingUnit(itemName, sigla, raw) {
       raw.NumInSale ||
       raw.salPackUn ||
       raw.U_BPP_CANTEMPAQUE ||
+      raw.U_Empaque ||
+      raw.U_CANT_EMPAQUE ||
+      raw.U_PAQUETE ||
       0
     );
     if (rawVal > 1 && rawVal <= 999) {
@@ -71,7 +74,8 @@ export function parsePackagingUnit(itemName, sigla, raw) {
     raw?.Dscription,
     raw?.SIGLA,
     raw?.Sigla,
-    raw?.description
+    raw?.description,
+    raw?.U_Empaque
   ].filter(Boolean);
   
   for (const source of sources) {
@@ -91,15 +95,30 @@ export function parsePackagingUnit(itemName, sigla, raw) {
 }
 
 /**
+ * Extrae el porcentaje de descuento máximo de un artículo SAP si está disponible.
+ * 
+ * @param {object} raw - Datos del producto de SAP
+ * @returns {number|null} Porcentaje máximo de descuento o null si no se especifica
+ */
+export function extractMaxDiscount(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const val = Number(
+    raw.U_DescMax ||
+    raw.U_BPP_CDIS ||
+    raw.MaxDiscount ||
+    raw.maxDiscount ||
+    raw.U_MAX_DISCOUNT ||
+    0
+  );
+  return val > 0 ? val : null;
+}
+
+/**
  * Convierte cantidad de cajas a unidades individuales.
  * 
  * @param {number} boxes - Número de cajas
  * @param {number} factor - Unidades por caja
  * @returns {number} Total en unidades
- * 
- * @example
- * boxesToUnits(3, 6)   // → 18
- * boxesToUnits(2, 12)  // → 24
  */
 export function boxesToUnits(boxes, factor) {
   const b = Math.max(0, Math.floor(Number(boxes) || 0));
@@ -113,10 +132,6 @@ export function boxesToUnits(boxes, factor) {
  * @param {number} units - Total de unidades
  * @param {number} factor - Unidades por caja
  * @returns {{ boxes: number, remainder: number }} Cajas completas + unidades sueltas
- * 
- * @example
- * unitsToBoxes(20, 6)  // → { boxes: 3, remainder: 2 }
- * unitsToBoxes(24, 12) // → { boxes: 2, remainder: 0 }
  */
 export function unitsToBoxes(units, factor) {
   const u = Math.max(0, Number(units) || 0);
@@ -131,10 +146,10 @@ export function unitsToBoxes(units, factor) {
  * Genera la etiqueta visual para el badge de empaque.
  * 
  * @param {number} factor - Factor de empaque
- * @returns {string} Etiqueta legible (ej. "CJ×6", "CJ×12", "Und")
+ * @returns {string} Etiqueta legible (ej. "CJ×6", "CJ×12", "UND")
  */
 export function getPackagingLabel(factor) {
   const f = Number(factor) || 1;
-  if (f <= 1) return "Und";
+  if (f <= 1) return "UND";
   return `CJ\u00d7${f}`;
 }

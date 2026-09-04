@@ -5,6 +5,8 @@ import {
     getTransports,
     getPaymentType,
     getDeliveryForms,
+    getWarehouses,
+    getHouseBankAccounts,
     getNotifications,
 } from "../../services/quoteService"
 import { useQuery } from "@tanstack/react-query"
@@ -13,10 +15,10 @@ export const useGetQuotes = (filters = {}) => {
     const query = useQuery({
         queryKey: ["quotes", filters],
         queryFn: () => getQuotes(filters),
-        refetchInterval: 5000, // Live poll every 5 seconds for real-time multi-user sync
+        staleTime: 30000, // 30 segundos de caché; Socket.io actualiza instantáneamente con cero delay
         refetchOnWindowFocus: true,
     })
-    return { ...query, data: query.data || [], isLoading: query.isLoading, error: query.error }
+    return { ...query, data: query.data || [], isLoading: query.isLoading, isFetching: query.isFetching, error: query.error }
 }
 
 export const useQuotes = useGetQuotes;
@@ -25,10 +27,11 @@ export const useNotifications = (targetRole, targetUsername) => {
     const query = useQuery({
         queryKey: ["notifications", targetRole, targetUsername],
         queryFn: () => getNotifications(targetRole, targetUsername),
-        refetchInterval: 5000, // Live poll every 5 seconds
+        staleTime: 0,
+        refetchOnMount: "always",
         refetchOnWindowFocus: true,
     })
-    return { ...query, data: query.data || [], isLoading: query.isLoading, error: query.error }
+    return { ...query, data: query.data || [], isLoading: query.isLoading, isFetching: query.isFetching, error: query.error }
 }
 
 export const useGetQuoteById = (id) => {
@@ -36,7 +39,9 @@ export const useGetQuoteById = (id) => {
         queryKey: ["quoteById", id],
         queryFn:  () => getQuoteById(id),
         enabled: !!id,
-        refetchInterval: 5000,
+        staleTime: 0,
+        refetchOnMount: "always",
+        retry: false,
     })
     return { data, isLoading, error }
 }
@@ -72,18 +77,39 @@ export const useGetDeliveryForms = () => {
 }
 
 export const useGetWarehouses = () => {
-    return { warehouses: [], isLoading: false };
+    const { data, isLoading, error } = useQuery({
+        queryKey: ["warehouses"],
+        queryFn: () => getWarehouses(),
+    })
+    return { warehouses: data || [], isLoading, error };
+};
+
+export const useGetHouseBankAccounts = () => {
+    const { data, isLoading, error } = useQuery({
+        queryKey: ["houseBankAccounts"],
+        queryFn: () => getHouseBankAccounts(),
+    })
+    return { dataHouseBankAccounts: data || [], isLoading, error };
 };
 
 export const useIgvRate = () => {
     return { igvRate: 0.18, isLoading: false };
 };
 
-// export const useGetExchangeRate = () => {
-//     const { data, isLoading, error } = useQuery({
-//         queryKey: ["ExchangeRatio"],
-//         queryFn: () => getDeliveryForms(),
-//     })
-//     return { dataDeliveryForms: data, isLoadingDeliveryForms: isLoading, errorDeliveryForms: error }
+import { fetchActivePromotions } from "../../services/promotionService";
 
-// }
+export const useGetPromotions = () => {
+    const { data, isLoading, isFetching, refetch } = useQuery({
+        queryKey: ["productPromotions"],
+        queryFn: fetchActivePromotions,
+        staleTime: 60000,
+        refetchOnWindowFocus: true,
+    });
+    return {
+        promotions: data?.list || [],
+        promotionsMap: data?.map || {},
+        isLoading,
+        isFetching,
+        refetch,
+    };
+};
