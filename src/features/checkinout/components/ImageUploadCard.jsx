@@ -13,6 +13,7 @@ import {
     useColorModeValue,
     useDisclosure,
 } from "@chakra-ui/react";
+import { useRef } from "react";
 import { FiCamera, FiClock, FiMaximize2, FiTrash2 } from "react-icons/fi";
 
 export function ImageUploadCard({
@@ -29,6 +30,7 @@ export function ImageUploadCard({
     const { isOpen, onOpen, onClose } = useDisclosure();
     const cardBg = useColorModeValue("white", "gray.800");
     const borderColor = useColorModeValue("gray.100", "gray.700");
+    const fileInputRef = useRef(null);
 
     return (
         <Box
@@ -140,43 +142,64 @@ export function ImageUploadCard({
                 </Box>
             )}
 
-            {/* Botón único de Carga / Captura de Fotografía */}
             <Button
                 as="label"
-                htmlFor={`file-input-${fileInputKey}`}
-                w="full"
-                bg="green.50"
-                color="green.800"
+                htmlFor="file-input"
+                onClick={() => fileInputRef.current?.click()}
+                bg="gray.50"
+                color="gray.700"
                 border="1.5px dashed"
-                borderColor="green.300"
-                h="50px"
+                borderColor="gray.300"
+                width="100%"
+                h="52px"
                 borderRadius="xl"
-                fontSize="xs"
-                fontWeight="800"
+                fontSize="sm"
+                fontWeight="700"
                 cursor="pointer"
-                leftIcon={<Icon as={FiCamera} boxSize={4} color="green.600" />}
+                leftIcon={
+                    <Flex
+                        w="30px"
+                        h="30px"
+                        borderRadius="lg"
+                        bg="white"
+                        align="center"
+                        justify="center"
+                        border="1px solid"
+                        borderColor="gray.200"
+                        boxShadow="0 2px 5px rgba(0,0,0,0.05)"
+                    >
+                        <Icon as={FiCamera} color="gray.600" boxSize={4} />
+                    </Flex>
+                }
                 _hover={{
-                    bg: "green.100",
+                    bg: "gray.100",
                     borderColor: "green.500",
+                    color: "green.800",
                     transform: "translateY(-1px)",
                 }}
                 transition="all 0.2s"
                 isLoading={isProcessingImage}
                 loadingText="Procesando..."
-                justifyContent="center"
             >
-                {image ? "Cambiar Fotografía" : "Tomar / Subir Fotografía"}
+                {image ? "Cambiar Fotografía" : hasExistingImage ? "Actualizar Fotografía" : "Tomar / Subir Fotografía"}
             </Button>
 
-            {/* Input Oculto Único */}
             <Input
-                key={fileInputKey}
+                ref={fileInputRef}
                 type="file"
-                id={`file-input-${fileInputKey}`}
+                id="file-input"
+                key={fileInputKey}
                 accept="image/*"
+                capture="environment"
                 onChange={onImageChange}
                 display="none"
             />
+
+            {image && (
+                <Text fontSize="xs" color="gray.500" mt={2} textAlign="center">
+                    Tamaño: {(image.size / 1024).toFixed(2)} KB
+                </Text>
+            )}
 
             {/* Modal para ver imagen completa */}
             {hasExistingImage && (

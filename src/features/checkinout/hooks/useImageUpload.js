@@ -58,6 +58,10 @@ export function useImageUpload() {
                 duration: 4000,
                 isClosable: true,
             });
+        } finally {
+            if (e.target) {
+                e.target.value = "";
+            }
         }
     }, [toast, setPreviewFromFile]);
 

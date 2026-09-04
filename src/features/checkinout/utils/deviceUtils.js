@@ -45,50 +45,58 @@ const canvasToBlob = (canvas, quality) =>
     });
 
 export const compressImage = async (file, maxSizeMB = 1) => {
-    const { source, release } = await decodeImage(file);
-    let canvas;
-
     try {
-        const naturalW = source.width;
-        const naturalH = source.height;
-        const scale = Math.min(1, MAX_DIMENSION / Math.max(naturalW, naturalH));
-        const width = Math.round(naturalW * scale);
-        const height = Math.round(naturalH * scale);
+        const { source, release } = await decodeImage(file);
+        let canvas;
 
-        canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        canvas.getContext("2d").drawImage(source, 0, 0, width, height);
+        try {
+            const naturalW = source.width;
+            const naturalH = source.height;
+            const scale = Math.min(1, MAX_DIMENSION / Math.max(naturalW, naturalH));
+            const width = Math.round(naturalW * scale);
+            const height = Math.round(naturalH * scale);
 
-        // Dos pasadas en lugar del bucle recursivo anterior (que podía re-codificar
-        // el canvas hasta 8 veces y congelaba el teléfono). Si la primera excede
-        // el objetivo, la segunda ajusta la calidad por proporción.
-        let blob = await canvasToBlob(canvas, 0.72);
-        const maxBytes = maxSizeMB * 1024 * 1024;
+            canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+            canvas.getContext("2d").drawImage(source, 0, 0, width, height);
 
-        if (blob.size > maxBytes) {
-            const ratio = maxBytes / blob.size;
-            const quality = Math.min(0.7, Math.max(0.35, 0.72 * Math.sqrt(ratio)));
-            const retry = await canvasToBlob(canvas, quality);
-            if (retry.size < blob.size) blob = retry;
+            // Dos pasadas en lugar del bucle recursivo anterior (que podía re-codificar
+            // el canvas hasta 8 veces y congelaba el teléfono). Si la primera excede
+            // el objetivo, la segunda ajusta la calidad por proporción.
+            let blob = await canvasToBlob(canvas, 0.72);
+            const maxBytes = maxSizeMB * 1024 * 1024;
+
+            if (blob.size > maxBytes) {
+                const ratio = maxBytes / blob.size;
+                const quality = Math.min(0.7, Math.max(0.35, 0.72 * Math.sqrt(ratio)));
+                const retry = await canvasToBlob(canvas, quality);
+                if (retry.size < blob.size) blob = retry;
+            }
+
+            console.log(
+                `Imagen comprimida: ${(file.size / 1024 / 1024).toFixed(2)}MB → ${(blob.size / 1024 / 1024).toFixed(2)}MB (${width}x${height})`
+            );
+
+            const rawName = file?.name || `foto_checkin_${Date.now()}.jpg`;
+            const safeName = rawName.replace(/\.[^.]+$/, "") + ".jpg";
+
+            return new File([blob], safeName, {
+                type: "image/jpeg",
+                lastModified: Date.now(),
+            });
+        } finally {
+            // Liberar explícitamente: en móviles el GC llega tarde y la siguiente
+            // foto arrancaría con la memoria ya comprometida.
+            release?.(source);
+            if (canvas) {
+                canvas.width = 0;
+                canvas.height = 0;
+            }
         }
-
-        console.log(
-            `Imagen comprimida: ${(file.size / 1024 / 1024).toFixed(2)}MB → ${(blob.size / 1024 / 1024).toFixed(2)}MB (${width}x${height})`
-        );
-
-        return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", {
-            type: "image/jpeg",
-            lastModified: Date.now(),
-        });
-    } finally {
-        // Liberar explícitamente: en móviles el GC llega tarde y la siguiente
-        // foto arrancaría con la memoria ya comprometida.
-        release?.(source);
-        if (canvas) {
-            canvas.width = 0;
-            canvas.height = 0;
-        }
+    } catch (compressionError) {
+        console.warn("⚠️ No se pudo comprimir la imagen en canvas, usando archivo original como respaldo:", compressionError);
+        return file;
     }
 };
 
