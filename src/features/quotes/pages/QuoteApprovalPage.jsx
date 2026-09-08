@@ -2146,15 +2146,15 @@ export function QuoteApprovalPage() {
         )}
 
         {/* TABLA PRINCIPAL OPTIMIZADA CON ALTO CONTRASTE (solo escritorio) */}
-        <Box display={{ base: "none", lg: "block" }} bg="white" borderRadius="2xl" border="1.5px solid" borderColor="#cbd5e1" boxShadow="sm" overflow="hidden" width="100%">
-          <Table variant="simple" size="md" style={{ tableLayout: "fixed", width: "100%" }}>
+        <Box display={{ base: "none", lg: "block" }} bg="white" borderRadius="2xl" border="1.5px solid" borderColor="#cbd5e1" boxShadow="sm" overflowX="auto" overflowY="hidden" width="100%">
+          <Table variant="simple" size="md" style={{ tableLayout: "fixed", width: "100%", minWidth: "960px" }}>
             <Thead bg="#0e572b">
               <Tr>
-                <Th py={4} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" width="26%">DOCUMENTO Y CLIENTE</Th>
-                <Th fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" width="11%">FECHA</Th>
-                <Th fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="right" width="11%">TOTAL (USD)</Th>
-                <Th fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="center" width="16%">ESTADO DE APROBACIÓN</Th>
-                <Th fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="right" width="36%">ACCIONES DISPONIBLES</Th>
+                <Th py={4} px={4} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" width="34%">DOCUMENTO Y CLIENTE</Th>
+                <Th py={4} px={3} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" width="13%" whiteSpace="nowrap">FECHA</Th>
+                <Th py={4} px={3} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="right" width="11%" whiteSpace="nowrap">TOTAL (USD)</Th>
+                <Th py={4} px={3} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="center" width="17%" whiteSpace="nowrap">ESTADO DE APROBACIÓN</Th>
+                <Th py={4} px={4} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="right" width="25%">ACCIONES DISPONIBLES</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -2172,23 +2172,23 @@ export function QuoteApprovalPage() {
                   </Tr>
                   {[1, 2, 3, 4, 5].map((idx) => (
                     <Tr key={`skeleton-row-${idx}`} borderBottom="1px solid" borderColor="#e2e8f0" _hover={{ bg: "gray.50" }}>
-                      <Td py={3.5}>
+                      <Td py={3.5} px={4}>
                         <VStack align="flex-start" spacing={1.5}>
                           <Skeleton height="14px" width="120px" borderRadius="md" startColor="gray.100" endColor="green.100" speed={1.1} />
                           <Skeleton height="18px" width="240px" borderRadius="md" startColor="gray.100" endColor="green.100" speed={1.1} />
                           <Skeleton height="12px" width="90px" borderRadius="md" startColor="gray.100" endColor="green.100" speed={1.1} />
                         </VStack>
                       </Td>
-                      <Td py={3.5}>
+                      <Td py={3.5} px={3}>
                         <Skeleton height="14px" width="80px" borderRadius="md" startColor="gray.100" endColor="green.100" speed={1.1} />
                       </Td>
-                      <Td py={3.5} textAlign="right">
+                      <Td py={3.5} px={3} textAlign="right">
                         <Skeleton height="16px" width="70px" borderRadius="md" ml="auto" startColor="gray.100" endColor="green.100" speed={1.1} />
                       </Td>
-                      <Td py={3.5} textAlign="center">
+                      <Td py={3.5} px={3} textAlign="center">
                         <Skeleton height="24px" width="130px" borderRadius="full" mx="auto" startColor="gray.100" endColor="green.100" speed={1.1} />
                       </Td>
-                      <Td py={3.5} textAlign="right">
+                      <Td py={3.5} px={4} textAlign="right">
                         <HStack justify="flex-end" spacing={2}>
                           <Skeleton height="30px" width="75px" borderRadius="lg" startColor="gray.100" endColor="green.100" speed={1.1} />
                           <Skeleton height="30px" width="55px" borderRadius="lg" startColor="gray.100" endColor="green.100" speed={1.1} />
@@ -2231,8 +2231,8 @@ export function QuoteApprovalPage() {
                       borderColor="#e2e8f0"
                     >
                       {/* Documento, Cliente y Vendedor consolidado */}
-                      <Td py={3}>
-                        <VStack align="flex-start" spacing={1}>
+                      <Td py={3} px={4} maxW="0">
+                        <VStack align="flex-start" spacing={1} maxW="full" w="full">
                           <HStack spacing={2} align="center" wrap="wrap">
                             <Text fontSize="sm" fontWeight="950" color="#0e572b" fontFamily="mono">{docId}</Text>
                             {!isDraftState(status) && sapDocNum && (
@@ -2247,7 +2247,16 @@ export function QuoteApprovalPage() {
                               </Badge>
                             )}
                           </HStack>
-                          <Text fontWeight="900" color="#0f172a" fontSize="sm" lineHeight="tight" isTruncated maxW="380px" title={clientName}>
+                          <Text
+                            fontWeight="900"
+                            color="#0f172a"
+                            fontSize="sm"
+                            lineHeight="short"
+                            maxW="full"
+                            w="full"
+                            wordBreak="break-word"
+                            title={clientName}
+                          >
                             {clientName}
                           </Text>
                           <HStack spacing={2} wrap="wrap">
@@ -2264,24 +2273,24 @@ export function QuoteApprovalPage() {
                       </Td>
 
                       {/* Fecha */}
-                      <Td fontSize="sm" color="gray.850" fontWeight="800" py={3}>
-                        {q.docDate || (q.createdAt ? q.createdAt.split("T")[0] : "—")}
+                      <Td fontSize="sm" color="gray.850" fontWeight="800" py={3} px={3} whiteSpace="nowrap">
+                        {q.docDate ? String(q.docDate).split("T")[0] : (q.createdAt ? String(q.createdAt).split("T")[0] : "—")}
                       </Td>
 
                       {/* Total */}
-                      <Td textAlign="right" fontWeight="900" color="#0f172a" fontFamily="mono" fontSize="sm" py={3}>
+                      <Td textAlign="right" fontWeight="900" color="#0f172a" fontFamily="mono" fontSize="sm" py={3} px={3} whiteSpace="nowrap">
                         ${grandTotalUSD.toFixed(2)}
                       </Td>
 
                       {/* Píldora de Estado */}
-                      <Td textAlign="center" py={3}>
+                      <Td textAlign="center" py={3} px={3} whiteSpace="nowrap">
                         <Flex justify="center">
                           {renderStatusBadge(status, q)}
                         </Flex>
                       </Td>
 
                       {/* Acciones */}
-                      <Td textAlign="right" py={3}>
+                      <Td textAlign="right" py={3} px={4} whiteSpace="nowrap">
                         <HStack justify="flex-end" spacing={2.5}>
                           {renderRowActions(q, docId, status)}
                         </HStack>

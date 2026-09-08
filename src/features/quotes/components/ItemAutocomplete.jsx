@@ -142,6 +142,12 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
           if (!r) return option.label;
           const stock = Number(r.STOCK_DISPONIBLE) || 0;
           const promo = promotionsMap ? promotionsMap[r.ITEM_CODE] : null;
+          let promoUrgency = "";
+          if (promo?.validUntil) {
+            const diffDays = Math.ceil((new Date(promo.validUntil).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+            if (diffDays <= 0) promoUrgency = " • ¡Hoy!";
+            else if (diffDays <= 3) promoUrgency = ` • ¡${diffDays}d!`;
+          }
           return (
             <Box>
               <Flex justify="space-between" align="center">
@@ -150,7 +156,7 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
                 </Text>
                 {promo && (
                   <Badge bg="amber.400" color="amber.950" fontSize="0.65rem" px={1.5} py={0.2} borderRadius="md" fontWeight="900" flexShrink={0} ml={2}>
-                    🏷️ OFERTA: -{promo.discountPct}%
+                    🏷️ OFERTA: -{promo.discountPct}%{promoUrgency}
                   </Badge>
                 )}
               </Flex>

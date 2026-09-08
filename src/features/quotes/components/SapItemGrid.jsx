@@ -181,7 +181,7 @@ export default function SapItemGrid({
                       <Box w="full" bg="#fffbeb" border="1px dashed #f59e0b" p={1.5} borderRadius="md" mt={1.5}>
                         <Flex justify="space-between" align="center" wrap="wrap" gap={1}>
                           <Badge bg="amber.400" color="amber.950" fontSize="10px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
-                            🏷️ OFERTA DEL MES: -{promoDisc}% EXTRA
+                            🏷️ {(item.campaignName || "OFERTA DEL MES").toUpperCase()}: -{promoDisc}% EXTRA
                           </Badge>
                           <Text fontSize="10px" color="gray.600">
                             P. Reg: <Text as="s">${price.toFixed(2)}</Text> ➔ Oferta: <strong style={{ color: "#b45309" }}>${(price * (1 - (sapDisc + promoDisc) / 100)).toFixed(2)}</strong>
@@ -384,7 +384,7 @@ export default function SapItemGrid({
                             <Box bg="#fffbeb" border="1px dashed #f59e0b" p={1.5} borderRadius="md" mt={1} maxW="380px">
                               <Flex justify="space-between" align="center" gap={1.5}>
                                 <Badge bg="amber.400" color="amber.950" fontSize="9px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
-                                  🏷️ OFERTA DEL MES: -{promoDisc}% EXTRA
+                                  🏷️ {(item.campaignName || "OFERTA DEL MES").toUpperCase()}: -{promoDisc}% EXTRA
                                 </Badge>
                                 <Text fontSize="10px" color="gray.600">
                                   P. Reg: <Text as="s">${price.toFixed(2)}</Text> ➔ Oferta: <strong style={{ color: "#b45309" }}>${(price * (1 - (sapDisc + promoDisc) / 100)).toFixed(2)}</strong>

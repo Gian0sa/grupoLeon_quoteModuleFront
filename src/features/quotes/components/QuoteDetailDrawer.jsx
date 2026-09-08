@@ -2675,7 +2675,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                 </Text>
                                 {promoDisc > 0 && (
                                   <Badge bg="amber.400" color="amber.950" fontSize="9px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
-                                    🏷️ OFERTA DEL MES: -{promoDisc}% EXTRA
+                                    🏷️ {(item.campaignName || "OFERTA DEL MES").toUpperCase()}: -{promoDisc}% EXTRA
                                   </Badge>
                                 )}
                                 {isVolume && (
@@ -2763,7 +2763,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                       <Text>{item.description || item.ItemDescription || item.name || "Artículo"}</Text>
                                       {promoDisc > 0 && (
                                         <Badge bg="amber.400" color="amber.950" fontSize="9px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
-                                          🏷️ OFERTA DEL MES: -{promoDisc}% EXTRA
+                                          🏷️ {(item.campaignName || "OFERTA DEL MES").toUpperCase()}: -{promoDisc}% EXTRA
                                         </Badge>
                                       )}
                                       {isVolume && (
