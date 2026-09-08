@@ -384,8 +384,19 @@ export function QuoteApprovalPage() {
         if (isPhantom) return false;
         const qStatus = String(q.approvalStatus || q.state || q.status || "").toUpperCase().trim();
         const isEmitted = Boolean(q.sapDocNum || q.DocNum || q.isSapDirect || q.totals?.sapDocNum || q.totals?.DocNum || q.totals?.isSapDirect || qStatus === "EMITIDO" || qStatus === "PEDIDO_EMITIDO");
-        const isAlreadyInSapDoc = ["COT-019836", "COT-019838", "COT-019841"].includes(String(q.docNumber || ""));
-        if (isEmitted || isAlreadyInSapDoc) {
+        // Purgar borradores locales viejos cuyos números ya hayan sido tomados oficialmente en SAP por otros clientes
+        const isTakenInServer = Array.isArray(serverQuotes) && serverQuotes.some(sq => {
+          const sqDoc = String(sq.docNumber || sq.id || "").toUpperCase().trim();
+          const qDoc = String(q.docNumber || q.id || "").toUpperCase().trim();
+          const sqIsOfficial = sq.isSapDirect || Boolean(sq.sapDocNum && Number(sq.sapDocNum) > 0) || sq.approvalStatus === "APROBADO" || sq.approvalStatus === "EMITIDO";
+          if (!sqIsOfficial || sqDoc !== qDoc) return false;
+
+          const sqClient = String(sq.clientDocument || sq.clientRuc || sq.clientName || "").toUpperCase().trim();
+          const qClient = String(q.clientDocument || q.clientRuc || q.clientName || "").toUpperCase().trim();
+          return sqClient && qClient && !sqClient.includes(qClient) && !qClient.includes(sqClient);
+        });
+
+        if (isEmitted || isTakenInServer) {
           hadChanges = true;
           return false;
         }
@@ -2224,7 +2235,7 @@ export function QuoteApprovalPage() {
                         <VStack align="flex-start" spacing={1}>
                           <HStack spacing={2} align="center" wrap="wrap">
                             <Text fontSize="sm" fontWeight="950" color="#0e572b" fontFamily="mono">{docId}</Text>
-                            {sapDocNum && (
+                            {!isDraftState(status) && sapDocNum && (
                               <Badge colorScheme="green" variant="solid" bg="#15803d" color="white" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="900" boxShadow="xs">
                                 🏛️ Orden SAP: #{sapDocNum}
                               </Badge>
@@ -2348,7 +2359,7 @@ export function QuoteApprovalPage() {
                     <Flex justify="space-between" align="flex-start" gap={2} wrap="wrap">
                       <HStack spacing={1.5} align="center" wrap="wrap">
                         <Text fontSize="sm" fontWeight="950" color="#0e572b" fontFamily="mono">{docId}</Text>
-                        {sapDocNum && (
+                        {!isDraftState(status) && sapDocNum && (
                           <Badge colorScheme="green" variant="solid" bg="#15803d" color="white" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="900" boxShadow="xs">
                             🏛️ Orden SAP: #{sapDocNum}
                           </Badge>

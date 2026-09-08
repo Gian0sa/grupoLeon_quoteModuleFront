@@ -43,6 +43,7 @@ export function HistoryQuotesPage() {
   const localRole = (localStorage.getItem("role") || "").toUpperCase();
   const hasAccess = useHasAccess();
   const isAdminUser = authRole === "ADMIN" || localRole === "ADMIN" || username?.toLowerCase() === "enrique" || localUser === "enrique" || hasAccess("POST /quotes/approval") || hasAccess("POST /quotations/approve");
+  const canManagePromotions = isAdminUser || hasAccess("POST /promotions") || hasAccess("POST:/promotions") || hasAccess("GET /promotions") || hasAccess("GET:/promotions");
 
   const [isPromoModalOpen, setIsPromoModalOpen] = useState(false);
   const { promotions } = useGetPromotions();
@@ -161,7 +162,7 @@ export function HistoryQuotesPage() {
             </HStack>
 
             <HStack spacing={3} w={{ base: "full", md: "auto" }}>
-              {isAdminUser && (
+              {canManagePromotions && (
                 <Button
                   bg="#fef3c7"
                   color="#92400e"
@@ -217,8 +218,8 @@ export function HistoryQuotesPage() {
         onLoadToForm={handleLoadQuote}
       />
 
-      {/* MODAL DE GESTIÓN DE OFERTAS DEL MES (SOLO ADMINISTRADORES) */}
-      {isAdminUser && (
+      {/* MODAL DE GESTIÓN DE OFERTAS DEL MES */}
+      {canManagePromotions && (
         <ProductPromotionsModal
           isOpen={isPromoModalOpen}
           onClose={() => setIsPromoModalOpen(false)}

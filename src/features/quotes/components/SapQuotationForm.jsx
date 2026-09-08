@@ -608,6 +608,31 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     const savePromise = createQuote(newDoc).then((res) => {
       queryClient.invalidateQueries({ queryKey: ["quotes"] });
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
+
+      if (res && res.docNumber && res.docNumber !== activeDocNumber) {
+        console.log(`🔄 [Auto-Reasignación] Correlativo actualizado de ${activeDocNumber} a ${res.docNumber}`);
+        setDocNumber(res.docNumber);
+        if (setQuoteId) setQuoteId(res.docNumber);
+
+        // Actualizar en localStorage para no dejar el correlativo viejo colisionado
+        try {
+          const freshLocal = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
+          const cleaned = freshLocal.filter(item => {
+            const iDoc = item.docNumber ? String(item.docNumber) : "";
+            const iId = item.id !== undefined && item.id !== null ? String(item.id) : "";
+            return iDoc !== String(activeDocNumber) && iId !== String(activeDocNumber);
+          });
+          const reassignedDoc = {
+            ...newDoc,
+            id: res.id || res.docNumber,
+            docNumber: res.docNumber
+          };
+          cleaned.unshift(reassignedDoc);
+          localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(cleaned));
+          window.dispatchEvent(new Event("localQuotesUpdated"));
+        } catch (e) {}
+      }
+
       return res;
     }).catch(err => {
       console.error("Error persistiendo cotización en base de datos:", err);
@@ -686,13 +711,21 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     };
   }, [client, products, totals, docNumber, quoteId, comment, selectedDeliveryForm, selectedTransport, selectedPaymentType, opNum, contactPerson, refNumber, saleCondition, documentType, isLetra, creditTerm, bankAccount, paymentMethod, sunatOpType, isAdminReviewing, isReadOnly]);
 
-  const handleSaveDraft = () => {
+  const handleSaveDraft = async () => {
     const result = handleSaveAction("BORRADOR");
     if (result && result.success) {
       isExplicitlySubmittingRef.current = true;
+      let finalNumber = result.activeDocNumber;
+      try {
+        const savedRes = await result.savePromise;
+        if (savedRes && savedRes.docNumber) {
+          finalNumber = savedRes.docNumber;
+        }
+      } catch (e) {}
+
       toast({
         title: "📝 Borrador Guardado",
-        description: `Documento ${result.activeDocNumber} guardado exitosamente. Redirigiendo a Gestión de Cotizaciones...`,
+        description: `Documento ${finalNumber} guardado exitosamente. Redirigiendo a Gestión de Cotizaciones...`,
         status: "info",
         duration: 3000,
         isClosable: true,
