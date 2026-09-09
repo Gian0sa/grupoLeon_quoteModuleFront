@@ -8,6 +8,7 @@ import {
   Input,
   InputGroup,
   InputLeftElement,
+  InputRightElement,
   Button,
   Table,
   Thead,
@@ -209,8 +210,18 @@ export function QuoteApprovalPage() {
     navigate("/newquotes");
   };
 
-  const [quotes, setQuotes] = useState([]);
+  const [quotes, setQuotes] = useState(() => {
+    try {
+      const stored = localStorage.getItem("grupoLeon_local_quotes");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [];
+  });
   const [searchQuery, setSearchQuery] = useState("");
+  const [isDeepSearching, setIsDeepSearching] = useState(false);
   const [selectedTab, setSelectedTab] = useState("ALL");
   const [selectedQuote, setSelectedQuote] = useState(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -314,12 +325,19 @@ export function QuoteApprovalPage() {
     return () => clearTimeout(timer);
   }, [selectedTab, historyStartDate, historyEndDate]);
 
-  // Búsqueda dinámica en vivo en SAP B1 para documentos antiguos (#1, etc.) o clientes
+  // Búsqueda profunda en servidor/SAP cuando se especifique un término relevante (mínimo 3 letras o número específico)
   useEffect(() => {
-    if (!searchQuery || searchQuery.trim().length < 1) return;
+    const queryTerm = searchQuery.trim();
+    const cleanDigits = queryTerm.replace(/[^0-9]/g, "");
+    // Si la búsqueda está vacía o es muy corta (<3 letras) y no es numérica, la búsqueda instantánea en memoria local es inmediata y suficiente
+    if (!queryTerm || (queryTerm.length < 3 && cleanDigits.length < 3 && !queryTerm.startsWith("#"))) {
+      setIsDeepSearching(false);
+      return;
+    }
+
     const timer = setTimeout(async () => {
       try {
-        const queryTerm = searchQuery.trim();
+        setIsDeepSearching(true);
         const results = await getQuotes({ search: queryTerm });
         if (Array.isArray(results) && results.length > 0) {
           setQuotes(prev => {
@@ -338,8 +356,11 @@ export function QuoteApprovalPage() {
             return prev;
           });
         }
-      } catch (e) {}
-    }, 400);
+      } catch (e) {
+      } finally {
+        setIsDeepSearching(false);
+      }
+    }, 550);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
@@ -2121,7 +2142,25 @@ export function QuoteApprovalPage() {
                 _placeholder={{ color: 'gray.400' }}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                pr={searchQuery ? "2.5rem" : "1rem"}
               />
+              {searchQuery && (
+                <InputRightElement>
+                  {isDeepSearching ? (
+                    <Spinner size="xs" color="emerald.600" mr={1} />
+                  ) : (
+                    <IconButton
+                      size="xs"
+                      variant="ghost"
+                      icon={<X className="w-3.5 h-3.5 text-gray-400 hover:text-gray-700" />}
+                      onClick={() => setSearchQuery("")}
+                      aria-label="Limpiar búsqueda"
+                      borderRadius="full"
+                      mr={1}
+                    />
+                  )}
+                </InputRightElement>
+              )}
             </InputGroup>
             <Tooltip label="Actualizar cotizaciones del servidor">
               <IconButton
@@ -2129,7 +2168,7 @@ export function QuoteApprovalPage() {
                 size="md"
                 variant="outline"
                 borderRadius="xl"
-                isLoading={isRefreshing || isServerLoading}
+                isLoading={isRefreshing || (isServerLoading && quotes.length === 0)}
                 onClick={handleRefresh}
                 aria-label="Actualizar"
                 _hover={{ bg: "emerald.50", borderColor: "emerald.300" }}

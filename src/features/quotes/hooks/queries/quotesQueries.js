@@ -15,8 +15,9 @@ export const useGetQuotes = (filters = {}) => {
     const query = useQuery({
         queryKey: ["quotes", filters],
         queryFn: () => getQuotes(filters),
-        staleTime: 30000, // 30 segundos de caché; Socket.io actualiza instantáneamente con cero delay
-        refetchOnWindowFocus: true,
+        staleTime: 30000, // 1 minuto de caché; Socket.io actualiza en tiempo real
+        refetchOnWindowFocus: false,
+        placeholderData: (previousData) => previousData,
     })
     return { ...query, data: query.data || [], isLoading: query.isLoading, isFetching: query.isFetching, error: query.error }
 }
@@ -112,4 +113,4 @@ export const useGetPromotions = () => {
         isFetching,
         refetch,
     };
-};
+};
