@@ -704,7 +704,7 @@ export function QuoteApprovalPage() {
       return;
     }
 
-    if (statusOrFlag === "EMITIDO" || stUpper === "EMITIDO") {
+    if (stUpper === "EMITIDO") {
       // ✅ Si la cotización fue EMITIDA a SAP, solo removerla de la vista de aprobaciones pendientes
       // SIN borrarla de la base de datos ni eliminar sus notificaciones
       setQuotes((prev) => prev.filter((q) => !isMatchingItem(q)));
