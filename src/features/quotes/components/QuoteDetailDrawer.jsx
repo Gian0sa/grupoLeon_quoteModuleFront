@@ -1499,7 +1499,9 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                 <Box minW={0}>
                   <HStack spacing={2} align="center" wrap="wrap">
                     <Heading size="sm" color="white" fontWeight="800" isTruncated>
-                      {effectiveQuote.docNumber || effectiveQuote.id || "COT-017071"}
+                      {effectiveQuote.docNumber && String(effectiveQuote.docNumber).startsWith("COT-0")
+                        ? effectiveQuote.docNumber
+                        : "COT-PENDIENTE (Al emitir a SAP)"}
                     </Heading>
                     {syncedDocNum && (
                       <Badge bg="emerald.900" color="emerald.100" border="1px solid" borderColor="emerald.300" fontSize="10px" px={2} py={0.5} borderRadius="md" fontWeight="900">

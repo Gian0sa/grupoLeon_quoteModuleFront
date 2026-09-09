@@ -116,12 +116,14 @@ export function NotificationDrawer({ isOpen, onClose }) {
     }
 
     const filteredByUser = filterForCurrentUser(combined).filter(
-      (n) => n.status !== "ANULADO" && !String(n.title || "").toLowerCase().includes("anulad") && !n.read
+      (n) => n.status !== "ANULADO" && !String(n.title || "").toLowerCase().includes("anulad")
     );
 
     // Deduplicación inteligente por quoteId (conserva la alerta más reciente por cotización)
     const uniqueMap = new Map();
     const sorted = [...filteredByUser].sort((a, b) => {
+      if (!a.read && b.read) return -1;
+      if (a.read && !b.read) return 1;
       const tA = new Date(a.createdAt || a.timestamp || a.created_at || a.date || 0).getTime();
       const tB = new Date(b.createdAt || b.timestamp || b.created_at || b.date || 0).getTime();
       return tB - tA;
@@ -134,7 +136,7 @@ export function NotificationDrawer({ isOpen, onClose }) {
       }
     }
 
-    return Array.from(uniqueMap.values());
+    return Array.from(uniqueMap.values()).slice(0, 30);
   }, [serverNotifs, username, userId, role, localVersion]);
 
   const handleClearAll = async () => {
@@ -286,8 +288,22 @@ export function NotificationDrawer({ isOpen, onClose }) {
 
     targetDoc.products = items;
 
-    // Auto-descartar / marcar como leída al abrir (comportamiento smartphone)
-    handleDeleteNotif(notifId, targetId);
+    // Marcar como leída al abrir para despejar el contador sin borrar el historial
+    try {
+      markNotificationAsRead(notifId, targetId);
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      const raw = localStorage.getItem("grupoLeon_notifications");
+      const all = raw ? JSON.parse(raw) : [];
+      const updated = all.map(n => {
+        if ((notifId && String(n.id) === String(notifId)) || (targetId && String(n.quoteId) === String(targetId))) {
+          return { ...n, read: true };
+        }
+        return n;
+      });
+      localStorage.setItem("grupoLeon_notifications", JSON.stringify(updated));
+      window.dispatchEvent(new Event("localNotificationsUpdated"));
+      setLocalVersion(v => v + 1);
+    } catch (e) {}
 
     onClose(); // Cierra el panel de notificaciones para liberar el scroll móvil
     setSelectedQuoteForDrawer(targetDoc);
@@ -391,8 +407,10 @@ export function NotificationDrawer({ isOpen, onClose }) {
             ) : (
               <VStack spacing={3} align="stretch">
                 {myNotifications.map((item) => {
-                  const isApproved = item.status === "APROBADO";
+                  const isApproved = item.status === "APROBADO" || item.status === "APROBADO_COMERCIAL";
+                  const isEmitido = item.status === "EMITIDO";
                   const isRejected = item.status === "RECHAZADO";
+                  const isObservado = item.status === "OBSERVADO";
 
                   let iconComponent = FiFileText;
                   let iconColor = "blue.600";
@@ -400,12 +418,24 @@ export function NotificationDrawer({ isOpen, onClose }) {
                   let borderLeftColor = "blue.500";
                   let statusBadge = <Badge colorScheme="blue" fontSize="9px">⏳ PENDIENTE REVISIÓN</Badge>;
 
-                  if (isApproved) {
+                  if (isEmitido) {
                     iconComponent = FiCheckCircle;
                     iconColor = "emerald.600";
                     iconBg = "emerald.50";
                     borderLeftColor = "emerald.500";
-                    statusBadge = <Badge colorScheme="green" fontSize="9px">✅ APROBADO EN SAP</Badge>;
+                    statusBadge = <Badge colorScheme="green" fontSize="9px">🏛️ EMITIDO EN SAP</Badge>;
+                  } else if (isApproved) {
+                    iconComponent = FiCheckCircle;
+                    iconColor = "teal.600";
+                    iconBg = "teal.50";
+                    borderLeftColor = "teal.500";
+                    statusBadge = <Badge colorScheme="teal" fontSize="9px">✅ APROBADO COMERCIAL</Badge>;
+                  } else if (isObservado) {
+                    iconComponent = FiFileText;
+                    iconColor = "orange.600";
+                    iconBg = "orange.50";
+                    borderLeftColor = "orange.500";
+                    statusBadge = <Badge colorScheme="orange" fontSize="9px">⚠️ OBSERVADO</Badge>;
                   } else if (isRejected) {
                     iconComponent = FiXCircle;
                     iconColor = "red.600";
@@ -420,19 +450,19 @@ export function NotificationDrawer({ isOpen, onClose }) {
                       p={4}
                       borderRadius="2xl"
                       border="1px solid"
-                      borderColor="gray.200"
+                      borderColor={item.read ? "gray.200" : "emerald.300"}
                       borderLeft="5px solid"
                       borderLeftColor={borderLeftColor}
-                      bg="white"
-                      boxShadow="sm"
-                      _hover={{ boxShadow: "md", transform: "translateY(-1px)", borderColor: "emerald.300" }}
+                      bg={item.read ? "whiteAlpha.800" : "white"}
+                      boxShadow={item.read ? "none" : "sm"}
+                      _hover={{ boxShadow: "md", transform: "translateY(-1px)", borderColor: "emerald.400" }}
                       transition="all 0.2s"
                       cursor="pointer"
                       onClick={() => handleOpenQuote(item.quoteObj, item.quoteId, item.id)}
                     >
                       <VStack align="stretch" spacing={2.5}>
                         <Flex justify="space-between" align="flex-start" gap={2}>
-                          <HStack spacing={2} minW={0} align="flex-start">
+                          <HStack spacing={2} minW={0} align="flex-start" wrap="wrap">
                             <Flex
                               w="28px"
                               h="28px"
@@ -448,6 +478,11 @@ export function NotificationDrawer({ isOpen, onClose }) {
                             <Text fontSize={{ base: "13px", md: "xs" }} fontWeight="900" color="gray.900" overflowWrap="anywhere">
                               {item.title}
                             </Text>
+                            {!item.read && (
+                              <Badge colorScheme="green" variant="solid" fontSize="8px" borderRadius="full" px={1.5} py={0.5}>
+                                NUEVA
+                              </Badge>
+                            )}
                           </HStack>
                           <Tooltip label="Eliminar alerta" hasArrow placement="top">
                             <IconButton
@@ -525,9 +560,9 @@ export function NotificationDrawer({ isOpen, onClose }) {
                           <Button
                             size={{ base: "md", md: "xs" }}
                             w={{ base: "full", sm: "auto" }}
-                            colorScheme={isApproved ? "green" : isRejected ? "red" : "teal"}
-                            bg={!isApproved && !isRejected ? "#0f766e" : undefined}
-                            _hover={!isApproved && !isRejected ? { bg: "#115e59" } : undefined}
+                            colorScheme={isEmitido || isApproved ? "green" : isRejected ? "red" : isObservado ? "orange" : "teal"}
+                            bg={!isEmitido && !isApproved && !isRejected && !isObservado ? "#0f766e" : undefined}
+                            _hover={!isEmitido && !isApproved && !isRejected && !isObservado ? { bg: "#115e59" } : undefined}
                             leftIcon={<Icon as={FiEye} />}
                             onClick={(e) => {
                               e.stopPropagation();

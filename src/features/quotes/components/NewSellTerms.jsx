@@ -129,7 +129,9 @@ export function NewSellTerms({
   const { uploadImageMutation, deleteImageMutation } = useQuoteMutations();
   const [ocrText, setOcrText] = useState("");
   const [attachments, setAttachments] = useState([]);
-  const lastClientDocRef = useRef(null);
+  const clientDocDigits = String(client?.FederalTaxID || client?.clientDocument || client?.documentNumber || client?.LicTradNum || client?.CardCode || "").replace(/\D/g, "");
+  const isLikelyRuc = clientDocDigits.length === 11;
+  const isLikelyDni = clientDocDigits.length === 8;
 
   const extractOperationNumber = async (imageFile, setOpNum) => {
     try {
@@ -351,23 +353,12 @@ export function NewSellTerms({
     }
   };
 
-  // Auto-detección inteligente de Tipo de Comprobante según DNI (Boleta) o RUC (Factura)
-  useEffect(() => {
-    if (isDeliveryLocked) return;
-    const rawDoc = String(client?.FederalTaxID || client?.clientDocument || client?.documentNumber || client?.CardCode || "").replace(/\D/g, "");
-    if (rawDoc && lastClientDocRef.current !== rawDoc) {
-      lastClientDocRef.current = rawDoc;
-      if (rawDoc.length === 11 && setDocumentType) {
-        setDocumentType("FACTURA");
-      } else if (rawDoc.length === 8 && setDocumentType) {
-        setDocumentType("BOLETA");
-      }
-    }
-  }, [client, setDocumentType, isDeliveryLocked]);
-
   const handlePaymentTypeChange = (selected) => {
     if (!selected) {
       setSelectedPaymentType(null);
+      if (setSaleCondition) setSaleCondition("");
+      if (setIsLetra) setIsLetra(false);
+      if (setCreditTerm) setCreditTerm("");
       return;
     }
     const found = allPaymentTypes.find(
@@ -502,7 +493,7 @@ export function NewSellTerms({
             />
           </Box>
 
-          {!isPickupInStore && (
+          {selectedDeliveryForm && !isPickupInStore && (
             <Box>
               <FormLabel fontSize="xs" fontWeight="800" color="gray.700">
                 Punto de Llegada (Destino de Entrega) {isDeliveryLocked && "🔒"}
@@ -522,7 +513,7 @@ export function NewSellTerms({
             </Box>
           )}
 
-          {!(isPickupInStore || isOwnPickupInStore) && (
+          {selectedDeliveryForm && !(isPickupInStore || isOwnPickupInStore) && (
             <Box>
               <FormLabel fontSize="xs" fontWeight="800" color="gray.700">
                 Agencia de Transporte {isDeliveryLocked && "🔒"}
@@ -589,8 +580,8 @@ export function NewSellTerms({
                 </Text>
               </HStack>
               <HStack spacing={1.5}>
-                <Badge colorScheme="blue" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="800">
-                  🔒 AUTO DESDE SAP OCTG
+                <Badge colorScheme={saleCondition && documentType ? "green" : "purple"} fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="800">
+                  {saleCondition && documentType ? "✓ CONDICIONES LISTAS" : "✏️ SELECCIÓN REQUERIDA"}
                 </Badge>
                 <Badge colorScheme="teal" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="800">
                   TALONARIO DE PEDIDO
@@ -599,54 +590,64 @@ export function NewSellTerms({
             </HStack>
 
             <Grid templateColumns={{ base: "1fr", md: "1fr 1fr 1.4fr" }} gap={3.5}>
-              {/* Casilla 1: Modalidad (CONTADO / CRÉDITO) - Auto sincronizado ineditable */}
-              <Box p={3} bg="white" borderRadius="lg" border="1px solid" borderColor="gray.200">
+              {/* Casilla 1: Modalidad (CONTADO / CRÉDITO) - Seleccionable por usuario y auto-sincronizada desde SAP OCTG */}
+              <Box p={3} bg="white" borderRadius="lg" border="1.5px solid" borderColor={saleCondition ? "emerald.300" : "gray.200"} boxShadow={saleCondition ? "xs" : "none"}>
                 <Flex justify="space-between" align="center" mb={2}>
-                  <Text fontSize="10px" fontWeight="900" color="gray.500" textTransform="uppercase">
+                  <Text fontSize="10px" fontWeight="900" color={saleCondition ? "emerald.800" : "gray.500"} textTransform="uppercase">
                     Condición de Venta
                   </Text>
-                  <Text fontSize="9px" color="gray.400" fontWeight="700">🔒 AUTO</Text>
+                  <Text fontSize="9px" color={saleCondition ? "emerald.600" : "orange.500"} fontWeight="800">
+                    {saleCondition ? "✓ ELEGIDO" : "✏️ SELECCIONAR"}
+                  </Text>
                 </Flex>
                 <HStack spacing={4}>
                   <Checkbox
                     isChecked={saleCondition === "CONTADO"}
-                    isReadOnly
-                    isDisabled
+                    onChange={() => {
+                      if (!isDeliveryLocked && setSaleCondition) {
+                        setSaleCondition("CONTADO");
+                        if (setIsLetra) setIsLetra(false);
+                        if (setCreditTerm) setCreditTerm("ANTICIPADO");
+                      }
+                    }}
+                    isDisabled={isDeliveryLocked}
                     colorScheme="green"
                     size="sm"
                     fontWeight="800"
                     fontSize="xs"
-                    _disabled={{ opacity: 0.9, cursor: "default" }}
+                    cursor="pointer"
                   >
                     CONTADO
                   </Checkbox>
                   <Checkbox
                     isChecked={saleCondition === "CREDITO"}
-                    isReadOnly
-                    isDisabled
+                    onChange={() => {
+                      if (!isDeliveryLocked && setSaleCondition) {
+                        setSaleCondition("CREDITO");
+                        if (!creditTerm && setCreditTerm) setCreditTerm("30 días");
+                      }
+                    }}
+                    isDisabled={isDeliveryLocked}
                     colorScheme="green"
                     size="sm"
                     fontWeight="800"
                     fontSize="xs"
-                    _disabled={{ opacity: 0.9, cursor: "default" }}
+                    cursor="pointer"
                   >
                     CRÉDITO
                   </Checkbox>
                 </HStack>
               </Box>
 
-              {/* Casilla 2: Tipo de Comprobante (BOLETA / FACTURA) - Pre-seleccionado automático + 100% editable */}
-              <Box p={3} bg="white" borderRadius="lg" border="1.5px solid" borderColor="emerald.300" boxShadow="xs">
+              {/* Casilla 2: Tipo de Comprobante (BOLETA / FACTURA) - 100% editable, sin pre-selección automática */}
+              <Box p={3} bg="white" borderRadius="lg" border="1.5px solid" borderColor={documentType ? "emerald.300" : "gray.200"} boxShadow={documentType ? "xs" : "none"}>
                 <Flex justify="space-between" align="center" mb={2}>
-                  <Text fontSize="10px" fontWeight="900" color="emerald.800" textTransform="uppercase">
+                  <Text fontSize="10px" fontWeight="900" color={documentType ? "emerald.800" : "gray.500"} textTransform="uppercase">
                     Tipo de Comprobante
                   </Text>
                   <HStack spacing={1}>
-                    <Badge colorScheme="blue" fontSize="8px" px={1.5} py={0.2} borderRadius="sm" fontWeight="800">
-                      ⚡ AUTO DNI/RUC
-                    </Badge>
-                    <Badge colorScheme="green" fontSize="8px" px={1.5} py={0.2} borderRadius="sm" fontWeight="800">
-                      ✏️ EDITABLE
+                    <Badge colorScheme={documentType ? "green" : "orange"} fontSize="8px" px={1.5} py={0.2} borderRadius="sm" fontWeight="800">
+                      {documentType ? `✓ ${documentType}` : "✏️ SELECCIONAR"}
                     </Badge>
                   </HStack>
                 </Flex>
@@ -655,7 +656,7 @@ export function NewSellTerms({
                     isChecked={documentType === "FACTURA"}
                     onChange={() => {
                       if (!isDeliveryLocked && setDocumentType) {
-                        setDocumentType("FACTURA");
+                        setDocumentType(documentType === "FACTURA" ? "" : "FACTURA");
                       }
                     }}
                     isDisabled={isDeliveryLocked}
@@ -665,13 +666,13 @@ export function NewSellTerms({
                     fontSize="xs"
                     cursor="pointer"
                   >
-                    FACTURA
+                    FACTURA {isLikelyRuc && <Text as="span" fontSize="9px" color="blue.500" fontWeight="700">(RUC)</Text>}
                   </Checkbox>
                   <Checkbox
                     isChecked={documentType === "BOLETA"}
                     onChange={() => {
                       if (!isDeliveryLocked && setDocumentType) {
-                        setDocumentType("BOLETA");
+                        setDocumentType(documentType === "BOLETA" ? "" : "BOLETA");
                       }
                     }}
                     isDisabled={isDeliveryLocked}
@@ -681,7 +682,7 @@ export function NewSellTerms({
                     fontSize="xs"
                     cursor="pointer"
                   >
-                    BOLETA
+                    BOLETA {isLikelyDni && <Text as="span" fontSize="9px" color="blue.500" fontWeight="700">(DNI)</Text>}
                   </Checkbox>
                 </HStack>
               </Box>

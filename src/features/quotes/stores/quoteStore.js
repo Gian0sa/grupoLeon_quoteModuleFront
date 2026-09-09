@@ -432,7 +432,7 @@ export const useQuoteStore = create((set, get) => {
         quoteData.U_VS_CONDICION,
         quoteData.condicionVenta,
         quoteData.condicionPago
-      ) || (quoteData.paymentType?.isCredit ? "CREDITO" : (quoteData.paymentType ? "CONTADO" : ""));
+      ) || (quoteData.paymentType?.isCredit ? "CREDITO" : "");
 
       const documentTypeVal = firstMeaningfulValue(
         quoteData.documentType,

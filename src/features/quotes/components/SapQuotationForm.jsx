@@ -152,24 +152,10 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   useEffect(() => {
     if (quoteId) {
       setDocNumber(quoteId);
+    } else {
+      setDocNumber("");
     }
   }, [quoteId]);
-
-  // Al montar con una cotización realmente nueva (sin quoteId cargado desde un
-  // borrador o retiro), se solicita el correlativo secuencial del backend en
-  // vez de improvisar uno con Date.now(), que rompía la numeración correlativa.
-  useEffect(() => {
-    if (quoteId) return;
-    let cancelled = false;
-    (async () => {
-      const next = await getNextDocNumber();
-      if (!cancelled) {
-        setDocNumber(next || `COT-${Date.now().toString().slice(-6)}`);
-      }
-    })();
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
@@ -233,64 +219,8 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     }
   }, [client, contactList, setContactPerson, contactPerson]);
 
-  // Auto-inicializar datos comerciales de SAP para el cliente si vienen vacíos
-  useEffect(() => {
-    if (!client) return;
-
-    // 1. Condición de Pago y Condición de Venta
-    if (!selectedPaymentType && Array.isArray(dataPaymentTypes) && dataPaymentTypes.length > 0 && setSelectedPaymentType) {
-      const clientPayTerms = client.raw?.PayTermsGrpCode ?? client.PayTermsGrpCode ?? client.PaymentGroupCode;
-      let matched = null;
-      if (clientPayTerms !== undefined && clientPayTerms !== null) {
-        matched = dataPaymentTypes.find(pt => String(pt.GroupNum ?? pt.GroupNumber ?? pt.value) === String(clientPayTerms));
-      }
-      if (!matched) {
-        matched = dataPaymentTypes.find(pt => {
-          const name = (pt.PymntGroup || pt.PaymentTermsGroupName || pt.label || "").toLowerCase();
-          return name.includes("contado") || String(pt.GroupNum) === "-1";
-        }) || dataPaymentTypes[0];
-      }
-      if (matched) {
-        setSelectedPaymentType(matched);
-      }
-    }
-
-    // 2. Tipo de Comprobante (DNI -> BOLETA, RUC 20 -> FACTURA)
-    if (!documentType && setDocumentType) {
-      const docStr = String(client.LicTradNum || client.clientRuc || client.CardCode || client.clientDocument || "").replace(/^CL/i, '').trim();
-      if (docStr.startsWith("20") || docStr.length === 11) {
-        setDocumentType("FACTURA");
-      } else {
-        setDocumentType("BOLETA");
-      }
-    }
-
-    // 3. Condición de Venta (CONTADO por defecto si no está seteado)
-    if (!saleCondition && setSaleCondition) {
-      setSaleCondition("CONTADO");
-    }
-
-    // 4. Punto de Llegada por defecto desde SAP
-    if (!selectedPoint && deliveryPoints.length > 0 && setSelectedPoint) {
-      const defaultPt = deliveryPoints.find(p => p.AddressName?.toLowerCase().includes("entrega") || p.AddressName?.toLowerCase().includes("fiscal")) || deliveryPoints[0];
-      if (defaultPt) {
-        setSelectedPoint(defaultPt);
-      }
-    }
-  }, [client, selectedPaymentType, documentType, saleCondition, selectedPoint, dataPaymentTypes, deliveryPoints, setSelectedPaymentType, setDocumentType, setSaleCondition, setSelectedPoint]);
-
-  // Auto-seleccionar Forma de Entrega por defecto si viene vacía
-  useEffect(() => {
-    if (!selectedDeliveryForm && Array.isArray(dataDeliveryForms) && dataDeliveryForms.length > 0 && setSelectedDeliveryForm) {
-      const defaultForm = dataDeliveryForms.find(f => {
-        const name = (f.TrnspName || f.label || "").toLowerCase();
-        return name.includes("recojo") || name.includes("tienda") || String(f.TrnspCode) === "1";
-      }) || dataDeliveryForms[0];
-      if (defaultForm) {
-        setSelectedDeliveryForm(defaultForm);
-      }
-    }
-  }, [selectedDeliveryForm, dataDeliveryForms, setSelectedDeliveryForm]);
+  // Nota: No se auto-seleccionan forma de entrega, condición de pago, condición de venta
+  // ni tipo de comprobante para evitar errores humanos; el usuario debe elegirlos conscientemente.
 
   // Regla de negocio: El almacén es obligatoria y estrictamente el 014
   useEffect(() => {
@@ -380,8 +310,8 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   }, [products, exchangeRate]);
 
   const currentQuoteObj = useMemo(() => ({
-    id: docNumber || "COT-017071",
-    docNumber: docNumber || "COT-017071",
+    id: docNumber || null,
+    docNumber: docNumber || null,
     client,
     products,
     totals,
@@ -596,41 +526,79 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     };
 
     const isExisting = Boolean(existingDoc);
-    const updated = isExisting
-      ? saved.map((q) => (isMatchingDoc(q) ? newDoc : q))
-      : [newDoc, ...saved.filter((q) => !isMatchingDoc(q))];
+    if (isExisting) {
+      const updated = saved.map((q) => (isMatchingDoc(q) ? newDoc : q));
+      localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updated));
+      window.dispatchEvent(new Event("localQuotesUpdated"));
+    }
 
-    localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updated));
-    window.dispatchEvent(new Event("localQuotesUpdated"));
-    if (setQuoteId) setQuoteId(activeDocNumber);
+    const clientName = client?.CardName || client?.name || "Cliente General";
+    const totalUsdStr = finalTotals?.grandTotalUSD ? `$${finalTotals.grandTotalUSD.toFixed(2)}` : "$0.00";
+    const ADMIN_FACTURACION_USERNAME = "enrique";
+    const senderUsername = username || localSeller || "vendedor";
+    const maxAdic = (products || []).reduce((max, it) => Math.max(max, Number(it.lineDiscount || it.LineDiscount || 0)), 0);
+    const discountNotice = maxAdic > 0 ? ' • ⚠️ CON DESCUENTO ADICIONAL APLICADO' : '';
 
     // Persistencia centralizada en MySQL vía Backend
     const savePromise = createQuote(newDoc).then((res) => {
       queryClient.invalidateQueries({ queryKey: ["quotes"] });
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
 
-      if (res && res.docNumber && res.docNumber !== activeDocNumber) {
-        console.log(`🔄 [Auto-Reasignación] Correlativo actualizado de ${activeDocNumber} a ${res.docNumber}`);
-        setDocNumber(res.docNumber);
-        if (setQuoteId) setQuoteId(res.docNumber);
+      const assignedNumber = res?.docNumber || activeDocNumber;
+      if (assignedNumber) {
+        console.log(`🔄 [Correlativo Asignado] Oficial: ${assignedNumber}`);
+        setDocNumber(assignedNumber);
+        if (setQuoteId) setQuoteId(res?.id || assignedNumber);
 
-        // Actualizar en localStorage para no dejar el correlativo viejo colisionado
+        // Guardar/Actualizar en localStorage con el docNumber oficial asignado
         try {
           const freshLocal = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
           const cleaned = freshLocal.filter(item => {
             const iDoc = item.docNumber ? String(item.docNumber) : "";
             const iId = item.id !== undefined && item.id !== null ? String(item.id) : "";
-            return iDoc !== String(activeDocNumber) && iId !== String(activeDocNumber);
+            const isColliding = (iDoc && iDoc === String(assignedNumber)) || (iId && iId === String(res?.id));
+            const isPreviousActive = activeDocNumber && (iDoc === String(activeDocNumber) || iId === String(activeDocNumber));
+            return !isColliding && !isPreviousActive;
           });
-          const reassignedDoc = {
+          const persistedDoc = {
             ...newDoc,
-            id: res.id || res.docNumber,
-            docNumber: res.docNumber
+            id: res?.id || assignedNumber,
+            docNumber: assignedNumber
           };
-          cleaned.unshift(reassignedDoc);
+          cleaned.unshift(persistedDoc);
           localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(cleaned));
           window.dispatchEvent(new Event("localQuotesUpdated"));
         } catch (e) {}
+
+        // Si se ENVIÓ a validación, generar la notificación oficial para Facturación
+        if (targetStatus === "ENVIADO") {
+          try {
+            const existingNotifs = JSON.parse(localStorage.getItem("grupoLeon_notifications") || "[]");
+            const notifTitle = maxAdic > 0
+              ? `🔥 Cotización con Descuento Adicional - ${assignedNumber}`
+              : `📩 Nueva Cotización Recibida - ${assignedNumber}`;
+
+            const notifObj = {
+              id: `NOTIF-${Date.now()}`,
+              targetRole: "FACTURACION",
+              targetUsername: ADMIN_FACTURACION_USERNAME,
+              fromUsername: senderUsername,
+              fromUserId: userId || null,
+              quoteId: assignedNumber,
+              quoteObj: { ...newDoc, id: res?.id || assignedNumber, docNumber: assignedNumber },
+              title: notifTitle,
+              description: `Enviada por ${activeSeller} • Cliente: ${clientName} (${totalUsdStr})${discountNotice} ${opNum ? `• Váucher BCP: N° ${opNum}` : ''}. Requiere aprobación comercial.`,
+              status: "ENVIADO",
+              hasDiscount: maxAdic > 0,
+              maxDiscount: maxAdic,
+              createdAt: new Date().toISOString(),
+              timestamp: new Date().toISOString(),
+              read: false
+            };
+            localStorage.setItem("grupoLeon_notifications", JSON.stringify([notifObj, ...existingNotifs.filter(n => n.quoteId !== assignedNumber || n.targetUsername !== ADMIN_FACTURACION_USERNAME)]));
+            window.dispatchEvent(new Event("localNotificationsUpdated"));
+          } catch (e) {}
+        }
       }
 
       return res;
@@ -639,77 +607,11 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       return newDoc;
     });
 
-    // Si se ENVIÓ a validación, generar la notificación para Facturación
-    if (targetStatus === "ENVIADO") {
-      const existingNotifs = JSON.parse(localStorage.getItem("grupoLeon_notifications") || "[]");
-      const clientName = client?.CardName || client?.name || "Cliente General";
-      const totalUsdStr = finalTotals?.grandTotalUSD ? `$${finalTotals.grandTotalUSD.toFixed(2)}` : "$0.00";
-      const ADMIN_FACTURACION_USERNAME = "enrique";
-      const senderUsername = username || localSeller || "vendedor";
-
-      const maxAdic = (products || []).reduce((max, it) => Math.max(max, Number(it.lineDiscount || it.LineDiscount || 0)), 0);
-      const discountNotice = maxAdic > 0 ? ' • ⚠️ CON DESCUENTO ADICIONAL APLICADO' : '';
-      const notifTitle = maxAdic > 0
-        ? `🔥 Cotización con Descuento Adicional - ${activeDocNumber}`
-        : `📩 Nueva Cotización Recibida - ${activeDocNumber}`;
-
-      const notifObj = {
-        id: `NOTIF-${Date.now()}`,
-        targetRole: "FACTURACION",
-        targetUsername: ADMIN_FACTURACION_USERNAME,
-        fromUsername: senderUsername,
-        fromUserId: userId || null,
-        quoteId: activeDocNumber,
-        quoteObj: newDoc,
-        title: notifTitle,
-        description: `Enviada por ${activeSeller} • Cliente: ${clientName} (${totalUsdStr})${discountNotice} ${opNum ? `• Váucher BCP: N° ${opNum}` : ''}. Requiere aprobación comercial.`,
-        status: "ENVIADO",
-        hasDiscount: maxAdic > 0,
-        maxDiscount: maxAdic,
-        createdAt: new Date().toISOString(),
-        timestamp: new Date().toISOString(),
-        read: false
-      };
-      localStorage.setItem("grupoLeon_notifications", JSON.stringify([notifObj, ...existingNotifs.filter(n => n.quoteId !== activeDocNumber || n.targetUsername !== ADMIN_FACTURACION_USERNAME)]));
-      window.dispatchEvent(new Event("localNotificationsUpdated"));
-    }
-
     return { success: true, activeDocNumber, currentStatus, newDoc, savePromise };
   };
 
-  // Autoguardado preventivo (Exit-Safe & Crash-Safe) solo para borradores activos o cotizaciones nuevas
-  // Si el Admin está revisando o la cotización es de solo lectura, NUNCA sobreescribir al salir
-  useEffect(() => {
-    if (isAdminReviewing || isReadOnly) return;
-
-    const shouldAutoSave = () => {
-      return !isExplicitlySubmittingRef.current && client && products && products.length > 0 && !isAdminReviewing && !isReadOnly;
-    };
-
-    const handleBeforeUnload = () => {
-      if (shouldAutoSave()) {
-        handleSaveAction("BORRADOR", { silent: true });
-      }
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "hidden" && shouldAutoSave()) {
-        handleSaveAction("BORRADOR", { silent: true });
-      }
-    };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      // Guardar automáticamente al salir de la pantalla solo si no se envió explícitamente y hay datos completos
-      if (shouldAutoSave()) {
-        handleSaveAction("BORRADOR", { silent: true });
-      }
-    };
-  }, [client, products, totals, docNumber, quoteId, comment, selectedDeliveryForm, selectedTransport, selectedPaymentType, opNum, contactPerson, refNumber, saleCondition, documentType, isLetra, creditTerm, bankAccount, paymentMethod, sunatOpType, isAdminReviewing, isReadOnly]);
+  // Nota: El autoguardado seguro de interfaz se gestiona vía localStorage (saveDraftToStorage)
+  // en quoteStore.js sin saturar la base de datos MySQL con borradores duplicados.
 
   const handleSaveDraft = async () => {
     const result = handleSaveAction("BORRADOR");
@@ -829,6 +731,32 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       toast({
         title: "⚠️ Condición de Pago requerida",
         description: "Debe seleccionar la Condición Comercial / Tipo de Pago en la pestaña 'Logística, Pagos y Anexos' (Sección 2).",
+        status: "warning",
+        duration: 4500,
+        isClosable: true,
+      });
+      setActiveTabIndex(1);
+      return false;
+    }
+
+    // 4.1. Validar Condición de Venta
+    if (!saleCondition || !String(saleCondition).trim()) {
+      toast({
+        title: "⚠️ Condición de Venta requerida",
+        description: "Debe seleccionar si la venta es al CONTADO o a CRÉDITO en las Condiciones Comerciales (Sección 1).",
+        status: "warning",
+        duration: 4500,
+        isClosable: true,
+      });
+      setActiveTabIndex(1);
+      return false;
+    }
+
+    // 4.2. Validar Tipo de Comprobante
+    if (!documentType || !String(documentType).trim()) {
+      toast({
+        title: "⚠️ Tipo de Comprobante requerido",
+        description: "Debe seleccionar si se emitirá FACTURA o BOLETA en las Condiciones Comerciales (Sección 1).",
         status: "warning",
         duration: 4500,
         isClosable: true,
@@ -1163,7 +1091,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     if (!hasPaymentType) {
       toast({
         title: "⚠️ Condición de Pago requerida",
-        description: "Debe seleccionar la Condición de Pago oficial en la Sección 2 (Condición de Pago SAP B1) antes de enviar.",
+        description: "Debe seleccionar la Condición de Pago oficial (Tabla OCTG) en la Sección 1 antes de enviar.",
         status: "warning",
         duration: 4500,
         isClosable: true,
@@ -1171,6 +1099,33 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       setActiveTabIndex(1);
       return false;
     }
+
+    // 4. Validar Condición de Venta (CONTADO o CRÉDITO)
+    if (!saleCondition || !String(saleCondition).trim()) {
+      toast({
+        title: "⚠️ Condición de Venta requerida",
+        description: "Debe seleccionar si la venta es al CONTADO o a CRÉDITO en las Condiciones Comerciales (Sección 1).",
+        status: "warning",
+        duration: 4500,
+        isClosable: true,
+      });
+      setActiveTabIndex(1);
+      return false;
+    }
+
+    // 5. Validar Tipo de Comprobante (FACTURA o BOLETA)
+    if (!documentType || !String(documentType).trim()) {
+      toast({
+        title: "⚠️ Tipo de Comprobante requerido",
+        description: "Debe seleccionar si se emitirá FACTURA o BOLETA en las Condiciones Comerciales (Sección 1).",
+        status: "warning",
+        duration: 4500,
+        isClosable: true,
+      });
+      setActiveTabIndex(1);
+      return false;
+    }
+
     return true;
   };
 
@@ -1200,8 +1155,8 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     if (!validateLogisticsAndPayments()) {
       return;
     }
-    // Abrir modal de confirmación pre-envío
-    setShowConfirmModal(true);
+    // Enviar directamente a validación con animación de progreso
+    handleConfirmedSend();
   };
 
   const handleConfirmedSend = async () => {
@@ -1222,9 +1177,13 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
     try {
       const result = handleSaveAction("ENVIADO");
+      let assignedDocNumber = activeDocNumber;
       if (result && result.savePromise) {
         setValidationStepText("Persistiendo cotización en la base de datos MySQL...");
-        await result.savePromise;
+        const savedRes = await result.savePromise;
+        if (savedRes && savedRes.docNumber) {
+          assignedDocNumber = savedRes.docNumber;
+        }
       }
 
       setValidationStepText("Notificando en tiempo real vía WebSocket a Facturación...");
@@ -1235,7 +1194,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
       toast({
         title: "✅ Cotización Enviada a Validación",
-        description: `Documento ${result?.activeDocNumber || activeDocNumber} registrado y enviado en tiempo real a la Asesora de Facturación.`,
+        description: `Documento ${assignedDocNumber || "generado"} registrado y enviado en tiempo real a la Asesora de Facturación.`,
         status: "success",
         duration: 5000,
         isClosable: true,
@@ -1574,11 +1533,10 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     clear();
     if (typeof setWhsCode === "function") setWhsCode("014");
     setDocType("OFERTA_VENTA");
-    const next = await getNextDocNumber();
-    setDocNumber(next || `COT-${Date.now().toString().slice(-6)}`);
+    setDocNumber("");
     toast({
       title: "Formulario Reiniciado",
-      description: "Listo para crear una nueva Solicitud de Pedido.",
+      description: "Listo para elaborar una nueva Cotización (COT-NUEVA).",
       status: "info",
       duration: 2500,
     });
@@ -1687,8 +1645,8 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
           </HStack>
 
           <Flex wrap="wrap" gap={2} align="center" w={{ base: "full", md: "auto" }}>
-            <Badge colorScheme={docType === "OFERTA_VENTA" ? "blue" : "emerald"} px={2.5} py={1} borderRadius="md" fontSize="xs" textTransform="uppercase">
-              Nº {docNumber}
+            <Badge colorScheme={docType === "OFERTA_VENTA" ? "blue" : "emerald"} px={2.5} py={1} borderRadius="md" fontSize="xs" textTransform="uppercase" fontWeight="bold">
+              Nº {docNumber && String(docNumber).startsWith("COT-0") ? docNumber : "COT-PENDIENTE (Al emitir a SAP)"}
             </Badge>
             {isApproved && (
               <Badge colorScheme="green" bg="#15803d" color="white" px={2.5} py={1} borderRadius="md" fontSize="xs" fontWeight="900" boxShadow="xs">

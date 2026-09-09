@@ -704,6 +704,19 @@ export function QuoteApprovalPage() {
       return;
     }
 
+    if (statusOrFlag === "EMITIDO" || stUpper === "EMITIDO") {
+      // ✅ Si la cotización fue EMITIDA a SAP, solo removerla de la vista de aprobaciones pendientes
+      // SIN borrarla de la base de datos ni eliminar sus notificaciones
+      setQuotes((prev) => prev.filter((q) => !isMatchingItem(q)));
+      queryClient.setQueryData(["quotes"], (old) => {
+        if (!Array.isArray(old)) return [];
+        return old.filter((q) => !isMatchingItem(q));
+      });
+      queryClient.invalidateQueries({ queryKey: ["quotes"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      return;
+    }
+
     const isAlreadyAnulado = stUpper === "ANULADO" || stUpper === "RECHAZADO" || stUpper.includes("ANULADO");
     const isDraft = !currentStatus || DRAFT_STATUSES.includes(currentStatus);
     // Si está APROBADO pero sin sapDocNum (nunca llegó a SAP), también es hard delete
@@ -2273,7 +2286,13 @@ export function QuoteApprovalPage() {
                       <Td py={3} px={4} maxW="0">
                         <VStack align="flex-start" spacing={1} maxW="full" w="full">
                           <HStack spacing={2} align="center" wrap="wrap">
-                            <Text fontSize="sm" fontWeight="950" color="#0e572b" fontFamily="mono">{docId}</Text>
+                            {q.docNumber && String(q.docNumber).startsWith("COT-0") ? (
+                              <Text fontSize="sm" fontWeight="950" color="#0e572b" fontFamily="mono">{q.docNumber}</Text>
+                            ) : (
+                              <Badge colorScheme="orange" variant="subtle" px={2} py={0.5} borderRadius="md" fontSize="xs" fontWeight="900" letterSpacing="wide">
+                                COT-PENDIENTE
+                              </Badge>
+                            )}
                             {!isDraftState(status) && sapDocNum && (
                               <Badge colorScheme="green" variant="solid" bg="#15803d" color="white" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="900" boxShadow="xs">
                                 🏛️ Orden SAP: #{sapDocNum}
@@ -2406,7 +2425,13 @@ export function QuoteApprovalPage() {
                   <VStack align="stretch" spacing={3}>
                     <Flex justify="space-between" align="flex-start" gap={2} wrap="wrap">
                       <HStack spacing={1.5} align="center" wrap="wrap">
-                        <Text fontSize="sm" fontWeight="950" color="#0e572b" fontFamily="mono">{docId}</Text>
+                        {q.docNumber && String(q.docNumber).startsWith("COT-0") ? (
+                          <Text fontSize="sm" fontWeight="950" color="#0e572b" fontFamily="mono">{q.docNumber}</Text>
+                        ) : (
+                          <Badge colorScheme="orange" variant="subtle" px={2} py={0.5} borderRadius="md" fontSize="xs" fontWeight="900" letterSpacing="wide">
+                            COT-PENDIENTE
+                          </Badge>
+                        )}
                         {!isDraftState(status) && sapDocNum && (
                           <Badge colorScheme="green" variant="solid" bg="#15803d" color="white" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="900" boxShadow="xs">
                             🏛️ Orden SAP: #{sapDocNum}
