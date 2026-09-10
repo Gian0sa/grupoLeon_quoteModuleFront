@@ -6,5 +6,7 @@ export const useGetAccountsReceivable = ({ vendedor, cliente, clientecode, lastC
     queryKey: ["accountsReceivable", vendedor, cliente, clientecode, lastClient],
     queryFn: () => getAccountsReceivable({ vendedor, cliente, clientecode, lastClient }),
     enabled: Boolean(enabled),
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 };

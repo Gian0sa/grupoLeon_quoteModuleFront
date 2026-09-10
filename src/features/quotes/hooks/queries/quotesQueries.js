@@ -19,7 +19,8 @@ export const useGetQuotes = (filters = {}) => {
         refetchOnWindowFocus: false,
         placeholderData: (previousData) => previousData,
     })
-    return { ...query, data: query.data || [], isLoading: query.isLoading, isFetching: query.isFetching, error: query.error }
+    const safeData = Array.isArray(query.data) ? query.data : (query.data?.quotes || []);
+    return { ...query, data: safeData, pagination: !Array.isArray(query.data) ? query.data : null, isLoading: query.isLoading, isFetching: query.isFetching, error: query.error }
 }
 
 export const useQuotes = useGetQuotes;

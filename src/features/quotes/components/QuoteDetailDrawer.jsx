@@ -87,6 +87,7 @@ import { useAuthStore } from "../../../features/auth/stores/useAuthStore";
 import { useGetQuoteById } from "../hooks/queries/quotesQueries";
 import { useQueryClient } from "@tanstack/react-query";
 import { axiosInstance } from "../../../shared/lib/axiosInstance";
+import { useIsAdmin, useHasAccess } from "../../../shared/utils/permissions";
 import {
   formatDeliveryForm,
   formatTransportName,
@@ -102,9 +103,18 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { username: authUsername, role: authRole, salesEmployeeCode: authSalesCode } = useAuthStore();
-  const isAdminUser = authRole === "ADMIN" || authRole === "FACTURACION" || authRole === "SUPERVISOR" || authUsername?.toLowerCase() === "enrique";
+  const isAdminHook = useIsAdmin();
+  const hasAccess = useHasAccess();
+  const isAdminUser =
+    isAdminHook ||
+    authRole === "ADMIN" ||
+    authRole === "FACTURACION" ||
+    authRole === "SUPERVISOR" ||
+    hasAccess("POST /quotes/approval") ||
+    hasAccess("POST /quotations/approve") ||
+    hasAccess("POST /quotes/sap/create");
   const activeRole = isAdminUser ? "ADMIN" : "SELLER";
-  const adminUsername = isAdminUser ? (authUsername || "Enrique") : "Enrique";
+  const adminUsername = authUsername || "Administrador";
 
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [isObserveModalOpen, setIsObserveModalOpen] = useState(false);
@@ -679,7 +689,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
           icon: CheckCircle2,
           title: "Cotización Aprobada",
           subtitle: "ETAPA FINAL: LISTO PARA FACTURAR",
-          desc: "Cotización aprobada exitosamente por la Asesora de Facturación (Enrique). Stock en Almacén 014 y depósito validados.",
+          desc: "Cotización aprobada exitosamente por Facturación / Administración. Stock en Almacén 014 y depósito validados.",
           subdesc: "Aprobada en el flujo de pruebas comerciales de la aplicación.",
           timeInStage: "Aprobado"
         };
@@ -693,7 +703,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
           icon: Clock,
           title: "Cotización En Revisión",
           subtitle: "FASE 3: EVALUACIÓN POR ASESORA DE FACTURACIÓN",
-          desc: `La cotización está siendo evaluada por ${adminUsername || "Enrique"} para verificar la coincidencia del depósito.`,
+          desc: `La cotización está siendo evaluada por ${adminUsername || "Administración"} para verificar la coincidencia del depósito.`,
           subdesc: "Esperando confirmación final de inventarios.",
           timeInStage: "En evaluación"
         };
@@ -749,7 +759,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
       id: `NOTIF-${Date.now()}`,
       targetRole: "VENDEDOR",
       targetUsername: sellerUsername,           // ← al vendedor que la creó
-      fromUsername: adminUsername || "enrique", // ← del admin logueado
+      fromUsername: adminUsername || "admin", // ← del admin logueado
       quoteId: quote.docNumber || quote.id,
       quoteObj: { ...quote, approvalStatus: nextStatus, status: nextStatus },
       title: isCommercial ? `📢 Cotización Aprobada por Administrador` : `✅ Pedido Aprobado (Aplicativo)`,
@@ -823,8 +833,8 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
     localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updatedQuotes));
     window.dispatchEvent(new Event("localQuotesUpdated"));
 
-    // Notificación al Admin (Enrique) — nueva revisión requerida
-    const ADMIN_FACTURACION_USERNAME = "enrique";
+    // Notificación al Administrador / Facturación — nueva revisión requerida
+    const ADMIN_FACTURACION_USERNAME = "admin";
     const existingNotifs = JSON.parse(localStorage.getItem("grupoLeon_notifications") || "[]");
     const adminNotif = {
       id: `NOTIF-${Date.now()}`,
@@ -871,7 +881,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
     toast({
       title: "✅ Reenvío Exitoso",
-      description: `Cotización ${quoteId} reenviada a validación. Enrique recibirá la notificación.`,
+      description: `Cotización ${quoteId} reenviada a validación. El área de Facturación recibirá la notificación.`,
       status: "success",
       duration: 5000,
       isClosable: true,
@@ -891,7 +901,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
       id: `NOTIF-${Date.now()}`,
       targetRole: "VENDEDOR",
       targetUsername: sellerUsername,           // ← al vendedor que la creó
-      fromUsername: adminUsername || "enrique", // ← del admin logueado
+      fromUsername: adminUsername || "admin", // ← del admin logueado
       quoteId: quoteId,
       quoteObj: quote,
       title: `❌ Cotización ${quote.docNumber || quote.id} Rechazada`,
@@ -1556,7 +1566,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                           💬 Cotización Devuelta con Observaciones
                         </Text>
                         <Text fontSize={{ base: "12px", md: "xs" }} color="#b45309" fontWeight="600">
-                          Evaluada por {effectiveQuote.observedBy || adminUsername || "Enrique"} • Requiere corrección y reenvío
+                          Evaluada por {effectiveQuote.observedBy || adminUsername || "Administrador"} • Requiere corrección y reenvío
                         </Text>
                       </Box>
                     </HStack>
@@ -1615,7 +1625,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                             Cotización Rechazada por Facturación
                           </Text>
                           <Text fontSize={{ base: "12px", md: "xs" }} color="red.800" fontWeight="600">
-                            Evaluada por {adminUsername || "Enrique"} • Acción requerida para subsanar
+                            Evaluada por {adminUsername || "Administrador"} • Acción requerida para subsanar
                           </Text>
                         </Box>
                       </HStack>
@@ -1654,7 +1664,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                   <HStack spacing={2.5}>
                     <Lock className="w-4 h-4 text-blue-700 flex-shrink-0" />
                     <Text fontSize="xs" color="blue.900" fontWeight="700">
-                      🔒 Modo Vendedor ({sellerName || "Manuel Zapata"}): Esta cotización está en proceso comercial. La evaluación está a cargo de Enrique (Admin / Facturación).
+                      🔒 Modo Vendedor ({sellerName || "Vendedor"}): Esta cotización está en proceso comercial. La evaluación está a cargo de Administración / Facturación.
                     </Text>
                   </HStack>
                 </Box>
@@ -1676,7 +1686,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                           <Text fontSize="11px" color={sapDoc ? "teal.800" : "emerald.800"} fontWeight="600">
                             {sapDoc
                               ? `Registrado y sincronizado oficialmente en SAP Service Layer.`
-                              : `Aprobado internamente por ${adminUsername || "Enrique"}. Si fue un error o prueba, puedes anularlo o devolverlo a borrador.`}
+                              : `Aprobado internamente por ${adminUsername || "Administrador"}. Si fue un error o prueba, puedes anularlo o devolverlo a borrador.`}
                           </Text>
                         </Box>
                       </HStack>
@@ -2281,7 +2291,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                       <Text fontSize="9px" fontWeight="700" color="gray.500" textTransform="uppercase">Evaluado Por</Text>
                       <Text fontWeight="900" color="gray.900">👑 {(() => {
                         const lastLog = Array.isArray(historyLog) && historyLog.length > 0 ? historyLog[historyLog.length - 1] : null;
-                        return lastLog?.user || effectiveQuote.approvedBy || adminUsername || "Enrique";
+                        return lastLog?.user || effectiveQuote.approvedBy || adminUsername || "Administrador";
                       })()} (Admin Facturación)</Text>
                     </Box>
                     <Box>
@@ -2574,12 +2584,19 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
             {/* PARTE INFERIOR: ARTÍCULOS COTIZADOS (IZQ) E HISTORIAL DE ACTIVIDAD (DER) */}
             {(() => {
-              const quoteProducts = quote?.products || quote?.items || quote?.totals?.products || quote?.totals?.normalizedProducts || [];
+              const targetDoc = effectiveQuote || quote;
+              const quoteProducts = targetDoc?.products || targetDoc?.items || targetDoc?.totals?.products || targetDoc?.totals?.normalizedProducts || [];
               const maxAdicDiscount = quoteProducts.reduce((max, it) => {
-                const adic = Number(it.lineDiscount ?? it.LineDiscount ?? 0);
+                const adic = Number(it.lineDiscount ?? it.LineDiscount ?? it.additionalDiscount ?? it.U_TQC_DESV ?? 0);
                 return Math.max(max, adic);
-              }, Number(quote?.totals?.maxDiscount || 0));
-              const hasAdditionalDiscount = maxAdicDiscount > 0 || Boolean(quote?.totals?.hasDiscount);
+              }, Number(targetDoc?.maxDiscount || targetDoc?.totals?.maxDiscount || 0));
+              const hasAdditionalDiscount = 
+                maxAdicDiscount > 0 || 
+                Boolean(targetDoc?.hasAdditionalDiscount) || 
+                Boolean(targetDoc?.totals?.hasAdditionalDiscount) || 
+                Boolean(targetDoc?.totals?.hasDiscount) || 
+                Boolean(targetDoc?.totals?.requiresDiscountApproval) ||
+                Number(targetDoc?.headerDiscount || targetDoc?.DiscountPercent || targetDoc?.discountPercent || 0) > 0;
 
               if (!hasAdditionalDiscount) return null;
 

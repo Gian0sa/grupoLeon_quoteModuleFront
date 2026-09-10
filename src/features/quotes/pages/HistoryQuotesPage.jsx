@@ -9,7 +9,7 @@ import { useNavigate } from "react-router-dom";
 import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
 import { useQuoteStore } from "../stores/quoteStore";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
-import { useHasAccess } from "../../../shared/utils/permissions";
+import { useHasAccess, useIsAdmin } from "../../../shared/utils/permissions";
 import { useGetPromotions } from "../hooks/queries/quotesQueries";
 import { ProductPromotionsModal } from "../components/ProductPromotionsModal";
 import { SapQuoteDocumentModal } from "../components/SapQuoteDocumentModal";
@@ -42,7 +42,8 @@ export function HistoryQuotesPage() {
   const localUser = (localStorage.getItem("username") || localStorage.getItem("userId") || "").toLowerCase();
   const localRole = (localStorage.getItem("role") || "").toUpperCase();
   const hasAccess = useHasAccess();
-  const isAdminUser = authRole === "ADMIN" || localRole === "ADMIN" || username?.toLowerCase() === "enrique" || localUser === "enrique" || hasAccess("POST /quotes/approval") || hasAccess("POST /quotations/approve");
+  const isAdmin = useIsAdmin();
+  const isAdminUser = isAdmin || authRole === "ADMIN" || localRole === "ADMIN" || hasAccess("POST /quotes/approval") || hasAccess("POST /quotations/approve");
   const canManagePromotions = isAdminUser || hasAccess("POST /promotions") || hasAccess("POST:/promotions") || hasAccess("GET /promotions") || hasAccess("GET:/promotions");
 
   const [isPromoModalOpen, setIsPromoModalOpen] = useState(false);

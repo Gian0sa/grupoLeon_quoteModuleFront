@@ -22,6 +22,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useTopSelledProducts } from "../hooks/queries/dashboardQueries";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
+import { useIsAdmin } from "../../../shared/utils/permissions";
 
 const MONTH_NAMES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -38,7 +39,8 @@ export function TopProductsCard({ year, month, sellerCode, sellerName, canFilter
   const role = useAuthStore((state) => state.role);
   const salesEmployeeCode = useAuthStore((state) => state.salesEmployeeCode);
 
-  const isAdmin = role === "ADMIN" || username?.toLowerCase() === "enrique" || role === "FACTURACION";
+  const isAdminHook = useIsAdmin();
+  const isAdmin = isAdminHook || role === "ADMIN" || role === "FACTURACION";
   const isSeller = !isAdmin && !canFilterSellers;
 
   // Periodo dinámico recibido por props o fallback a hoy

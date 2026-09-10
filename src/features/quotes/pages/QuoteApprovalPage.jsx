@@ -69,7 +69,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useQuoteStore } from "../stores/quoteStore";
-import { useHasAccess } from "../../../shared/utils/permissions";
+import { useHasAccess, useIsAdmin } from "../../../shared/utils/permissions";
 import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
 import { QuoteStepper, getStageIndex } from "../components/QuoteStepper";
 import { QuoteDetailDrawer } from "../components/QuoteDetailDrawer";
@@ -103,6 +103,24 @@ export const isCancelledState = (status) => {
     s.includes("CANCELADO") ||
     s.includes("RECHAZADO")
   );
+};
+
+export const checkHasAdditionalDiscount = (q) => {
+  if (!q) return false;
+  if (q.hasAdditionalDiscount || q.totals?.hasAdditionalDiscount || q.totals?.hasDiscount || q.totals?.requiresDiscountApproval) {
+    return true;
+  }
+  if (Number(q.maxDiscount || q.totals?.maxDiscount || 0) > 0) {
+    return true;
+  }
+  if (Number(q.headerDiscount || q.DiscountPercent || q.discountPercent || q.totals?.headerDiscount || 0) > 0) {
+    return true;
+  }
+  const quoteProducts = q.products || q.items || q.totals?.products || q.totals?.normalizedProducts || [];
+  return quoteProducts.some((it) => {
+    const adic = Number(it.lineDiscount ?? it.LineDiscount ?? it.additionalDiscount ?? it.U_TQC_DESV ?? 0);
+    return adic > 0;
+  });
 };
 
 const isDraftOwnedByCurrentUser = (q, currentUsername, currentUserId) => {
@@ -179,6 +197,23 @@ export const isMatchingDoc = (q, docIdentifier) => {
   return false;
 };
 
+export const safeSetLocalQuotes = (quotesList) => {
+  try {
+    if (!quotesList) {
+      localStorage.setItem("grupoLeon_local_quotes", "[]");
+      return;
+    }
+    if (typeof quotesList === "string") {
+      localStorage.setItem("grupoLeon_local_quotes", quotesList);
+      return;
+    }
+    const trimmed = Array.isArray(quotesList) ? quotesList.slice(0, 80) : [];
+    localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(trimmed));
+  } catch (err) {
+    console.warn("⚠️ [localStorage] No se pudo persistir cotizaciones locales:", err?.message);
+  }
+};
+
 export function QuoteApprovalPage() {
   const toast = useToast();
   const navigate = useNavigate();
@@ -189,12 +224,13 @@ export function QuoteApprovalPage() {
   const localUser = (localStorage.getItem("username") || localStorage.getItem("userId") || "").toLowerCase();
   const localRole = (localStorage.getItem("role") || "").toUpperCase();
   const hasAccess = useHasAccess();
-  const isAdminUser = authRole === "ADMIN" || localRole === "ADMIN" || authUsername?.toLowerCase() === "enrique" || localUser === "enrique" || hasAccess("POST /quotes/approval") || hasAccess("POST /quotations/approve");
+  const isAdmin = useIsAdmin();
+  const isAdminUser = isAdmin || authRole === "ADMIN" || localRole === "ADMIN" || hasAccess("POST /quotes/approval") || hasAccess("POST /quotations/approve");
   const activeCurrentUsername = (authUsername || localStorage.getItem("username") || "").toLowerCase().trim();
   const activeCurrentUserId = authUserId || localStorage.getItem("userId");
 
   const { data: serverQuotes, isLoading: isServerLoading, refetch: refetchServerQuotes } = useGetQuotes({
-    limit: isAdminUser ? 100 : 10
+    limit: isAdminUser ? 30 : 10
   });
 
   const handleLoadQuote = (q) => {
@@ -233,6 +269,12 @@ export function QuoteApprovalPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [highlightedDocId, setHighlightedDocId] = useState(null);
   
+  // Paginación y almacenamiento de alto rendimiento para la pestaña de Histórico Completo
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyQuotes, setHistoryQuotes] = useState([]);
+  
   // Filtros avanzados para la pestaña de Histórico Completo (Por defecto últimos 3 meses)
   const defaultStartDate = useMemo(() => {
     const d = new Date();
@@ -269,6 +311,7 @@ export function QuoteApprovalPage() {
   // Auto-cálculo y control estricto de máximo 3 meses para el Histórico
   const handleStartDateChange = (newStart) => {
     setHistoryStartDate(newStart);
+    setHistoryPage(1);
     if (newStart) {
       const d = new Date(newStart + "T00:00:00");
       d.setMonth(d.getMonth() + 3);
@@ -279,6 +322,7 @@ export function QuoteApprovalPage() {
 
   const handleEndDateChange = (newEnd) => {
     setHistoryEndDate(newEnd);
+    setHistoryPage(1);
     if (newEnd && historyStartDate) {
       const start = new Date(historyStartDate + "T00:00:00");
       const end = new Date(newEnd + "T00:00:00");
@@ -291,39 +335,57 @@ export function QuoteApprovalPage() {
     }
   };
 
-  // Carga dinámica de datos históricos desde SAP B1 y base de datos cuando se consulta el Histórico Completo
+  // Carga dinámica de datos históricos desde SAP B1 y base de datos con paginación server-side de alto rendimiento
   useEffect(() => {
     if (selectedTab !== "HISTORICO" || !historyStartDate || !historyEndDate) return;
+    let isCurrent = true;
+    setHistoryLoading(true);
+
     const timer = setTimeout(async () => {
       try {
-        const results = await getQuotes({
+        const response = await getQuotes({
           startDate: historyStartDate,
           endDate: historyEndDate,
-          limit: 150
+          page: historyPage,
+          limit: pageSize,
+          paginate: true
         });
-        if (Array.isArray(results) && results.length > 0) {
+
+        if (!isCurrent) return;
+
+        const items = Array.isArray(response) ? response : (response?.quotes || []);
+        const total = typeof response?.total === "number" ? response.total : (response?.quotes?.length || items.length);
+
+        setHistoryQuotes(items);
+        setHistoryTotal(total);
+
+        // Sincronizar registros en el almacén local para consulta instantánea
+        if (items.length > 0) {
           setQuotes(prev => {
             const seen = new Set(prev.map(q => String(q.docNumber || q.id)));
             const added = [];
-            for (const r of results) {
+            for (const r of items) {
               const k = String(r.docNumber || r.id);
               if (!seen.has(k)) {
                 added.push(r);
                 seen.add(k);
               }
             }
-            if (added.length > 0) {
-              return [...added, ...prev];
-            }
-            return prev;
+            return added.length > 0 ? [...added, ...prev] : prev;
           });
         }
       } catch (e) {
-        console.warn("⚠️ Error cargando histórico de fechas:", e.message);
+        if (isCurrent) console.warn("⚠️ Error cargando histórico de fechas:", e.message);
+      } finally {
+        if (isCurrent) setHistoryLoading(false);
       }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [selectedTab, historyStartDate, historyEndDate]);
+    }, 200);
+
+    return () => {
+      isCurrent = false;
+      clearTimeout(timer);
+    };
+  }, [selectedTab, historyStartDate, historyEndDate, historyPage, pageSize]);
 
   // Búsqueda profunda en servidor/SAP cuando se especifique un término relevante (mínimo 3 letras o número específico)
   useEffect(() => {
@@ -335,11 +397,12 @@ export function QuoteApprovalPage() {
       return;
     }
 
+    let isCurrent = true;
     const timer = setTimeout(async () => {
       try {
-        setIsDeepSearching(true);
+        if (isCurrent) setIsDeepSearching(true);
         const results = await getQuotes({ search: queryTerm });
-        if (Array.isArray(results) && results.length > 0) {
+        if (isCurrent && Array.isArray(results) && results.length > 0) {
           setQuotes(prev => {
             const seen = new Set(prev.map(q => String(q.docNumber || q.id)));
             const added = [];
@@ -358,17 +421,35 @@ export function QuoteApprovalPage() {
         }
       } catch (e) {
       } finally {
-        setIsDeepSearching(false);
+        if (isCurrent) setIsDeepSearching(false);
       }
     }, 550);
-    return () => clearTimeout(timer);
+    return () => {
+      isCurrent = false;
+      clearTimeout(timer);
+    };
   }, [searchQuery]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      await refetchServerQuotes();
-      syncQuotes();
+      if (selectedTab === "HISTORICO") {
+        setHistoryLoading(true);
+        const response = await getQuotes({
+          startDate: historyStartDate,
+          endDate: historyEndDate,
+          page: historyPage,
+          limit: pageSize,
+          paginate: true
+        });
+        const items = Array.isArray(response) ? response : (response?.quotes || []);
+        const total = typeof response?.total === "number" ? response.total : (response?.quotes?.length || items.length);
+        setHistoryQuotes(items);
+        setHistoryTotal(total);
+      } else {
+        await refetchServerQuotes();
+        syncQuotes();
+      }
       toast({
         title: "🔄 Sincronizado",
         description: "Lista de cotizaciones actualizada con el servidor y SAP.",
@@ -380,7 +461,10 @@ export function QuoteApprovalPage() {
     } catch (e) {
       syncQuotes();
     } finally {
-      setTimeout(() => setIsRefreshing(false), 400);
+      setTimeout(() => {
+        setIsRefreshing(false);
+        setHistoryLoading(false);
+      }, 400);
     }
   };
 
@@ -425,7 +509,7 @@ export function QuoteApprovalPage() {
       });
 
       if (cleanLocal.length !== local.length || hadChanges) {
-        localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(cleanLocal));
+        safeSetLocalQuotes(cleanLocal);
       }
 
       if (serverQuotes && Array.isArray(serverQuotes)) {
@@ -543,7 +627,7 @@ export function QuoteApprovalPage() {
           }
         }
         setQuotes(merged);
-        localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(merged));
+        safeSetLocalQuotes(merged);
       } else if (cleanLocal.length > 0) {
         const validLocal = cleanLocal.filter(q => {
           const notTest = !String(q.docNumber || "").startsWith("TEST-");
@@ -551,7 +635,7 @@ export function QuoteApprovalPage() {
           return notTest && (isAdminUser || isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId));
         });
         setQuotes(validLocal);
-        localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(validLocal));
+        safeSetLocalQuotes(validLocal);
       } else {
         setQuotes([]);
       }
@@ -742,7 +826,7 @@ export function QuoteApprovalPage() {
       });
     } else {
       const nowIso = new Date().toISOString();
-      const adminName = authUsername || "Enrique";
+      const adminName = authUsername || "Administrador";
       setQuotes((prev) =>
         prev.map((q) => {
           if (!isMatchingItem(q)) return q;
@@ -778,7 +862,7 @@ export function QuoteApprovalPage() {
       });
     } else {
       const nowIso = new Date().toISOString();
-      const adminName = authUsername || "Enrique";
+      const adminName = authUsername || "Administrador";
       const updated = saved.map((q) => {
         if (!isMatchingItem(q)) return q;
         const prevLogs = q.historyLog || [];
@@ -808,12 +892,18 @@ export function QuoteApprovalPage() {
 
     // 2.5 Limpiar notificaciones asociadas a esta cotización en almacenamiento local
     try {
+      const targetClient = (targetQuote?.clientName || "").trim().toUpperCase();
       const rawNotifs = localStorage.getItem("grupoLeon_notifications");
       const allNotifs = rawNotifs ? JSON.parse(rawNotifs) : [];
       const remainingNotifs = allNotifs.filter(n => {
         const nQuoteId = String(n.quoteId || "").trim().toUpperCase();
         const nId = String(n.id || "").trim().toUpperCase();
-        return nQuoteId !== idStr.toUpperCase() && nId !== idStr.toUpperCase();
+        const nTitle = String(n.title || "").toUpperCase();
+        const nDesc = String(n.description || "").toUpperCase();
+        const isMatchQuote = nQuoteId === idStr.toUpperCase() || nId === idStr.toUpperCase() || (idStr && nQuoteId.includes(idStr.toUpperCase()));
+        const isMatchClient = targetClient && targetClient.length > 3 && (nDesc.includes(targetClient) || nTitle.includes(targetClient));
+        const isInvalidOrNull = !n.quoteId || n.quoteId === "null" || nTitle.includes("- NULL");
+        return !isMatchQuote && !isMatchClient && !isInvalidOrNull;
       });
       localStorage.setItem("grupoLeon_notifications", JSON.stringify(remainingNotifs));
       window.dispatchEvent(new Event("localNotificationsUpdated"));
@@ -947,7 +1037,7 @@ export function QuoteApprovalPage() {
   const handleConfirmObserve = async (docIdOrQuote, reason) => {
     const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
     const nowIso = new Date().toISOString();
-    const adminName = authUsername || "Enrique";
+    const adminName = authUsername || "Administrador";
     
     const docId = typeof docIdOrQuote === "object" ? (docIdOrQuote.docNumber || docIdOrQuote.id) : docIdOrQuote;
 
@@ -1067,7 +1157,7 @@ export function QuoteApprovalPage() {
   const handleConfirmReject = async (docId, reason) => {
     const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
     const nowIso = new Date().toISOString();
-    const adminName = authUsername || "Enrique";
+    const adminName = authUsername || "Administrador";
     const target =
       quotes.find(q => isMatchingDoc(q, docId)) ||
       saved.find(q => isMatchingDoc(q, docId));
@@ -1181,7 +1271,7 @@ export function QuoteApprovalPage() {
     }
     const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
     const nowIso = new Date().toISOString();
-    const adminName = authUsername || "Enrique";
+    const adminName = authUsername || "Administrador";
     const target =
       (typeof docIdOrQuote === "object" && docIdOrQuote ? docIdOrQuote : null) ||
       quotes.find(q => isMatchingDoc(q, docId)) ||
@@ -1327,6 +1417,7 @@ export function QuoteApprovalPage() {
   // Resetear a página 1 cuando cambia la pestaña, la búsqueda o el tamaño de página
   useEffect(() => {
     setCurrentPage(1);
+    setHistoryPage(1);
   }, [selectedTab, searchQuery, pageSize]);
 
   // Proteger pestañas exclusivas de administrador: Vendedores solo ven flujo operativo estándar
@@ -1429,9 +1520,10 @@ export function QuoteApprovalPage() {
       return visibleQuotes.filter(matchesSearch);
     }
 
-    // 2. Si la pestaña es "HISTORICO", aplicar filtros avanzados del histórico completo (por defecto 3 meses)
+    // 2. Si la pestaña es "HISTORICO", aplicar filtros avanzados sobre los datos históricos cargados
     if (selectedTab === "HISTORICO") {
-      return visibleQuotes.filter((q) => {
+      const source = historyQuotes.length > 0 ? historyQuotes : visibleQuotes;
+      const filtered = source.filter((q) => {
         const currentStatus = q.approvalStatus || q.state || q.status || "GENERADO";
         const docDateStr = q.docDate || (q.createdAt ? q.createdAt.split("T")[0] : "");
 
@@ -1464,9 +1556,17 @@ export function QuoteApprovalPage() {
 
         return true;
       });
+
+      return filtered.sort((a, b) => {
+        const numA = parseInt(String(a.docNumber || a.sapDocNum || a.DocNum || a.id || "").replace(/[^0-9]/g, "") || "0", 10);
+        const numB = parseInt(String(b.docNumber || b.sapDocNum || b.DocNum || b.id || "").replace(/[^0-9]/g, "") || "0", 10);
+        if (numA !== numB) return numB - numA;
+        const dateA = new Date(a.createdAt || a.docDate || 0).getTime();
+        const dateB = new Date(b.createdAt || b.docDate || 0).getTime();
+        return dateB - dateA;
+      });
     }
 
-    // 3. Pestañas Operativas del Día a Día (Carga Rápida)
     // 3. Pestañas Operativas del Día a Día (Carga Rápida)
     const result = visibleQuotes.filter((q) => {
       const currentStatus = q.approvalStatus || q.state || q.status || "GENERADO";
@@ -1505,6 +1605,7 @@ export function QuoteApprovalPage() {
     });
   }, [
     quotes,
+    historyQuotes,
     selectedTab,
     searchQuery,
     historyStartDate,
@@ -1516,14 +1617,40 @@ export function QuoteApprovalPage() {
     activeCurrentUserId
   ]);
 
-  const totalItems = filteredQuotes.length;
+  const isHistoryTab = selectedTab === "HISTORICO";
+  const totalItems = isHistoryTab ? (historyTotal || historyQuotes.length) : filteredQuotes.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-  const validCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+  const validCurrentPage = isHistoryTab 
+    ? Math.min(Math.max(1, historyPage), totalPages) 
+    : Math.min(Math.max(1, currentPage), totalPages);
 
   const paginatedQuotes = useMemo(() => {
+    if (isHistoryTab) {
+      return filteredQuotes;
+    }
     const start = (validCurrentPage - 1) * pageSize;
     return filteredQuotes.slice(start, start + pageSize);
-  }, [filteredQuotes, validCurrentPage, pageSize]);
+  }, [isHistoryTab, filteredQuotes, validCurrentPage, pageSize]);
+
+  const handlePageChange = (newPageOrFn) => {
+    if (isHistoryTab) {
+      setHistoryPage(prev => {
+        const next = typeof newPageOrFn === 'function' ? newPageOrFn(prev) : newPageOrFn;
+        return Math.min(Math.max(1, next), totalPages);
+      });
+    } else {
+      setCurrentPage(newPageOrFn);
+    }
+  };
+
+  const handlePageSizeChange = (size) => {
+    setPageSize(size);
+    if (isHistoryTab) {
+      setHistoryPage(1);
+    } else {
+      setCurrentPage(1);
+    }
+  };
 
   // Contadores por Estado (Filtrados por rol)
   const counts = useMemo(() => {
@@ -1557,8 +1684,11 @@ export function QuoteApprovalPage() {
         else if (["APROBADO", "EMITIDO", "EMITIDO_SAP", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO"].includes(st)) res.APROBADO++;
       }
     });
+    if (historyTotal > 0) {
+      res.HISTORICO = historyTotal;
+    }
     return res;
-  }, [quotes, isAdminUser, activeCurrentUsername, activeCurrentUserId]);
+  }, [quotes, historyTotal, isAdminUser, activeCurrentUsername, activeCurrentUserId]);
 
   const renderStatusBadge = (status, q = null) => {
     const getMainBadge = () => {
@@ -2190,10 +2320,10 @@ export function QuoteApprovalPage() {
           </HStack>
         </Flex>
 
-        {/* BARRA DE PROGRESO DISCRETA AL ACTUALIZAR */}
-        {(isRefreshing || isServerLoading) && (
+        {/* BARRA DE PROGRESO DISCRETA AL ACTUALIZAR O PAGINAR HISTÓRICO */}
+        {(isRefreshing || isServerLoading || (isHistoryTab && historyLoading)) && (
           <Box w="full" px={1} mb={-2}>
-            <Progress size="xs" isIndeterminate colorScheme="green" bg="green.50" borderRadius="full" />
+            <Progress size="xs" isIndeterminate colorScheme={isHistoryTab ? "blue" : "green"} bg={isHistoryTab ? "blue.50" : "green.50"} borderRadius="full" />
           </Box>
         )}
 
@@ -2210,7 +2340,7 @@ export function QuoteApprovalPage() {
               </Tr>
             </Thead>
             <Tbody>
-              {((isServerLoading || isRefreshing) && quotes.length === 0) ? (
+              {(((isServerLoading || isRefreshing) && quotes.length === 0) || (isHistoryTab && historyLoading && historyQuotes.length === 0)) ? (
                 <>
                   <Tr bg="linear-gradient(90deg, rgba(16, 185, 129, 0.08) 0%, rgba(5, 150, 105, 0.15) 50%, rgba(16, 185, 129, 0.08) 100%)">
                     <Td colSpan={5} py={3.5} textAlign="center" borderBottom="1.5px solid" borderColor="emerald.200">
@@ -2263,12 +2393,7 @@ export function QuoteApprovalPage() {
                   const sellerName = cleanSellerName(q.sellerName || q.SlpName || q.salesPersonName);
                   const grandTotalUSD = getQuoteTotalUSD(q);
 
-                  const quoteProducts = q.products || q.items || q.totals?.products || q.totals?.normalizedProducts || [];
-                  const maxAdicDiscount = quoteProducts.reduce((max, it) => {
-                    const adic = Number(it.lineDiscount ?? it.LineDiscount ?? 0);
-                    return Math.max(max, adic);
-                  }, Number(q.totals?.maxDiscount || 0));
-                  const hasAdditionalDiscount = maxAdicDiscount > 0 || Boolean(q.totals?.hasDiscount);
+                  const hasAdditionalDiscount = checkHasAdditionalDiscount(q);
                   const sapDocNum = q.sapDocNum || q.totals?.sapDocNum || (q.isSapDirect ? (q.DocNum || q.totals?.DocNum) : null);
                   const isHighlighted = highlightedDocId && (String(docId) === highlightedDocId || String(q.id) === highlightedDocId);
 
@@ -2402,12 +2527,7 @@ export function QuoteApprovalPage() {
               const sellerName = cleanSellerName(q.sellerName || q.SlpName || q.salesPersonName);
               const grandTotalUSD = getQuoteTotalUSD(q);
 
-              const quoteProducts = q.products || q.items || q.totals?.products || q.totals?.normalizedProducts || [];
-              const maxAdicDiscount = quoteProducts.reduce((max, it) => {
-                const adic = Number(it.lineDiscount ?? it.LineDiscount ?? 0);
-                return Math.max(max, adic);
-              }, Number(q.totals?.maxDiscount || 0));
-              const hasAdditionalDiscount = maxAdicDiscount > 0 || Boolean(q.totals?.hasDiscount);
+              const hasAdditionalDiscount = checkHasAdditionalDiscount(q);
               const sapDocNum = q.sapDocNum || q.totals?.sapDocNum || (q.isSapDirect ? (q.DocNum || q.totals?.DocNum) : null);
               const isHighlighted = highlightedDocId && (String(docId) === highlightedDocId || String(q.id) === highlightedDocId);
 
@@ -2517,7 +2637,7 @@ export function QuoteApprovalPage() {
                     color={pageSize === size ? "white" : "gray.700"}
                     borderColor={pageSize === size ? "#0e572b" : "gray.300"}
                     _hover={{ bg: pageSize === size ? "#0b4623" : "gray.50" }}
-                    onClick={() => setPageSize(size)}
+                    onClick={() => handlePageSizeChange(size)}
                     fontWeight="800"
                     borderRadius="md"
                   >
@@ -2535,7 +2655,7 @@ export function QuoteApprovalPage() {
                 variant="outline"
                 borderColor="gray.300"
                 isDisabled={validCurrentPage <= 1}
-                onClick={() => setCurrentPage(1)}
+                onClick={() => handlePageChange(1)}
                 aria-label="Primera página"
                 borderRadius="lg"
                 _hover={{ bg: "gray.50" }}
@@ -2546,7 +2666,7 @@ export function QuoteApprovalPage() {
                 variant="outline"
                 borderColor="gray.300"
                 isDisabled={validCurrentPage <= 1}
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                onClick={() => handlePageChange((p) => Math.max(1, p - 1))}
                 aria-label="Página anterior"
                 borderRadius="lg"
                 _hover={{ bg: "gray.50" }}
@@ -2564,7 +2684,7 @@ export function QuoteApprovalPage() {
                 variant="outline"
                 borderColor="gray.300"
                 isDisabled={validCurrentPage >= totalPages}
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                onClick={() => handlePageChange((p) => Math.min(totalPages, p + 1))}
                 aria-label="Página siguiente"
                 borderRadius="lg"
                 _hover={{ bg: "gray.50" }}
@@ -2575,7 +2695,7 @@ export function QuoteApprovalPage() {
                 variant="outline"
                 borderColor="gray.300"
                 isDisabled={validCurrentPage >= totalPages}
-                onClick={() => setCurrentPage(totalPages)}
+                onClick={() => handlePageChange(totalPages)}
                 aria-label="Última página"
                 borderRadius="lg"
                 _hover={{ bg: "gray.50" }}

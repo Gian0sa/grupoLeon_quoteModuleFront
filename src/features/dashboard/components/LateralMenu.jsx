@@ -49,6 +49,7 @@ import { HEADER_MAIN_BG } from '../../../components/TopHeaderBanner';
 export function LateralMenu() {
   const { isOpen, onOpen, onClose } = useDisclosure();
   const btnRef = useRef();
+  const closeBtnRef = useRef();
   const navigate = useNavigate();
   const location = useLocation();
   const { username, isAuthenticated } = useAuthStore();
@@ -235,12 +236,10 @@ export function LateralMenu() {
         placement="right"
         onClose={onClose}
         finalFocusRef={btnRef}
+        initialFocusRef={closeBtnRef}
         size="md"
         blockScrollOnMount={false}
         preserveScrollBarGap={false}
-        autoFocus={false}
-        trapFocus={false}
-        returnFocusOnClose={false}
       >
         {/* Sin backdropFilter para respuesta ultra veloz de 60fps en móviles */}
         <DrawerOverlay bg="blackAlpha.600" transition="opacity 0.15s ease-out" />
@@ -254,7 +253,6 @@ export function LateralMenu() {
           borderLeftRadius="2xl"
           boxShadow="-8px 0 40px rgba(0,0,0,0.12)"
           overflow="hidden"
-          style={{ willChange: "transform", transform: "translate3d(0, 0, 0)" }}
         >
           {/* Header con perfil integrado */}
           <DrawerHeader p={0} flexShrink={0}>
@@ -317,6 +315,7 @@ export function LateralMenu() {
 
               {/* Botón Cerrar */}
               <IconButton
+                ref={closeBtnRef}
                 icon={<CloseIcon boxSize={3} color="white" />}
                 variant="ghost"
                 size="sm"

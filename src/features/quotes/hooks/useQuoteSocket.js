@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { socket } from "../../../shared/lib/socket";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
+import { checkIsAdmin } from "../../../shared/utils/permissions";
 import { useToast } from "@chakra-ui/react";
 
 export function useQuoteSocket() {
@@ -117,8 +118,9 @@ export function useQuoteSocket() {
       const isSellerTarget = targetRoleUpper === "VENDEDOR" || targetRoleUpper === "SELLER";
       const isSellerActive = currentRoleUpper === "VENDEDOR" || currentRoleUpper === "SELLER";
 
+      const currentEndpoints = useAuthStore.getState().endpoints;
       const isAdminTarget = targetRoleUpper === "FACTURACION" || targetRoleUpper === "ADMIN" || targetRoleUpper === "SUPERVISOR";
-      const isAdminActive = currentRoleUpper === "ADMIN" || currentRoleUpper === "FACTURACION" || currentRoleUpper === "SUPERVISOR" || currentUsername?.toLowerCase() === "enrique";
+      const isAdminActive = currentRoleUpper === "ADMIN" || currentRoleUpper === "FACTURACION" || currentRoleUpper === "SUPERVISOR" || checkIsAdmin(currentEndpoints, currentUsername);
 
       const isUserMatch = Boolean(
         notif.targetUsername && currentUsername && (

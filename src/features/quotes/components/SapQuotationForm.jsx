@@ -29,6 +29,7 @@ import { calculateQuoteTotals } from "../../../shared/utils/quoteCalculator";
 import { useNavigate } from "react-router-dom";
 import QuoteSubmitConfirmModal from "./QuoteSubmitConfirmModal";
 import { isPickupInStoreForm } from "./NewSellTerms";
+import { useIsAdmin, useHasAccess } from "../../../shared/utils/permissions";
 
 const money = (val, currency = "USD") => {
   const num = Number(val || 0);
@@ -47,7 +48,20 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { username, userId, salesEmployeeCode, role } = useAuthStore();
-  const isAdmin = role === "ADMIN" || role === "FACTURACION" || username?.toLowerCase() === "enrique";
+  const isAdminHook = useIsAdmin();
+  const hasAccess = useHasAccess();
+
+  // 🛡️ Permite gestionar pagos, váucher y SUNAT si es administrador o si es asesor de mostrador/emisor con permisos
+  const isAdmin =
+    isAdminHook ||
+    role === "ADMIN" ||
+    role === "FACTURACION" ||
+    role === "SUPERVISOR" ||
+    hasAccess("POST /quotes/sap/create") ||
+    hasAccess("POST /quotes/approval") ||
+    hasAccess("POST /quotes/sap/:id/copy-to-order") ||
+    hasAccess("PUT /profile/admin/:userId");
+
   const localSeller = localStorage.getItem("username") || localStorage.getItem("userId");
 
   const [docType, setDocType] = useState("OFERTA_VENTA"); // OFERTA_VENTA o PEDIDO_CLIENTE
@@ -451,12 +465,12 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       || storeSalesEmployeeCode;
 
     const currentLoggedInUsername = (username || localSeller || authUsername || "").toLowerCase().trim();
-    const finalSellerName = originalSellerName || (activeSeller && activeSeller !== "Vendedor Autorizado" ? activeSeller : (currentLoggedInUsername || "Enrique"));
-    const finalCreatedByUsername = originalCreatedByUsername || currentLoggedInUsername || "enrique";
-    const finalCreatedByUserId = originalUserId || (isAdmin ? null : (userId || null));
+    const finalSellerName = originalSellerName || (activeSeller && activeSeller !== "Vendedor Autorizado" ? activeSeller : (currentLoggedInUsername || "Vendedor Autorizado"));
+    const finalCreatedByUsername = originalCreatedByUsername || currentLoggedInUsername || (username || "admin");
+    const finalCreatedByUserId = originalUserId || (userId || null);
     const effectiveSlpCode = (originalSlpCode && !isNaN(Number(originalSlpCode)))
       ? Number(originalSlpCode)
-      : ((!isAdmin && salesEmployeeCode && !isNaN(Number(salesEmployeeCode))) ? Number(salesEmployeeCode) : undefined);
+      : (salesEmployeeCode && !isNaN(Number(salesEmployeeCode)) ? Number(salesEmployeeCode) : undefined);
 
     const newDoc = {
       id: existingDoc?.id || activeDocNumber,
@@ -534,7 +548,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
     const clientName = client?.CardName || client?.name || "Cliente General";
     const totalUsdStr = finalTotals?.grandTotalUSD ? `$${finalTotals.grandTotalUSD.toFixed(2)}` : "$0.00";
-    const ADMIN_FACTURACION_USERNAME = "enrique";
+    const ADMIN_FACTURACION_USERNAME = "admin";
     const senderUsername = username || localSeller || "vendedor";
     const maxAdic = (products || []).reduce((max, it) => Math.max(max, Number(it.lineDiscount || it.LineDiscount || 0)), 0);
     const discountNotice = maxAdic > 0 ? ' • ⚠️ CON DESCUENTO ADICIONAL APLICADO' : '';
@@ -544,7 +558,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       queryClient.invalidateQueries({ queryKey: ["quotes"] });
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
 
-      const assignedNumber = res?.docNumber || activeDocNumber;
+      const assignedNumber = res?.docNumber || (res?.id ? `COT-WEB-${String(res.id).padStart(6, "0")}` : activeDocNumber);
       if (assignedNumber) {
         console.log(`🔄 [Correlativo Asignado] Oficial: ${assignedNumber}`);
         setDocNumber(assignedNumber);
@@ -846,7 +860,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
     const activeDocNumber = docNumber || quoteId || `COT-${Date.now().toString().slice(-6)}`;
     const nowIso = new Date().toISOString();
-    const adminName = username || "Enrique";
+    const adminName = username || "Administrador";
     const sellerUsername = currentQuoteObj.sellerName || "Vendedor";
 
     // 1. Guardar y actualizar cotización a estado APROBADO
@@ -960,7 +974,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   const handleObserveFromForm = async (quoteOrId, reason) => {
     const activeDocNumber = quoteId || docNumber;
     const nowIso = new Date().toISOString();
-    const adminName = username || "Enrique";
+    const adminName = username || "Administrador";
 
     const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
     const existingDoc = saved.find((q) => (q.id || q.docNumber) === activeDocNumber);
@@ -1010,7 +1024,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   const handleRejectFromForm = async (qId, reason) => {
     const activeDocNumber = quoteId || docNumber;
     const nowIso = new Date().toISOString();
-    const adminName = username || "Enrique";
+    const adminName = username || "Administrador";
 
     const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
     const existingDoc = saved.find((q) => (q.id || q.docNumber) === activeDocNumber);
@@ -1316,11 +1330,11 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       queryClient.invalidateQueries({ queryKey: ["quotes"] });
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
 
-      // Enviar notificación a Facturación (Enrique)
+      // Enviar notificación a Facturación / Administración
       const existingNotifs = JSON.parse(localStorage.getItem("grupoLeon_notifications") || "[]");
       const clientName = client?.CardName || client?.name || "Cliente General";
       const totalUsdStr = finalTotals?.grandTotalUSD ? `$${finalTotals.grandTotalUSD.toFixed(2)}` : "$0.00";
-      const ADMIN_FACTURACION_USERNAME = "enrique";
+      const ADMIN_FACTURACION_USERNAME = "admin";
       
       const notifObj = {
         id: `NOTIF-${Date.now()}`,

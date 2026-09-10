@@ -63,6 +63,7 @@ import { useGetAllUsersAdmin } from "../hooks/queries/authAdminQueries";
 import { useAuthAdminMutations } from "../hooks/mutations/authAdminMutations";
 import { useGetServices } from "../../auth/hooks/queries/authQueries";
 import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
+import { checkIsAdmin } from "../../../shared/utils/permissions";
 import PermissionsTreeView from "../components/PermissionsTreeView";
 import UserBasicFields from "../components/UserBasicFields";
 import { format } from "date-fns";
@@ -824,7 +825,7 @@ export function ProfileAdmin() {
                                   <Text fontWeight="800" fontSize="12.5px" color="gray.900">
                                     {user.username}
                                   </Text>
-                                  {user.username?.toLowerCase() === "enrique" && (
+                                  {checkIsAdmin(user.endpoints, user.username) && (
                                     <Badge colorScheme="purple" fontSize="9px" px={1.5} borderRadius="sm">
                                       Admin
                                     </Badge>

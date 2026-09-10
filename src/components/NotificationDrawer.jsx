@@ -23,6 +23,7 @@ import { useAuthStore } from "../features/auth/stores/useAuthStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNotifications } from "../features/quotes/hooks/queries/quotesQueries";
 import { markNotificationAsRead, deleteNotification, clearNotifications, updateQuote } from "../features/quotes/services/quoteService";
+import { useIsAdmin } from "../shared/utils/permissions";
 
 export function NotificationDrawer({ isOpen, onClose }) {
   const { username, userId, role } = useAuthStore();
@@ -42,8 +43,9 @@ export function NotificationDrawer({ isOpen, onClose }) {
     };
   }, []);
 
+  const isAdmin = useIsAdmin();
   const { data: serverNotifs } = useNotifications(
-    role === "ADMIN" ? "FACTURACION" : undefined,
+    isAdmin ? "FACTURACION" : undefined,
     username
   );
 
@@ -52,7 +54,7 @@ export function NotificationDrawer({ isOpen, onClose }) {
     if (!username && !userId && !role) return [];
     const userLower = (username || "").toLowerCase();
     const roleUpper = (role || "").toUpperCase();
-    const isAdminOrEnrique = roleUpper === "ADMIN" || roleUpper === "FACTURACION" || roleUpper === "SUPERVISOR" || userLower.includes("enrique");
+    const isAdminOrMaster = isAdmin || roleUpper === "ADMIN" || roleUpper === "FACTURACION" || roleUpper === "SUPERVISOR";
 
     return notifs.filter((n) => {
       const targetUser = (n.targetUsername || "").toLowerCase();
@@ -63,11 +65,11 @@ export function NotificationDrawer({ isOpen, onClose }) {
         return true;
       }
       // 2. Coincidencia por rol de Facturación / Administración
-      if ((targetRoleUpper === "FACTURACION" || targetRoleUpper === "ADMIN") && isAdminOrEnrique) {
+      if ((targetRoleUpper === "FACTURACION" || targetRoleUpper === "ADMIN") && isAdminOrMaster) {
         return true;
       }
       // 3. Coincidencia por rol de Vendedor
-      if ((targetRoleUpper === "VENDEDOR" || targetRoleUpper === "SELLER") && !isAdminOrEnrique) {
+      if ((targetRoleUpper === "VENDEDOR" || targetRoleUpper === "SELLER") && !isAdminOrMaster) {
         return true;
       }
       // 4. Coincidencia por ID de usuario
@@ -116,7 +118,12 @@ export function NotificationDrawer({ isOpen, onClose }) {
     }
 
     const filteredByUser = filterForCurrentUser(combined).filter(
-      (n) => n.status !== "ANULADO" && !String(n.title || "").toLowerCase().includes("anulad")
+      (n) => n.status !== "ANULADO" && 
+             !String(n.title || "").toLowerCase().includes("anulad") &&
+             !String(n.title || "").includes("- null") &&
+             n.quoteId !== null &&
+             n.quoteId !== "null" &&
+             n.quoteId !== ""
     );
 
     // Deduplicación inteligente por quoteId (conserva la alerta más reciente por cotización)
@@ -141,7 +148,7 @@ export function NotificationDrawer({ isOpen, onClose }) {
 
   const handleClearAll = async () => {
     try {
-      await clearNotifications(role === "ADMIN" ? "FACTURACION" : undefined, username);
+      await clearNotifications(isAdmin ? "FACTURACION" : undefined, username);
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
     } catch (e) {
       console.error("Error clearing server notifications:", e);
@@ -154,7 +161,7 @@ export function NotificationDrawer({ isOpen, onClose }) {
         if (n.targetUsername && username) {
           return n.targetUsername.toLowerCase() !== username.toLowerCase();
         }
-        if (n.targetRole === "FACTURACION" && (role === "ADMIN" || username?.toLowerCase() === "enrique")) {
+        if (n.targetRole === "FACTURACION" && isAdmin) {
           return false;
         }
         if (n.targetUserId && userId) {
@@ -322,6 +329,7 @@ export function NotificationDrawer({ isOpen, onClose }) {
         blockScrollOnMount={true}
         preserveScrollBarGap={false}
         autoFocus={false}
+        returnFocusOnClose={false}
       >
         <DrawerOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" transition="opacity 0.15s ease-out" />
         <DrawerContent
@@ -572,7 +580,7 @@ export function NotificationDrawer({ isOpen, onClose }) {
                             px={3}
                             boxShadow="xs"
                           >
-                            {(role === "ADMIN" || username?.toLowerCase() === "enrique")
+                            {isAdmin
                               ? "🔍 Verificar Cotización"
                               : (isRejected || item.status === "OBSERVADO")
                               ? "✏️ Subsanar Cotización"

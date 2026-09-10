@@ -62,7 +62,7 @@ export const useHistory = () => {
   });
 };
 
-// ✅ Hook para Quotes by Seller (V3) - Consulta directa a backend sin cacheo local de usuario
+// ✅ Hook para Quotes by Seller (V3) - Consulta directa a backend con caché ligera de 1 min
 export const useQuotesSellers = ({ slpCode, yearFrom, monthFrom, monthTo }, options = {}) => {
   const { enabled: enabledOption = true, ...restOptions } = options;
   return useQuery({
@@ -71,13 +71,13 @@ export const useQuotesSellers = ({ slpCode, yearFrom, monthFrom, monthTo }, opti
     enabled:
       !!enabledOption &&
       slpCode != null && yearFrom != null && monthFrom != null && monthTo != null,
-    staleTime: 0, // Siempre datos frescos por usuario
-    refetchOnMount: "always", // El QueryClient global tiene refetchOnMount:false; esta query sí debe refrescar siempre al montar
+    staleTime: 60 * 1000, // 1 minuto de datos frescos sin saturar peticiones
+    refetchOnWindowFocus: false,
     ...restOptions,
   });
 };
 
-// ✅ Hook para Quotes by Seller (Admin) (V3) - Consulta directa a backend sin cacheo local de usuario
+// ✅ Hook para Quotes by Seller (Admin) (V3) - Consulta directa a backend con caché ligera de 1 min
 export const useQuotesSellersAdmin = ({ slpCode, yearFrom, monthFrom, monthTo }, options = {}) => {
   const { enabled: enabledOption = true, ...restOptions } = options;
   return useQuery({
@@ -86,8 +86,8 @@ export const useQuotesSellersAdmin = ({ slpCode, yearFrom, monthFrom, monthTo },
     enabled:
       !!enabledOption &&
       slpCode != null && yearFrom != null && monthFrom != null && monthTo != null,
-    staleTime: 0, // Siempre datos frescos por usuario
-    refetchOnMount: "always", // El QueryClient global tiene refetchOnMount:false; esta query sí debe refrescar siempre al montar
+    staleTime: 60 * 1000, // 1 minuto de datos frescos sin saturar peticiones
+    refetchOnWindowFocus: false,
     ...restOptions,
   });
 };
@@ -152,8 +152,8 @@ export const useTopSelledProducts = ({ yearFrom, monthFrom, monthTo, slpCode } =
     queryKey: ['topSelledProducts', yearFrom, monthFrom, monthTo, slpCode],
     queryFn: () => getTopSelledProducts({ yearFrom, monthFrom, monthTo, slpCode }),
     enabled: yearFrom != null && monthFrom != null && monthTo != null,
-    staleTime: 0,
-    refetchOnMount: "always",
+    staleTime: 5 * 60 * 1000, // 5 minutos de caché para evitar consultas masivas repetitivas
+    refetchOnWindowFocus: false,
   });
 };
 export const useTopSelled = useTopSelledProducts;

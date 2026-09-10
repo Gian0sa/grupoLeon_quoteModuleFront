@@ -778,7 +778,7 @@ export function NewSellTerms({
               </Badge>
             ) : (
               <Badge colorScheme="purple" fontSize="10px" px={2} py={0.5} borderRadius="md">
-                ✏️ Editable por Administrador
+                ✏️ Editable por Administrador / Mostrador
               </Badge>
             )}
           </HStack>
@@ -1024,7 +1024,7 @@ export function NewSellTerms({
               </Badge>
             ) : (
               <Badge colorScheme="purple" fontSize="10px" px={2} py={0.5} borderRadius="md">
-                ✏️ Editable por Administrador
+                ✏️ Editable por Administrador / Mostrador
               </Badge>
             )}
           </HStack>

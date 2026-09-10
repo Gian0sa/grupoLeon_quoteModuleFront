@@ -5,10 +5,10 @@ import axios from "axios"
 export const getQuotes = async (filters = {}) => {
     try {
         const response = await axiosInstance.get('/quoteModule/quotes', { params: filters });
-        return response.data || [];
+        return response.data;
     } catch (err) {
         console.warn("ℹ️ Aviso al consultar cotizaciones del servidor:", err?.message || err);
-        return [];
+        return filters.paginate ? { quotes: [], total: 0 } : [];
     }
 };
 

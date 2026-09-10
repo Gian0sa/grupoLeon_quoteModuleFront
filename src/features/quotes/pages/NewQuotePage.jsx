@@ -3,12 +3,13 @@ import { Box } from "@chakra-ui/react";
 import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
 import SapQuotationForm from "../components/SapQuotationForm";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
+import { useIsAdmin } from "../../../shared/utils/permissions";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 
 export function NewQuotesPage() {
   const { username, userId, role } = useAuthStore();
-  const isAdmin = role === "ADMIN" || role === "FACTURACION" || username?.toLowerCase() === "enrique";
+  const isAdmin = useIsAdmin();
   const localUsername = localStorage.getItem("username") || localStorage.getItem("userId") || "Vendedor Autorizado";
   const activeSeller = !isAdmin ? (username || localUsername) : undefined;
   const today = format(new Date(), "EEEE, d 'de' MMMM 'del' yyyy", { locale: es });

@@ -19,6 +19,7 @@ import { LateralMenu } from "../features/dashboard/components/LateralMenu";
 import { useExchangeRate } from "../features/dashboard/hooks/queries/dashboardQueries";
 import { useAuthStore } from "../features/auth/stores/useAuthStore";
 import { useNotifications } from "../features/quotes/hooks/queries/quotesQueries";
+import { useIsAdmin } from "../shared/utils/permissions";
 import { QUERY_KEYS } from "../shared/utils/queryKeys";
 
 export const HEADER_BRAND_IMAGE = "/assets/header-brand-bg.png";
@@ -63,8 +64,9 @@ export function TopHeaderBanner({
     };
   }, []);
 
+  const isAdmin = useIsAdmin();
   const { data: serverNotifs } = useNotifications(
-    role === "ADMIN" ? "FACTURACION" : undefined,
+    isAdmin ? "FACTURACION" : undefined,
     username
   );
 
@@ -97,13 +99,13 @@ export function TopHeaderBanner({
     }
 
     const filtered = combined.filter((n) => {
-      if (n.status === "ANULADO" || String(n.title || "").toLowerCase().includes("anulad") || n.read) {
+      if (n.status === "ANULADO" || String(n.title || "").toLowerCase().includes("anulad") || String(n.title || "").includes("- null") || !n.quoteId || n.quoteId === "null" || n.read) {
         return false;
       }
       if (n.targetUsername && username) {
         return n.targetUsername.toLowerCase() === username.toLowerCase();
       }
-      if (n.targetRole === "FACTURACION" && (role === "ADMIN" || username?.toLowerCase() === "enrique")) {
+      if (n.targetRole === "FACTURACION" && isAdmin) {
         return true;
       }
       if (n.targetUserId && userId) {
