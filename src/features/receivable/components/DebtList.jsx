@@ -1,7 +1,7 @@
 import { SimpleGrid, Text, Center } from "@chakra-ui/react";
 import { DebtCard } from "./DebtCard";
 
-export function DebtList({ debts, onViewInvoices, onViewDetails }) {
+export function DebtList({ debts, onViewInvoices, onViewHistory, onViewDetails }) {
   if (!debts || debts.length === 0) {
     return (
       <Center py={10}>
@@ -38,13 +38,22 @@ export function DebtList({ debts, onViewInvoices, onViewDetails }) {
 
         // Extraer fechas y días de mora del documento más antiguo
         const docs = Array.isArray(debt.documents) ? debt.documents : [];
-        const overdueDocs = docs.filter(d => d.estaVencido || (d.diasVencimiento && d.diasVencimiento > 0));
+        const overdueDocs = docs.filter(d => 
+          (d.estaVencido || (d.diasVencimiento && d.diasVencimiento > 0)) && 
+          (Number(d.saldoPendiente?.PEN || d.saldoPen || 0) > 0 || Number(d.saldoPendiente?.USD || d.saldoUsd || 0) > 0)
+        );
         const maxOverdueDays = overdueDocs.length > 0
           ? Math.max(...overdueDocs.map(d => Number(d.diasVencimiento || 0)))
-          : Number(debt.maxOverdueDays || 0);
+          : 0;
+
+        const pendingDebtDocs = docs.filter(d => 
+          Number(d.saldoPendiente?.PEN || d.saldoPen || 0) > 0 || 
+          Number(d.saldoPendiente?.USD || d.saldoUsd || 0) > 0
+        );
+
         const oldestDueDate = overdueDocs.length > 0
           ? overdueDocs.sort((a, b) => Number(b.diasVencimiento || 0) - Number(a.diasVencimiento || 0))[0]?.fechaContable
-          : docs[0]?.fechaContable || debt.oldestDueDate || "";
+          : pendingDebtDocs[0]?.fechaContable || docs[0]?.fechaContable || debt.oldestDueDate || "";
 
         return (
           <DebtCard
@@ -79,6 +88,7 @@ export function DebtList({ debts, onViewInvoices, onViewDetails }) {
               ...debt
             }}
             onViewInvoices={onViewInvoices}
+            onViewHistory={onViewHistory}
             onViewDetails={onViewDetails}
           />
         );

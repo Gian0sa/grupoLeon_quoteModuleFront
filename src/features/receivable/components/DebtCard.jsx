@@ -12,9 +12,10 @@ import {
   ArrowRight,
   ChevronRight,
   ShieldAlert,
+  History,
 } from "lucide-react";
 
-export function DebtCard({ debt, onViewInvoices }) {
+export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
   // Soporte para ambas monedas separadas (saldoPEN/saldoUSD) y el modo legado (saldoPrincipal)
   const saldoPEN = debt.saldoPEN ?? (debt.monedaPrincipal === "PEN" ? debt.saldoPrincipal : 0) ?? 0;
@@ -43,73 +44,102 @@ export function DebtCard({ debt, onViewInvoices }) {
 
   const statusType = getStatusType();
 
-  // Temas visuales de alta fidelidad
+  // Temas visuales de alta fidelidad - Estilo Ejecutivo SaaS Suave
   const theme = {
     overdue: {
-      accentColor: "#dc2626",
-      topBar: "linear-gradient(90deg, #dc2626 0%, #ef4444 100%)",
-      avatarBg: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
-      cardBorder: "1px solid #fecaca",
-      amountColor: "#b91c1c",
-      bgHoverShadow: "0 14px 30px rgba(220, 38, 38, 0.12)",
-      primaryBtnBg: "linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)",
-      primaryBtnHover: "#991b1b",
-      badgeBg: "#fee2e2",
-      badgeText: "#991b1b",
+      accentColor: "#f43f5e",
+      topBar: "linear-gradient(90deg, #f43f5e 0%, #fb7185 100%)",
+      avatarBg: "#fff1f2",
+      avatarColor: "#e11d48",
+      avatarBorder: "1px solid #fecdd3",
+      cardBorder: "1px solid #fecdd3",
+      amountColor: "#be123c",
+      bgHoverShadow: "0 10px 25px rgba(225, 29, 72, 0.08)",
+      primaryBtnBg: "#0f172a",
+      primaryBtnHover: "#1e293b",
+      primaryBtnColor: "#ffffff",
+      primaryBtnShadow: "0 2px 6px rgba(15, 23, 42, 0.15)",
+      badgeBg: "#fff1f2",
+      badgeText: "#9f1239",
     },
     active: {
-      accentColor: "#059669",
-      topBar: "linear-gradient(90deg, #059669 0%, #10b981 100%)",
-      avatarBg: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+      accentColor: "#10b981",
+      topBar: "linear-gradient(90deg, #10b981 0%, #34d399 100%)",
+      avatarBg: "#ecfdf5",
+      avatarColor: "#059669",
+      avatarBorder: "1px solid #a7f3d0",
       cardBorder: "1px solid #a7f3d0",
       amountColor: "#047857",
-      bgHoverShadow: "0 14px 30px rgba(5, 150, 105, 0.12)",
-      primaryBtnBg: "linear-gradient(135deg, #059669 0%, #047857 100%)",
-      primaryBtnHover: "#065f46",
-      badgeBg: "#d1fae5",
+      bgHoverShadow: "0 10px 25px rgba(16, 185, 129, 0.08)",
+      primaryBtnBg: "#0f172a",
+      primaryBtnHover: "#1e293b",
+      primaryBtnColor: "#ffffff",
+      primaryBtnShadow: "0 2px 6px rgba(15, 23, 42, 0.15)",
+      badgeBg: "#ecfdf5",
       badgeText: "#065f46",
     },
     credit: {
-      accentColor: "#2563eb",
-      topBar: "linear-gradient(90deg, #2563eb 0%, #3b82f6 100%)",
-      avatarBg: "linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)",
+      accentColor: "#3b82f6",
+      topBar: "linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%)",
+      avatarBg: "#eff6ff",
+      avatarColor: "#2563eb",
+      avatarBorder: "1px solid #bfdbfe",
       cardBorder: "1px solid #bfdbfe",
       amountColor: "#1d4ed8",
-      bgHoverShadow: "0 14px 30px rgba(37, 99, 235, 0.12)",
-      primaryBtnBg: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
-      primaryBtnHover: "#1e40af",
-      badgeBg: "#dbeafe",
+      bgHoverShadow: "0 10px 25px rgba(59, 130, 246, 0.08)",
+      primaryBtnBg: "#0f172a",
+      primaryBtnHover: "#1e293b",
+      primaryBtnColor: "#ffffff",
+      primaryBtnShadow: "0 2px 6px rgba(15, 23, 42, 0.15)",
+      badgeBg: "#eff6ff",
       badgeText: "#1e40af",
     },
   }[statusType];
 
-  // Configuración de la insignia de mora / días
+  // Configuración de la insignia de mora / días con tonos suaves pastel
   const getAgingBadge = () => {
     const days = debt.maxOverdueDays || 0;
     if (statusType === "credit") {
       return {
         text: "Saldo a Favor / Nota de Crédito",
-        bg: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
-        color: "#ffffff",
+        bg: "#eff6ff",
+        color: "#1d4ed8",
+        border: "1px solid #bfdbfe",
         icon: FileText,
       };
     }
     if (days > 0) {
-      let bg = "linear-gradient(135deg, #ca8a04 0%, #a16207 100%)";
-      if (days > 90) bg = "linear-gradient(135deg, #dc2626 0%, #991b1b 100%)";
-      else if (days > 30) bg = "linear-gradient(135deg, #ea580c 0%, #c2410c 100%)";
-
+      if (days > 90) {
+        return {
+          text: `⏱️ ${days} DÍAS DE MORA ${debt.oldestDueDate ? `• Venció: ${debt.oldestDueDate}` : ""}`,
+          bg: "#fff1f2",
+          color: "#be123c",
+          border: "1px solid #fecdd3",
+          icon: ShieldAlert,
+        };
+      }
+      if (days > 30) {
+        return {
+          text: `⏱️ ${days} DÍAS DE MORA ${debt.oldestDueDate ? `• Venció: ${debt.oldestDueDate}` : ""}`,
+          bg: "#fff7ed",
+          color: "#c2410c",
+          border: "1px solid #fed7aa",
+          icon: ShieldAlert,
+        };
+      }
       return {
         text: `⏱️ ${days} DÍAS DE MORA ${debt.oldestDueDate ? `• Venció: ${debt.oldestDueDate}` : ""}`,
-        bg,
-        color: "#ffffff",
+        bg: "#fefce8",
+        color: "#a16207",
+        border: "1px solid #fef08a",
         icon: ShieldAlert,
       };
     }
     return {
       text: debt.oldestDueDate ? `📅 Próximo vencimiento: ${debt.oldestDueDate}` : "✅ Al día (Sin moras)",
-      bg: "linear-gradient(135deg, #059669 0%, #047857 100%)",
-      color: "#ffffff",
+      bg: "#ecfdf5",
+      color: "#047857",
+      border: "1px solid #a7f3d0",
       icon: CheckCircle2,
     };
   };
@@ -146,7 +176,7 @@ export function DebtCard({ debt, onViewInvoices }) {
       {/* Barra superior de acento visual */}
       <div
         style={{
-          height: "5px",
+          height: "3.5px",
           background: theme.topBar,
           width: "100%",
         }}
@@ -169,15 +199,16 @@ export function DebtCard({ debt, onViewInvoices }) {
               height: "44px",
               borderRadius: "14px",
               background: theme.avatarBg,
-              color: "#ffffff",
+              color: theme.avatarColor,
+              border: theme.avatarBorder,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               flexShrink: 0,
-              boxShadow: "0 4px 10px rgba(0,0,0,0.12)",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
             }}
           >
-            <Building2 size={22} color="#ffffff" />
+            <Building2 size={22} color={theme.avatarColor} />
           </div>
 
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -392,13 +423,14 @@ export function DebtCard({ debt, onViewInvoices }) {
               display: "inline-flex",
               alignItems: "center",
               gap: "6px",
-              padding: "6px 14px",
+              padding: "5px 12px",
               borderRadius: "50px",
               background: agingBadge.bg,
               color: agingBadge.color,
+              border: agingBadge.border || "none",
               fontSize: "11.5px",
-              fontWeight: "800",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+              fontWeight: "700",
+              boxShadow: "none",
               maxWidth: "100%",
             }}
           >
@@ -460,11 +492,11 @@ export function DebtCard({ debt, onViewInvoices }) {
               borderRadius: "50px",
               border: "none",
               background: theme.primaryBtnBg,
-              color: "#ffffff",
+              color: theme.primaryBtnColor || "#ffffff",
               fontSize: "13px",
               fontWeight: "700",
               cursor: "pointer",
-              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+              boxShadow: theme.primaryBtnShadow || "0 2px 6px rgba(15, 23, 42, 0.15)",
               transition: "all 0.2s ease",
               display: "inline-flex",
               alignItems: "center",
@@ -472,12 +504,12 @@ export function DebtCard({ debt, onViewInvoices }) {
               gap: "6px",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.transform = "scale(1.02)";
-              e.currentTarget.style.filter = "brightness(1.1)";
+              e.currentTarget.style.background = theme.primaryBtnHover;
+              e.currentTarget.style.transform = "translateY(-1px)";
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.transform = "scale(1)";
-              e.currentTarget.style.filter = "none";
+              e.currentTarget.style.background = theme.primaryBtnBg;
+              e.currentTarget.style.transform = "translateY(0)";
             }}
             onClick={(e) => {
               e.stopPropagation();

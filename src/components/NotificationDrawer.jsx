@@ -22,7 +22,7 @@ import { QuoteDetailDrawer } from "../features/quotes/components/QuoteDetailDraw
 import { useAuthStore } from "../features/auth/stores/useAuthStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNotifications } from "../features/quotes/hooks/queries/quotesQueries";
-import { markNotificationAsRead, deleteNotification, clearNotifications, updateQuote } from "../features/quotes/services/quoteService";
+import { markNotificationAsRead, deleteNotification, clearNotifications, updateQuote, getQuoteById } from "../features/quotes/services/quoteService";
 import { useIsAdmin } from "../shared/utils/permissions";
 
 export function NotificationDrawer({ isOpen, onClose }) {
@@ -137,9 +137,13 @@ export function NotificationDrawer({ isOpen, onClose }) {
     });
 
     for (const notif of sorted) {
-      const key = String(notif.quoteId || notif.id);
-      if (!uniqueMap.has(key)) {
-        uniqueMap.set(key, notif);
+      // Clave canónica inteligente para unificar alertas del mismo documento
+      const rawQ = String(notif.quoteId || notif.id || "");
+      const matchWeb = String(notif.title || "").match(/COT-WEB-(\d+)/i) || rawQ.match(/^(\d+)$/);
+      const canonicalKey = matchWeb ? `QUOTE-ID-${Number(matchWeb[1])}` : rawQ;
+
+      if (!uniqueMap.has(canonicalKey)) {
+        uniqueMap.set(canonicalKey, notif);
       }
     }
 
@@ -199,51 +203,32 @@ export function NotificationDrawer({ isOpen, onClose }) {
     } catch {}
   };
 
-  const formatTimeAgo = (rawDate) => {
-    if (!rawDate) return "Reciente";
-    const date = new Date(rawDate);
-    if (isNaN(date.getTime())) return "Reciente";
+  const formatTimeAgo = (dateStr) => {
+    if (!dateStr) return "Hace un momento";
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return "Hace un momento";
 
     const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-
-    if (diffMs < 0) return "Justo ahora";
-
-    const diffSecs = Math.floor(diffMs / 1000);
-    const diffMins = Math.floor(diffSecs / 60);
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / (1000 * 60));
     const diffHours = Math.floor(diffMins / 60);
     const diffDays = Math.floor(diffHours / 24);
 
-    const timeStr = date.toLocaleTimeString("es-PE", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    });
+    const timeStr = date.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit", hour12: true });
 
-    if (diffMins < 1) return `Justo ahora (${timeStr})`;
-    if (diffMins < 60) return `Hace ${diffMins} min (${timeStr})`;
-
-    const isToday = now.toDateString() === date.toDateString();
-    if (isToday) {
-      return `Hoy a las ${timeStr} • Hace ${diffHours} h`;
-    }
-
-    const yesterday = new Date(now);
-    yesterday.setDate(now.getDate() - 1);
-    const isYesterday = yesterday.toDateString() === date.toDateString();
-    if (isYesterday) {
-      return `Ayer a las ${timeStr}`;
-    }
-
+    if (diffMins < 1) return `Ahora mismo • ${timeStr}`;
+    if (diffMins < 60) return `Hace ${diffMins} min • ${timeStr}`;
+    if (diffHours < 24) return `Hoy a las ${timeStr} • Hace ${diffHours} h`;
+    if (diffDays === 1) return `Ayer a las ${timeStr}`;
     if (diffDays < 7) {
-      const dayNum = date.toLocaleDateString("es-PE", { day: "2-digit", month: "short" });
+      const dayNum = date.toLocaleDateString("es-PE", { weekday: "short", day: "numeric", month: "short" });
       return `Hace ${diffDays} días • ${dayNum} (${timeStr})`;
     }
 
     return `${date.toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit", year: "numeric" })} • ${timeStr}`;
   };
 
-  const handleOpenQuote = (quoteObj, quoteId, notifId) => {
+  const handleOpenQuote = async (quoteObj, quoteId, notifId) => {
     let targetDoc = quoteObj ? { ...quoteObj } : null;
     const targetId = quoteId || quoteObj?.docNumber || quoteObj?.id;
 
@@ -257,14 +242,32 @@ export function NotificationDrawer({ isOpen, onClose }) {
       return [];
     };
 
+    // 1. Consultar directamente al backend para obtener la cotización real y actualizada
+    if (targetId) {
+      try {
+        const liveQuote = await getQuoteById(targetId);
+        if (liveQuote && (liveQuote.id || liveQuote.docNumber)) {
+          targetDoc = { ...liveQuote, ...(targetDoc || {}) };
+          if (liveQuote.state) targetDoc.state = liveQuote.state;
+          if (liveQuote.approvalStatus) targetDoc.approvalStatus = liveQuote.approvalStatus;
+          if (liveQuote.sapDocNum) targetDoc.sapDocNum = liveQuote.sapDocNum;
+          if (liveQuote.docNumber) targetDoc.docNumber = liveQuote.docNumber;
+        }
+      } catch (_) {}
+    }
+
     let items = extractItems(targetDoc);
 
     if (items.length === 0 && targetId) {
-      // 1. Buscar en caché de React Query
+      // 2. Buscar en caché de React Query
       try {
         const cachedQuotes = queryClient.getQueryData(["quotes"]);
         if (Array.isArray(cachedQuotes)) {
-          const found = cachedQuotes.find((q) => String(q.id || q.docNumber) === String(targetId));
+          const found = cachedQuotes.find((q) => 
+            String(q.id) === String(targetId) || 
+            String(q.docNumber) === String(targetId) ||
+            String(q.sapDocNum) === String(targetId)
+          );
           if (found) {
             targetDoc = { ...found, ...(targetDoc || {}) };
             items = extractItems(found);
@@ -272,11 +275,15 @@ export function NotificationDrawer({ isOpen, onClose }) {
         }
       } catch {}
 
-      // 2. Buscar en localStorage
+      // 3. Buscar en localStorage
       if (items.length === 0) {
         try {
           const savedQuotes = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
-          const found = savedQuotes.find((q) => String(q.id || q.docNumber) === String(targetId));
+          const found = savedQuotes.find((q) => 
+            String(q.id) === String(targetId) || 
+            String(q.docNumber) === String(targetId) ||
+            String(q.sapDocNum) === String(targetId)
+          );
           if (found) {
             targetDoc = { ...found, ...(targetDoc || {}) };
             items = extractItems(found);

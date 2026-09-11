@@ -6,8 +6,10 @@ import SellerSelectReceivable from "../components/SellerSelectReceivable";
 import { useGetAccountsReceivable } from "../hooks/receivableQueries";
 import { useState, useEffect, useRef } from "react";
 import InvoicesModal from "../components/InvoicesModal";
+import ClientInvoiceHistoryModal from "../components/ClientInvoiceHistoryModal";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { QUERY_KEYS } from "../../../shared/utils/queryKeys";
+import { History } from "lucide-react";
 
 export function ReceivablePage() {
   const [cliente, setCliente] = useState("");
@@ -17,9 +19,12 @@ export function ReceivablePage() {
   const [selectedClient, setSelectedClient] = useState(null);
   const [selectedInvoices, setSelectedInvoices] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [historyTargetClient, setHistoryTargetClient] = useState(null);
   const [statusFilter, setStatusFilter] = useState("all"); // 'all' | 'overdue' | 'onTime'
 
   const [lastClient, setLastClient] = useState(null); 
+  const [currentSkip, setCurrentSkip] = useState(0);
   const [allClients, setAllClients] = useState([]);  
 
   const username = useAuthStore((state) => state.username);
@@ -63,6 +68,7 @@ export function ReceivablePage() {
         setCliente("");
         setClientecode("");
         setLastClient(null);
+        setCurrentSkip(0);
         setAllClients([]);
         lastSearchValue.current = "";
       }, 500);
@@ -83,6 +89,7 @@ export function ReceivablePage() {
       setClientecode("");
     }
     setLastClient(null);
+    setCurrentSkip(0);
     setAllClients([]);
     lastSearchValue.current = trimmedValue;
   };
@@ -97,6 +104,7 @@ export function ReceivablePage() {
       setClientecode("");
       setSearchValue("");
       setLastClient(null);
+      setCurrentSkip(0);
       setAllClients([]);
       lastSearchValue.current = "";
     }
@@ -108,6 +116,11 @@ export function ReceivablePage() {
     setIsModalOpen(true);
   };
 
+  const handleViewHistory = (debtOrClient) => {
+    setHistoryTargetClient(debtOrClient);
+    setIsHistoryModalOpen(true);
+  };
+
   const vendedorNombre = isSellerProfile
     ? username
     : selectedSeller?.label?.split(".")[1]?.trim() || "";
@@ -117,6 +130,7 @@ export function ReceivablePage() {
     cliente: cliente.toUpperCase(),
     clientecode,
     lastClient,
+    skip: currentSkip,
   });
 
   const [isInitialFetching, setIsInitialFetching] = useState(true);
@@ -125,7 +139,7 @@ export function ReceivablePage() {
     if (data?.clients?.clients) {
       setAllClients((prev) => {
         const newClients = data.clients.clients;
-        if (!lastClient) return newClients;
+        if (!lastClient && currentSkip === 0) return newClients;
         // Evitar duplicados por CardCode
         const existingCodes = new Set(prev.map((c) => c.clientCode || c.cardCode));
         const filteredNew = newClients.filter((c) => !existingCodes.has(c.clientCode || c.cardCode));
@@ -134,9 +148,10 @@ export function ReceivablePage() {
     }
 
     // 🔄 Autocarga secuencial de páginas para consolidar la cartera completa
-    if (data?.hasMore && data?.lastClient) {
+    if (data?.hasMore && (data?.lastClient || data?.nextSkip != null)) {
       const timer = setTimeout(() => {
         setLastClient(data.lastClient);
+        setCurrentSkip(data.nextSkip || 0);
       }, 100);
       return () => clearTimeout(timer);
     } else if (!data?.hasMore) {
@@ -145,7 +160,7 @@ export function ReceivablePage() {
   }, [data]);
 
   const refreshQueries = [
-    [QUERY_KEYS.accountsReceivable, vendedorNombre, cliente.toUpperCase(), clientecode, lastClient]
+    [QUERY_KEYS.accountsReceivable, vendedorNombre, cliente.toUpperCase(), clientecode, lastClient, currentSkip]
   ];
 
   // 1. Helper para identificar si un cliente es de TARJETA AZUL (Saldo neto a favor del cliente)
@@ -283,9 +298,9 @@ export function ReceivablePage() {
       {/* Barra de progreso de consolidación de cartera en background */}
       {isInitialFetching && data?.hasMore && allClients.length > 0 && (
         <Box maxW="1200px" mx="auto" px={4} pt={2}>
-          <HStack spacing={2} bg="green.50" p={2} borderRadius="md" border="1px solid" borderColor="green.200">
-            <Spinner size="xs" color="green.600" />
-            <Text fontSize="xs" color="green.800" fontWeight="600">
+          <HStack spacing={2} bg="#f8fafc" p={2} px={3} borderRadius="lg" border="1px solid" borderColor="#e2e8f0">
+            <Spinner size="xs" color="#0284c7" />
+            <Text fontSize="xs" color="#475569" fontWeight="600">
               Consolidando cartera ({allClients.length} clientes cargados)...
             </Text>
           </HStack>
@@ -308,14 +323,72 @@ export function ReceivablePage() {
         />
       </Box>
 
-      <Box maxW="1200px" mx="auto" p={4} pt={2}>
-        <DebtList debts={filteredClients} onViewInvoices={handleViewInvoices} onViewDetails={() => {}} />
+      {/* Banner de Consulta Histórica SAP si hay búsqueda activa */}
+      {searchValue.trim().length >= 4 && (
+        <Box maxW="1200px" mx="auto" px={4} pt={1} pb={2}>
+          <HStack
+            bg="blue.50"
+            border="1px solid"
+            borderColor="blue.200"
+            borderRadius="xl"
+            p={3}
+            px={4}
+            justify="space-between"
+            align="center"
+            flexWrap="wrap"
+            gap={2}
+          >
+            <HStack spacing={2.5}>
+              <Box p={1.5} bg="blue.100" color="blue.700" borderRadius="md">
+                <History size={16} />
+              </Box>
+              <Text fontSize="13px" fontWeight="600" color="blue.950">
+                ¿Deseas consultar facturas pasadas o pagadas en SAP para <strong>"{searchValue.trim()}"</strong>?
+              </Text>
+            </HStack>
+            <Button
+              size="sm"
+              colorScheme="blue"
+              bg="#0284c7"
+              _hover={{ bg: "#0369a1" }}
+              borderRadius="full"
+              px={4}
+              fontSize="12px"
+              fontWeight="700"
+              leftIcon={<History size={14} />}
+              onClick={() =>
+                handleViewHistory({
+                  clientCode: searchValue.trim(),
+                  clientName: filteredClients[0]?.clientName || searchValue.trim(),
+                })
+              }
+            >
+              Consultar Historial en SAP
+            </Button>
+          </HStack>
+        </Box>
+      )}
 
-        {data?.hasMore && (
+      <Box maxW="1200px" mx="auto" p={4} pt={2}>
+        <DebtList
+          debts={filteredClients}
+          onViewInvoices={handleViewInvoices}
+          onViewHistory={handleViewHistory}
+          onViewDetails={() => {}}
+        />
+
+        {data?.hasMore && !isInitialFetching && (
           <Center mt={4}>
             <Button
-              colorScheme="green"
-              onClick={() => setLastClient(data.lastClient)}
+              size="sm"
+              variant="outline"
+              colorScheme="blue"
+              borderRadius="full"
+              px={6}
+              onClick={() => {
+                setLastClient(data.lastClient);
+                setCurrentSkip(data.nextSkip || 0);
+              }}
               isLoading={isLoading}
             >
               Cargar más
@@ -329,6 +402,28 @@ export function ReceivablePage() {
         onClose={() => setIsModalOpen(false)}
         cliente={selectedClient}
         documentos={selectedInvoices}
+        onOpenHistory={(cli) => handleViewHistory(cli || selectedClient)}
+      />
+
+      <ClientInvoiceHistoryModal
+        isOpen={isHistoryModalOpen}
+        onClose={() => {
+          setIsHistoryModalOpen(false);
+          setHistoryTargetClient(null);
+        }}
+        clientDocOrCode={
+          historyTargetClient?.clientCode ||
+          historyTargetClient?.ruc ||
+          historyTargetClient?.cardCode ||
+          historyTargetClient?.CARDCODE ||
+          (typeof historyTargetClient === "string" ? historyTargetClient : "")
+        }
+        clientName={
+          historyTargetClient?.clientName ||
+          historyTargetClient?.nombre ||
+          historyTargetClient?.CARDNAME ||
+          ""
+        }
       />
     </Box>
   );

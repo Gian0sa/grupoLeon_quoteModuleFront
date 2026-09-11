@@ -130,15 +130,27 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     return d.toISOString().split("T")[0];
   });
 
+  // Estado que permite al Administrador desbloquear/editar cualquier cotización si necesita corregir ítems/precios
+  const [adminForceEditMode, setAdminForceEditMode] = useState(() => {
+    try {
+      const force = sessionStorage.getItem("admin_force_edit");
+      if (force === "true") {
+        sessionStorage.removeItem("admin_force_edit");
+        return true;
+      }
+    } catch {}
+    return false;
+  });
+
   const isApproved = approvalStatus === "APROBADO_COMERCIAL" || approvalStatus === "APROBADO";
   const isCancelled = approvalStatus === "ANULADO";
-  const isReadOnly = isApproved || isCancelled;
+  const isReadOnly = !adminForceEditMode && (isApproved || isCancelled);
 
   // Determinar si es una cotización formalmente enviada para revisión/validación por un vendedor
   const isSubmittedQuote = Boolean(
     quoteId &&
     approvalStatus &&
-    ["ENVIADO", "EN_PROCESO", "PENDIENTE_FACTURACION", "APROBADO_COMERCIAL", "APROBADO", "RECHAZADO", "OBSERVADO", "EN_EDICION", "ANULADO"].includes(approvalStatus)
+    ["ENVIADO", "EN_PROCESO", "PENDIENTE_FACTURACION", "APROBADO_COMERCIAL", "APROBADO", "RECHAZADO", "OBSERVADO", "EN_EDICION", "ANULADO", "EMITIDO"].includes(approvalStatus)
   );
 
   // La línea de tiempo y checklist solo se muestran cuando la solicitud ya fue enviada / está en seguimiento
@@ -146,9 +158,6 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     isTracking ||
     (approvalStatus && !["BORRADOR", "GENERADO", "DRAFT", "draft"].includes(approvalStatus))
   );
-
-  // Estado que permite al Administrador desbloquear/editar cualquier cotización si necesita corregir ítems/precios
-  const [adminForceEditMode, setAdminForceEditMode] = useState(false);
 
   // Si la cotización está observada o en edición, está en modo corrección activa
   const isCorrectionMode = approvalStatus === "OBSERVADO" || approvalStatus === "EN_EDICION";
@@ -1721,7 +1730,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                 💾 Autoguardado Activo
               </Badge>
             )}
-            {isAdmin && isSubmittedQuote && !isReadOnly && (
+            {isAdmin && isSubmittedQuote && (
               <Button
                 size="xs"
                 colorScheme={adminForceEditMode ? "orange" : "teal"}
@@ -1920,6 +1929,48 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
           <TabPanels p={{ base: 2, md: 4 }}>
             {/* Pestaña 1: Contenido (Grid de productos) */}
             <TabPanel p={0}>
+              {isAdmin && isSellerFieldsLocked && (
+                <Flex justify="space-between" align="center" bg="#fefce8" border="1.5px solid #fef08a" p={2.5} borderRadius="lg" mb={3} wrap="wrap" gap={2}>
+                  <HStack spacing={2}>
+                    <Lock className="w-4 h-4 text-amber-600" />
+                    <Text fontSize="xs" fontWeight="700" color="amber.900">
+                      Artículos bloqueados en modo revisión. ¿Deseas modificar precios, cantidades o agregar productos?
+                    </Text>
+                  </HStack>
+                  <Button
+                    size="xs"
+                    colorScheme="orange"
+                    variant="solid"
+                    bg="#ea580c"
+                    _hover={{ bg: "#c2410c" }}
+                    leftIcon={<Edit3 className="w-3.5 h-3.5" />}
+                    onClick={() => setAdminForceEditMode(true)}
+                    fontWeight="900"
+                  >
+                    ✏️ Habilitar Edición de Artículos
+                  </Button>
+                </Flex>
+              )}
+              {isAdmin && adminForceEditMode && (
+                <Flex justify="space-between" align="center" bg="#eff6ff" border="1.5px solid #bfdbfe" p={2.5} borderRadius="lg" mb={3} wrap="wrap" gap={2}>
+                  <HStack spacing={2}>
+                    <Edit3 className="w-4 h-4 text-blue-600" />
+                    <Text fontSize="xs" fontWeight="800" color="blue.900">
+                      Modo Edición Administrador Activo — Puedes agregar, modificar o retirar artículos libremente.
+                    </Text>
+                  </HStack>
+                  <Button
+                    size="xs"
+                    colorScheme="blue"
+                    variant="outline"
+                    leftIcon={<Lock className="w-3.5 h-3.5" />}
+                    onClick={() => setAdminForceEditMode(false)}
+                    fontWeight="800"
+                  >
+                    🔒 Bloquear Edición
+                  </Button>
+                </Flex>
+              )}
               <SapItemGrid
                 client={client}
                 products={products}

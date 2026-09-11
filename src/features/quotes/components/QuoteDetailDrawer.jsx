@@ -254,7 +254,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
       const serverStatus = serverQuote.approvalStatus || serverQuote.status;
       const upperServerStatus = String(serverStatus || "").toUpperCase().trim();
       // Solo actualizar estado si el servidor tiene un avance real posterior (ej. SAP emitido)
-      if (serverStatus && ["APROBADO", "APROBADO_COMERCIAL", "EMITIDO_SAP", "COMPLETADO", "FACTURADO"].includes(serverStatus)) {
+      if (serverStatus && ["APROBADO", "APROBADO_COMERCIAL", "EMITIDO", "EMITIDO_SAP", "COMPLETADO", "FACTURADO"].includes(serverStatus)) {
         freshestStatus = serverStatus;
       } else if (UNAPPROVED_STATUSES.includes(upperServerStatus)) {
         freshestStatus = serverStatus;
@@ -444,7 +444,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
   const sellerName = cleanSellerName(effectiveQuote.sellerName || effectiveQuote.SlpName || effectiveQuote.createdByUsername);
   const products = effectiveQuote.products || effectiveQuote.items || [];
   const status = effectiveQuote.approvalStatus || effectiveQuote.state || effectiveQuote.status || "GENERADO";
-  const isApprovedQuote = ["APROBADO", "APROBADO_COMERCIAL", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO"].includes(String(status).toUpperCase());
+  const isApprovedQuote = ["APROBADO", "APROBADO_COMERCIAL", "EMITIDO", "EMITIDO_SAP", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO"].includes(String(status).toUpperCase());
 
   const getItemStockInfo = (item) => {
     const codeKey = String(item.itemCode || item.code || item.productCode || item.id || "").trim().toUpperCase();
@@ -547,18 +547,18 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
   );
 
   const createdIso = effectiveQuote.createdAt || historyLog[0]?.timestamp || (effectiveQuote.docDate ? `${effectiveQuote.docDate}T00:00:00.000Z` : null);
-  const solicitudIso = findLogIso(["ENVIADO", "EN_PROCESO", "PENDIENTE_FACTURACION", "APROBADO", "APROBADO_COMERCIAL", "RECHAZADO", "OBSERVADO", "EN_EDICION", "EMITIDO_SAP", "COMPLETADO", "PEDIDO_EMITIDO"]) || (isDirectSap ? createdIso : null);
-  const revisionIso = findLogIso(["EN_PROCESO", "PENDIENTE_FACTURACION", "APROBADO", "APROBADO_COMERCIAL", "RECHAZADO", "OBSERVADO", "EN_EDICION", "VISTO", "EMITIDO_SAP", "COMPLETADO", "PEDIDO_EMITIDO"]) || (isDirectSap ? createdIso : null);
-  const finalIso = findLogIso(["APROBADO", "APROBADO_COMERCIAL", "RECHAZADO", "OBSERVADO", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO", "EMITIDO_SAP"]) || (isDirectSap ? createdIso : null);
+  const solicitudIso = findLogIso(["ENVIADO", "EN_PROCESO", "PENDIENTE_FACTURACION", "APROBADO", "APROBADO_COMERCIAL", "RECHAZADO", "OBSERVADO", "EN_EDICION", "EMITIDO", "EMITIDO_SAP", "COMPLETADO", "PEDIDO_EMITIDO"]) || (isDirectSap ? createdIso : null);
+  const revisionIso = findLogIso(["EN_PROCESO", "PENDIENTE_FACTURACION", "APROBADO", "APROBADO_COMERCIAL", "RECHAZADO", "OBSERVADO", "EN_EDICION", "VISTO", "EMITIDO", "EMITIDO_SAP", "COMPLETADO", "PEDIDO_EMITIDO"]) || (isDirectSap ? createdIso : null);
+  const finalIso = findLogIso(["APROBADO", "APROBADO_COMERCIAL", "RECHAZADO", "OBSERVADO", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO", "EMITIDO", "EMITIDO_SAP"]) || (isDirectSap ? createdIso : null);
   const observedIso = effectiveQuote.observedAt || findLogIso(["OBSERVADO", "EN_EDICION"]);
 
   // Estados de etapas del Stepper con colores vibrantes
-  const isSolSent = ["ENVIADO", "EN_PROCESO", "PENDIENTE_FACTURACION", "APROBADO", "APROBADO_COMERCIAL", "RECHAZADO", "OBSERVADO", "EN_EDICION", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO"].includes(status) || isApprovedQuote || isDirectSap;
+  const isSolSent = ["ENVIADO", "EN_PROCESO", "PENDIENTE_FACTURACION", "APROBADO", "APROBADO_COMERCIAL", "RECHAZADO", "OBSERVADO", "EN_EDICION", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO", "EMITIDO", "EMITIDO_SAP"].includes(status) || isApprovedQuote || isDirectSap;
   const isObserved = status === "OBSERVADO" || status === "EN_EDICION";
-  const isFinalApproved = ["APROBADO", "APROBADO_COMERCIAL", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO"].includes(status);
+  const isFinalApproved = ["APROBADO", "APROBADO_COMERCIAL", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO", "EMITIDO", "EMITIDO_SAP"].includes(status);
   const isFinalRejected = ["RECHAZADO", "ANULADO", "CANCELADO"].includes(status);
   const isFinalDone = isFinalApproved || isFinalRejected || isObserved;
-  const isInReview = ["ENVIADO", "EN_PROCESO", "PENDIENTE_FACTURACION"].includes(status);
+  const isInReview = ["ENVIADO", "EN_PROCESO", "PENDIENTE_FACTURACION"].includes(status) && !isFinalDone;
 
   const stepCotizado = {
     state: "completed",
@@ -1859,6 +1859,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                       } else if (typeof useQuoteStore.getState().setQuoteData === "function") {
                         useQuoteStore.getState().setQuoteData(quoteToLoad);
                       }
+                      sessionStorage.setItem("admin_force_edit", "true");
                       navigate("/newquotes");
                     }}
                     fontWeight="800"
@@ -1902,6 +1903,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                         } else if (typeof useQuoteStore.getState().setQuoteData === "function") {
                           useQuoteStore.getState().setQuoteData(quoteToLoad);
                         }
+                        sessionStorage.setItem("admin_force_edit", "true");
                         navigate("/newquotes");
                       }}
                       fontWeight="900"
@@ -1913,6 +1915,63 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                       ✏️ Revisar Formulario
                     </Button>
                   </Box>
+                </Flex>
+              </Box>
+            ) : (status === "EMITIDO" || status === "EMITIDO_SAP" || isAlreadySyncedToSap) ? (
+              <Box bg="#f0fdf4" p={{ base: 3.5, md: 4 }} borderRadius="xl" border="1.5px solid" borderColor="#86efac" boxShadow="sm" mb={4}>
+                <Flex direction={{ base: "column", sm: "row" }} align={{ base: "flex-start", sm: "center" }} justify="space-between" gap={3}>
+                  <HStack spacing={3} align="center">
+                    <Flex w="36px" h="36px" borderRadius="full" bg="#16a34a" align="center" justify="center" color="white" flexShrink={0}>
+                      <CheckCircle2 className="w-5 h-5 stroke-[2.5]" />
+                    </Flex>
+                    <Box>
+                      <Text fontSize="xs" fontWeight="900" color="#166534" textTransform="uppercase" letterSpacing="wide">
+                        🏛️ Cotización Emitida en SAP (Orden #{syncedDocNum || effectiveQuote?.sapDocNum || "Oficial"})
+                      </Text>
+                      <Text fontSize="11px" color="gray.700" fontWeight="600" mt={0.5}>
+                        Esta cotización ya fue aprobada y generó un pedido oficial en SAP. Puedes duplicarla para generar una nueva oferta si necesitas cotizar nuevamente.
+                      </Text>
+                    </Box>
+                  </HStack>
+                  <Button
+                    size="sm"
+                    colorScheme="teal"
+                    variant="solid"
+                    bg="#0f766e"
+                    _hover={{ bg: "#115e59" }}
+                    leftIcon={<Copy className="w-4 h-4" />}
+                    onClick={() => {
+                      onClose();
+                      const quoteToLoad = { ...(effectiveQuote || quote) };
+                      delete quoteToLoad.id;
+                      delete quoteToLoad.docNumber;
+                      delete quoteToLoad.sapDocNum;
+                      delete quoteToLoad.DocNum;
+                      quoteToLoad.state = "BORRADOR";
+                      quoteToLoad.approvalStatus = "BORRADOR";
+                      quoteToLoad.status = "BORRADOR";
+                      if (typeof useQuoteStore.getState().loadQuote === "function") {
+                        useQuoteStore.getState().loadQuote(quoteToLoad);
+                      } else if (typeof useQuoteStore.getState().setQuoteData === "function") {
+                        useQuoteStore.getState().setQuoteData(quoteToLoad);
+                      }
+                      sessionStorage.setItem("admin_force_edit", "true");
+                      navigate("/newquotes");
+                      toast({
+                        title: "📋 Cotización Duplicada",
+                        description: "Se cargaron los artículos y datos en el formulario para elaborar una nueva cotización.",
+                        status: "info",
+                        duration: 4000
+                      });
+                    }}
+                    fontWeight="900"
+                    borderRadius="lg"
+                    px={4}
+                    h="38px"
+                    boxShadow="xs"
+                  >
+                    📋 Duplicar para Re-cotizar
+                  </Button>
                 </Flex>
               </Box>
             ) : null}
