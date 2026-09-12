@@ -12,6 +12,7 @@ import {
   Input,
   InputGroup,
   InputLeftElement,
+  InputRightElement,
   Button,
   HStack,
   VStack,
@@ -42,7 +43,8 @@ import {
   FiUserCheck,
   FiFilter,
   FiRotateCcw,
-  FiExternalLink
+  FiExternalLink,
+  FiX
 } from 'react-icons/fi';
 import { TopHeaderBanner } from '../../../components/TopHeaderBanner';
 import { entradaService } from '../services/entradaService';
@@ -65,13 +67,17 @@ export const AttendanceAdminPage = () => {
   const tableHeaderBg = useColorModeValue('#f8fafc', 'gray.700');
   const borderColor = useColorModeValue('#e2e8f0', 'gray.700');
 
-  const fetchLogs = useCallback(async () => {
+  const fetchLogs = useCallback(async (overrides = {}) => {
     setLoading(true);
+    const vendor = overrides.vendor !== undefined ? overrides.vendor : vendorSearch;
+    const from = overrides.dateFrom !== undefined ? overrides.dateFrom : dateFrom;
+    const to = overrides.dateTo !== undefined ? overrides.dateTo : dateTo;
+
     try {
       const response = await entradaService.getAllAttendance({
-        vendor: vendorSearch,
-        dateFrom,
-        dateTo
+        vendor,
+        dateFrom: from,
+        dateTo: to
       });
       setLogs(response.logs || []);
       setTotal(response.total || 0);
@@ -87,7 +93,7 @@ export const AttendanceAdminPage = () => {
   }, []);
 
   const handleSearch = (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     fetchLogs();
   };
 
@@ -95,19 +101,14 @@ export const AttendanceAdminPage = () => {
     setVendorSearch('');
     setDateFrom('');
     setDateTo('');
-    setLoading(true);
-    entradaService.getAllAttendance({
-      vendor: '',
-      dateFrom: '',
-      dateTo: ''
-    }).then(response => {
-      setLogs(response.logs || []);
-      setTotal(response.total || 0);
-    }).catch(error => {
-      console.error(error);
-    }).finally(() => {
-      setLoading(false);
-    });
+    fetchLogs({ vendor: '', dateFrom: '', dateTo: '' });
+  };
+
+  const handleClearVendorInput = () => {
+    setVendorSearch('');
+    if (vendorSearch) {
+      fetchLogs({ vendor: '' });
+    }
   };
 
   const openSelfie = (url) => {
@@ -279,7 +280,21 @@ export const AttendanceAdminPage = () => {
                       _focus={{ bg: "white", borderColor: "#126C36", boxShadow: "0 0 0 1px #126C36" }}
                       fontSize="sm"
                       fontWeight="600"
+                      pr={vendorSearch ? "2.5rem" : "1rem"}
                     />
+                    {vendorSearch && (
+                      <InputRightElement>
+                        <IconButton
+                          size="xs"
+                          variant="ghost"
+                          icon={<Icon as={FiX} />}
+                          aria-label="Borrar búsqueda"
+                          onClick={handleClearVendorInput}
+                          color="gray.400"
+                          _hover={{ color: "gray.700" }}
+                        />
+                      </InputRightElement>
+                    )}
                   </InputGroup>
                 </Box>
 

@@ -158,7 +158,7 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} isCentered size={{ base: "full", sm: "md" }} motionPreset="slideInBottom">
-      <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
+      <ModalOverlay bg="blackAlpha.600" />
       <ModalContent borderRadius={{ base: "2xl", sm: "2xl" }} mx={{ base: 2, sm: 4 }} overflow="hidden" border="1px solid" borderColor="gray.200">
         <ModalHeader bg="#0f2e22" color="white" py={3.5} px={4}>
           <Flex align="center" justify="space-between">
@@ -478,7 +478,7 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
                     🔥 ALERTA: Descuento Especial por Volumen ({effectiveTotalDiscPct}%) Habilitado ({qty} uds &gt; 100)
                   </Text>
                   <Text color="#c2410c" fontWeight="700">
-                    Este descuento supera el tope estándar del {STANDARD_DISCOUNT_CEILING}% hasta un {effectiveTotalDiscPct}% (Tope Máx: {MAX_DISCOUNT_CEILING}%). Se notificará como Mayoreo y requerirá aprobación administrativa explícita de Enrique.
+                    Este descuento supera el tope estándar del {STANDARD_DISCOUNT_CEILING}% hasta un {effectiveTotalDiscPct}% (Tope Máx: {MAX_DISCOUNT_CEILING}%). Se notificará como Mayoreo y requerirá aprobación administrativa explícita.
                   </Text>
                 </Box>
               </Alert>
@@ -490,7 +490,7 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
                     ⚠️ Requiere Aprobación Comercial Ordinaria
                   </Text>
                   <Text color="orange.800" fontWeight="600">
-                    El precio otorgado requiere un descuento adicional (+{currentDisc}%) que pasará a revisión y aprobación por Facturación (Enrique).
+                    El precio otorgado requiere un descuento adicional (+{currentDisc}%) que pasará a revisión y aprobación por Facturación / Administración.
                   </Text>
                 </Box>
               </Alert>

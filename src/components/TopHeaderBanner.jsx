@@ -28,8 +28,7 @@ export const HEADER_MAIN_BG = "linear-gradient(135deg, #0e572b 0%, #126C36 50%, 
 // Panel "vidrio esmerilado" para envolver contenido (buscadores, filtros) dentro del header,
 // para que se integre visualmente con el mismo lenguaje que los pills de QuickActions.
 export const HEADER_GLASS_PANEL_PROPS = {
-  bg: "whiteAlpha.100",
-  backdropFilter: "blur(12px)",
+  bg: "rgba(255,255,255,0.12)",
   border: "1px solid rgba(255,255,255,0.2)",
   borderRadius: "2xl",
 };
@@ -227,7 +226,6 @@ export function TopHeaderBanner({
             {showExchangeRate && (
               <Box
                 bg={{ base: "rgba(255, 255, 255, 0.22)", md: "whiteAlpha.200" }}
-                backdropFilter={{ base: "none", md: "blur(12px)" }}
                 border="1px solid rgba(255,255,255,0.25)"
                 borderRadius="full"
                 px={{ base: 3, sm: 4 }}
@@ -278,7 +276,6 @@ export function TopHeaderBanner({
           {/* Bloque de acciones del Dashboard: Recargar + Notificaciones + Menú Lateral */}
           <HStack
             bg={{ base: "rgba(255, 255, 255, 0.20)", md: "rgba(255, 255, 255, 0.14)" }}
-            backdropFilter={{ base: "none", md: "blur(14px)" }}
             border="1px solid rgba(255, 255, 255, 0.25)"
             borderRadius="full"
             py={{ base: 1.5, md: 2 }}

@@ -130,17 +130,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     return d.toISOString().split("T")[0];
   });
 
-  // Estado que permite al Administrador desbloquear/editar cualquier cotización si necesita corregir ítems/precios
-  const [adminForceEditMode, setAdminForceEditMode] = useState(() => {
-    try {
-      const force = sessionStorage.getItem("admin_force_edit");
-      if (force === "true") {
-        sessionStorage.removeItem("admin_force_edit");
-        return true;
-      }
-    } catch {}
-    return false;
-  });
+  // Estado que permite al Administrador desbloquear/editar cualquier cotización si necesita corregir ítems/precios.
+  // Por defecto SIEMPRE inicia en false (bloqueado en modo revisión) para proteger la integridad de los datos.
+  const [adminForceEditMode, setAdminForceEditMode] = useState(false);
 
   const isApproved = approvalStatus === "APROBADO_COMERCIAL" || approvalStatus === "APROBADO";
   const isCancelled = approvalStatus === "ANULADO";
@@ -159,8 +151,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     (approvalStatus && !["BORRADOR", "GENERADO", "DRAFT", "draft"].includes(approvalStatus))
   );
 
-  // Si la cotización está observada o en edición, está en modo corrección activa
-  const isCorrectionMode = approvalStatus === "OBSERVADO" || approvalStatus === "EN_EDICION";
+  // Si la cotización está observada o en edición, el vendedor está en modo corrección activa.
+  // El Administrador siempre entra en modo revisión bloqueado por defecto a menos que active explícitamente adminForceEditMode.
+  const isCorrectionMode = !isAdmin && (approvalStatus === "OBSERVADO" || approvalStatus === "EN_EDICION");
 
   // El Administrador está en modo "Solo Revisión" cuando es una cotización enviada/en proceso y no está en corrección ni forzando edición
   const isAdminReviewing = Boolean(isAdmin && isSubmittedQuote && !adminForceEditMode && !isCorrectionMode);
@@ -168,11 +161,12 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   // Los campos comerciales (Cliente, Grilla de Productos) solo se bloquean si es solo lectura o revisión estricta
   const isSellerFieldsLocked = (isReadOnly && !isCorrectionMode) || (isAdminReviewing && !adminForceEditMode);
 
-  // Despacho y Logística son editables si no está aprobada/cerrada en SAP, o si está en corrección, o si faltan datos
-  const isDeliveryLocked = (isReadOnly && !isCorrectionMode) || (isAdminReviewing && !adminForceEditMode && Boolean(selectedDeliveryForm));
+  // Despacho y Logística son editables si no está en revisión estricta o si el admin habilita edición
+  const isDeliveryLocked = (isReadOnly && !isCorrectionMode) || (isAdminReviewing && !adminForceEditMode);
   const revealTabs = true; // Flujo unificado: Pestaña de logística y pagos accesible al inicio
 
   useEffect(() => {
+    setAdminForceEditMode(false);
     if (quoteId) {
       setDocNumber(quoteId);
     } else {
@@ -847,7 +841,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         }
         if (!opNum || !String(opNum).trim()) {
           toast({
-            title: "⚠️ N° de Operación (Váucher) requerido",
+            title: "⚠️ N° de Operación / Comprobante requerido",
             description: "Debe ingresar el Número de Operación Bancaria del comprobante de abono (Sección 2).",
             status: "warning",
             duration: 4500,
@@ -869,7 +863,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
     const activeDocNumber = docNumber || quoteId || `COT-${Date.now().toString().slice(-6)}`;
     const nowIso = new Date().toISOString();
-    const adminName = username || "Administrador";
+    const adminName = username || localSeller || "Administrador";
     const sellerUsername = currentQuoteObj.sellerName || "Vendedor";
 
     // 1. Guardar y actualizar cotización a estado APROBADO
@@ -1585,147 +1579,123 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         </Flex>
 
         {/* ── BÚSQUEDA DE CLIENTE Y CAMPOS PROGRESIVOS NATIVOS ── */}
-        {revealTabs ? (
-          <Grid templateColumns={{ base: "1fr", lg: "repeat(2, 1fr)" }} gap={6}>
-            {/* Columna Izquierda: Datos de Cliente SAP */}
-            <VStack align="stretch" spacing={3}>
-              {isSellerFieldsLocked ? (
-                <Box p={3.5} bg="#f0fdf4" borderRadius="xl" border="1.5px solid" borderColor="#bbf7d0" boxShadow="xs">
-                  <HStack justify="space-between" mb={1.5}>
-                    <Text fontSize="10px" fontWeight="900" color="#166534" textTransform="uppercase" letterSpacing="wider">
-                      🤝 Cliente SAP (Bloqueado)
-                    </Text>
-                    <Badge colorScheme="green" fontSize="10px">SAP OK</Badge>
-                  </HStack>
-                  <Text fontSize="xs" color="gray.800" fontWeight="700">
-                    {client?.CardName || client?.name || "Cliente General"}
-                  </Text>
-                  <Text fontSize="0.75rem" color="gray.500" fontWeight="600" mt={0.5}>
-                    Documento / Código: {client?.CardCode || client?.id || "N/A"}
-                  </Text>
-                  {client?.Address && (
-                    <Text fontSize="0.75rem" color="gray.500" fontWeight="500">
-                      Dirección: {client.Address}
-                    </Text>
-                  )}
-                </Box>
-              ) : (
-                <ClientAutocomplete client={client} setClient={setClient} />
-              )}
-            </VStack>
-
-            {/* Columna Derecha: Parámetros del Documento (Grid 2x2 Simétrico) */}
-            <VStack align="stretch" spacing={3}>
-              <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={3}>
-                <FormControl>
-                  <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="gray.700" mb={1}>
-                    Válido Hasta / Vencimiento {isSellerFieldsLocked && "🔒"}
-                  </FormLabel>
-                  <Input
-                    type="date"
-                    size="sm"
-                    borderRadius="md"
-                    value={docDueDate}
-                    onChange={(e) => setDocDueDate(e.target.value)}
-                    bg={isSellerFieldsLocked ? "gray.100" : "white"}
-                    isDisabled={isSellerFieldsLocked}
-                    cursor={isSellerFieldsLocked ? "not-allowed" : "default"}
-                  />
-                </FormControl>
-
-                <FormControl>
-                  <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="gray.700" mb={1}>
-                    Fecha de Contabilización 🔒
-                  </FormLabel>
-                  <Input
-                    type="date"
-                    size="sm"
-                    borderRadius="md"
-                    value={docDate}
-                    isReadOnly
-                    isDisabled
-                    bg="gray.100"
-                    cursor="not-allowed"
-                    title="La fecha de contabilización es automática según la fecha de creación en SAP"
-                  />
-                </FormControl>
-
-                <FormControl>
-                  <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="gray.700" mb={1}>
-                    Persona de Contacto {isSellerFieldsLocked && "🔒"}
-                  </FormLabel>
-                  {contactList.length > 0 ? (
-                    <ChakraSelect
-                      size="sm"
-                      borderRadius="md"
-                      value={contactPerson || ""}
-                      onChange={(e) => setContactPerson(e.target.value)}
-                      bg={isSellerFieldsLocked ? "gray.100" : "white"}
-                      fontWeight="600"
-                      isDisabled={isSellerFieldsLocked}
-                      cursor={isSellerFieldsLocked ? "not-allowed" : "default"}
-                    >
-                      {contactList.map((c, idx) => (
-                        <option key={c.code || idx} value={c.name}>
-                          {c.name} {c.position ? `(${c.position})` : ""}
-                        </option>
-                      ))}
-                    </ChakraSelect>
-                  ) : (
-                    <Input
-                      size="sm"
-                      borderRadius="md"
-                      placeholder="Ej. Juan Pérez"
-                      value={contactPerson || ""}
-                      onChange={(e) => setContactPerson(e.target.value)}
-                      bg={isSellerFieldsLocked ? "gray.100" : "white"}
-                      isDisabled={isSellerFieldsLocked}
-                      cursor={isSellerFieldsLocked ? "not-allowed" : "text"}
-                    />
-                  )}
-                </FormControl>
-
-                <FormControl>
-                  <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="gray.700" mb={1}>
-                    Nº Referencia / Documento Web 🔒
-                  </FormLabel>
-                  <Input
-                    size="sm"
-                    borderRadius="md"
-                    value={docNumber || refNumber || ""}
-                    isReadOnly
-                    isDisabled
-                    bg="gray.100"
-                    cursor="not-allowed"
-                    title="El número correlativo web se asigna automáticamente y se sincroniza con SAP"
-                  />
-                </FormControl>
-              </Grid>
-            </VStack>
-          </Grid>
-        ) : (
-          /* FASE 1: Cotización Inicial limpia — Buscador compacto de 560px */
-          <Box w="full" maxW={{ base: "full", md: "560px" }}>
+        <Grid templateColumns={{ base: "1fr", lg: "repeat(2, 1fr)" }} gap={{ base: 4, lg: 6 }}>
+          {/* Columna Izquierda: Datos de Cliente SAP */}
+          <VStack align="stretch" spacing={3}>
             {isSellerFieldsLocked ? (
               <Box p={3.5} bg="#f0fdf4" borderRadius="xl" border="1.5px solid" borderColor="#bbf7d0" boxShadow="xs">
-                <HStack justify="space-between" mb={1.5}>
+                <Flex justify="space-between" align="center" wrap="wrap" gap={1} mb={1.5}>
                   <Text fontSize="10px" fontWeight="900" color="#166534" textTransform="uppercase" letterSpacing="wider">
                     🤝 Cliente SAP (Bloqueado)
                   </Text>
                   <Badge colorScheme="green" fontSize="10px">SAP OK</Badge>
-                </HStack>
-                <Text fontSize="xs" color="gray.800" fontWeight="700">
+                </Flex>
+                <Text fontSize="xs" color="gray.800" fontWeight="700" wordBreak="break-word">
                   {client?.CardName || client?.name || "Cliente General"}
                 </Text>
                 <Text fontSize="0.75rem" color="gray.500" fontWeight="600" mt={0.5}>
-                  Documento: {client?.CardCode || client?.id || "N/A"}
+                  Documento / Código: {client?.CardCode || client?.id || "N/A"}
                 </Text>
+                {client?.Address && (
+                  <Text fontSize="0.75rem" color="gray.500" fontWeight="500" wordBreak="break-word">
+                    Dirección: {client.Address}
+                  </Text>
+                )}
               </Box>
             ) : (
               <ClientAutocomplete client={client} setClient={setClient} />
             )}
-          </Box>
-        )}
+          </VStack>
+
+          {/* Columna Derecha: Parámetros del Documento (Grid 2x2 Simétrico) */}
+          <VStack align="stretch" spacing={3}>
+            <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={3}>
+              <FormControl>
+                <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="gray.700" mb={1}>
+                  Válido Hasta / Vencimiento {isSellerFieldsLocked && "🔒"}
+                </FormLabel>
+                <Input
+                  type="date"
+                  size="sm"
+                  borderRadius="md"
+                  value={docDueDate}
+                  onChange={(e) => setDocDueDate(e.target.value)}
+                  bg={isSellerFieldsLocked ? "gray.100" : "white"}
+                  isDisabled={isSellerFieldsLocked}
+                  cursor={isSellerFieldsLocked ? "not-allowed" : "default"}
+                />
+              </FormControl>
+
+              <FormControl>
+                <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="gray.700" mb={1}>
+                  Fecha de Contabilización 🔒
+                </FormLabel>
+                <Input
+                  type="date"
+                  size="sm"
+                  borderRadius="md"
+                  value={docDate}
+                  isReadOnly
+                  isDisabled
+                  bg="gray.100"
+                  cursor="not-allowed"
+                  title="La fecha de contabilización es automática según la fecha de creación en SAP"
+                />
+              </FormControl>
+
+              <FormControl>
+                <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="gray.700" mb={1}>
+                  Persona de Contacto {isSellerFieldsLocked && "🔒"}
+                </FormLabel>
+                {contactList.length > 0 ? (
+                  <ChakraSelect
+                    size="sm"
+                    borderRadius="md"
+                    value={contactPerson || ""}
+                    onChange={(e) => setContactPerson(e.target.value)}
+                    bg={isSellerFieldsLocked ? "gray.100" : "white"}
+                    fontWeight="600"
+                    isDisabled={isSellerFieldsLocked}
+                    cursor={isSellerFieldsLocked ? "not-allowed" : "default"}
+                  >
+                    {contactList.map((c, idx) => (
+                      <option key={c.code || idx} value={c.name}>
+                        {c.name} {c.position ? `(${c.position})` : ""}
+                      </option>
+                    ))}
+                  </ChakraSelect>
+                ) : (
+                  <Input
+                    size="sm"
+                    borderRadius="md"
+                    placeholder="Ej. Juan Pérez"
+                    value={contactPerson || ""}
+                    onChange={(e) => setContactPerson(e.target.value)}
+                    bg={isSellerFieldsLocked ? "gray.100" : "white"}
+                    isDisabled={isSellerFieldsLocked}
+                    cursor={isSellerFieldsLocked ? "not-allowed" : "text"}
+                  />
+                )}
+              </FormControl>
+
+              <FormControl>
+                <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="gray.700" mb={1}>
+                  Nº Referencia / Documento Web 🔒
+                </FormLabel>
+                <Input
+                  size="sm"
+                  borderRadius="md"
+                  value={docNumber || refNumber || ""}
+                  isReadOnly
+                  isDisabled
+                  bg="gray.100"
+                  cursor="not-allowed"
+                  title="El número correlativo web se asigna automáticamente y se sincroniza con SAP"
+                />
+              </FormControl>
+            </Grid>
+          </VStack>
+        </Grid>
       </Box>
 
       {/* ── SECCIÓN CENTRAL CON PESTAÑAS SAP ── */}
@@ -1823,7 +1793,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
             {/* Pestaña 2: Logística y Condiciones */}
             {revealTabs && (
-              <TabPanel p={2}>
+              <TabPanel p={{ base: 1, md: 2 }}>
                 <VStack align="stretch" spacing={3}>
                   <NewSellTerms
                     client={client}
@@ -1866,7 +1836,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                     setSunatOpType={setSunatOpType}
                     isAdmin={isAdmin}
                     isDeliveryLocked={isDeliveryLocked}
-                    isFinanceLocked={isAdmin ? false : isReadOnly}
+                    isFinanceLocked={adminForceEditMode ? false : isSellerFieldsLocked}
                   />
                 </VStack>
               </TabPanel>
@@ -2220,7 +2190,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         closeOnEsc={false}
         size="xs"
       >
-        <ModalOverlay bg="blackAlpha.500" backdropFilter="blur(4px)" />
+        <ModalOverlay bg="blackAlpha.500" />
         <ModalContent
           borderRadius="2xl"
           overflow="hidden"

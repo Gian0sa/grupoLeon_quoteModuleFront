@@ -358,7 +358,7 @@ export function OrderChecklist({
       id: 5,
       label: "Autorización de abono / comprobante de pago",
       isDone: hasPayment,
-      detail: hasPayment ? (opNum ? `Váucher: ${opNum}` : "Crédito aprobado") : "Ingresar voucher o crédito"
+      detail: hasPayment ? (opNum ? `Operación: ${opNum}` : "Crédito aprobado") : "Ingresar comprobante o crédito"
     },
     {
       id: 6,
@@ -368,7 +368,7 @@ export function OrderChecklist({
     },
     {
       id: 7,
-      label: "Revisión y validación por Facturación (Enrique)",
+      label: "Revisión y validación por Facturación / Administración",
       isDone: isReviewedOrApproved,
       detail: isReviewedOrApproved ? "Control comercial aprobado" : "Pendiente de revisión"
     },

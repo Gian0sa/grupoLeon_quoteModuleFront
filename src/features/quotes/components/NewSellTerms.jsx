@@ -83,6 +83,59 @@ export const isOwnPickupInStoreForm = (form) => {
   return str.includes("reparto propio") || str.includes("motorizado propio") || str.includes("propio") || str === "2" || str === "02";
 };
 
+export const getCustomSelectStyles = (isLocked) => ({
+  container: (base) => ({
+    ...base,
+    maxWidth: "100%",
+    width: "100%",
+    color: "black",
+    opacity: isLocked ? 0.8 : 1,
+  }),
+  control: (base, state) => ({
+    ...base,
+    minHeight: "40px",
+    borderRadius: "10px",
+    borderColor: state.isFocused ? "#10b981" : "#cbd5e1",
+    boxShadow: state.isFocused ? "0 0 0 1.5px #10b981" : "none",
+    fontSize: "13px",
+    backgroundColor: isLocked ? "#f8fafc" : "white",
+    cursor: isLocked ? "not-allowed" : "pointer",
+    transition: "all 0.2s ease",
+  }),
+  valueContainer: (base) => ({
+    ...base,
+    padding: "3px 10px",
+  }),
+  singleValue: (base) => ({
+    ...base,
+    whiteSpace: "normal",
+    fontSize: "13px",
+    fontWeight: "700",
+    color: "#0f172a",
+    lineHeight: "1.3",
+  }),
+  placeholder: (base) => ({
+    ...base,
+    fontSize: "12px",
+    color: "#94a3b8",
+  }),
+  option: (base, state) => ({
+    ...base,
+    whiteSpace: "normal",
+    fontSize: "13px",
+    padding: "9px 12px",
+    backgroundColor: state.isSelected ? "#10b981" : state.isFocused ? "#ecfdf5" : "white",
+    color: state.isSelected ? "white" : "#1e293b",
+  }),
+  menu: (base) => ({
+    ...base,
+    zIndex: 40,
+    borderRadius: "10px",
+    overflow: "hidden",
+    boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08)",
+  }),
+});
+
 export function NewSellTerms({
   client,
   transports = [],
@@ -441,17 +494,17 @@ export function NewSellTerms({
   return (
     <VStack align="stretch" spacing={5} py={2}>
       {clientAdapted ? (
-        <Box p={3.5} bg="emerald.50" borderRadius="xl" border="1.5px solid" borderColor="emerald.200">
-          <HStack justify="space-between" mb={1}>
+        <Box p={{ base: 2.5, sm: 3.5 }} bg="emerald.50" borderRadius="xl" border="1.5px solid" borderColor="emerald.200">
+          <Flex justify="space-between" align="center" mb={1} wrap="wrap" gap={1}>
             <Text fontSize="xs" fontWeight="800" color="emerald.900" textTransform="uppercase">CLIENTE SELECCIONADO</Text>
             <Badge colorScheme="emerald" fontSize="xs">SAP OK</Badge>
-          </HStack>
-          <Text fontSize="xs" color="gray.700"><strong>Código:</strong> {clientAdapted.cardCode}</Text>
-          <Text fontSize="xs" color="gray.700"><strong>Nombre:</strong> {clientAdapted.cardName}</Text>
-          <Text fontSize="xs" color="gray.700"><strong>Dirección Fiscal:</strong> {clientAdapted.address}</Text>
+          </Flex>
+          <Text fontSize="xs" color="gray.700" wordBreak="break-word"><strong>Código:</strong> {clientAdapted.cardCode}</Text>
+          <Text fontSize="xs" color="gray.700" wordBreak="break-word"><strong>Nombre:</strong> {clientAdapted.cardName}</Text>
+          <Text fontSize="xs" color="gray.700" wordBreak="break-word"><strong>Dirección Fiscal:</strong> {clientAdapted.address}</Text>
         </Box>
       ) : (
-        <Box p={3.5} bg="gray.50" borderRadius="xl" border="1.5px dashed" borderColor="gray.300">
+        <Box p={{ base: 2.5, sm: 3.5 }} bg="gray.50" borderRadius="xl" border="1.5px dashed" borderColor="gray.300">
           <Text fontSize="xs" color="gray.600" fontWeight="600" fontStyle="italic">
             💡 Completa los parámetros de logística, medios de pago y anexos requeridos para una facturación completa en SAP B1.
           </Text>
@@ -459,11 +512,20 @@ export function NewSellTerms({
       )}
 
       {/* TARJETA 1: 📦 LOGÍSTICA Y AGENCIA DE TRANSPORTE */}
-      <Box bg="white" p={{ base: 4, md: 5 }} borderRadius="2xl" border="1.5px solid" borderColor="#e2e8f0" boxShadow="xs">
-        <HStack spacing={2.5} mb={4} pb={2.5} borderBottom="1.5px solid" borderColor="emerald.100" justify="space-between">
+      <Box bg="white" p={{ base: 3, sm: 4, md: 5 }} borderRadius="2xl" border="1.5px solid" borderColor="#e2e8f0" boxShadow="xs">
+        <Flex
+          direction={{ base: "column", sm: "row" }}
+          align={{ base: "flex-start", sm: "center" }}
+          justify="space-between"
+          gap={2}
+          mb={3.5}
+          pb={2.5}
+          borderBottom="1.5px solid"
+          borderColor="emerald.100"
+        >
           <HStack spacing={2.5}>
-            <Truck className="w-5 h-5 text-emerald-700 stroke-[2.5]" />
-            <Text fontSize="sm" fontWeight="950" color="emerald.900" textTransform="uppercase" letterSpacing="wide">
+            <Truck className="w-5 h-5 text-emerald-700 stroke-[2.5] flex-shrink-0" />
+            <Text fontSize={{ base: "xs", sm: "sm" }} fontWeight="950" color="emerald.900" textTransform="uppercase" letterSpacing="wide">
               1. Logística y Agencia de Transporte
             </Text>
           </HStack>
@@ -472,7 +534,7 @@ export function NewSellTerms({
               🔒 Bloqueado (Vendedor)
             </Badge>
           )}
-        </HStack>
+        </Flex>
 
         <VStack align="stretch" spacing={4}>
           <Box>
@@ -487,9 +549,7 @@ export function NewSellTerms({
               onChange={handleDeliveryFormChange}
               placeholder="Selecciona o escribe una forma de entrega..."
               formatCreateLabel={(inputValue) => `Escribir: "${inputValue}"`}
-              styles={{
-                container: (p) => ({ ...p, maxWidth: "100%", width: "100%", color: "black", opacity: isDeliveryLocked ? 0.75 : 1 }),
-              }}
+              styles={getCustomSelectStyles(isDeliveryLocked)}
             />
           </Box>
 
@@ -506,9 +566,7 @@ export function NewSellTerms({
                 onChange={handleDeliveryPointChange}
                 placeholder="Selecciona o escribe un destino (Ej: ENVÍO A PROVINCIA - SAN VICENTE)..."
                 formatCreateLabel={(inputValue) => `Escribir destino libre: "${inputValue}"`}
-                styles={{
-                  container: (p) => ({ ...p, maxWidth: "100%", width: "100%", color: "black", opacity: isDeliveryLocked ? 0.75 : 1 }),
-                }}
+                styles={getCustomSelectStyles(isDeliveryLocked)}
               />
             </Box>
           )}
@@ -526,11 +584,7 @@ export function NewSellTerms({
                 onChange={handleTransportChange}
                 placeholder="Selecciona o escribe una agencia (Ej: Cód. 103 - ETTUSA, SHALOM)..."
                 formatCreateLabel={(inputValue) => `Escribir agencia libre: "${inputValue}"`}
-                styles={{
-                  container: (p) => ({ ...p, maxWidth: "100%", width: "100%", color: "black", opacity: isDeliveryLocked ? 0.75 : 1 }),
-                  singleValue: (p) => ({ ...p, whiteSpace: "normal" }),
-                  option: (p) => ({ ...p, whiteSpace: "normal" }),
-                }}
+                styles={getCustomSelectStyles(isDeliveryLocked)}
               />
             </Box>
           )}
@@ -545,7 +599,7 @@ export function NewSellTerms({
           </Box>
 
           {/* ── SELECCIÓN OFICIAL DE CONDICIÓN DE PAGO SAP B1 (TABLA OCTG) ── */}
-          <Box p={3.5} bg="emerald.50" borderRadius="xl" border="1.5px solid" borderColor="emerald.200">
+          <Box p={{ base: 2.5, sm: 3.5 }} bg="emerald.50" borderRadius="xl" border="1.5px solid" borderColor="emerald.200">
             <FormLabel fontSize="xs" fontWeight="900" color="emerald.900" mb={1.5} textTransform="uppercase">
               💳 Condición de Pago Oficial SAP B1 (Tabla OCTG) {isDeliveryLocked && "🔒"}
             </FormLabel>
@@ -557,50 +611,54 @@ export function NewSellTerms({
               onChange={handlePaymentTypeChange}
               placeholder="Selecciona la Condición de Pago oficial cargada en vivo desde SAP B1..."
               formatCreateLabel={(inputValue) => `Escribir condición libre: "${inputValue}"`}
-              styles={{
-                container: (p) => ({ ...p, maxWidth: "100%", width: "100%", color: "black", opacity: isDeliveryLocked ? 0.75 : 1 }),
-              }}
+              styles={getCustomSelectStyles(isDeliveryLocked)}
             />
           </Box>
 
           {/* ── CUADRO DE CONDICIONES COMERCIALES (TALONARIO / SOLICITUD DE PEDIDO) ── */}
           <Box
-            p={{ base: 3.5, md: 4 }}
+            p={{ base: 2.5, sm: 3.5, md: 4 }}
             bg="#f8fafc"
             borderRadius="xl"
             border="1.5px solid"
             borderColor="#cbd5e1"
             boxShadow="xs"
           >
-            <HStack justify="space-between" mb={3}>
-              <HStack spacing={2}>
-                <Receipt className="w-4 h-4 text-emerald-800" />
-                <Text fontSize="xs" fontWeight="900" color="gray.800" textTransform="uppercase" letterSpacing="wider">
+            <Flex
+              direction={{ base: "column", sm: "row" }}
+              justify="space-between"
+              align={{ base: "flex-start", sm: "center" }}
+              gap={2}
+              mb={3}
+            >
+              <HStack spacing={2} minW={0}>
+                <Receipt className="w-4 h-4 text-emerald-800 flex-shrink-0" />
+                <Text fontSize={{ base: "xs", md: "xs" }} fontWeight="900" color="gray.800" textTransform="uppercase" letterSpacing="wide">
                   Condiciones Comerciales de la Solicitud {isDeliveryLocked && "🔒"}
                 </Text>
               </HStack>
-              <HStack spacing={1.5}>
+              <Flex wrap="wrap" gap={1.5} align="center">
                 <Badge colorScheme={saleCondition && documentType ? "green" : "purple"} fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="800">
                   {saleCondition && documentType ? "✓ CONDICIONES LISTAS" : "✏️ SELECCIÓN REQUERIDA"}
                 </Badge>
                 <Badge colorScheme="teal" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="800">
                   TALONARIO DE PEDIDO
                 </Badge>
-              </HStack>
-            </HStack>
+              </Flex>
+            </Flex>
 
-            <Grid templateColumns={{ base: "1fr", md: "1fr 1fr 1.4fr" }} gap={3.5}>
+            <Grid templateColumns={{ base: "1fr", md: "1fr 1fr 1.4fr" }} gap={{ base: 2.5, md: 3.5 }}>
               {/* Casilla 1: Modalidad (CONTADO / CRÉDITO) - Seleccionable por usuario y auto-sincronizada desde SAP OCTG */}
-              <Box p={3} bg="white" borderRadius="lg" border="1.5px solid" borderColor={saleCondition ? "emerald.300" : "gray.200"} boxShadow={saleCondition ? "xs" : "none"}>
+              <Box p={{ base: 2.5, md: 3 }} bg="white" borderRadius="xl" border="1.5px solid" borderColor={saleCondition ? "emerald.300" : "gray.200"} boxShadow={saleCondition ? "xs" : "none"}>
                 <Flex justify="space-between" align="center" mb={2}>
                   <Text fontSize="10px" fontWeight="900" color={saleCondition ? "emerald.800" : "gray.500"} textTransform="uppercase">
                     Condición de Venta
                   </Text>
-                  <Text fontSize="9px" color={saleCondition ? "emerald.600" : "orange.500"} fontWeight="800">
+                  <Badge colorScheme={saleCondition ? "green" : "orange"} fontSize="8px" px={1.5} py={0.2} borderRadius="sm" fontWeight="800">
                     {saleCondition ? "✓ ELEGIDO" : "✏️ SELECCIONAR"}
-                  </Text>
+                  </Badge>
                 </Flex>
-                <HStack spacing={4}>
+                <HStack spacing={{ base: 4, sm: 6 }}>
                   <Checkbox
                     isChecked={saleCondition === "CONTADO"}
                     onChange={() => {
@@ -615,7 +673,7 @@ export function NewSellTerms({
                     size="sm"
                     fontWeight="800"
                     fontSize="xs"
-                    cursor="pointer"
+                    cursor={isDeliveryLocked ? "not-allowed" : "pointer"}
                   >
                     CONTADO
                   </Checkbox>
@@ -632,7 +690,7 @@ export function NewSellTerms({
                     size="sm"
                     fontWeight="800"
                     fontSize="xs"
-                    cursor="pointer"
+                    cursor={isDeliveryLocked ? "not-allowed" : "pointer"}
                   >
                     CRÉDITO
                   </Checkbox>
@@ -640,18 +698,16 @@ export function NewSellTerms({
               </Box>
 
               {/* Casilla 2: Tipo de Comprobante (BOLETA / FACTURA) - 100% editable, sin pre-selección automática */}
-              <Box p={3} bg="white" borderRadius="lg" border="1.5px solid" borderColor={documentType ? "emerald.300" : "gray.200"} boxShadow={documentType ? "xs" : "none"}>
+              <Box p={{ base: 2.5, md: 3 }} bg="white" borderRadius="xl" border="1.5px solid" borderColor={documentType ? "emerald.300" : "gray.200"} boxShadow={documentType ? "xs" : "none"}>
                 <Flex justify="space-between" align="center" mb={2}>
                   <Text fontSize="10px" fontWeight="900" color={documentType ? "emerald.800" : "gray.500"} textTransform="uppercase">
                     Tipo de Comprobante
                   </Text>
-                  <HStack spacing={1}>
-                    <Badge colorScheme={documentType ? "green" : "orange"} fontSize="8px" px={1.5} py={0.2} borderRadius="sm" fontWeight="800">
-                      {documentType ? `✓ ${documentType}` : "✏️ SELECCIONAR"}
-                    </Badge>
-                  </HStack>
+                  <Badge colorScheme={documentType ? "green" : "orange"} fontSize="8px" px={1.5} py={0.2} borderRadius="sm" fontWeight="800">
+                    {documentType ? `✓ ${documentType}` : "✏️ SELECCIONAR"}
+                  </Badge>
                 </Flex>
-                <HStack spacing={4}>
+                <HStack spacing={{ base: 3, sm: 6 }} wrap="wrap">
                   <Checkbox
                     isChecked={documentType === "FACTURA"}
                     onChange={() => {
@@ -664,7 +720,7 @@ export function NewSellTerms({
                     size="sm"
                     fontWeight="800"
                     fontSize="xs"
-                    cursor="pointer"
+                    cursor={isDeliveryLocked ? "not-allowed" : "pointer"}
                   >
                     FACTURA {isLikelyRuc && <Text as="span" fontSize="9px" color="blue.500" fontWeight="700">(RUC)</Text>}
                   </Checkbox>
@@ -680,7 +736,7 @@ export function NewSellTerms({
                     size="sm"
                     fontWeight="800"
                     fontSize="xs"
-                    cursor="pointer"
+                    cursor={isDeliveryLocked ? "not-allowed" : "pointer"}
                   >
                     BOLETA {isLikelyDni && <Text as="span" fontSize="9px" color="blue.500" fontWeight="700">(DNI)</Text>}
                   </Checkbox>
@@ -688,7 +744,7 @@ export function NewSellTerms({
               </Box>
 
               {/* Casilla 3: Instrumento y Plazo (LETRA / PLAZO AUTO) */}
-              <Box p={3} bg="white" borderRadius="lg" border="1px solid" borderColor="gray.200">
+              <Box p={{ base: 2.5, md: 3 }} bg="white" borderRadius="xl" border="1px solid" borderColor="gray.200">
                 <Flex justify="space-between" align="center" mb={2}>
                   <Checkbox
                     isChecked={Boolean(isLetra)}
@@ -702,9 +758,9 @@ export function NewSellTerms({
                   >
                     LETRA
                   </Checkbox>
-                  <Text fontSize="10px" fontWeight="900" color="gray.500">
+                  <Badge colorScheme="gray" fontSize="8px" px={1.5} py={0.2} borderRadius="sm" fontWeight="800">
                     PLAZO / TÉRMINO 🔒
-                  </Text>
+                  </Badge>
                 </Flex>
 
                 {/* Visualizador de Plazo Detectado desde SAP (Solo Lectura) */}
@@ -764,11 +820,20 @@ export function NewSellTerms({
 
       {/* TARJETA 2: 💳 CONDICIÓN DE PAGO Y COMPROBANTE (VOUCHER OCR) - EXCLUSIVO ADMINISTRADOR */}
       {isAdmin && (
-        <Box bg="white" p={{ base: 4, md: 5 }} borderRadius="2xl" border="1.5px solid" borderColor="#e2e8f0" boxShadow="xs">
-          <HStack spacing={2.5} mb={4} pb={2.5} borderBottom="1.5px solid" borderColor="emerald.100" justify="space-between">
+        <Box bg="white" p={{ base: 3, sm: 4, md: 5 }} borderRadius="2xl" border="1.5px solid" borderColor="#e2e8f0" boxShadow="xs">
+          <Flex
+            direction={{ base: "column", sm: "row" }}
+            align={{ base: "flex-start", sm: "center" }}
+            justify="space-between"
+            gap={2}
+            mb={3.5}
+            pb={2.5}
+            borderBottom="1.5px solid"
+            borderColor="emerald.100"
+          >
             <HStack spacing={2.5}>
-              <CreditCard className="w-5 h-5 text-emerald-700 stroke-[2.5]" />
-              <Text fontSize="sm" fontWeight="950" color="emerald.900" textTransform="uppercase" letterSpacing="wide">
+              <CreditCard className="w-5 h-5 text-emerald-700 stroke-[2.5] flex-shrink-0" />
+              <Text fontSize={{ base: "xs", sm: "sm" }} fontWeight="950" color="emerald.900" textTransform="uppercase" letterSpacing="wide">
                 2. Condición de Pago y Abono Bancario (Voucher)
               </Text>
             </HStack>
@@ -781,7 +846,7 @@ export function NewSellTerms({
                 ✏️ Editable por Administrador / Mostrador
               </Badge>
             )}
-          </HStack>
+          </Flex>
 
           {(() => {
             const currentPymntLabel = String(
@@ -815,9 +880,7 @@ export function NewSellTerms({
                       onChange={handlePaymentTypeChange}
                       placeholder="Selecciona condición de pago..."
                       formatCreateLabel={(inputValue) => `Escribir: "${inputValue}"`}
-                      styles={{
-                        container: (p) => ({ ...p, maxWidth: "100%", width: "100%", color: "black", opacity: isFinanceLocked ? 0.75 : 1 }),
-                      }}
+                      styles={getCustomSelectStyles(isFinanceLocked)}
                     />
                   </FormControl>
 
@@ -1010,11 +1073,20 @@ export function NewSellTerms({
 
       {/* TARJETA 3: 📋 PARÁMETROS SUNAT - EXCLUSIVO ADMINISTRADOR */}
       {isAdmin && (
-        <Box bg="white" p={{ base: 4, md: 5 }} borderRadius="2xl" border="1.5px solid" borderColor="#e2e8f0" boxShadow="xs">
-          <HStack spacing={2.5} mb={4} pb={2.5} borderBottom="1.5px solid" borderColor="emerald.100" justify="space-between">
+        <Box bg="white" p={{ base: 3, sm: 4, md: 5 }} borderRadius="2xl" border="1.5px solid" borderColor="#e2e8f0" boxShadow="xs">
+          <Flex
+            direction={{ base: "column", sm: "row" }}
+            align={{ base: "flex-start", sm: "center" }}
+            justify="space-between"
+            gap={2}
+            mb={3.5}
+            pb={2.5}
+            borderBottom="1.5px solid"
+            borderColor="emerald.100"
+          >
             <HStack spacing={2.5}>
-              <Paperclip className="w-5 h-5 text-emerald-700 stroke-[2.5]" />
-              <Text fontSize="sm" fontWeight="950" color="emerald.900" textTransform="uppercase" letterSpacing="wide">
+              <Paperclip className="w-5 h-5 text-emerald-700 stroke-[2.5] flex-shrink-0" />
+              <Text fontSize={{ base: "xs", sm: "sm" }} fontWeight="950" color="emerald.900" textTransform="uppercase" letterSpacing="wide">
                 3. Parámetros SUNAT
               </Text>
             </HStack>
@@ -1027,7 +1099,7 @@ export function NewSellTerms({
                 ✏️ Editable por Administrador / Mostrador
               </Badge>
             )}
-          </HStack>
+          </Flex>
 
           <VStack align="stretch" spacing={4}>
             <FormControl>

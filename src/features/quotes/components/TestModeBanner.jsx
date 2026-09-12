@@ -40,7 +40,6 @@ export function TestModeBanner() {
           h={{ base: "38px", md: "44px" }}
           borderRadius="xl"
           bg="whiteAlpha.200"
-          backdropFilter="blur(10px)"
           align="center"
           justify="center"
           flexShrink={0}

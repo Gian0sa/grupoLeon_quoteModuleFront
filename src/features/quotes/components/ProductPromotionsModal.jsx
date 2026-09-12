@@ -341,7 +341,7 @@ export function ProductPromotionsModal({ isOpen, onClose }) {
       motionPreset="slideInBottom"
       scrollBehavior="inside"
     >
-      <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(6px)" />
+      <ModalOverlay bg="blackAlpha.700" />
       <ModalContent
         borderRadius={{ base: "xl", sm: "2xl" }}
         overflow="hidden"

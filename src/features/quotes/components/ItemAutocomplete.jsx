@@ -6,7 +6,7 @@ import { useGetPromotions } from "../hooks/queries/quotesQueries";
 import { useDebounce } from "../../../shared/hooks/useDebounce";
 
 const MIN_CHARS = 2;
-const DEBOUNCE_MS = 200;
+const DEBOUNCE_MS = 450;
 
 /** Un término que contiene dígitos o guiones se evalúa con búsqueda inteligente de código y nombre. */
 function isLikelyItemCode(term) {
@@ -40,6 +40,16 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
     itemName: asCode ? term : term,
     enabled: shouldSearch,
   });
+
+  const handleInputChange = (newVal, actionMeta) => {
+    // Solo actualizar el término cuando el usuario está escribiendo o limpiando explícitamente
+    if (actionMeta.action === "input-change") {
+      setInputValue(newVal);
+    } else if (actionMeta.action === "clear") {
+      setInputValue("");
+    }
+    // Ignoramos "input-blur" y "menu-close" para que al tocar otra parte de la pantalla (móvil) NO se borre la búsqueda
+  };
 
   const options = useMemo(() => {
     const records = data?.records || [];
@@ -83,7 +93,11 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
     }));
   }, [data, term]);
 
-  const handleChange = (option) => {
+  const handleChange = (option, actionMeta) => {
+    if (actionMeta?.action === "clear") {
+      setInputValue("");
+      return;
+    }
     if (!option?.record) return;
     const r = option.record;
     const rawStock = r.STOCK_DISPONIBLE ?? r.Stock ?? r.OnHand;
@@ -127,7 +141,12 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
     <Box w="full">
       <Select
         inputValue={inputValue}
-        onInputChange={setInputValue}
+        onInputChange={handleInputChange}
+        onBlurResetsInput={false}
+        closeMenuOnSelect={true}
+        openMenuOnClick={true}
+        openMenuOnFocus={true}
+        isClearable={Boolean(inputValue)}
         options={shouldSearch ? options : []}
         onChange={handleChange}
         isLoading={shouldSearch && isFetching}
@@ -203,6 +222,13 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
           indicatorsContainer: (base) => ({
             ...base,
             height: "38px",
+          }),
+          clearIndicator: (base) => ({
+            ...base,
+            padding: "2px 4px",
+            cursor: "pointer",
+            color: "#94a3b8",
+            "&:hover": { color: "#ef4444" },
           }),
           menu: (base) => ({ ...base, zIndex: 20 }),
         }}

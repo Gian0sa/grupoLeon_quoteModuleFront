@@ -338,7 +338,7 @@ export function NotificationDrawer({ isOpen, onClose }) {
         autoFocus={false}
         returnFocusOnClose={false}
       >
-        <DrawerOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" transition="opacity 0.15s ease-out" />
+        <DrawerOverlay bg="blackAlpha.700" transition="opacity 0.15s ease-out" />
         <DrawerContent
           borderLeftRadius={{ base: "none", md: "2xl" }}
           bg="slate.50"

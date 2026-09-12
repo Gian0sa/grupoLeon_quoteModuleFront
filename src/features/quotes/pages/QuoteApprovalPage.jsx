@@ -1019,7 +1019,7 @@ export function QuoteApprovalPage() {
 
     toast({
       title: "↩️ Cotización Retirada para Corrección",
-      description: `La solicitud ${idStr} fue retirada antes de que Enrique la abriera. Se cargó en tu formulario para corregir.`,
+      description: `La solicitud ${idStr} fue retirada antes de que el Administrador la abriera. Se cargó en tu formulario para corregir.`,
       status: "info",
       duration: 5000,
       isClosable: true
@@ -1360,8 +1360,9 @@ export function QuoteApprovalPage() {
         const currentLogs = item.historyLog || [];
         
         needsUpdate = true;
+        const viewerName = authUsername || "Administrador";
         const newLog = isFirstView
-          ? { status: "VISTO", timestamp: nowIso, user: authUsername || "Enrique", note: "👁️ Solicitud abierta y leída por Enrique" }
+          ? { status: "VISTO", timestamp: nowIso, user: viewerName, note: `👁️ Solicitud abierta y leída por ${viewerName}` }
           : null;
           
         return {
@@ -2734,7 +2735,7 @@ export function QuoteApprovalPage() {
 
       {/* MODAL DE CONFIRMACIÓN DE ANULACIÓN / ELIMINACIÓN */}
       <Modal isOpen={!!deleteConfirmDoc} onClose={() => setDeleteConfirmDoc(null)} isCentered size="sm">
-        <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(3px)" />
+        <ModalOverlay bg="blackAlpha.600" />
         <ModalContent borderRadius="2xl" p={2}>
           <ModalHeader fontSize="md" fontWeight="900" color="red.700" display="flex" alignItems="center" gap={2}>
             <Trash2 className="w-5 h-5 text-red-600" />
@@ -2799,7 +2800,7 @@ export function QuoteApprovalPage() {
         closeOnEsc={false}
         size="xs"
       >
-        <ModalOverlay bg="blackAlpha.500" backdropFilter="blur(4px)" />
+        <ModalOverlay bg="blackAlpha.500" />
         <ModalContent
           borderRadius="2xl"
           overflow="hidden"
