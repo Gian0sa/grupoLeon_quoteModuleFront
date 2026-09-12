@@ -430,7 +430,7 @@ export function QuoteApprovalPage() {
     };
   }, [searchQuery]);
 
-  const handleRefresh = async () => {
+  const handleRefresh = async (showToast = false) => {
     setIsRefreshing(true);
     try {
       if (selectedTab === "HISTORICO") {
@@ -450,14 +450,20 @@ export function QuoteApprovalPage() {
         await refetchServerQuotes();
         syncQuotes();
       }
-      toast({
-        title: "🔄 Sincronizado",
-        description: "Lista de cotizaciones actualizada con el servidor y SAP.",
-        status: "success",
-        duration: 2000,
-        isClosable: true,
-        position: "top-right",
-      });
+      if (showToast === true) {
+        const toastId = "sync-quotes-toast";
+        if (!toast.isActive(toastId)) {
+          toast({
+            id: toastId,
+            title: "🔄 Sincronizado",
+            description: "Lista de cotizaciones actualizada con el servidor y SAP.",
+            status: "success",
+            duration: 2000,
+            isClosable: true,
+            position: "top-right",
+          });
+        }
+      }
     } catch (e) {
       syncQuotes();
     } finally {
@@ -644,7 +650,7 @@ export function QuoteApprovalPage() {
     }
   };
 
-  const loadQuotes = handleRefresh;
+  const loadQuotes = () => handleRefresh(false);
 
   useEffect(() => {
     syncQuotes();
@@ -2312,7 +2318,7 @@ export function QuoteApprovalPage() {
                 variant="outline"
                 borderRadius="xl"
                 isLoading={isRefreshing || (isServerLoading && quotes.length === 0)}
-                onClick={handleRefresh}
+                onClick={() => handleRefresh(true)}
                 aria-label="Actualizar"
                 _hover={{ bg: "emerald.50", borderColor: "emerald.300" }}
               />

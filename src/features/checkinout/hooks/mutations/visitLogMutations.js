@@ -9,9 +9,9 @@ export const useCreateVisitLog = () => {
       return createVisitLog(formData);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(["visitLogs"]);
-      queryClient.invalidateQueries(["activeVisit"]);
-      queryClient.invalidateQueries(["myVisitLogs"]);
+      queryClient.invalidateQueries({ queryKey: ["visitLogs"] });
+      queryClient.invalidateQueries({ queryKey: ["activeVisit"] });
+      queryClient.invalidateQueries({ queryKey: ["myVisitLogs"] });
     },
     networkMode: "always",
   });

@@ -62,6 +62,7 @@ export default function TrackingPage({ orden, data }) {
   const borderColor = useColorModeValue("gray.200", "gray.600");
   const textMuted = useColorModeValue("gray.600", "gray.400");
   const textBase = useColorModeValue("gray.800", "white");
+  const pendingRowBg = useColorModeValue("amber.50", "orange.950");
 
   // Mapear datos de la orden
   const ordenData = {
@@ -207,7 +208,7 @@ export default function TrackingPage({ orden, data }) {
                         return (
                           <Tr
                             key={idx}
-                            bg={esPendiente ? useColorModeValue("amber.50", "orange.950") : "transparent"}
+                            bg={esPendiente ? pendingRowBg : "transparent"}
                             borderLeft={esPendiente ? "3px solid" : "none"}
                             borderLeftColor="orange.400"
                           >

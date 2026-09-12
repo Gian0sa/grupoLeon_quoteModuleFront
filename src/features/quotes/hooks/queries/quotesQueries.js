@@ -36,11 +36,11 @@ export const useNotifications = (targetRole, targetUsername) => {
     return { ...query, data: query.data || [], isLoading: query.isLoading, isFetching: query.isFetching, error: query.error }
 }
 
-export const useGetQuoteById = (id) => {
+export const useGetQuoteById = (id, { enabled = true } = {}) => {
     const { data, isLoading, error } = useQuery({
         queryKey: ["quoteById", id],
         queryFn:  () => getQuoteById(id),
-        enabled: !!id,
+        enabled: enabled && !!id,
         staleTime: 0,
         refetchOnMount: "always",
         retry: false,

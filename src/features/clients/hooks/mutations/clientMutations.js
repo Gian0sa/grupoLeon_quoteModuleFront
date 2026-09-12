@@ -1,10 +1,15 @@
 
 
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { createClient, updateClient } from "../../services/clientService";
+
 export function useClientMutations(){
+    const queryClient = useQueryClient();
 
     const updateClientMutation = useMutation({
         mutationFn: updateClient,
-        onSuccess: () => {
+        onSuccess: (_data, variables) => {
+            const code = variables?.id || variables?.CardCode || variables?.code;
             queryClient.invalidateQueries({ queryKey: ["client", code] });
         },
         onError: (error) => {
@@ -13,7 +18,8 @@ export function useClientMutations(){
     });
     const createClientMutation = useMutation({
         mutationFn: createClient,
-        onSuccess: () => {
+        onSuccess: (_data, variables) => {
+            const code = variables?.id || variables?.CardCode || variables?.code;
             queryClient.invalidateQueries({ queryKey: ["client", code] });
         },
         onError: (error) => {

@@ -518,6 +518,8 @@ export default function QuoteOrderForm({ sellerName }) {
                               <Text fontSize="10px" color="gray.500">Stock Sede</Text>
                               <Badge colorScheme={exceedsStock ? "red" : "green"} fontSize="10px">
                                 {p.stock ?? 0} disp.
+                              </Badge>
+                            </Box>
                             <Box>
                               <Text fontSize="10px" color="gray.500">Precio Unitario</Text>
                               <Text fontSize="xs" fontWeight="700">{money(unitPrice, currency)}</Text>
@@ -549,10 +551,7 @@ export default function QuoteOrderForm({ sellerName }) {
                                   onQuantityChange={(units) => updateProduct(p.id, { quantity: units })}
                                 />
                               </VStack>
-                            </Box>>
-                              </HStack>
                             </Box>
-
                             <Box>
                               <Text fontSize="10px" color="gray.500">Desc. %</Text>
                               <NumberInput

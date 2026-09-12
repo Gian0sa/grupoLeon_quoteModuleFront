@@ -224,7 +224,7 @@ export function ProductPromotionsModal({ isOpen, onClose }) {
         validUntil: finalValidUntil,
       });
 
-      queryClient.invalidateQueries(["productPromotions"]);
+      queryClient.invalidateQueries({ queryKey: ["productPromotions"] });
       await refetch();
 
       const validityInfo = evaluateValidity(finalValidUntil);
@@ -267,7 +267,7 @@ export function ProductPromotionsModal({ isOpen, onClose }) {
         validUntil: newValidUntil,
       });
 
-      queryClient.invalidateQueries(["productPromotions"]);
+      queryClient.invalidateQueries({ queryKey: ["productPromotions"] });
       await refetch();
 
       toast({
@@ -294,7 +294,7 @@ export function ProductPromotionsModal({ isOpen, onClose }) {
     setDeletingCode(code);
     try {
       await deletePromotion(code);
-      queryClient.invalidateQueries(["productPromotions"]);
+      queryClient.invalidateQueries({ queryKey: ["productPromotions"] });
       await refetch();
       toast({
         title: "Oferta retirada",

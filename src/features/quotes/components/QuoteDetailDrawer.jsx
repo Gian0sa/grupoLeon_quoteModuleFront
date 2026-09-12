@@ -129,7 +129,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
   const toast = useToast();
 
   const quoteId = quote?.docNumber || quote?.id;
-  const { data: serverQuote } = useGetQuoteById(quoteId);
+  const { data: serverQuote } = useGetQuoteById(quoteId, { enabled: isOpen });
 
   // Resetear cualquier resultado de sincronización de SAP previo al cambiar de cotización o cerrar
   React.useEffect(() => {
@@ -169,19 +169,26 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
     return [];
   };
 
-  // Refrescar consulta de cotización cuando el drawer se abre
-  React.useEffect(() => {
-    if (isOpen && quoteId) {
-      queryClient.invalidateQueries({ queryKey: ["quoteById", quoteId] });
-    }
-  }, [isOpen, quoteId, queryClient]);
-
   // Unificación inteligente de la cotización (Prioriza siempre el estado más actualizado)
   const effectiveQuote = React.useMemo(() => {
     if (!quote) return null;
     let full = { ...quote };
 
     const quoteIdentifier = String(quote.docNumber || quote.id || "");
+    const isSameQuote = (candidate) => {
+      if (!candidate) return false;
+      const sourceDoc = quote.docNumber != null ? String(quote.docNumber) : "";
+      const candidateDoc = candidate.docNumber != null ? String(candidate.docNumber) : "";
+      if (sourceDoc && candidateDoc && sourceDoc === candidateDoc) return true;
+
+      const sourceId = quote.id != null ? String(quote.id) : "";
+      const candidateId = candidate.id != null ? String(candidate.id) : "";
+      if (sourceId && candidateId && sourceId === candidateId) return true;
+
+      const sourceSap = quote.sapDocNum ?? quote.DocNum ?? quote.totals?.sapDocNum;
+      const candidateSap = candidate.sapDocNum ?? candidate.DocNum ?? candidate.totals?.sapDocNum;
+      return sourceSap != null && candidateSap != null && String(sourceSap) === String(candidateSap);
+    };
     const initialRawStatus = String(full.approvalStatus || full.status || full.state || "GENERADO").toUpperCase().trim();
     const isInitialUnapproved = UNAPPROVED_STATUSES.includes(initialRawStatus);
 
@@ -201,9 +208,11 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
     // 1. Buscar en la caché de React Query (['quotes'])
     try {
-      const cachedQuotes = queryClient.getQueryData(["quotes"]);
-      if (Array.isArray(cachedQuotes)) {
-        const foundInCache = cachedQuotes.find(q => String(q.id || q.docNumber) === quoteIdentifier);
+      const cachedQuotes = queryClient
+        .getQueriesData({ queryKey: ["quotes"] })
+        .flatMap(([, data]) => Array.isArray(data) ? data : (Array.isArray(data?.quotes) ? data.quotes : []));
+      if (cachedQuotes.length > 0) {
+        const foundInCache = cachedQuotes.find(isSameQuote);
         if (foundInCache) {
           full = { ...foundInCache, ...full };
           const cacheStatus = String(foundInCache.approvalStatus || foundInCache.status || "").toUpperCase().trim();
@@ -228,7 +237,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
     // 2. Buscar en localStorage
     try {
       const localQuotes = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
-      const foundInLocal = localQuotes.find(q => String(q.id || q.docNumber) === quoteIdentifier);
+      const foundInLocal = localQuotes.find(isSameQuote);
       if (foundInLocal) {
         full = { ...foundInLocal, ...full };
         const localStatus = String(foundInLocal.approvalStatus || foundInLocal.status || "").toUpperCase().trim();
@@ -369,7 +378,8 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
     full.approvalStatus = freshestStatus;
     full.state = freshestStatus;
     if (freshestHistory) full.historyLog = freshestHistory;
-    if (freshestTotals) full.totals = freshestTotals;
+    // Nunca modificar totals del prop ni de la caché durante el render.
+    if (freshestTotals) full.totals = { ...freshestTotals };
     if (freshestSapDocNum && !isFinalUnapproved) {
       full.sapDocNum = freshestSapDocNum;
       full.DocNum = freshestSapDocNum;
@@ -393,22 +403,26 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
     return full;
   }, [quote, serverQuote, quoteId, queryClient, sapSyncResult, UNAPPROVED_STATUSES]);
 
+  const stockCodesKey = React.useMemo(() => {
+    const rawItems = effectiveQuote?.products || effectiveQuote?.items || [];
+    return [...new Set(rawItems
+      .map((p) => p.itemCode || p.code || p.productCode || p.id)
+      .filter(Boolean)
+      .map((code) => String(code).trim()))]
+      .sort()
+      .join(",");
+  }, [effectiveQuote?.products, effectiveQuote?.items]);
+
   // Consulta de Stock en tiempo real directamente a SAP al abrir la cotización
   React.useEffect(() => {
-    if (!isOpen || !effectiveQuote) return;
-
-    const rawItems = effectiveQuote.products || effectiveQuote.items || [];
-    const codes = rawItems
-      .map((p) => p.itemCode || p.code || p.productCode || p.id)
-      .filter(Boolean);
-
-    if (codes.length === 0) return;
+    if (!isOpen || !stockCodesKey) return;
 
     let isMounted = true;
+    const controller = new AbortController();
     const fetchLiveStock = async () => {
       try {
-        const url = `/reportModule/priceListByItemCodes?itemCodes=${encodeURIComponent(codes.join(","))}`;
-        const res = await axiosInstance.get(url);
+        const url = `/reportModule/priceListByItemCodes?itemCodes=${encodeURIComponent(stockCodesKey)}`;
+        const res = await axiosInstance.get(url, { signal: controller.signal });
         const sapRecords = Array.isArray(res.data) ? res.data : (res.data?.records || []);
 
         if (Array.isArray(sapRecords) && isMounted) {
@@ -426,14 +440,19 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
           setLiveStockMap(map);
         }
       } catch (err) {
-        console.warn("⚠️ Error obteniendo stock en vivo para detalle de cotización:", err);
+        if (err?.code !== "ERR_CANCELED") {
+          console.warn("⚠️ Error obteniendo stock en vivo para detalle de cotización:", err);
+        }
       }
     };
 
     fetchLiveStock();
 
-    return () => { isMounted = false; };
-  }, [isOpen, effectiveQuote]);
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
+  }, [isOpen, stockCodesKey]);
 
   if (!effectiveQuote) return null;
 
@@ -1150,7 +1169,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
             return qDoc !== targetDocNum && qId !== targetId && qDoc !== targetId && qId !== targetDocNum;
           });
         });
-        queryClient.invalidateQueries(["quotes"]);
+        queryClient.invalidateQueries({ queryKey: ["quotes"] });
       }
 
       const isAlreadySynced = Boolean(res.data?.alreadySynced || sapData.alreadySynced);
@@ -1831,12 +1850,12 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
               </Box>
             ) : (!status || ["GENERADO", "BORRADOR", "DRAFT", "draft"].includes(status)) ? (
               <Box bg="#eff6ff" p={{ base: 3.5, md: 4 }} borderRadius="xl" border="1.5px solid" borderColor="#bfdbfe" boxShadow="sm" mb={4}>
-                <Flex direction={{ base: "column", sm: "row" }} align={{ base: "flex-start", sm: "center" }} justify="space-between" gap={3}>
-                  <HStack spacing={3} align="center">
-                    <Flex w="36px" h="36px" borderRadius="full" bg="#2563eb" align="center" justify="center" color="white" flexShrink={0}>
+                <Flex direction={{ base: "column", md: "row" }} align={{ base: "stretch", md: "center" }} justify="space-between" gap={3}>
+                  <HStack spacing={3} align="flex-start" flex="1" minW="0">
+                    <Flex w="36px" h="36px" borderRadius="full" bg="#2563eb" align="center" justify="center" color="white" flexShrink={0} mt={0.5}>
                       <Edit3 className="w-5 h-5 stroke-[2.5]" />
                     </Flex>
-                    <Box>
+                    <Box flex="1" minW="0">
                       <Text fontSize="xs" fontWeight="900" color="#1e3a8a" textTransform="uppercase" letterSpacing="wide">
                         📝 Cotización en Modo Borrador
                       </Text>
@@ -1851,6 +1870,9 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                     bg="#2563eb"
                     _hover={{ bg: "#1d4ed8" }}
                     leftIcon={<Edit3 className="w-3.5 h-3.5" />}
+                    flexShrink={0}
+                    whiteSpace="nowrap"
+                    alignSelf={{ base: "stretch", md: "center" }}
                     onClick={() => {
                       onClose();
                       const quoteToLoad = effectiveQuote || quote;
@@ -1872,12 +1894,12 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
               </Box>
             ) : ((status === "ENVIADO" || status === "EN_PROCESO" || status === "PENDIENTE_FACTURACION") && isAdminUser) ? (
               <Box bg="#f0fdf4" p={{ base: 3.5, md: 4 }} borderRadius="xl" border="1.5px solid" borderColor="#86efac" boxShadow="sm" mb={4}>
-                <Flex direction={{ base: "column", sm: "row" }} align={{ base: "flex-start", sm: "center" }} justify="space-between" gap={3}>
-                  <HStack spacing={3} align="center">
-                    <Flex w="36px" h="36px" borderRadius="full" bg="#16a34a" align="center" justify="center" color="white" flexShrink={0}>
+                <Flex direction={{ base: "column", md: "row" }} align={{ base: "stretch", md: "center" }} justify="space-between" gap={3}>
+                  <HStack spacing={3} align="flex-start" flex="1" minW="0">
+                    <Flex w="36px" h="36px" borderRadius="full" bg="#16a34a" align="center" justify="center" color="white" flexShrink={0} mt={0.5}>
                       <ShieldCheck className="w-5 h-5 stroke-[2.5]" />
                     </Flex>
-                    <Box>
+                    <Box flex="1" minW="0">
                       <Text fontSize="xs" fontWeight="900" color="#166534" textTransform="uppercase" letterSpacing="wide">
                         🔍 Verificación Comercial y Control de Calidad
                       </Text>
@@ -1888,13 +1910,15 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                       </Text>
                     </Box>
                   </HStack>
-                  <Box>
+                  <Box flexShrink={0} alignSelf={{ base: "stretch", md: "center" }}>
                     <Button
                       size="sm"
                       colorScheme="teal"
                       bg="#0f766e"
                       _hover={{ bg: "#115e59" }}
                       leftIcon={<Edit3 className="w-4 h-4" />}
+                      whiteSpace="nowrap"
+                      w={{ base: "full", md: "auto" }}
                       onClick={() => {
                         onClose();
                         const quoteToLoad = effectiveQuote || quote;
@@ -1918,60 +1942,24 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                 </Flex>
               </Box>
             ) : (status === "EMITIDO" || status === "EMITIDO_SAP" || isAlreadySyncedToSap) ? (
-              <Box bg="#f0fdf4" p={{ base: 3.5, md: 4 }} borderRadius="xl" border="1.5px solid" borderColor="#86efac" boxShadow="sm" mb={4}>
-                <Flex direction={{ base: "column", sm: "row" }} align={{ base: "flex-start", sm: "center" }} justify="space-between" gap={3}>
-                  <HStack spacing={3} align="center">
-                    <Flex w="36px" h="36px" borderRadius="full" bg="#16a34a" align="center" justify="center" color="white" flexShrink={0}>
+              <Box bg="teal.50" p={4} borderRadius="xl" border="2px solid" borderColor="teal.500" boxShadow="sm" mb={5}>
+                <Flex align="center" justify="space-between" wrap="wrap" gap={3}>
+                  <HStack spacing={3} flex="1" minW="0">
+                    <Flex w="36px" h="36px" borderRadius="full" bg="teal.500" align="center" justify="center" color="white" flexShrink={0}>
                       <CheckCircle2 className="w-5 h-5 stroke-[2.5]" />
                     </Flex>
-                    <Box>
-                      <Text fontSize="xs" fontWeight="900" color="#166534" textTransform="uppercase" letterSpacing="wide">
-                        🏛️ Cotización Emitida en SAP (Orden #{syncedDocNum || effectiveQuote?.sapDocNum || "Oficial"})
+                    <Box minW="0">
+                      <Text fontSize="xs" fontWeight="900" color="teal.900" textTransform="uppercase">
+                        🔒 4. Oferta / Pedido SAP Registrado{syncedDocNum ? ` (DocNum: #${syncedDocNum})` : ""}
                       </Text>
-                      <Text fontSize="11px" color="gray.700" fontWeight="600" mt={0.5}>
-                        Esta cotización ya fue aprobada y generó un pedido oficial en SAP. Puedes duplicarla para generar una nueva oferta si necesitas cotizar nuevamente.
+                      <Text fontSize="11px" color="teal.800" fontWeight="600">
+                        Registrado y sincronizado oficialmente en SAP Service Layer.
                       </Text>
                     </Box>
                   </HStack>
-                  <Button
-                    size="sm"
-                    colorScheme="teal"
-                    variant="solid"
-                    bg="#0f766e"
-                    _hover={{ bg: "#115e59" }}
-                    leftIcon={<Copy className="w-4 h-4" />}
-                    onClick={() => {
-                      onClose();
-                      const quoteToLoad = { ...(effectiveQuote || quote) };
-                      delete quoteToLoad.id;
-                      delete quoteToLoad.docNumber;
-                      delete quoteToLoad.sapDocNum;
-                      delete quoteToLoad.DocNum;
-                      quoteToLoad.state = "BORRADOR";
-                      quoteToLoad.approvalStatus = "BORRADOR";
-                      quoteToLoad.status = "BORRADOR";
-                      if (typeof useQuoteStore.getState().loadQuote === "function") {
-                        useQuoteStore.getState().loadQuote(quoteToLoad);
-                      } else if (typeof useQuoteStore.getState().setQuoteData === "function") {
-                        useQuoteStore.getState().setQuoteData(quoteToLoad);
-                      }
-                      sessionStorage.setItem("admin_force_edit", "true");
-                      navigate("/newquotes");
-                      toast({
-                        title: "📋 Cotización Duplicada",
-                        description: "Se cargaron los artículos y datos en el formulario para elaborar una nueva cotización.",
-                        status: "info",
-                        duration: 4000
-                      });
-                    }}
-                    fontWeight="900"
-                    borderRadius="lg"
-                    px={4}
-                    h="38px"
-                    boxShadow="xs"
-                  >
-                    📋 Duplicar para Re-cotizar
-                  </Button>
+                  <Badge colorScheme="teal" variant="solid" px={3} py={1} borderRadius="full" fontSize="xs">
+                    EMITIDO EN SAP
+                  </Badge>
                 </Flex>
               </Box>
             ) : null}

@@ -1,5 +1,4 @@
 import "./App.css";
-import React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import AppRoutes from "./Routes";
 import { ChakraProvider, ColorModeScript } from "@chakra-ui/react";
@@ -34,7 +33,7 @@ function RealtimeSocketListener() {
 
 function App() {
   return (
-    <React.StrictMode>
+    <>
       <ChakraProvider theme={theme}>
         <ColorModeScript initialColorMode={theme.config.initialColorMode} />
         <QueryClientProvider client={queryClient}>
@@ -46,7 +45,7 @@ function App() {
           </SyncQueueProvider>
         </QueryClientProvider>
       </ChakraProvider>
-    </React.StrictMode>
+    </>
   );
 }
 
