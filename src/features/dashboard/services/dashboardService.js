@@ -4,12 +4,12 @@ export const getTopProducts = async () => [];
 export const getPromotions = async () => [];
 export const getHistory = async () => [];
 
-export const getQuotesSellersAdmin = async ({ slpCode, yearFrom, monthFrom, monthTo }) => {
+export const getQuotesSellersAdmin = async ({ slpCode, yearFrom, monthFrom, monthTo, refresh }) => {
   try {
     const url = `/reportModule/AdminQuotesSellers/${slpCode}`;
 
     const response = await axiosInstance.get(url, {
-      params: { yearFrom, monthFrom, monthTo },
+      params: { yearFrom, monthFrom, monthTo, ...(refresh ? { refresh: true } : {}) },
     });
 
     return response.data;
@@ -20,12 +20,12 @@ export const getQuotesSellersAdmin = async ({ slpCode, yearFrom, monthFrom, mont
   }
 };
 
-export const getQuotesSellers = async ({ slpCode, yearFrom, monthFrom, monthTo }) => {
+export const getQuotesSellers = async ({ slpCode, yearFrom, monthFrom, monthTo, refresh }) => {
   try {
     const url = `/reportModule/quotesSellers/${slpCode}`;
 
     const response = await axiosInstance.get(url, {
-      params: { yearFrom, monthFrom, monthTo },
+      params: { yearFrom, monthFrom, monthTo, ...(refresh ? { refresh: true } : {}) },
     });
 
     return response.data;
@@ -86,12 +86,18 @@ export const getTopCanceledProducts = async ({ yearFrom, monthFrom, monthTo, slp
   }
 };
 
-export const getTopSelledProducts = async ({ yearFrom, monthFrom, monthTo, slpCode }) => {
+export const getTopSelledProducts = async ({ yearFrom, monthFrom, monthTo, slpCode, refresh }) => {
   try {
     const finalSlpCode = slpCode || 0;
     console.log(`Obteniendo productos más vendidos para vendedor ${finalSlpCode === 0 ? "TODOS (Empresa)" : finalSlpCode}`);
     const response = await axiosInstance.get(`/reportModule/topSelledProducts`, {
-      params: { yearFrom, monthFrom, monthTo, slpCode: finalSlpCode },
+      params: { 
+        yearFrom, 
+        monthFrom, 
+        monthTo, 
+        slpCode: finalSlpCode,
+        ...(refresh ? { refresh: true } : {})
+      },
     });
     return response.data;
   } catch (error) {
