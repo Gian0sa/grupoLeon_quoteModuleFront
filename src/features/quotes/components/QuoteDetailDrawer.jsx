@@ -994,9 +994,10 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         ?? effectiveQuote.salesEmployeeCode
         ?? effectiveQuote.totals?.SlpCode
         ?? effectiveQuote.totals?.salesEmployeeCode
-        ?? (!isAdminUser ? (authSalesCode ?? localStorage.getItem("salesEmployeeCode")) : undefined);
+        ?? (authSalesCode ?? localStorage.getItem("salesEmployeeCode"))
+        ?? (isAdminUser ? 20 : undefined);
 
-      const resolvedSlp = (rawSlp && !isNaN(Number(rawSlp))) ? Number(rawSlp) : undefined;
+      const resolvedSlp = (rawSlp && !isNaN(Number(rawSlp))) ? Number(rawSlp) : (isAdminUser ? 20 : undefined);
 
       const originalSeller = effectiveQuote.sellerName || effectiveQuote.createdByUsername;
       const originalCreatedBy = effectiveQuote.createdByUsername || effectiveQuote.sellerName;

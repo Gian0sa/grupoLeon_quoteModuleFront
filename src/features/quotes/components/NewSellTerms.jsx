@@ -185,6 +185,7 @@ export function NewSellTerms({
   const clientDocDigits = String(client?.FederalTaxID || client?.clientDocument || client?.documentNumber || client?.LicTradNum || client?.CardCode || "").replace(/\D/g, "");
   const isLikelyRuc = clientDocDigits.length === 11;
   const isLikelyDni = clientDocDigits.length === 8;
+  const isCommercialLocked = Boolean(isDeliveryLocked && isFinanceLocked);
 
   const extractOperationNumber = async (imageFile, setOpNum) => {
     try {
@@ -428,7 +429,7 @@ export function NewSellTerms({
     setSelectedPaymentType(selectedObj);
 
     // Auto-sincronización inteligente de casillas comerciales UDF al seleccionar la Condición de Pago SAP
-    if (!isDeliveryLocked) {
+    if (!isDeliveryLocked || !isFinanceLocked) {
       const lbl = String(selectedObj.PymntGroup || selectedObj.PaymentTermsGroupName || "").toLowerCase();
       if (lbl.includes("contado")) {
         if (setSaleCondition) setSaleCondition("CONTADO");
@@ -598,23 +599,6 @@ export function NewSellTerms({
             />
           </Box>
 
-          {/* ── SELECCIÓN OFICIAL DE CONDICIÓN DE PAGO SAP B1 (TABLA OCTG) ── */}
-          <Box p={{ base: 2.5, sm: 3.5 }} bg="emerald.50" borderRadius="xl" border="1.5px solid" borderColor="emerald.200">
-            <FormLabel fontSize="xs" fontWeight="900" color="emerald.900" mb={1.5} textTransform="uppercase">
-              💳 Condición de Pago Oficial SAP B1 (Tabla OCTG) {isDeliveryLocked && "🔒"}
-            </FormLabel>
-            <CreatableSelect
-              isDisabled={isDeliveryLocked}
-              isClearable={!isDeliveryLocked}
-              options={paymentTypesOptions}
-              value={normalizePaymentTypeValue(selectedPaymentType)}
-              onChange={handlePaymentTypeChange}
-              placeholder="Selecciona la Condición de Pago oficial cargada en vivo desde SAP B1..."
-              formatCreateLabel={(inputValue) => `Escribir condición libre: "${inputValue}"`}
-              styles={getCustomSelectStyles(isDeliveryLocked)}
-            />
-          </Box>
-
           {/* ── CUADRO DE CONDICIONES COMERCIALES (TALONARIO / SOLICITUD DE PEDIDO) ── */}
           <Box
             p={{ base: 2.5, sm: 3.5, md: 4 }}
@@ -634,7 +618,7 @@ export function NewSellTerms({
               <HStack spacing={2} minW={0}>
                 <Receipt className="w-4 h-4 text-emerald-800 flex-shrink-0" />
                 <Text fontSize={{ base: "xs", md: "xs" }} fontWeight="900" color="gray.800" textTransform="uppercase" letterSpacing="wide">
-                  Condiciones Comerciales de la Solicitud {isDeliveryLocked && "🔒"}
+                  Condiciones Comerciales de la Solicitud {isCommercialLocked && "🔒"}
                 </Text>
               </HStack>
               <Flex wrap="wrap" gap={1.5} align="center">
@@ -662,35 +646,35 @@ export function NewSellTerms({
                   <Checkbox
                     isChecked={saleCondition === "CONTADO"}
                     onChange={() => {
-                      if (!isDeliveryLocked && setSaleCondition) {
+                      if (!isCommercialLocked && setSaleCondition) {
                         setSaleCondition("CONTADO");
                         if (setIsLetra) setIsLetra(false);
                         if (setCreditTerm) setCreditTerm("ANTICIPADO");
                       }
                     }}
-                    isDisabled={isDeliveryLocked}
+                    isDisabled={isCommercialLocked}
                     colorScheme="green"
                     size="sm"
                     fontWeight="800"
                     fontSize="xs"
-                    cursor={isDeliveryLocked ? "not-allowed" : "pointer"}
+                    cursor={isCommercialLocked ? "not-allowed" : "pointer"}
                   >
                     CONTADO
                   </Checkbox>
                   <Checkbox
                     isChecked={saleCondition === "CREDITO"}
                     onChange={() => {
-                      if (!isDeliveryLocked && setSaleCondition) {
+                      if (!isCommercialLocked && setSaleCondition) {
                         setSaleCondition("CREDITO");
                         if (!creditTerm && setCreditTerm) setCreditTerm("30 días");
                       }
                     }}
-                    isDisabled={isDeliveryLocked}
+                    isDisabled={isCommercialLocked}
                     colorScheme="green"
                     size="sm"
                     fontWeight="800"
                     fontSize="xs"
-                    cursor={isDeliveryLocked ? "not-allowed" : "pointer"}
+                    cursor={isCommercialLocked ? "not-allowed" : "pointer"}
                   >
                     CRÉDITO
                   </Checkbox>
@@ -711,32 +695,32 @@ export function NewSellTerms({
                   <Checkbox
                     isChecked={documentType === "FACTURA"}
                     onChange={() => {
-                      if (!isDeliveryLocked && setDocumentType) {
+                      if (!isCommercialLocked && setDocumentType) {
                         setDocumentType(documentType === "FACTURA" ? "" : "FACTURA");
                       }
                     }}
-                    isDisabled={isDeliveryLocked}
+                    isDisabled={isCommercialLocked}
                     colorScheme="green"
                     size="sm"
                     fontWeight="800"
                     fontSize="xs"
-                    cursor={isDeliveryLocked ? "not-allowed" : "pointer"}
+                    cursor={isCommercialLocked ? "not-allowed" : "pointer"}
                   >
                     FACTURA {isLikelyRuc && <Text as="span" fontSize="9px" color="blue.500" fontWeight="700">(RUC)</Text>}
                   </Checkbox>
                   <Checkbox
                     isChecked={documentType === "BOLETA"}
                     onChange={() => {
-                      if (!isDeliveryLocked && setDocumentType) {
+                      if (!isCommercialLocked && setDocumentType) {
                         setDocumentType(documentType === "BOLETA" ? "" : "BOLETA");
                       }
                     }}
-                    isDisabled={isDeliveryLocked}
+                    isDisabled={isCommercialLocked}
                     colorScheme="green"
                     size="sm"
                     fontWeight="800"
                     fontSize="xs"
-                    cursor={isDeliveryLocked ? "not-allowed" : "pointer"}
+                    cursor={isCommercialLocked ? "not-allowed" : "pointer"}
                   >
                     BOLETA {isLikelyDni && <Text as="span" fontSize="9px" color="blue.500" fontWeight="700">(DNI)</Text>}
                   </Checkbox>
@@ -784,7 +768,7 @@ export function NewSellTerms({
 
           <Box>
             <FormLabel fontSize="xs" fontWeight="800" color="gray.700">
-              Comentarios u Observaciones del Pedido (`Comments`) {isDeliveryLocked && "🔒"}
+              Comentarios u Observaciones del Pedido (`Comments`) {isCommercialLocked && "🔒"}
             </FormLabel>
             <Textarea
               size="sm"
@@ -793,9 +777,9 @@ export function NewSellTerms({
               placeholder="Ingrese especificaciones comerciales, notas de entrega o acuerdos con el cliente..."
               value={comment || ""}
               onChange={(e) => setComment && setComment(e.target.value)}
-              isReadOnly={isDeliveryLocked}
-              bg={isDeliveryLocked ? "gray.100" : "white"}
-              cursor={isDeliveryLocked ? "not-allowed" : "text"}
+              isReadOnly={isCommercialLocked}
+              bg={isCommercialLocked ? "gray.100" : "white"}
+              cursor={isCommercialLocked ? "not-allowed" : "text"}
             />
           </Box>
         </VStack>

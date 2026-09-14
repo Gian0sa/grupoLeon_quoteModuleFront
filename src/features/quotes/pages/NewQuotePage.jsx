@@ -11,7 +11,7 @@ export function NewQuotesPage() {
   const { username, userId, role } = useAuthStore();
   const isAdmin = useIsAdmin();
   const localUsername = localStorage.getItem("username") || localStorage.getItem("userId") || "Vendedor Autorizado";
-  const activeSeller = !isAdmin ? (username || localUsername) : undefined;
+  const activeSeller = username || localUsername || "Vendedor Autorizado";
   const today = format(new Date(), "EEEE, d 'de' MMMM 'del' yyyy", { locale: es });
 
   return (

@@ -30,6 +30,7 @@ import { useNavigate } from "react-router-dom";
 import QuoteSubmitConfirmModal from "./QuoteSubmitConfirmModal";
 import { isPickupInStoreForm } from "./NewSellTerms";
 import { useIsAdmin, useHasAccess } from "../../../shared/utils/permissions";
+import { useSellersData } from "../../auth/hooks/queries/authQueries";
 
 const money = (val, currency = "USD") => {
   const num = Number(val || 0);
@@ -104,14 +105,51 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     clear,
   } = useQuoteStore();
 
+  const { data: sellersResponse } = useSellersData();
+  const sellersList = useMemo(() => {
+    return (sellersResponse?.sellers || [])
+      .filter((s) => s.SalesEmployeeCode !== -1 && s.Active === "tYES")
+      .map((s) => ({
+        value: Number(s.SalesEmployeeCode),
+        label: s.SalesEmployeeName,
+        email: s.Email,
+      }));
+  }, [sellersResponse]);
+
+  const [selectedSlpCode, setSelectedSlpCode] = useState(() => {
+    if (storeSlpCode && !isNaN(Number(storeSlpCode))) return Number(storeSlpCode);
+    if (storeSalesEmployeeCode && !isNaN(Number(storeSalesEmployeeCode))) return Number(storeSalesEmployeeCode);
+    if (salesEmployeeCode && !isNaN(Number(salesEmployeeCode))) return Number(salesEmployeeCode);
+    return isAdmin ? 20 : undefined;
+  });
+
+  useEffect(() => {
+    if (storeSlpCode && !isNaN(Number(storeSlpCode))) {
+      setSelectedSlpCode(Number(storeSlpCode));
+    } else if (storeSalesEmployeeCode && !isNaN(Number(storeSalesEmployeeCode))) {
+      setSelectedSlpCode(Number(storeSalesEmployeeCode));
+    } else if (!selectedSlpCode) {
+      if (salesEmployeeCode && !isNaN(Number(salesEmployeeCode))) {
+        setSelectedSlpCode(Number(salesEmployeeCode));
+      } else if (isAdmin) {
+        setSelectedSlpCode(20);
+      }
+    }
+  }, [storeSlpCode, storeSalesEmployeeCode, salesEmployeeCode, isAdmin]);
+
   const effectiveStoreSeller = (storeSellerName && storeSellerName !== "Vendedor SAP" && storeSellerName !== "Vendedor Autorizado")
     ? storeSellerName
     : storeCreatedByUsername;
 
-  const activeSeller = effectiveStoreSeller
-    || ((sellerName && sellerName !== "Vendedor SAP" && sellerName !== "Vendedor Autorizado" && (!isAdmin || !username))
-      ? sellerName
-      : (isAdmin ? "Vendedor Autorizado" : (username || localSeller || "Vendedor Autorizado")));
+  const activeSeller = useMemo(() => {
+    if (effectiveStoreSeller) return effectiveStoreSeller;
+    if (sellerName && sellerName !== "Vendedor SAP" && sellerName !== "Vendedor Autorizado") return sellerName;
+    if (isAdmin && selectedSlpCode && selectedSlpCode !== 20) {
+      const matched = sellersList.find(s => s.value === selectedSlpCode);
+      if (matched) return matched.label;
+    }
+    return username || localSeller || "001.Ofic Administración";
+  }, [effectiveStoreSeller, sellerName, isAdmin, selectedSlpCode, sellersList, username, localSeller]);
 
   const isObservedOrInCorrection = approvalStatus === "OBSERVADO" || approvalStatus === "EN_EDICION";
 
@@ -333,6 +371,10 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     products,
     totals,
     sellerName: activeSeller,
+    SlpCode: selectedSlpCode || (isAdmin ? 20 : undefined),
+    slpCode: selectedSlpCode || (isAdmin ? 20 : undefined),
+    salesEmployeeCode: selectedSlpCode || (isAdmin ? 20 : undefined),
+    salesPersonCode: selectedSlpCode || (isAdmin ? 20 : undefined),
     docDate,
     docDueDate,
     deliveryDate: deliveryDate ? (deliveryDate instanceof Date ? deliveryDate.toISOString().split("T")[0] : deliveryDate) : null,
@@ -355,6 +397,8 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     products,
     totals,
     activeSeller,
+    selectedSlpCode,
+    isAdmin,
     docDate,
     docDueDate,
     deliveryDate,
@@ -471,9 +515,11 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     const finalSellerName = originalSellerName || (activeSeller && activeSeller !== "Vendedor Autorizado" ? activeSeller : (currentLoggedInUsername || "Vendedor Autorizado"));
     const finalCreatedByUsername = originalCreatedByUsername || currentLoggedInUsername || (username || "admin");
     const finalCreatedByUserId = originalUserId || (userId || null);
-    const effectiveSlpCode = (originalSlpCode && !isNaN(Number(originalSlpCode)))
-      ? Number(originalSlpCode)
-      : (salesEmployeeCode && !isNaN(Number(salesEmployeeCode)) ? Number(salesEmployeeCode) : undefined);
+    const effectiveSlpCode = (selectedSlpCode && !isNaN(Number(selectedSlpCode)))
+      ? Number(selectedSlpCode)
+      : (originalSlpCode && !isNaN(Number(originalSlpCode)))
+        ? Number(originalSlpCode)
+        : (salesEmployeeCode && !isNaN(Number(salesEmployeeCode)) ? Number(salesEmployeeCode) : (isAdmin ? 20 : undefined));
 
     const newDoc = {
       id: existingDoc?.id || activeDocNumber,
@@ -868,6 +914,10 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
     // 1. Guardar y actualizar cotización a estado APROBADO
     const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
+    const effectiveSlpCode = (selectedSlpCode && !isNaN(Number(selectedSlpCode)))
+      ? Number(selectedSlpCode)
+      : (currentQuoteObj.SlpCode || (salesEmployeeCode ? Number(salesEmployeeCode) : 20));
+
     const updatedApprovedDoc = {
       ...currentQuoteObj,
       id: activeDocNumber,
@@ -880,6 +930,11 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       isSapDirect: false,
       approvedAt: nowIso,
       approvedBy: adminName,
+      SlpCode: effectiveSlpCode,
+      slpCode: effectiveSlpCode,
+      salesEmployeeCode: effectiveSlpCode,
+      salesPersonCode: effectiveSlpCode,
+      sellerName: activeSeller,
       client,
       products,
       totals: {
@@ -1098,23 +1153,25 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       setActiveTabIndex(1);
       return false;
     }
-    // Validar también Condición de Pago
-    const hasPaymentType = Boolean(
-      selectedPaymentType &&
-      (typeof selectedPaymentType === "object"
-        ? (selectedPaymentType.value || selectedPaymentType.GroupNum !== undefined || selectedPaymentType.PymntGroup || selectedPaymentType.PaymentTermsGroupName || selectedPaymentType.label)
-        : String(selectedPaymentType).trim().length > 0)
-    );
-    if (!hasPaymentType) {
-      toast({
-        title: "⚠️ Condición de Pago requerida",
-        description: "Debe seleccionar la Condición de Pago oficial (Tabla OCTG) en la Sección 1 antes de enviar.",
-        status: "warning",
-        duration: 4500,
-        isClosable: true,
-      });
-      setActiveTabIndex(1);
-      return false;
+    // Si es administrador quien envía directamente, validar Condición de Pago oficial
+    if (isAdmin) {
+      const hasPaymentType = Boolean(
+        selectedPaymentType &&
+        (typeof selectedPaymentType === "object"
+          ? (selectedPaymentType.value || selectedPaymentType.GroupNum !== undefined || selectedPaymentType.PymntGroup || selectedPaymentType.PaymentTermsGroupName || selectedPaymentType.label)
+          : String(selectedPaymentType).trim().length > 0)
+      );
+      if (!hasPaymentType) {
+        toast({
+          title: "⚠️ Condición de Pago requerida",
+          description: "Debe seleccionar la Condición de Pago oficial (Tabla OCTG) antes de procesar el pedido.",
+          status: "warning",
+          duration: 4500,
+          isClosable: true,
+        });
+        setActiveTabIndex(1);
+        return false;
+      }
     }
 
     // 4. Validar Condición de Venta (CONTADO o CRÉDITO)
@@ -1836,7 +1893,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                     setSunatOpType={setSunatOpType}
                     isAdmin={isAdmin}
                     isDeliveryLocked={isDeliveryLocked}
-                    isFinanceLocked={adminForceEditMode ? false : isSellerFieldsLocked}
+                    isFinanceLocked={adminForceEditMode ? false : isReadOnly}
                   />
                 </VStack>
               </TabPanel>
@@ -1847,8 +1904,60 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
       {/* ── PIE DE PÁGINA Y CUADRO DE TOTALES ESTILO SAP ── */}
       <Grid templateColumns={{ base: "1fr", lg: "1fr 340px" }} gap={6}>
-        {/* Comentarios */}
+        {/* Empleado de Ventas y Comentarios (Simétrico con SAP B1) */}
         <VStack align="stretch" spacing={3}>
+          <Box bg="white" p={{ base: 3, md: 4 }} borderRadius="xl" border="1px solid" borderColor="gray.200" boxShadow="sm">
+            <FormControl>
+              <Flex justify="space-between" align="center" mb={1.5}>
+                <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="gray.700" mb={0}>
+                  Empleado de Ventas / Asesor Comercial (SAP) {isSellerFieldsLocked && "🔒"}
+                </FormLabel>
+                {isAdmin && (
+                  <Badge colorScheme="purple" fontSize="10px" px={2} py={0.5} borderRadius="md">
+                    Admin / Asignación Oficial
+                  </Badge>
+                )}
+              </Flex>
+              {isAdmin && !isSellerFieldsLocked ? (
+                <ChakraSelect
+                  size="sm"
+                  borderRadius="md"
+                  value={selectedSlpCode || 20}
+                  onChange={(e) => {
+                    const code = Number(e.target.value);
+                    setSelectedSlpCode(code);
+                  }}
+                  bg="white"
+                  fontWeight="600"
+                >
+                  <option value={20}>20 - 001.Ofic Administración (Oficina / Admin)</option>
+                  {sellersList
+                    .filter((s) => s.value !== 20)
+                    .map((s) => (
+                      <option key={s.value} value={s.value}>
+                        {s.value} - {s.label}
+                      </option>
+                    ))}
+                </ChakraSelect>
+              ) : (
+                <Input
+                  size="sm"
+                  borderRadius="md"
+                  value={
+                    sellersList.find((s) => s.value === Number(selectedSlpCode))?.label
+                      ? `${selectedSlpCode} - ${sellersList.find((s) => s.value === Number(selectedSlpCode))?.label}`
+                      : (selectedSlpCode === 20 ? "20 - 001.Ofic Administración" : `${activeSeller} (Código SAP: ${selectedSlpCode || "20"})`)
+                  }
+                  isReadOnly
+                  isDisabled
+                  bg="gray.100"
+                  cursor="not-allowed"
+                  fontWeight="600"
+                />
+              )}
+            </FormControl>
+          </Box>
+
           <FormControl bg="white" p={{ base: 3, md: 4 }} borderRadius="xl" border="1px solid" borderColor="gray.200" boxShadow="sm">
             <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="gray.700" mb={1}>
               Comentarios u Observaciones de Cotización {isSellerFieldsLocked && "🔒"}
