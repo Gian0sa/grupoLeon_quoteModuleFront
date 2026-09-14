@@ -17,6 +17,9 @@ export default function OrdersMotive({ ordersMotive, isLoading, isError }) {
   const cardBg = useColorModeValue("white", "gray.800");
   const textColor = useColorModeValue("gray.700", "gray.300");
   const subtextColor = useColorModeValue("gray.500", "gray.400");
+  const errorBg = useColorModeValue("red.50", "red.900");
+  const surfaceBg = useColorModeValue("gray.50", "gray.700");
+  const subtleBorderColor = useColorModeValue("gray.300", "gray.600");
 
   // Paleta de colores vibrantes
   const colors = [
@@ -46,7 +49,7 @@ export default function OrdersMotive({ ordersMotive, isLoading, isError }) {
       <Box 
         py={6} 
         px={4} 
-        bg={useColorModeValue("red.50", "red.900")} 
+        bg={errorBg}
         borderRadius="lg"
         borderLeft="4px solid"
         borderColor="red.500"
@@ -63,11 +66,11 @@ export default function OrdersMotive({ ordersMotive, isLoading, isError }) {
       <Box 
         py={8} 
         textAlign="center"
-        bg={useColorModeValue("gray.50", "gray.700")}
+        bg={surfaceBg}
         borderRadius="lg"
         borderStyle="dashed"
         borderWidth="2px"
-        borderColor={useColorModeValue("gray.300", "gray.600")}
+        borderColor={subtleBorderColor}
       >
         <Text fontSize="2xl" mb={2}>✅</Text>
         <Text color="gray.500" fontSize="sm">
@@ -194,7 +197,7 @@ export default function OrdersMotive({ ordersMotive, isLoading, isError }) {
             spacing={4} 
             align="stretch"
             p={5}
-            bg={useColorModeValue("gray.50", "gray.700")}
+            bg={surfaceBg}
             borderRadius="xl"
             borderWidth="2px"
             borderColor={hoveredItem.color}
@@ -244,7 +247,7 @@ export default function OrdersMotive({ ordersMotive, isLoading, isError }) {
             <Box 
               pt={3} 
               borderTopWidth="1px" 
-              borderColor={useColorModeValue("gray.300", "gray.600")}
+              borderColor={subtleBorderColor}
             >
               <VStack spacing={2} align="stretch" fontSize="sm">
                 <Flex justify="space-between">

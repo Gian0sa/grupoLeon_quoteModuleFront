@@ -23,7 +23,8 @@ export function useClientQueriesByName(name) {
     queryFn: () => fetchClientByName(name),
     enabled: !!name,
     refetchOnWindowFocus: false,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
   });
 
   return {

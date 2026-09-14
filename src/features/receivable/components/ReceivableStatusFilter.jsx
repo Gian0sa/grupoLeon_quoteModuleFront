@@ -22,12 +22,18 @@ export function ReceivableStatusFilter({
       label: "Todos",
       count: totalCount,
       icon: Layers,
-      activeBg: "linear-gradient(135deg, #14532d 0%, #166534 50%, #15803d 100%)",
+      activeBg: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
       activeColor: "white",
       borderColor: "transparent",
-      badgeBg: "rgba(255, 255, 255, 0.25)",
+      badgeBg: "rgba(255, 255, 255, 0.2)",
       badgeColor: "white",
-      iconColor: "#86efac"
+      iconColor: "#94a3b8",
+      inactiveBg: "#ffffff",
+      inactiveColor: "#334155",
+      inactiveBorder: "#cbd5e1",
+      inactiveHover: "#f8fafc",
+      inactiveIconColor: "#64748b",
+      shadow: "0 4px 14px rgba(15, 23, 42, 0.2)",
     },
     {
       id: "activos",
@@ -39,31 +45,49 @@ export function ReceivableStatusFilter({
       borderColor: "transparent",
       badgeBg: "rgba(255, 255, 255, 0.25)",
       badgeColor: "white",
-      iconColor: "#a7f3d0"
+      iconColor: "#a7f3d0",
+      inactiveBg: "#ffffff",
+      inactiveColor: "#065f46",
+      inactiveBorder: "#a7f3d0",
+      inactiveHover: "#ecfdf5",
+      inactiveIconColor: "#059669",
+      shadow: "0 4px 14px rgba(5, 150, 105, 0.2)",
     },
     {
       id: "rechazados",
       label: "Vencidos",
       count: overdueCount,
       icon: AlertCircle,
-      activeBg: "linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)",
+      activeBg: "linear-gradient(135deg, #e11d48 0%, #be123c 100%)",
       activeColor: "white",
       borderColor: "transparent",
       badgeBg: "rgba(255, 255, 255, 0.25)",
       badgeColor: "white",
-      iconColor: "#fca5a5"
+      iconColor: "#fecdd3",
+      inactiveBg: "#ffffff",
+      inactiveColor: "#9f1239",
+      inactiveBorder: "#fecdd3",
+      inactiveHover: "#fff1f2",
+      inactiveIconColor: "#e11d48",
+      shadow: "0 4px 14px rgba(225, 29, 72, 0.2)",
     },
     {
       id: "credito",
       label: "Saldos a Favor",
       count: creditCount,
       icon: FileText,
-      activeBg: "linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%)",
+      activeBg: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
       activeColor: "white",
       borderColor: "transparent",
       badgeBg: "rgba(255, 255, 255, 0.25)",
       badgeColor: "white",
-      iconColor: "#93c5fd"
+      iconColor: "#bfdbfe",
+      inactiveBg: "#ffffff",
+      inactiveColor: "#1e40af",
+      inactiveBorder: "#bfdbfe",
+      inactiveHover: "#eff6ff",
+      inactiveIconColor: "#2563eb",
+      shadow: "0 4px 14px rgba(37, 99, 235, 0.2)",
     }
   ];
 
@@ -100,17 +124,17 @@ export function ReceivableStatusFilter({
               py={{ base: 2, md: 2.5 }}
               px={{ base: 3, sm: 4, md: 6 }}
               borderRadius="full"
-              bg={isActive ? f.activeBg : "green.50"}
-              color={isActive ? f.activeColor : "green.800"}
-              border={isActive ? "none" : "1px solid"}
-              borderColor={isActive ? "transparent" : "green.200"}
+              bg={isActive ? f.activeBg : f.inactiveBg}
+              color={isActive ? f.activeColor : f.inactiveColor}
+              border="1px solid"
+              borderColor={isActive ? "transparent" : f.inactiveBorder}
               boxShadow={
                 isActive 
-                  ? "0 4px 14px rgba(22, 101, 52, 0.25)" 
-                  : "none"
+                  ? f.shadow 
+                  : "0 1px 3px rgba(0, 0, 0, 0.04)"
               }
               _hover={{
-                bg: isActive ? f.activeBg : "green.100",
+                bg: isActive ? f.activeBg : f.inactiveHover,
                 transform: "translateY(-1px)",
               }}
               cursor="pointer"
@@ -122,7 +146,7 @@ export function ReceivableStatusFilter({
                 <Icon 
                   as={IconComponent} 
                   boxSize={{ base: 3.5, md: 5 }} 
-                  color={isActive ? f.iconColor : f.id === "activos" ? "green.500" : f.id === "rechazados" ? "red.500" : f.id === "credito" ? "blue.500" : "gray.500"} 
+                  color={isActive ? f.iconColor : f.inactiveIconColor} 
                   flexShrink={0}
                 />
                 <Text 
@@ -140,8 +164,8 @@ export function ReceivableStatusFilter({
                   py={0.5}
                   fontSize={{ base: "9px", sm: "10px", md: "12px" }}
                   fontWeight="800"
-                  bg={isActive ? f.badgeBg : "gray.100"}
-                  color={isActive ? f.badgeColor : "gray.700"}
+                  bg={isActive ? f.badgeBg : "#f1f5f9"}
+                  color={isActive ? f.badgeColor : f.inactiveColor}
                   flexShrink={0}
                 >
                   {f.count}

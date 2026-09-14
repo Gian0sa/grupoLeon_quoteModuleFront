@@ -60,7 +60,7 @@ export function RejectReasonModal({ isOpen, onClose, quoteId, onConfirmReject })
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size={{ base: "full", md: "md" }} isCentered scrollBehavior="inside">
-      <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" />
+      <ModalOverlay bg="blackAlpha.700" />
       <ModalContent
         borderRadius={{ base: "none", md: "2xl" }}
         overflow="hidden"

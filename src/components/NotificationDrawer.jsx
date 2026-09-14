@@ -22,7 +22,8 @@ import { QuoteDetailDrawer } from "../features/quotes/components/QuoteDetailDraw
 import { useAuthStore } from "../features/auth/stores/useAuthStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNotifications } from "../features/quotes/hooks/queries/quotesQueries";
-import { markNotificationAsRead, deleteNotification, clearNotifications, updateQuote } from "../features/quotes/services/quoteService";
+import { markNotificationAsRead, deleteNotification, clearNotifications, updateQuote, getQuoteById } from "../features/quotes/services/quoteService";
+import { useIsAdmin } from "../shared/utils/permissions";
 
 export function NotificationDrawer({ isOpen, onClose }) {
   const { username, userId, role } = useAuthStore();
@@ -42,8 +43,9 @@ export function NotificationDrawer({ isOpen, onClose }) {
     };
   }, []);
 
+  const isAdmin = useIsAdmin();
   const { data: serverNotifs } = useNotifications(
-    role === "ADMIN" ? "FACTURACION" : undefined,
+    isAdmin ? "FACTURACION" : undefined,
     username
   );
 
@@ -52,7 +54,7 @@ export function NotificationDrawer({ isOpen, onClose }) {
     if (!username && !userId && !role) return [];
     const userLower = (username || "").toLowerCase();
     const roleUpper = (role || "").toUpperCase();
-    const isAdminOrEnrique = roleUpper === "ADMIN" || roleUpper === "FACTURACION" || roleUpper === "SUPERVISOR" || userLower.includes("enrique");
+    const isAdminOrMaster = isAdmin || roleUpper === "ADMIN" || roleUpper === "FACTURACION" || roleUpper === "SUPERVISOR";
 
     return notifs.filter((n) => {
       const targetUser = (n.targetUsername || "").toLowerCase();
@@ -63,11 +65,11 @@ export function NotificationDrawer({ isOpen, onClose }) {
         return true;
       }
       // 2. Coincidencia por rol de Facturación / Administración
-      if ((targetRoleUpper === "FACTURACION" || targetRoleUpper === "ADMIN") && isAdminOrEnrique) {
+      if ((targetRoleUpper === "FACTURACION" || targetRoleUpper === "ADMIN") && isAdminOrMaster) {
         return true;
       }
       // 3. Coincidencia por rol de Vendedor
-      if ((targetRoleUpper === "VENDEDOR" || targetRoleUpper === "SELLER") && !isAdminOrEnrique) {
+      if ((targetRoleUpper === "VENDEDOR" || targetRoleUpper === "SELLER") && !isAdminOrMaster) {
         return true;
       }
       // 4. Coincidencia por ID de usuario
@@ -116,30 +118,41 @@ export function NotificationDrawer({ isOpen, onClose }) {
     }
 
     const filteredByUser = filterForCurrentUser(combined).filter(
-      (n) => n.status !== "ANULADO" && !String(n.title || "").toLowerCase().includes("anulad") && !n.read
+      (n) => n.status !== "ANULADO" && 
+             !String(n.title || "").toLowerCase().includes("anulad") &&
+             !String(n.title || "").includes("- null") &&
+             n.quoteId !== null &&
+             n.quoteId !== "null" &&
+             n.quoteId !== ""
     );
 
     // Deduplicación inteligente por quoteId (conserva la alerta más reciente por cotización)
     const uniqueMap = new Map();
     const sorted = [...filteredByUser].sort((a, b) => {
+      if (!a.read && b.read) return -1;
+      if (a.read && !b.read) return 1;
       const tA = new Date(a.createdAt || a.timestamp || a.created_at || a.date || 0).getTime();
       const tB = new Date(b.createdAt || b.timestamp || b.created_at || b.date || 0).getTime();
       return tB - tA;
     });
 
     for (const notif of sorted) {
-      const key = String(notif.quoteId || notif.id);
-      if (!uniqueMap.has(key)) {
-        uniqueMap.set(key, notif);
+      // Clave canónica inteligente para unificar alertas del mismo documento
+      const rawQ = String(notif.quoteId || notif.id || "");
+      const matchWeb = String(notif.title || "").match(/COT-WEB-(\d+)/i) || rawQ.match(/^(\d+)$/);
+      const canonicalKey = matchWeb ? `QUOTE-ID-${Number(matchWeb[1])}` : rawQ;
+
+      if (!uniqueMap.has(canonicalKey)) {
+        uniqueMap.set(canonicalKey, notif);
       }
     }
 
-    return Array.from(uniqueMap.values());
+    return Array.from(uniqueMap.values()).slice(0, 30);
   }, [serverNotifs, username, userId, role, localVersion]);
 
   const handleClearAll = async () => {
     try {
-      await clearNotifications(role === "ADMIN" ? "FACTURACION" : undefined, username);
+      await clearNotifications(isAdmin ? "FACTURACION" : undefined, username);
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
     } catch (e) {
       console.error("Error clearing server notifications:", e);
@@ -152,7 +165,7 @@ export function NotificationDrawer({ isOpen, onClose }) {
         if (n.targetUsername && username) {
           return n.targetUsername.toLowerCase() !== username.toLowerCase();
         }
-        if (n.targetRole === "FACTURACION" && (role === "ADMIN" || username?.toLowerCase() === "enrique")) {
+        if (n.targetRole === "FACTURACION" && isAdmin) {
           return false;
         }
         if (n.targetUserId && userId) {
@@ -190,51 +203,32 @@ export function NotificationDrawer({ isOpen, onClose }) {
     } catch {}
   };
 
-  const formatTimeAgo = (rawDate) => {
-    if (!rawDate) return "Reciente";
-    const date = new Date(rawDate);
-    if (isNaN(date.getTime())) return "Reciente";
+  const formatTimeAgo = (dateStr) => {
+    if (!dateStr) return "Hace un momento";
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return "Hace un momento";
 
     const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-
-    if (diffMs < 0) return "Justo ahora";
-
-    const diffSecs = Math.floor(diffMs / 1000);
-    const diffMins = Math.floor(diffSecs / 60);
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / (1000 * 60));
     const diffHours = Math.floor(diffMins / 60);
     const diffDays = Math.floor(diffHours / 24);
 
-    const timeStr = date.toLocaleTimeString("es-PE", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    });
+    const timeStr = date.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit", hour12: true });
 
-    if (diffMins < 1) return `Justo ahora (${timeStr})`;
-    if (diffMins < 60) return `Hace ${diffMins} min (${timeStr})`;
-
-    const isToday = now.toDateString() === date.toDateString();
-    if (isToday) {
-      return `Hoy a las ${timeStr} • Hace ${diffHours} h`;
-    }
-
-    const yesterday = new Date(now);
-    yesterday.setDate(now.getDate() - 1);
-    const isYesterday = yesterday.toDateString() === date.toDateString();
-    if (isYesterday) {
-      return `Ayer a las ${timeStr}`;
-    }
-
+    if (diffMins < 1) return `Ahora mismo • ${timeStr}`;
+    if (diffMins < 60) return `Hace ${diffMins} min • ${timeStr}`;
+    if (diffHours < 24) return `Hoy a las ${timeStr} • Hace ${diffHours} h`;
+    if (diffDays === 1) return `Ayer a las ${timeStr}`;
     if (diffDays < 7) {
-      const dayNum = date.toLocaleDateString("es-PE", { day: "2-digit", month: "short" });
+      const dayNum = date.toLocaleDateString("es-PE", { weekday: "short", day: "numeric", month: "short" });
       return `Hace ${diffDays} días • ${dayNum} (${timeStr})`;
     }
 
     return `${date.toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit", year: "numeric" })} • ${timeStr}`;
   };
 
-  const handleOpenQuote = (quoteObj, quoteId, notifId) => {
+  const handleOpenQuote = async (quoteObj, quoteId, notifId) => {
     let targetDoc = quoteObj ? { ...quoteObj } : null;
     const targetId = quoteId || quoteObj?.docNumber || quoteObj?.id;
 
@@ -248,14 +242,32 @@ export function NotificationDrawer({ isOpen, onClose }) {
       return [];
     };
 
+    // 1. Consultar directamente al backend para obtener la cotización real y actualizada
+    if (targetId) {
+      try {
+        const liveQuote = await getQuoteById(targetId);
+        if (liveQuote && (liveQuote.id || liveQuote.docNumber)) {
+          targetDoc = { ...liveQuote, ...(targetDoc || {}) };
+          if (liveQuote.state) targetDoc.state = liveQuote.state;
+          if (liveQuote.approvalStatus) targetDoc.approvalStatus = liveQuote.approvalStatus;
+          if (liveQuote.sapDocNum) targetDoc.sapDocNum = liveQuote.sapDocNum;
+          if (liveQuote.docNumber) targetDoc.docNumber = liveQuote.docNumber;
+        }
+      } catch (_) {}
+    }
+
     let items = extractItems(targetDoc);
 
     if (items.length === 0 && targetId) {
-      // 1. Buscar en caché de React Query
+      // 2. Buscar en caché de React Query
       try {
         const cachedQuotes = queryClient.getQueryData(["quotes"]);
         if (Array.isArray(cachedQuotes)) {
-          const found = cachedQuotes.find((q) => String(q.id || q.docNumber) === String(targetId));
+          const found = cachedQuotes.find((q) => 
+            String(q.id) === String(targetId) || 
+            String(q.docNumber) === String(targetId) ||
+            String(q.sapDocNum) === String(targetId)
+          );
           if (found) {
             targetDoc = { ...found, ...(targetDoc || {}) };
             items = extractItems(found);
@@ -263,11 +275,15 @@ export function NotificationDrawer({ isOpen, onClose }) {
         }
       } catch {}
 
-      // 2. Buscar en localStorage
+      // 3. Buscar en localStorage
       if (items.length === 0) {
         try {
           const savedQuotes = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
-          const found = savedQuotes.find((q) => String(q.id || q.docNumber) === String(targetId));
+          const found = savedQuotes.find((q) => 
+            String(q.id) === String(targetId) || 
+            String(q.docNumber) === String(targetId) ||
+            String(q.sapDocNum) === String(targetId)
+          );
           if (found) {
             targetDoc = { ...found, ...(targetDoc || {}) };
             items = extractItems(found);
@@ -286,8 +302,22 @@ export function NotificationDrawer({ isOpen, onClose }) {
 
     targetDoc.products = items;
 
-    // Auto-descartar / marcar como leída al abrir (comportamiento smartphone)
-    handleDeleteNotif(notifId, targetId);
+    // Marcar como leída al abrir para despejar el contador sin borrar el historial
+    try {
+      markNotificationAsRead(notifId, targetId);
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      const raw = localStorage.getItem("grupoLeon_notifications");
+      const all = raw ? JSON.parse(raw) : [];
+      const updated = all.map(n => {
+        if ((notifId && String(n.id) === String(notifId)) || (targetId && String(n.quoteId) === String(targetId))) {
+          return { ...n, read: true };
+        }
+        return n;
+      });
+      localStorage.setItem("grupoLeon_notifications", JSON.stringify(updated));
+      window.dispatchEvent(new Event("localNotificationsUpdated"));
+      setLocalVersion(v => v + 1);
+    } catch (e) {}
 
     onClose(); // Cierra el panel de notificaciones para liberar el scroll móvil
     setSelectedQuoteForDrawer(targetDoc);
@@ -306,8 +336,9 @@ export function NotificationDrawer({ isOpen, onClose }) {
         blockScrollOnMount={true}
         preserveScrollBarGap={false}
         autoFocus={false}
+        returnFocusOnClose={false}
       >
-        <DrawerOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" transition="opacity 0.15s ease-out" />
+        <DrawerOverlay bg="blackAlpha.700" transition="opacity 0.15s ease-out" />
         <DrawerContent
           borderLeftRadius={{ base: "none", md: "2xl" }}
           bg="slate.50"
@@ -391,8 +422,10 @@ export function NotificationDrawer({ isOpen, onClose }) {
             ) : (
               <VStack spacing={3} align="stretch">
                 {myNotifications.map((item) => {
-                  const isApproved = item.status === "APROBADO";
+                  const isApproved = item.status === "APROBADO" || item.status === "APROBADO_COMERCIAL";
+                  const isEmitido = item.status === "EMITIDO";
                   const isRejected = item.status === "RECHAZADO";
+                  const isObservado = item.status === "OBSERVADO";
 
                   let iconComponent = FiFileText;
                   let iconColor = "blue.600";
@@ -400,12 +433,24 @@ export function NotificationDrawer({ isOpen, onClose }) {
                   let borderLeftColor = "blue.500";
                   let statusBadge = <Badge colorScheme="blue" fontSize="9px">⏳ PENDIENTE REVISIÓN</Badge>;
 
-                  if (isApproved) {
+                  if (isEmitido) {
                     iconComponent = FiCheckCircle;
                     iconColor = "emerald.600";
                     iconBg = "emerald.50";
                     borderLeftColor = "emerald.500";
-                    statusBadge = <Badge colorScheme="green" fontSize="9px">✅ APROBADO EN SAP</Badge>;
+                    statusBadge = <Badge colorScheme="green" fontSize="9px">🏛️ EMITIDO EN SAP</Badge>;
+                  } else if (isApproved) {
+                    iconComponent = FiCheckCircle;
+                    iconColor = "teal.600";
+                    iconBg = "teal.50";
+                    borderLeftColor = "teal.500";
+                    statusBadge = <Badge colorScheme="teal" fontSize="9px">✅ APROBADO COMERCIAL</Badge>;
+                  } else if (isObservado) {
+                    iconComponent = FiFileText;
+                    iconColor = "orange.600";
+                    iconBg = "orange.50";
+                    borderLeftColor = "orange.500";
+                    statusBadge = <Badge colorScheme="orange" fontSize="9px">⚠️ OBSERVADO</Badge>;
                   } else if (isRejected) {
                     iconComponent = FiXCircle;
                     iconColor = "red.600";
@@ -420,19 +465,19 @@ export function NotificationDrawer({ isOpen, onClose }) {
                       p={4}
                       borderRadius="2xl"
                       border="1px solid"
-                      borderColor="gray.200"
+                      borderColor={item.read ? "gray.200" : "emerald.300"}
                       borderLeft="5px solid"
                       borderLeftColor={borderLeftColor}
-                      bg="white"
-                      boxShadow="sm"
-                      _hover={{ boxShadow: "md", transform: "translateY(-1px)", borderColor: "emerald.300" }}
+                      bg={item.read ? "whiteAlpha.800" : "white"}
+                      boxShadow={item.read ? "none" : "sm"}
+                      _hover={{ boxShadow: "md", transform: "translateY(-1px)", borderColor: "emerald.400" }}
                       transition="all 0.2s"
                       cursor="pointer"
                       onClick={() => handleOpenQuote(item.quoteObj, item.quoteId, item.id)}
                     >
                       <VStack align="stretch" spacing={2.5}>
                         <Flex justify="space-between" align="flex-start" gap={2}>
-                          <HStack spacing={2} minW={0} align="flex-start">
+                          <HStack spacing={2} minW={0} align="flex-start" wrap="wrap">
                             <Flex
                               w="28px"
                               h="28px"
@@ -448,6 +493,11 @@ export function NotificationDrawer({ isOpen, onClose }) {
                             <Text fontSize={{ base: "13px", md: "xs" }} fontWeight="900" color="gray.900" overflowWrap="anywhere">
                               {item.title}
                             </Text>
+                            {!item.read && (
+                              <Badge colorScheme="green" variant="solid" fontSize="8px" borderRadius="full" px={1.5} py={0.5}>
+                                NUEVA
+                              </Badge>
+                            )}
                           </HStack>
                           <Tooltip label="Eliminar alerta" hasArrow placement="top">
                             <IconButton
@@ -525,9 +575,9 @@ export function NotificationDrawer({ isOpen, onClose }) {
                           <Button
                             size={{ base: "md", md: "xs" }}
                             w={{ base: "full", sm: "auto" }}
-                            colorScheme={isApproved ? "green" : isRejected ? "red" : "teal"}
-                            bg={!isApproved && !isRejected ? "#0f766e" : undefined}
-                            _hover={!isApproved && !isRejected ? { bg: "#115e59" } : undefined}
+                            colorScheme={isEmitido || isApproved ? "green" : isRejected ? "red" : isObservado ? "orange" : "teal"}
+                            bg={!isEmitido && !isApproved && !isRejected && !isObservado ? "#0f766e" : undefined}
+                            _hover={!isEmitido && !isApproved && !isRejected && !isObservado ? { bg: "#115e59" } : undefined}
                             leftIcon={<Icon as={FiEye} />}
                             onClick={(e) => {
                               e.stopPropagation();
@@ -537,7 +587,7 @@ export function NotificationDrawer({ isOpen, onClose }) {
                             px={3}
                             boxShadow="xs"
                           >
-                            {(role === "ADMIN" || username?.toLowerCase() === "enrique")
+                            {isAdmin
                               ? "🔍 Verificar Cotización"
                               : (isRejected || item.status === "OBSERVADO")
                               ? "✏️ Subsanar Cotización"

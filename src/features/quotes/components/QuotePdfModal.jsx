@@ -132,7 +132,7 @@ export default function QuotePdfModal({ isOpen, onClose, quote }) {
       scrollBehavior="inside"
       motionPreset="slideInBottom"
     >
-      <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" className="no-print" />
+      <ModalOverlay bg="blackAlpha.700" className="no-print" />
       <ModalContent borderRadius={{ base: "none", sm: "2xl" }} overflow="hidden" maxH={{ base: "100vh", md: "92vh" }}>
         {/* Estilos de Impresión A4 Profesionales */}
         <style>{`

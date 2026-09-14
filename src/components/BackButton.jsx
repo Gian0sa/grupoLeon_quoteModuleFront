@@ -22,8 +22,7 @@ export function BackButton({ color = "white", to = "/dashboard", onClick, ...pro
             borderRadius="full"
             w={{ base: "44px", md: "52px" }}
             h={{ base: "44px", md: "52px" }}
-            bg="whiteAlpha.150"
-            backdropFilter="blur(8px)"
+            bg="whiteAlpha.200"
             border="1px solid rgba(255,255,255,0.2)"
             boxShadow="0 4px 12px rgba(0,0,0,0.08)"
             _hover={{ bg: "whiteAlpha.300", transform: "translateY(-1px)" }}

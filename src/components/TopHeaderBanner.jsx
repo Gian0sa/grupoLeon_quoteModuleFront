@@ -19,6 +19,7 @@ import { LateralMenu } from "../features/dashboard/components/LateralMenu";
 import { useExchangeRate } from "../features/dashboard/hooks/queries/dashboardQueries";
 import { useAuthStore } from "../features/auth/stores/useAuthStore";
 import { useNotifications } from "../features/quotes/hooks/queries/quotesQueries";
+import { useIsAdmin } from "../shared/utils/permissions";
 import { QUERY_KEYS } from "../shared/utils/queryKeys";
 
 export const HEADER_BRAND_IMAGE = "/assets/header-brand-bg.png";
@@ -27,8 +28,7 @@ export const HEADER_MAIN_BG = "linear-gradient(135deg, #0e572b 0%, #126C36 50%, 
 // Panel "vidrio esmerilado" para envolver contenido (buscadores, filtros) dentro del header,
 // para que se integre visualmente con el mismo lenguaje que los pills de QuickActions.
 export const HEADER_GLASS_PANEL_PROPS = {
-  bg: "whiteAlpha.100",
-  backdropFilter: "blur(12px)",
+  bg: "rgba(255,255,255,0.12)",
   border: "1px solid rgba(255,255,255,0.2)",
   borderRadius: "2xl",
 };
@@ -63,8 +63,9 @@ export function TopHeaderBanner({
     };
   }, []);
 
+  const isAdmin = useIsAdmin();
   const { data: serverNotifs } = useNotifications(
-    role === "ADMIN" ? "FACTURACION" : undefined,
+    isAdmin ? "FACTURACION" : undefined,
     username
   );
 
@@ -97,13 +98,13 @@ export function TopHeaderBanner({
     }
 
     const filtered = combined.filter((n) => {
-      if (n.status === "ANULADO" || String(n.title || "").toLowerCase().includes("anulad") || n.read) {
+      if (n.status === "ANULADO" || String(n.title || "").toLowerCase().includes("anulad") || String(n.title || "").includes("- null") || !n.quoteId || n.quoteId === "null" || n.read) {
         return false;
       }
       if (n.targetUsername && username) {
         return n.targetUsername.toLowerCase() === username.toLowerCase();
       }
-      if (n.targetRole === "FACTURACION" && (role === "ADMIN" || username?.toLowerCase() === "enrique")) {
+      if (n.targetRole === "FACTURACION" && isAdmin) {
         return true;
       }
       if (n.targetUserId && userId) {
@@ -225,7 +226,6 @@ export function TopHeaderBanner({
             {showExchangeRate && (
               <Box
                 bg={{ base: "rgba(255, 255, 255, 0.22)", md: "whiteAlpha.200" }}
-                backdropFilter={{ base: "none", md: "blur(12px)" }}
                 border="1px solid rgba(255,255,255,0.25)"
                 borderRadius="full"
                 px={{ base: 3, sm: 4 }}
@@ -276,7 +276,6 @@ export function TopHeaderBanner({
           {/* Bloque de acciones del Dashboard: Recargar + Notificaciones + Menú Lateral */}
           <HStack
             bg={{ base: "rgba(255, 255, 255, 0.20)", md: "rgba(255, 255, 255, 0.14)" }}
-            backdropFilter={{ base: "none", md: "blur(14px)" }}
             border="1px solid rgba(255, 255, 255, 0.25)"
             borderRadius="full"
             py={{ base: 1.5, md: 2 }}

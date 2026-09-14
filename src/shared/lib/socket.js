@@ -25,7 +25,8 @@ const SOCKET_PATH = import.meta.env.VITE_WS_PATH || (isLocal ? "/socket.io" : "/
 
 export const socket = io(SOCKET_URL, {
   path: SOCKET_PATH,
-  transports: ["websocket", "polling"],
+  transports: ["polling", "websocket"],
+  upgrade: true,
   autoConnect: true,
   reconnection: true,
   reconnectionAttempts: Infinity,

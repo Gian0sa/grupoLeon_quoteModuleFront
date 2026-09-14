@@ -9,7 +9,7 @@ import { useNavigate } from "react-router-dom";
 import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
 import { useQuoteStore } from "../stores/quoteStore";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
-import { useHasAccess } from "../../../shared/utils/permissions";
+import { useHasAccess, useIsAdmin } from "../../../shared/utils/permissions";
 import { useGetPromotions } from "../hooks/queries/quotesQueries";
 import { ProductPromotionsModal } from "../components/ProductPromotionsModal";
 import { SapQuoteDocumentModal } from "../components/SapQuoteDocumentModal";
@@ -42,7 +42,9 @@ export function HistoryQuotesPage() {
   const localUser = (localStorage.getItem("username") || localStorage.getItem("userId") || "").toLowerCase();
   const localRole = (localStorage.getItem("role") || "").toUpperCase();
   const hasAccess = useHasAccess();
-  const isAdminUser = authRole === "ADMIN" || localRole === "ADMIN" || username?.toLowerCase() === "enrique" || localUser === "enrique" || hasAccess("POST /quotes/approval") || hasAccess("POST /quotations/approve");
+  const isAdmin = useIsAdmin();
+  const isAdminUser = isAdmin || authRole === "ADMIN" || localRole === "ADMIN" || hasAccess("POST /quotes/approval") || hasAccess("POST /quotations/approve");
+  const canManagePromotions = isAdminUser || hasAccess("POST /promotions") || hasAccess("POST:/promotions") || hasAccess("GET /promotions") || hasAccess("GET:/promotions");
 
   const [isPromoModalOpen, setIsPromoModalOpen] = useState(false);
   const { promotions } = useGetPromotions();
@@ -135,8 +137,8 @@ export function HistoryQuotesPage() {
 
           {/* BARRA DE ACCIÓN PRINCIPAL */}
           <Flex
-            align={{ base: "stretch", md: "center" }}
-            direction={{ base: "column", md: "row" }}
+            align={{ base: "stretch", lg: "center" }}
+            direction={{ base: "column", lg: "row" }}
             justify="space-between"
             bg="white"
             p={{ base: 4, md: 5 }}
@@ -160,21 +162,29 @@ export function HistoryQuotesPage() {
               </Box>
             </HStack>
 
-            <HStack spacing={3} w={{ base: "full", md: "auto" }}>
-              {isAdminUser && (
+            <Flex
+              direction={{ base: "column", sm: "row" }}
+              align="center"
+              gap={3}
+              w={{ base: "full", lg: "auto" }}
+              flexShrink={0}
+            >
+              {canManagePromotions && (
                 <Button
                   bg="#fef3c7"
                   color="#92400e"
-                  border="1.5px solid #fcd34d"
+                  border="1.5px solid"
+                  borderColor="#f59e0b"
                   _hover={{ bg: "#fde68a", transform: "translateY(-1px)", boxShadow: "0 4px 14px rgba(245, 158, 11, 0.25)" }}
                   _active={{ bg: "#fcd34d" }}
                   size="md"
+                  w={{ base: "full", sm: "auto" }}
                   leftIcon={<Tag className="w-4 h-4 text-amber-700" />}
                   onClick={() => setIsPromoModalOpen(true)}
                   boxShadow="xs"
                   fontWeight="800"
                   borderRadius="xl"
-                  w={{ base: "full", md: "auto" }}
+                  whiteSpace="nowrap"
                 >
                   Ofertas del Mes ({promotions.length})
                 </Button>
@@ -183,11 +193,11 @@ export function HistoryQuotesPage() {
               <Button
                 bg="#126C36"
                 color="white"
-                _hover={{ bg: "#0e572b" }}
+                _hover={{ bg: "#0e572b", transform: "translateY(-1px)", boxShadow: "0 6px 18px rgba(18, 108, 54, 0.35)" }}
                 _active={{ bg: "#0a3f1f" }}
                 size="md"
-                w={{ base: "full", md: "auto" }}
-                flexShrink={0}
+                w={{ base: "full", sm: "auto" }}
+                whiteSpace="nowrap"
                 leftIcon={<Plus className="w-4 h-4 stroke-[3]" />}
                 onClick={() => {
                   useQuoteStore.getState().clear();
@@ -197,9 +207,9 @@ export function HistoryQuotesPage() {
                 fontWeight="800"
                 borderRadius="xl"
               >
-                + Crear Nueva Cotización
+                Crear Nueva Cotización
               </Button>
-            </HStack>
+            </Flex>
           </Flex>
 
           {/* VISTA UNIFICADA DE SEGUIMIENTO Y BORRADORES */}
@@ -217,8 +227,8 @@ export function HistoryQuotesPage() {
         onLoadToForm={handleLoadQuote}
       />
 
-      {/* MODAL DE GESTIÓN DE OFERTAS DEL MES (SOLO ADMINISTRADORES) */}
-      {isAdminUser && (
+      {/* MODAL DE GESTIÓN DE OFERTAS DEL MES */}
+      {canManagePromotions && (
         <ProductPromotionsModal
           isOpen={isPromoModalOpen}
           onClose={() => setIsPromoModalOpen(false)}

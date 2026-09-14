@@ -1,5 +1,7 @@
 import { useSupervisorQueries } from "../hooks/queries/supervisorQueries"
+import { useNavigate } from "react-router-dom"
 export function QuotesList() {
+    const navigate = useNavigate()
     const { data, isLoading, error } = useSupervisorQueries()
     if (isLoading) return <div>Loading...</div>
     if (error) return <div>Error: {error.message}</div>

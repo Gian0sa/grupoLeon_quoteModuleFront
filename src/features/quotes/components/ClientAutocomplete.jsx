@@ -6,7 +6,6 @@ import { FiSearch, FiX, FiCheckCircle } from "react-icons/fi";
 import { useClientQueries, useClientQueriesByName } from "../../clients/hooks/queries/clientQueries";
 import { adaptClientFromApi } from "../../clients/adapters/clientAdapter";
 import { fetchClientByCode } from "../../clients/services/clientService";
-import { axiosInstance } from "../../../shared/lib/axiosInstance";
 import { useDebounce } from "../../../shared/hooks/useDebounce";
 import { normalizeQuoteClient } from "../stores/quoteStore";
 
@@ -14,22 +13,27 @@ export default function ClientAutocomplete({ client, setClient }) {
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [isSearchingByCode, setIsSearchingByCode] = useState(false);
-  const [fallbackResults, setFallbackResults] = useState([]);
-  const [isFallbackLoading, setIsFallbackLoading] = useState(false);
 
-  const debouncedSearchInput = useDebounce(searchInput, 300);
+  // Debounce de 500ms para evitar saturar el Service Layer de SAP en cada pulsación
+  const debouncedSearchInput = useDebounce(searchInput, 500);
 
   useEffect(() => {
     const trimmed = debouncedSearchInput.trim();
-    if (!trimmed || trimmed.length < 2) {
-      if (!trimmed) {
-        setSearchTerm("");
-        setFallbackResults([]);
-      }
+    if (!trimmed) {
+      setSearchTerm("");
       return;
     }
 
     const isNumeric = /^\d+$/.test(trimmed) || /^CL/i.test(trimmed);
+
+    // Buenas prácticas ERP: No enviar búsquedas de 1 o 2 letras a SAP (provocan escaneo masivo de miles de clientes)
+    if (!isNumeric && trimmed.length < 3) {
+      return;
+    }
+    if (isNumeric && /^\d+$/.test(trimmed) && trimmed.length < 4) {
+      return;
+    }
+
     setIsSearchingByCode(isNumeric);
 
     let finalTerm = trimmed;
@@ -38,7 +42,6 @@ export default function ClientAutocomplete({ client, setClient }) {
     }
 
     setSearchTerm(finalTerm);
-    setFallbackResults([]);
   }, [debouncedSearchInput]);
 
   const { data: dataByCode, isLoading: isLoadingByCode, error: errorByCode } =
@@ -47,11 +50,11 @@ export default function ClientAutocomplete({ client, setClient }) {
   const { data: dataByName, isLoading: isLoadingByName, error: errorByName } =
     useClientQueriesByName(!isSearchingByCode && searchTerm ? searchTerm : null);
 
-  const isSearching = (isSearchingByCode ? isLoadingByCode : isLoadingByName) || isFallbackLoading;
+  const isSearching = isSearchingByCode ? isLoadingByCode : isLoadingByName;
   const searchError = isSearchingByCode ? errorByCode : errorByName;
 
   // Extracción de la lista de clientes SAP
-  const primaryNameList = useMemo(() => {
+  const activeNameList = useMemo(() => {
     if (!dataByName) return [];
     if (Array.isArray(dataByName.value)) return dataByName.value;
     if (Array.isArray(dataByName.clients)) return dataByName.clients;
@@ -60,50 +63,9 @@ export default function ClientAutocomplete({ client, setClient }) {
     return [];
   }, [dataByName]);
 
-  // Búsqueda de respaldo si la consulta primaria devuelve 0 resultados
-  useEffect(() => {
-    if (!searchTerm || isSearchingByCode) return;
-
-    if (!isLoadingByName && (errorByName || primaryNameList.length === 0)) {
-      let isMounted = true;
-      setIsFallbackLoading(true);
-
-      const cleanTerm = searchTerm.replace(/^CL/i, "").trim();
-
-      axiosInstance
-        .get(`/reportModule/accountsReceivable?clientName=${encodeURIComponent(cleanTerm)}`)
-        .then((res) => {
-          if (!isMounted) return;
-          const list = res.data?.clients?.clients || res.data?.clients || res.data || [];
-          if (Array.isArray(list) && list.length > 0) {
-            const mapped = list.map((c) => ({
-              CardCode: c.cardCode || c.CardCode,
-              CardName: c.clientName || c.CardName || c.name,
-              Address: c.address || c.Address || "",
-            }));
-            setFallbackResults(mapped);
-          }
-        })
-        .catch(() => {
-          if (isMounted) setFallbackResults([]);
-        })
-        .finally(() => {
-          if (isMounted) setIsFallbackLoading(false);
-        });
-
-      return () => {
-        isMounted = false;
-      };
-    } else {
-      setFallbackResults([]);
-    }
-  }, [searchTerm, isSearchingByCode, isLoadingByName, errorByName, primaryNameList]);
-
-  const activeNameList = primaryNameList.length > 0 ? primaryNameList : fallbackResults;
-
   const triggerSearch = () => {
     const trimmed = searchInput.trim();
-    if (!trimmed) return;
+    if (!trimmed || trimmed.length < 2) return;
 
     const isNumeric = /^\d+$/.test(trimmed) || /^CL/i.test(trimmed);
     setIsSearchingByCode(isNumeric);
@@ -114,7 +76,6 @@ export default function ClientAutocomplete({ client, setClient }) {
     }
 
     setSearchTerm(finalTerm);
-    setFallbackResults([]);
   };
 
   const handleKeyPress = (e) => {
@@ -137,7 +98,6 @@ export default function ClientAutocomplete({ client, setClient }) {
     setClient(initialClient);
     setSearchTerm("");
     setSearchInput("");
-    setFallbackResults([]);
 
     // Cargar la ficha completa de SAP por CardCode para obtener ContactEmployees, ContactPerson y BPAddresses
     if (cardCode) {
@@ -166,7 +126,6 @@ export default function ClientAutocomplete({ client, setClient }) {
     setClient(null);
     setSearchInput("");
     setSearchTerm("");
-    setFallbackResults([]);
   };
 
   // 1. VISTA CUANDO EL CLIENTE YA ESTÁ SELECCIONADO
@@ -176,46 +135,43 @@ export default function ClientAutocomplete({ client, setClient }) {
     const documentNumber = normalizedClient.LicTradNum || normalizedClient.clientRuc || "No registrado";
     return (
       <Box
-        p={4}
+        p={{ base: 3, md: 4 }}
         bg="emerald.50"
         borderRadius="xl"
         border="2px solid"
         borderColor="emerald.400"
         boxShadow="0 4px 15px rgba(16, 185, 129, 0.12)"
-        position="relative"
+        w="full"
       >
-        <Button
-          size="xs"
-          position="absolute"
-          top={3}
-          right={3}
-          colorScheme="red"
-          variant="ghost"
-          borderRadius="full"
-          onClick={handleClear}
-          leftIcon={<FiX />}
-        >
-          Cambiar Cliente
-        </Button>
-
-        <HStack spacing={2} mb={1.5}>
+        <Flex justify="space-between" align="center" wrap="wrap" gap={2} mb={2}>
           <Badge bg="emerald.700" color="white" px={2.5} py={0.5} borderRadius="full" fontSize="10px" fontWeight="700">
             Cliente SAP Seleccionado
           </Badge>
-        </HStack>
+          <Button
+            size="xs"
+            colorScheme="red"
+            variant="ghost"
+            borderRadius="full"
+            onClick={handleClear}
+            leftIcon={<FiX />}
+            fontWeight="700"
+          >
+            Cambiar Cliente
+          </Button>
+        </Flex>
 
-        <Text fontWeight="800" fontSize="md" color="emerald.950" mb={1}>
+        <Text fontWeight="800" fontSize={{ base: "sm", md: "md" }} color="emerald.950" mb={1} wordBreak="break-word">
           {normalizedClient.CardName || "Cliente seleccionado"}
         </Text>
 
         {(normalizedClient.CardCode || normalizedClient.LicTradNum) && (
-          <Text fontSize="xs" color="gray.700" mb={0.5}>
+          <Text fontSize="xs" color="gray.700" mb={0.5} wordBreak="break-word">
             <strong>Código SAP:</strong> {cardCode} <strong>• RUC / Doc:</strong> {documentNumber}
           </Text>
         )}
 
         {normalizedClient.Address && (
-          <Text fontSize="xs" color="gray.700" isTruncated title={normalizedClient.Address}>
+          <Text fontSize="xs" color="gray.700" wordBreak="break-word" title={normalizedClient.Address}>
             <strong>Dirección:</strong> {normalizedClient.Address}
           </Text>
         )}
@@ -231,13 +187,14 @@ export default function ClientAutocomplete({ client, setClient }) {
   // 2. BUSCADOR ÚNICO INTELIGENTE SAP (Diseño Compacto y Elegante)
   return (
     <Box w="full">
-      <Box p={2.5} bg="#f0fdf4" borderRadius="lg" border="1.5px dashed #86efac">
-        <Box fontSize="11px" fontWeight="900" color="#166534" mb={1} letterSpacing="wider" textTransform="uppercase">
+      <Box p={{ base: 2, md: 2.5 }} bg="#f0fdf4" borderRadius="lg" border="1.5px dashed #86efac">
+        <Box fontSize="11px" fontWeight="900" color="#166534" mb={1.5} letterSpacing="wider" textTransform="uppercase">
           🔍 Búsqueda Inteligente de Cliente SAP
         </Box>
         <Flex gap={2} align="center">
           <Input
             flex="1"
+            minW="0"
             size="sm"
             borderRadius="md"
             placeholder="Escribe RUC, DNI o Razón Social..."
@@ -271,10 +228,10 @@ export default function ClientAutocomplete({ client, setClient }) {
 
       {/* INDICADOR DE BÚSQUEDA EN CURSO */}
       {isSearching && (
-        <Flex align="center" gap={2} mt={1.5} px={2} py={1.5} bg="emerald.50" borderRadius="md" border="1px solid" borderColor="emerald.200">
-          <Spinner color="#16a34a" size="xs" speed="0.6s" />
-          <Text fontSize="11px" color="#166534" fontWeight="700">
-            Consultando "{searchInput}" en SAP Business One...
+        <Flex align="center" gap={2} mt={1.5} px={2.5} py={1.5} bg="emerald.50" borderRadius="md" border="1px solid" borderColor="emerald.200">
+          <Spinner color="#16a34a" size="xs" speed="0.6s" flexShrink={0} />
+          <Text fontSize="11px" color="#166534" fontWeight="700" isTruncated>
+            Consultando "{searchTerm || searchInput.trim()}" en SAP Business One...
           </Text>
         </Flex>
       )}
@@ -305,16 +262,16 @@ export default function ClientAutocomplete({ client, setClient }) {
           _hover={{ bg: "emerald.100" }}
           shadow="sm"
         >
-          <HStack justify="space-between">
-            <Text fontWeight="800" fontSize="xs" color="emerald.900">
+          <Flex justify="space-between" align={{ base: "flex-start", sm: "center" }} wrap="wrap" gap={1.5} mb={1}>
+            <Text fontWeight="800" fontSize="xs" color="emerald.900" flex="1" minW="140px" wordBreak="break-word">
               {dataByCode.CardName || dataByCode.firstName}
             </Text>
-            <Badge colorScheme="emerald" fontSize="0.65rem">SAP</Badge>
-          </HStack>
+            <Badge colorScheme="emerald" fontSize="0.65rem" flexShrink={0}>SAP</Badge>
+          </Flex>
           <Text fontSize="0.75rem" color="gray.600" fontWeight="700">
             Código: {dataByCode.CardCode || dataByCode.id}
           </Text>
-          <Text fontSize="0.7rem" color="gray.600">
+          <Text fontSize="0.7rem" color="gray.600" wordBreak="break-word">
             {dataByCode.Address || dataByCode.address || "Sin dirección registrada"}
           </Text>
         </Box>
@@ -322,7 +279,7 @@ export default function ClientAutocomplete({ client, setClient }) {
 
       {/* LISTA DE RESULTADOS POR NOMBRE / RAZÓN SOCIAL */}
       {!isSearching && !isSearchingByCode && activeNameList.length > 0 && !client && (
-        <VStack spacing={1.5} maxH="220px" overflowY="auto" mt={2} p={1} bg="white" borderRadius="md" shadow="lg" border="1px solid" borderColor="gray.200">
+        <VStack spacing={1.5} maxH="240px" overflowY="auto" mt={2} p={1} bg="white" borderRadius="md" shadow="lg" border="1px solid" borderColor="gray.200" align="stretch">
           {activeNameList.map((clientData, idx) => {
             const adapted = adaptClientFromApi(clientData);
             const cardCode = adapted.id || clientData.CardCode || clientData.cardCode;
@@ -341,23 +298,24 @@ export default function ClientAutocomplete({ client, setClient }) {
                 cursor="pointer"
                 onClick={() => handleSelectClient(clientData)}
                 _hover={{ bg: "emerald.50", borderColor: "emerald.300" }}
+                transition="all 0.15s ease"
               >
-                <HStack justify="space-between">
-                  <Text fontWeight="700" fontSize="xs" color="emerald.900" isTruncated maxW="240px">
+                <Flex justify="space-between" align={{ base: "flex-start", sm: "center" }} wrap="wrap" gap={1.5} mb={0.5}>
+                  <Text fontWeight="700" fontSize="xs" color="emerald.900" flex="1" minW="150px" wordBreak="break-word">
                     {cardName}
                   </Text>
-                  <HStack spacing={1}>
+                  <Flex gap={1} align="center" flexShrink={0} wrap="wrap">
                     {clientData.FederalTaxID && (
-                      <Badge colorScheme="purple" fontSize="0.65rem">
+                      <Badge colorScheme="purple" fontSize="0.65rem" px={1.5} py={0.5} borderRadius="sm">
                         {clientData.FederalTaxID}
                       </Badge>
                     )}
-                    <Badge colorScheme="emerald" fontSize="0.65rem">
+                    <Badge colorScheme="emerald" fontSize="0.65rem" px={1.5} py={0.5} borderRadius="sm">
                       {cardCode}
                     </Badge>
-                  </HStack>
-                </HStack>
-                <Text fontSize="0.7rem" color="gray.500" isTruncated>
+                  </Flex>
+                </Flex>
+                <Text fontSize="0.7rem" color="gray.500" noOfLines={2} wordBreak="break-word">
                   {address}
                 </Text>
               </Box>

@@ -80,7 +80,7 @@ export function ObserveReasonModal({ isOpen, onClose, quote, onConfirmObserve })
       isCentered
       scrollBehavior="inside"
     >
-      <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(5px)" />
+      <ModalOverlay bg="blackAlpha.700" />
       <ModalContent
         borderRadius={{ base: "none", md: "2xl" }}
         overflow="hidden"

@@ -45,6 +45,9 @@ export default function OrdersCancelatedTable({ data, isLoading, isError }) {
   const hoverBg = useColorModeValue("red.50", "red.900");
   const borderColor = useColorModeValue("gray.200", "gray.700");
   const cardBg = useColorModeValue("white", "gray.700");
+  const errorBg = useColorModeValue("red.50", "red.900");
+  const surfaceBg = useColorModeValue("gray.50", "gray.700");
+  const subtleBorderColor = useColorModeValue("gray.300", "gray.600");
 
   // --- FILTRADO DE DATOS ---
   const filteredData = useMemo(() => {
@@ -99,7 +102,7 @@ export default function OrdersCancelatedTable({ data, isLoading, isError }) {
       <Box
         py={6}
         px={4}
-        bg={useColorModeValue("red.50", "red.900")}
+        bg={errorBg}
         borderRadius="lg"
         borderLeft="4px solid"
         borderColor="red.500"
@@ -116,11 +119,11 @@ export default function OrdersCancelatedTable({ data, isLoading, isError }) {
       <Box
         py={8}
         textAlign="center"
-        bg={useColorModeValue("gray.50", "gray.700")}
+        bg={surfaceBg}
         borderRadius="lg"
         borderStyle="dashed"
         borderWidth="2px"
-        borderColor={useColorModeValue("gray.300", "gray.600")}
+        borderColor={subtleBorderColor}
       >
         <Text fontSize="2xl" mb={2}>
           ✅
@@ -187,7 +190,7 @@ export default function OrdersCancelatedTable({ data, isLoading, isError }) {
           borderRadius="lg"
         >
           <Table variant="simple" size="sm">
-            <Thead bg={useColorModeValue("gray.50", "gray.700")}>
+            <Thead bg={surfaceBg}>
               <Tr>
                 <Th>Vendedor</Th>
                 <Th>Pedido</Th>

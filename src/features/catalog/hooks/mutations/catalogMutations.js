@@ -14,7 +14,7 @@ export const useCreateProduct = () => {
     return useMutation({
         mutationFn: (data) => postCreateProduct(data),
         onSuccess: () => {
-            queryClient.invalidateQueries(["products"]);
+            queryClient.invalidateQueries({ queryKey: ["products"] });
             toast({
                 title: "Producto creado",
                 description: "El producto se creó correctamente.",
@@ -47,8 +47,8 @@ export const useUpdateProduct = () => {
             {id, data}
         ) => updateProduct(id, data),
         onSuccess: (_, variables) => {
-            queryClient.invalidateQueries(["products"]);
-            queryClient.invalidateQueries(["product", variables.id]);
+            queryClient.invalidateQueries({ queryKey: ["products"] });
+            queryClient.invalidateQueries({ queryKey: ["product", variables.id] });
             toast({
                 title: "Producto actualizado",
                 description: "El producto se actualizó correctamente.",
@@ -79,7 +79,7 @@ export const useDeleteProduct = () => {
     return useMutation({
         mutationFn: (id) => deleteProduct(id),
         onSuccess: () => {
-            queryClient.invalidateQueries(["products"]);
+            queryClient.invalidateQueries({ queryKey: ["products"] });
             toast({
                 title: "Producto eliminado",
                 description: "El producto se eliminó correctamente.",

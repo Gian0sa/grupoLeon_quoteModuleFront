@@ -67,7 +67,7 @@ export function PreQuoteDrawer({ isOpen, onClose }) {
 
   return (
     <Drawer isOpen={isOpen} placement="right" onClose={onClose} size="md">
-      <DrawerOverlay backdropFilter="blur(4px)" />
+      <DrawerOverlay bg="blackAlpha.600" />
       <DrawerContent borderRadius="2xl 0 0 2xl">
         <DrawerCloseButton mt={2} />
 

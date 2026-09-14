@@ -326,7 +326,7 @@ export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) 
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="5xl" scrollBehavior="inside">
-      <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(5px)" />
+      <ModalOverlay bg="blackAlpha.700" />
       <ModalContent borderRadius="2xl" overflow="hidden" boxShadow="0 25px 50px -12px rgba(0, 0, 0, 0.35)">
         <ModalHeader bg="#0f4c28" color="white" py={3.5} px={6} display="flex" alignItems="center" justifyContent="space-between">
           <HStack spacing={3}>

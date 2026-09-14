@@ -5,9 +5,9 @@ import {
   getQueue,
   removeFromQueue,
   clearAllQueue,
-  getQueueCount,
   updateQueueItem,
   QUEUE_STATUS,
+  isUnsynced,
 } from "../services/visitLogQueue";
 import { createBulkVisitLogs } from "../services/visitLogService";
 
@@ -25,10 +25,10 @@ export const useSyncQueue = ({ enabled = true } = {}) => {
 
   const refreshQueue = useCallback(async () => {
     try {
-      const count = await getQueueCount();
-      setPendingCount(count);
       const items = await getQueue();
-      setQueueItems((items || []).sort((a, b) => a.id - b.id));
+      const sortedItems = (items || []).sort((a, b) => a.id - b.id);
+      setPendingCount(sortedItems.filter(isUnsynced).length);
+      setQueueItems(sortedItems);
     } catch (error) {
       // Ignorar silenciosamente si el navegador bloquea el almacenamiento local
     }
@@ -47,25 +47,16 @@ export const useSyncQueue = ({ enabled = true } = {}) => {
     // pasar de aquí en adelante. Activarlo después del await dejaba una ventana
     // donde las tres pasaban el candado y triplicaban el envío del mismo ítem.
     isSyncingRef.current = true;
-
-    let items = [];
     try {
-      items = await getQueue();
-    } catch (storageErr) {
-      isSyncingRef.current = false;
-      return;
-    }
+      const items = await getQueue();
 
-    if (!items || items.length === 0) {
-      setPendingCount(0);
-      setQueueItems([]);
-      isSyncingRef.current = false;
-      return;
-    }
+      if (!items || items.length === 0) {
+        setPendingCount(0);
+        setQueueItems([]);
+        return;
+      }
 
-    setIsSyncing(true);
-    console.log(`🔄 Sincronizando ${items.length} check-in(s)/out(s) pendientes...`);
-    let syncedCount = 0;
+      let syncedCount = 0;
 
     // Purga de items viejos con estado SYNCED (más de 2 días).
     // Solo se borra lo ya confirmado por el servidor: nunca lo pendiente ni lo
@@ -73,7 +64,7 @@ export const useSyncQueue = ({ enabled = true } = {}) => {
     const TWO_DAYS = 48 * 60 * 60 * 1000;
     const STUCK_SYNCING = 5 * 60 * 1000;
     const now = Date.now();
-    for (const item of items) {
+      for (const item of items) {
       if (item.status === QUEUE_STATUS.SYNCED && (now - (item._queuedAt || 0)) > TWO_DAYS) {
         await removeFromQueue(item.id);
         continue;
@@ -89,24 +80,25 @@ export const useSyncQueue = ({ enabled = true } = {}) => {
           errorMessage: "Envío interrumpido, se reintentará",
         });
       }
-    }
+      }
 
-    const currentItems = await getQueue();
-    if (currentItems.length === 0) {
-      setPendingCount(0);
-      setQueueItems([]);
-      isSyncingRef.current = false;
-      setIsSyncing(false);
-      return;
-    }
+      const currentItems = await getQueue();
+      if (currentItems.length === 0) {
+        setPendingCount(0);
+        setQueueItems([]);
+        return;
+      }
 
     // Orden cronológico por ID (equivale al orden en que el vendedor marcó)
-    const sortedQueue = currentItems.sort((a, b) => a.id - b.id);
+      const sortedQueue = currentItems.sort((a, b) => a.id - b.id);
 
     // Filtrar items listos para enviar respetando dependencias (IN antes que su OUT)
-    const itemsToProcess = [];
-    for (const item of sortedQueue) {
+      const itemsToProcess = [];
+      for (const item of sortedQueue) {
       if (item.status === QUEUE_STATUS.SYNCED) continue;
+      // Otra pestaña o una ejecución interrumpida recientemente puede tenerlo
+      // en vuelo. Solo se rescatan los SYNCING antiguos en el bloque anterior.
+      if (item.status === QUEUE_STATUS.SYNCING) continue;
 
       // Los que esperan conciliación no se reintentan solos: reenviarlos sin
       // cambios volvería a fallar. Solo salen de aquí por acción manual
@@ -151,11 +143,21 @@ export const useSyncQueue = ({ enabled = true } = {}) => {
       }
 
       itemsToProcess.push(item);
-    }
+      }
 
-    const batchSize = parseInt(import.meta.env.VITE_SYNC_BATCH_SIZE) || 30;
+      if (itemsToProcess.length === 0) {
+        await refreshQueue();
+        return;
+      }
 
-    for (let i = 0; i < itemsToProcess.length; i += batchSize) {
+      setIsSyncing(true);
+      console.log(`🔄 Sincronizando ${itemsToProcess.length} check-in(s)/out(s) pendientes...`);
+      const configuredBatchSize = Number.parseInt(import.meta.env.VITE_SYNC_BATCH_SIZE, 10);
+      const batchSize = Number.isFinite(configuredBatchSize)
+        ? Math.min(100, Math.max(1, configuredBatchSize))
+        : 30;
+
+      for (let i = 0; i < itemsToProcess.length; i += batchSize) {
       const batch = itemsToProcess.slice(i, i + batchSize);
       const batchFormData = new FormData();
       const logsArray = [];
@@ -230,15 +232,19 @@ export const useSyncQueue = ({ enabled = true } = {}) => {
 
         if (isTransient) break;
       }
-    }
+      }
 
-    await refreshQueue();
+      await refreshQueue();
 
-    queryClient.invalidateQueries(["activeVisit"]);
-    queryClient.invalidateQueries(["visitLogs"]);
-    queryClient.invalidateQueries(["myVisitLogs"]);
+      if (syncedCount > 0) {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["activeVisit"] }),
+          queryClient.invalidateQueries({ queryKey: ["visitLogs"] }),
+          queryClient.invalidateQueries({ queryKey: ["myVisitLogs"] }),
+        ]);
+      }
 
-    if (syncedCount > 0 && enabledRef.current) {
+      if (syncedCount > 0 && enabledRef.current) {
       const SYNC_SUCCESS_TOAST_ID = "sync-queue-success-toast";
       if (!toast.isActive(SYNC_SUCCESS_TOAST_ID)) {
         toast({
@@ -256,10 +262,13 @@ export const useSyncQueue = ({ enabled = true } = {}) => {
           description: "Se enviaron los registros de visita pendientes correctamente al servidor.",
         });
       }
+      }
+    } catch (error) {
+      console.warn("⚠️ No se pudo procesar la cola offline; se reintentará:", error?.message || error);
+    } finally {
+      isSyncingRef.current = false;
+      setIsSyncing(false);
     }
-
-    isSyncingRef.current = false;
-    setIsSyncing(false);
   }, [toast, queryClient, refreshQueue]);
 
   const retryItem = useCallback(async (id) => {
@@ -278,17 +287,17 @@ export const useSyncQueue = ({ enabled = true } = {}) => {
   const removeItem = useCallback(async (id) => {
     await removeFromQueue(id);
     await refreshQueue();
-    queryClient.invalidateQueries(["activeVisit"]);
-    queryClient.invalidateQueries(["visitLogs"]);
-    queryClient.invalidateQueries(["myVisitLogs"]);
+    queryClient.invalidateQueries({ queryKey: ["activeVisit"] });
+    queryClient.invalidateQueries({ queryKey: ["visitLogs"] });
+    queryClient.invalidateQueries({ queryKey: ["myVisitLogs"] });
   }, [refreshQueue, queryClient]);
 
   const clearAll = useCallback(async () => {
     await clearAllQueue();
     await refreshQueue();
-    queryClient.invalidateQueries(["activeVisit"]);
-    queryClient.invalidateQueries(["visitLogs"]);
-    queryClient.invalidateQueries(["myVisitLogs"]);
+    queryClient.invalidateQueries({ queryKey: ["activeVisit"] });
+    queryClient.invalidateQueries({ queryKey: ["visitLogs"] });
+    queryClient.invalidateQueries({ queryKey: ["myVisitLogs"] });
   }, [refreshQueue, queryClient]);
 
   useEffect(() => {

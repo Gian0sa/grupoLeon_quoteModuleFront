@@ -15,19 +15,16 @@ export function useRefetchQueries() {
     await Promise.all(promises);
   };
 
-  // Invalidar + esperar tick + refetch forzado (garantiza recarga visual)
+  // Invalidar y recargar una sola vez, incluyendo las consultas inactivas.
   const invalidateAndRefetch = async (keys = []) => {
     // 1. Invalidar todas las queries especificadas
     await Promise.all(
       keys.map((key) =>
-        queryClient.invalidateQueries({ queryKey: key, exact: false })
+        queryClient.invalidateQueries({ queryKey: key, exact: false, refetchType: "none" })
       )
     );
 
-    // 2. Pequeño delay para que React procese el estado stale
-    await new Promise((resolve) => setTimeout(resolve, 50));
-
-    // 3. Forzar refetch sin filtro de tipo (incluye inactivas también)
+    // La invalidación anterior no dispara otra petición en paralelo.
     await Promise.all(
       keys.map((key) =>
         queryClient.refetchQueries({ queryKey: key, exact: false })
@@ -37,16 +34,14 @@ export function useRefetchQueries() {
 
   // Refrescar TODAS las queries activas (botón global de recarga)
   const refetchAll = async () => {
-    await queryClient.invalidateQueries();
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    await queryClient.refetchQueries({ type: 'active' });
+    await queryClient.invalidateQueries({ refetchType: "active" });
   };
 
   // Solo invalidar sin refetch inmediato
   const invalidate = async (keys = []) => {
     await Promise.all(
       keys.map((key) =>
-        queryClient.invalidateQueries({ queryKey: key, exact: false })
+        queryClient.invalidateQueries({ queryKey: key, exact: false, refetchType: "none" })
       )
     );
   };

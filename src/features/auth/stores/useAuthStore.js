@@ -1,8 +1,12 @@
 import { create } from 'zustand';
 
 const getSafeValue = (key) => {
-  const value = localStorage.getItem(key);
-  return (value === null || value === "null" || value === "undefined") ? null : value;
+  try {
+    const value = localStorage.getItem(key);
+    return (value === null || value === "null" || value === "undefined") ? null : value;
+  } catch {
+    return null;
+  }
 };
 
 const getSafeJsonValue = (key) => {
@@ -30,17 +34,21 @@ export const useAuthStore = create((set) => ({
     };
 
     // Guardar en localStorage solo lo público
-    Object.entries(safeValues).forEach(([key, value]) => {
-      if (value !== null && value !== undefined) {
-        if (key === "endpoints") {
-          localStorage.setItem(key, JSON.stringify(value));
+    try {
+      Object.entries(safeValues).forEach(([key, value]) => {
+        if (value !== null && value !== undefined) {
+          if (key === "endpoints") {
+            localStorage.setItem(key, JSON.stringify(value));
+          } else {
+            localStorage.setItem(key, value);
+          }
         } else {
-          localStorage.setItem(key, value);
+          localStorage.removeItem(key);
         }
-      } else {
-        localStorage.removeItem(key);
-      }
-    });
+      });
+    } catch (e) {
+      console.warn("Storage write restricted by browser:", e);
+    }
 
     set({
       ...safeValues,
@@ -50,15 +58,19 @@ export const useAuthStore = create((set) => ({
 
   updateEndpoints: (newEndpoints) => {
     if (Array.isArray(newEndpoints)) {
-      localStorage.setItem("endpoints", JSON.stringify(newEndpoints));
+      try {
+        localStorage.setItem("endpoints", JSON.stringify(newEndpoints));
+      } catch (e) {}
       set({ endpoints: newEndpoints });
     }
   },
 
   logout: () => {
-    ['userId', 'username', 'salesEmployeeCode', 'endpoints', 'lastRoute'].forEach((key) =>
-      localStorage.removeItem(key)
-    );
+    try {
+      ['userId', 'username', 'salesEmployeeCode', 'endpoints', 'lastRoute'].forEach((key) =>
+        localStorage.removeItem(key)
+      );
+    } catch (e) {}
 
     set({
       userId: null,

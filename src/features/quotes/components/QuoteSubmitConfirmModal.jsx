@@ -43,7 +43,7 @@ export default function QuoteSubmitConfirmModal({
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="lg" isCentered motionPreset="slideInBottom">
-      <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
+      <ModalOverlay bg="blackAlpha.600" />
       <ModalContent borderRadius="2xl" border="2px solid #16a34a" overflow="hidden">
         {/* Header */}
         <ModalHeader bg="#0d6334" color="white" py={4}>

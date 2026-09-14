@@ -292,6 +292,8 @@ export const useQuoteStore = create((set, get) => {
     setPaymentMethod: (method) => customSet({ paymentMethod: method }),
     setBankAccount: (account) => customSet({ bankAccount: account }),
     setSunatOpType: (type) => customSet({ sunatOpType: type }),
+    setSellerName: (sellerName) => customSet({ sellerName }),
+    setSlpCode: (slpCode) => customSet({ SlpCode: slpCode, salesEmployeeCode: slpCode, salesPersonCode: slpCode }),
 
     addProduct: (product) => {
       const state = get();
@@ -432,7 +434,7 @@ export const useQuoteStore = create((set, get) => {
         quoteData.U_VS_CONDICION,
         quoteData.condicionVenta,
         quoteData.condicionPago
-      ) || (quoteData.paymentType?.isCredit ? "CREDITO" : (quoteData.paymentType ? "CONTADO" : ""));
+      ) || (quoteData.paymentType?.isCredit ? "CREDITO" : "");
 
       const documentTypeVal = firstMeaningfulValue(
         quoteData.documentType,

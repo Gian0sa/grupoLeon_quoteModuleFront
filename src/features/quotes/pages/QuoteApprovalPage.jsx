@@ -8,6 +8,7 @@ import {
   Input,
   InputGroup,
   InputLeftElement,
+  InputRightElement,
   Button,
   Table,
   Thead,
@@ -68,7 +69,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useQuoteStore } from "../stores/quoteStore";
-import { useHasAccess } from "../../../shared/utils/permissions";
+import { useHasAccess, useIsAdmin } from "../../../shared/utils/permissions";
 import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
 import { QuoteStepper, getStageIndex } from "../components/QuoteStepper";
 import { QuoteDetailDrawer } from "../components/QuoteDetailDrawer";
@@ -102,6 +103,24 @@ export const isCancelledState = (status) => {
     s.includes("CANCELADO") ||
     s.includes("RECHAZADO")
   );
+};
+
+export const checkHasAdditionalDiscount = (q) => {
+  if (!q) return false;
+  if (q.hasAdditionalDiscount || q.totals?.hasAdditionalDiscount || q.totals?.hasDiscount || q.totals?.requiresDiscountApproval) {
+    return true;
+  }
+  if (Number(q.maxDiscount || q.totals?.maxDiscount || 0) > 0) {
+    return true;
+  }
+  if (Number(q.headerDiscount || q.DiscountPercent || q.discountPercent || q.totals?.headerDiscount || 0) > 0) {
+    return true;
+  }
+  const quoteProducts = q.products || q.items || q.totals?.products || q.totals?.normalizedProducts || [];
+  return quoteProducts.some((it) => {
+    const adic = Number(it.lineDiscount ?? it.LineDiscount ?? it.additionalDiscount ?? it.U_TQC_DESV ?? 0);
+    return adic > 0;
+  });
 };
 
 const isDraftOwnedByCurrentUser = (q, currentUsername, currentUserId) => {
@@ -178,6 +197,23 @@ export const isMatchingDoc = (q, docIdentifier) => {
   return false;
 };
 
+export const safeSetLocalQuotes = (quotesList) => {
+  try {
+    if (!quotesList) {
+      localStorage.setItem("grupoLeon_local_quotes", "[]");
+      return;
+    }
+    if (typeof quotesList === "string") {
+      localStorage.setItem("grupoLeon_local_quotes", quotesList);
+      return;
+    }
+    const trimmed = Array.isArray(quotesList) ? quotesList.slice(0, 80) : [];
+    localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(trimmed));
+  } catch (err) {
+    console.warn("⚠️ [localStorage] No se pudo persistir cotizaciones locales:", err?.message);
+  }
+};
+
 export function QuoteApprovalPage() {
   const toast = useToast();
   const navigate = useNavigate();
@@ -188,12 +224,13 @@ export function QuoteApprovalPage() {
   const localUser = (localStorage.getItem("username") || localStorage.getItem("userId") || "").toLowerCase();
   const localRole = (localStorage.getItem("role") || "").toUpperCase();
   const hasAccess = useHasAccess();
-  const isAdminUser = authRole === "ADMIN" || localRole === "ADMIN" || authUsername?.toLowerCase() === "enrique" || localUser === "enrique" || hasAccess("POST /quotes/approval") || hasAccess("POST /quotations/approve");
+  const isAdmin = useIsAdmin();
+  const isAdminUser = isAdmin || authRole === "ADMIN" || localRole === "ADMIN" || hasAccess("POST /quotes/approval") || hasAccess("POST /quotations/approve");
   const activeCurrentUsername = (authUsername || localStorage.getItem("username") || "").toLowerCase().trim();
   const activeCurrentUserId = authUserId || localStorage.getItem("userId");
 
   const { data: serverQuotes, isLoading: isServerLoading, refetch: refetchServerQuotes } = useGetQuotes({
-    limit: isAdminUser ? 100 : 10
+    limit: isAdminUser ? 30 : 10
   });
 
   const handleLoadQuote = (q) => {
@@ -209,8 +246,18 @@ export function QuoteApprovalPage() {
     navigate("/newquotes");
   };
 
-  const [quotes, setQuotes] = useState([]);
+  const [quotes, setQuotes] = useState(() => {
+    try {
+      const stored = localStorage.getItem("grupoLeon_local_quotes");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [];
+  });
   const [searchQuery, setSearchQuery] = useState("");
+  const [isDeepSearching, setIsDeepSearching] = useState(false);
   const [selectedTab, setSelectedTab] = useState("ALL");
   const [selectedQuote, setSelectedQuote] = useState(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -221,6 +268,12 @@ export function QuoteApprovalPage() {
   const [pageSize, setPageSize] = useState(isAdminUser ? 10 : 10);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [highlightedDocId, setHighlightedDocId] = useState(null);
+  
+  // Paginación y almacenamiento de alto rendimiento para la pestaña de Histórico Completo
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyQuotes, setHistoryQuotes] = useState([]);
   
   // Filtros avanzados para la pestaña de Histórico Completo (Por defecto últimos 3 meses)
   const defaultStartDate = useMemo(() => {
@@ -258,6 +311,7 @@ export function QuoteApprovalPage() {
   // Auto-cálculo y control estricto de máximo 3 meses para el Histórico
   const handleStartDateChange = (newStart) => {
     setHistoryStartDate(newStart);
+    setHistoryPage(1);
     if (newStart) {
       const d = new Date(newStart + "T00:00:00");
       d.setMonth(d.getMonth() + 3);
@@ -268,6 +322,7 @@ export function QuoteApprovalPage() {
 
   const handleEndDateChange = (newEnd) => {
     setHistoryEndDate(newEnd);
+    setHistoryPage(1);
     if (newEnd && historyStartDate) {
       const start = new Date(historyStartDate + "T00:00:00");
       const end = new Date(newEnd + "T00:00:00");
@@ -280,17 +335,74 @@ export function QuoteApprovalPage() {
     }
   };
 
-  // Carga dinámica de datos históricos desde SAP B1 y base de datos cuando se consulta el Histórico Completo
+  // Carga dinámica de datos históricos desde SAP B1 y base de datos con paginación server-side de alto rendimiento
   useEffect(() => {
     if (selectedTab !== "HISTORICO" || !historyStartDate || !historyEndDate) return;
+    let isCurrent = true;
+    setHistoryLoading(true);
+
     const timer = setTimeout(async () => {
       try {
-        const results = await getQuotes({
+        const response = await getQuotes({
           startDate: historyStartDate,
           endDate: historyEndDate,
-          limit: 150
+          page: historyPage,
+          limit: pageSize,
+          paginate: true
         });
-        if (Array.isArray(results) && results.length > 0) {
+
+        if (!isCurrent) return;
+
+        const items = Array.isArray(response) ? response : (response?.quotes || []);
+        const total = typeof response?.total === "number" ? response.total : (response?.quotes?.length || items.length);
+
+        setHistoryQuotes(items);
+        setHistoryTotal(total);
+
+        // Sincronizar registros en el almacén local para consulta instantánea
+        if (items.length > 0) {
+          setQuotes(prev => {
+            const seen = new Set(prev.map(q => String(q.docNumber || q.id)));
+            const added = [];
+            for (const r of items) {
+              const k = String(r.docNumber || r.id);
+              if (!seen.has(k)) {
+                added.push(r);
+                seen.add(k);
+              }
+            }
+            return added.length > 0 ? [...added, ...prev] : prev;
+          });
+        }
+      } catch (e) {
+        if (isCurrent) console.warn("⚠️ Error cargando histórico de fechas:", e.message);
+      } finally {
+        if (isCurrent) setHistoryLoading(false);
+      }
+    }, 200);
+
+    return () => {
+      isCurrent = false;
+      clearTimeout(timer);
+    };
+  }, [selectedTab, historyStartDate, historyEndDate, historyPage, pageSize]);
+
+  // Búsqueda profunda en servidor/SAP cuando se especifique un término relevante (mínimo 3 letras o número específico)
+  useEffect(() => {
+    const queryTerm = searchQuery.trim();
+    const cleanDigits = queryTerm.replace(/[^0-9]/g, "");
+    // Si la búsqueda está vacía o es muy corta (<3 letras) y no es numérica, la búsqueda instantánea en memoria local es inmediata y suficiente
+    if (!queryTerm || (queryTerm.length < 3 && cleanDigits.length < 3 && !queryTerm.startsWith("#"))) {
+      setIsDeepSearching(false);
+      return;
+    }
+
+    let isCurrent = true;
+    const timer = setTimeout(async () => {
+      try {
+        if (isCurrent) setIsDeepSearching(true);
+        const results = await getQuotes({ search: queryTerm });
+        if (isCurrent && Array.isArray(results) && results.length > 0) {
           setQuotes(prev => {
             const seen = new Set(prev.map(q => String(q.docNumber || q.id)));
             const added = [];
@@ -308,58 +420,57 @@ export function QuoteApprovalPage() {
           });
         }
       } catch (e) {
-        console.warn("⚠️ Error cargando histórico de fechas:", e.message);
+      } finally {
+        if (isCurrent) setIsDeepSearching(false);
       }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [selectedTab, historyStartDate, historyEndDate]);
-
-  // Búsqueda dinámica en vivo en SAP B1 para documentos antiguos (#1, etc.) o clientes
-  useEffect(() => {
-    if (!searchQuery || searchQuery.trim().length < 1) return;
-    const timer = setTimeout(async () => {
-      try {
-        const queryTerm = searchQuery.trim();
-        const results = await getQuotes({ search: queryTerm });
-        if (Array.isArray(results) && results.length > 0) {
-          setQuotes(prev => {
-            const seen = new Set(prev.map(q => String(q.docNumber || q.id)));
-            const added = [];
-            for (const r of results) {
-              const k = String(r.docNumber || r.id);
-              if (!seen.has(k)) {
-                added.push(r);
-                seen.add(k);
-              }
-            }
-            if (added.length > 0) {
-              return [...added, ...prev];
-            }
-            return prev;
-          });
-        }
-      } catch (e) {}
-    }, 400);
-    return () => clearTimeout(timer);
+    }, 550);
+    return () => {
+      isCurrent = false;
+      clearTimeout(timer);
+    };
   }, [searchQuery]);
 
-  const handleRefresh = async () => {
+  const handleRefresh = async (showToast = false) => {
     setIsRefreshing(true);
     try {
-      await refetchServerQuotes();
-      syncQuotes();
-      toast({
-        title: "🔄 Sincronizado",
-        description: "Lista de cotizaciones actualizada con el servidor y SAP.",
-        status: "success",
-        duration: 2000,
-        isClosable: true,
-        position: "top-right",
-      });
+      if (selectedTab === "HISTORICO") {
+        setHistoryLoading(true);
+        const response = await getQuotes({
+          startDate: historyStartDate,
+          endDate: historyEndDate,
+          page: historyPage,
+          limit: pageSize,
+          paginate: true
+        });
+        const items = Array.isArray(response) ? response : (response?.quotes || []);
+        const total = typeof response?.total === "number" ? response.total : (response?.quotes?.length || items.length);
+        setHistoryQuotes(items);
+        setHistoryTotal(total);
+      } else {
+        await refetchServerQuotes();
+        syncQuotes();
+      }
+      if (showToast === true) {
+        const toastId = "sync-quotes-toast";
+        if (!toast.isActive(toastId)) {
+          toast({
+            id: toastId,
+            title: "🔄 Sincronizado",
+            description: "Lista de cotizaciones actualizada con el servidor y SAP.",
+            status: "success",
+            duration: 2000,
+            isClosable: true,
+            position: "top-right",
+          });
+        }
+      }
     } catch (e) {
       syncQuotes();
     } finally {
-      setTimeout(() => setIsRefreshing(false), 400);
+      setTimeout(() => {
+        setIsRefreshing(false);
+        setHistoryLoading(false);
+      }, 400);
     }
   };
 
@@ -384,8 +495,19 @@ export function QuoteApprovalPage() {
         if (isPhantom) return false;
         const qStatus = String(q.approvalStatus || q.state || q.status || "").toUpperCase().trim();
         const isEmitted = Boolean(q.sapDocNum || q.DocNum || q.isSapDirect || q.totals?.sapDocNum || q.totals?.DocNum || q.totals?.isSapDirect || qStatus === "EMITIDO" || qStatus === "PEDIDO_EMITIDO");
-        const isAlreadyInSapDoc = ["COT-019836", "COT-019838", "COT-019841"].includes(String(q.docNumber || ""));
-        if (isEmitted || isAlreadyInSapDoc) {
+        // Purgar borradores locales viejos cuyos números ya hayan sido tomados oficialmente en SAP por otros clientes
+        const isTakenInServer = Array.isArray(serverQuotes) && serverQuotes.some(sq => {
+          const sqDoc = String(sq.docNumber || sq.id || "").toUpperCase().trim();
+          const qDoc = String(q.docNumber || q.id || "").toUpperCase().trim();
+          const sqIsOfficial = sq.isSapDirect || Boolean(sq.sapDocNum && Number(sq.sapDocNum) > 0) || sq.approvalStatus === "APROBADO" || sq.approvalStatus === "EMITIDO";
+          if (!sqIsOfficial || sqDoc !== qDoc) return false;
+
+          const sqClient = String(sq.clientDocument || sq.clientRuc || sq.clientName || "").toUpperCase().trim();
+          const qClient = String(q.clientDocument || q.clientRuc || q.clientName || "").toUpperCase().trim();
+          return sqClient && qClient && !sqClient.includes(qClient) && !qClient.includes(sqClient);
+        });
+
+        if (isEmitted || isTakenInServer) {
           hadChanges = true;
           return false;
         }
@@ -393,7 +515,7 @@ export function QuoteApprovalPage() {
       });
 
       if (cleanLocal.length !== local.length || hadChanges) {
-        localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(cleanLocal));
+        safeSetLocalQuotes(cleanLocal);
       }
 
       if (serverQuotes && Array.isArray(serverQuotes)) {
@@ -511,7 +633,7 @@ export function QuoteApprovalPage() {
           }
         }
         setQuotes(merged);
-        localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(merged));
+        safeSetLocalQuotes(merged);
       } else if (cleanLocal.length > 0) {
         const validLocal = cleanLocal.filter(q => {
           const notTest = !String(q.docNumber || "").startsWith("TEST-");
@@ -519,7 +641,7 @@ export function QuoteApprovalPage() {
           return notTest && (isAdminUser || isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId));
         });
         setQuotes(validLocal);
-        localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(validLocal));
+        safeSetLocalQuotes(validLocal);
       } else {
         setQuotes([]);
       }
@@ -528,7 +650,7 @@ export function QuoteApprovalPage() {
     }
   };
 
-  const loadQuotes = handleRefresh;
+  const loadQuotes = () => handleRefresh(false);
 
   useEffect(() => {
     syncQuotes();
@@ -672,6 +794,19 @@ export function QuoteApprovalPage() {
       return;
     }
 
+    if (stUpper === "EMITIDO") {
+      // ✅ Si la cotización fue EMITIDA a SAP, solo removerla de la vista de aprobaciones pendientes
+      // SIN borrarla de la base de datos ni eliminar sus notificaciones
+      setQuotes((prev) => prev.filter((q) => !isMatchingItem(q)));
+      queryClient.setQueryData(["quotes"], (old) => {
+        if (!Array.isArray(old)) return [];
+        return old.filter((q) => !isMatchingItem(q));
+      });
+      queryClient.invalidateQueries({ queryKey: ["quotes"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      return;
+    }
+
     const isAlreadyAnulado = stUpper === "ANULADO" || stUpper === "RECHAZADO" || stUpper.includes("ANULADO");
     const isDraft = !currentStatus || DRAFT_STATUSES.includes(currentStatus);
     // Si está APROBADO pero sin sapDocNum (nunca llegó a SAP), también es hard delete
@@ -697,7 +832,7 @@ export function QuoteApprovalPage() {
       });
     } else {
       const nowIso = new Date().toISOString();
-      const adminName = authUsername || "Enrique";
+      const adminName = authUsername || "Administrador";
       setQuotes((prev) =>
         prev.map((q) => {
           if (!isMatchingItem(q)) return q;
@@ -733,7 +868,7 @@ export function QuoteApprovalPage() {
       });
     } else {
       const nowIso = new Date().toISOString();
-      const adminName = authUsername || "Enrique";
+      const adminName = authUsername || "Administrador";
       const updated = saved.map((q) => {
         if (!isMatchingItem(q)) return q;
         const prevLogs = q.historyLog || [];
@@ -763,12 +898,18 @@ export function QuoteApprovalPage() {
 
     // 2.5 Limpiar notificaciones asociadas a esta cotización en almacenamiento local
     try {
+      const targetClient = (targetQuote?.clientName || "").trim().toUpperCase();
       const rawNotifs = localStorage.getItem("grupoLeon_notifications");
       const allNotifs = rawNotifs ? JSON.parse(rawNotifs) : [];
       const remainingNotifs = allNotifs.filter(n => {
         const nQuoteId = String(n.quoteId || "").trim().toUpperCase();
         const nId = String(n.id || "").trim().toUpperCase();
-        return nQuoteId !== idStr.toUpperCase() && nId !== idStr.toUpperCase();
+        const nTitle = String(n.title || "").toUpperCase();
+        const nDesc = String(n.description || "").toUpperCase();
+        const isMatchQuote = nQuoteId === idStr.toUpperCase() || nId === idStr.toUpperCase() || (idStr && nQuoteId.includes(idStr.toUpperCase()));
+        const isMatchClient = targetClient && targetClient.length > 3 && (nDesc.includes(targetClient) || nTitle.includes(targetClient));
+        const isInvalidOrNull = !n.quoteId || n.quoteId === "null" || nTitle.includes("- NULL");
+        return !isMatchQuote && !isMatchClient && !isInvalidOrNull;
       });
       localStorage.setItem("grupoLeon_notifications", JSON.stringify(remainingNotifs));
       window.dispatchEvent(new Event("localNotificationsUpdated"));
@@ -878,7 +1019,7 @@ export function QuoteApprovalPage() {
 
     toast({
       title: "↩️ Cotización Retirada para Corrección",
-      description: `La solicitud ${idStr} fue retirada antes de que Enrique la abriera. Se cargó en tu formulario para corregir.`,
+      description: `La solicitud ${idStr} fue retirada antes de que el Administrador la abriera. Se cargó en tu formulario para corregir.`,
       status: "info",
       duration: 5000,
       isClosable: true
@@ -902,7 +1043,7 @@ export function QuoteApprovalPage() {
   const handleConfirmObserve = async (docIdOrQuote, reason) => {
     const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
     const nowIso = new Date().toISOString();
-    const adminName = authUsername || "Enrique";
+    const adminName = authUsername || "Administrador";
     
     const docId = typeof docIdOrQuote === "object" ? (docIdOrQuote.docNumber || docIdOrQuote.id) : docIdOrQuote;
 
@@ -1022,7 +1163,7 @@ export function QuoteApprovalPage() {
   const handleConfirmReject = async (docId, reason) => {
     const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
     const nowIso = new Date().toISOString();
-    const adminName = authUsername || "Enrique";
+    const adminName = authUsername || "Administrador";
     const target =
       quotes.find(q => isMatchingDoc(q, docId)) ||
       saved.find(q => isMatchingDoc(q, docId));
@@ -1136,7 +1277,7 @@ export function QuoteApprovalPage() {
     }
     const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
     const nowIso = new Date().toISOString();
-    const adminName = authUsername || "Enrique";
+    const adminName = authUsername || "Administrador";
     const target =
       (typeof docIdOrQuote === "object" && docIdOrQuote ? docIdOrQuote : null) ||
       quotes.find(q => isMatchingDoc(q, docId)) ||
@@ -1219,8 +1360,9 @@ export function QuoteApprovalPage() {
         const currentLogs = item.historyLog || [];
         
         needsUpdate = true;
+        const viewerName = authUsername || "Administrador";
         const newLog = isFirstView
-          ? { status: "VISTO", timestamp: nowIso, user: authUsername || "Enrique", note: "👁️ Solicitud abierta y leída por Enrique" }
+          ? { status: "VISTO", timestamp: nowIso, user: viewerName, note: `👁️ Solicitud abierta y leída por ${viewerName}` }
           : null;
           
         return {
@@ -1282,6 +1424,7 @@ export function QuoteApprovalPage() {
   // Resetear a página 1 cuando cambia la pestaña, la búsqueda o el tamaño de página
   useEffect(() => {
     setCurrentPage(1);
+    setHistoryPage(1);
   }, [selectedTab, searchQuery, pageSize]);
 
   // Proteger pestañas exclusivas de administrador: Vendedores solo ven flujo operativo estándar
@@ -1384,9 +1527,10 @@ export function QuoteApprovalPage() {
       return visibleQuotes.filter(matchesSearch);
     }
 
-    // 2. Si la pestaña es "HISTORICO", aplicar filtros avanzados del histórico completo (por defecto 3 meses)
+    // 2. Si la pestaña es "HISTORICO", aplicar filtros avanzados sobre los datos históricos cargados
     if (selectedTab === "HISTORICO") {
-      return visibleQuotes.filter((q) => {
+      const source = historyQuotes.length > 0 ? historyQuotes : visibleQuotes;
+      const filtered = source.filter((q) => {
         const currentStatus = q.approvalStatus || q.state || q.status || "GENERADO";
         const docDateStr = q.docDate || (q.createdAt ? q.createdAt.split("T")[0] : "");
 
@@ -1419,9 +1563,17 @@ export function QuoteApprovalPage() {
 
         return true;
       });
+
+      return filtered.sort((a, b) => {
+        const numA = parseInt(String(a.docNumber || a.sapDocNum || a.DocNum || a.id || "").replace(/[^0-9]/g, "") || "0", 10);
+        const numB = parseInt(String(b.docNumber || b.sapDocNum || b.DocNum || b.id || "").replace(/[^0-9]/g, "") || "0", 10);
+        if (numA !== numB) return numB - numA;
+        const dateA = new Date(a.createdAt || a.docDate || 0).getTime();
+        const dateB = new Date(b.createdAt || b.docDate || 0).getTime();
+        return dateB - dateA;
+      });
     }
 
-    // 3. Pestañas Operativas del Día a Día (Carga Rápida)
     // 3. Pestañas Operativas del Día a Día (Carga Rápida)
     const result = visibleQuotes.filter((q) => {
       const currentStatus = q.approvalStatus || q.state || q.status || "GENERADO";
@@ -1460,6 +1612,7 @@ export function QuoteApprovalPage() {
     });
   }, [
     quotes,
+    historyQuotes,
     selectedTab,
     searchQuery,
     historyStartDate,
@@ -1471,14 +1624,40 @@ export function QuoteApprovalPage() {
     activeCurrentUserId
   ]);
 
-  const totalItems = filteredQuotes.length;
+  const isHistoryTab = selectedTab === "HISTORICO";
+  const totalItems = isHistoryTab ? (historyTotal || historyQuotes.length) : filteredQuotes.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-  const validCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+  const validCurrentPage = isHistoryTab 
+    ? Math.min(Math.max(1, historyPage), totalPages) 
+    : Math.min(Math.max(1, currentPage), totalPages);
 
   const paginatedQuotes = useMemo(() => {
+    if (isHistoryTab) {
+      return filteredQuotes;
+    }
     const start = (validCurrentPage - 1) * pageSize;
     return filteredQuotes.slice(start, start + pageSize);
-  }, [filteredQuotes, validCurrentPage, pageSize]);
+  }, [isHistoryTab, filteredQuotes, validCurrentPage, pageSize]);
+
+  const handlePageChange = (newPageOrFn) => {
+    if (isHistoryTab) {
+      setHistoryPage(prev => {
+        const next = typeof newPageOrFn === 'function' ? newPageOrFn(prev) : newPageOrFn;
+        return Math.min(Math.max(1, next), totalPages);
+      });
+    } else {
+      setCurrentPage(newPageOrFn);
+    }
+  };
+
+  const handlePageSizeChange = (size) => {
+    setPageSize(size);
+    if (isHistoryTab) {
+      setHistoryPage(1);
+    } else {
+      setCurrentPage(1);
+    }
+  };
 
   // Contadores por Estado (Filtrados por rol)
   const counts = useMemo(() => {
@@ -1512,8 +1691,11 @@ export function QuoteApprovalPage() {
         else if (["APROBADO", "EMITIDO", "EMITIDO_SAP", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO"].includes(st)) res.APROBADO++;
       }
     });
+    if (historyTotal > 0) {
+      res.HISTORICO = historyTotal;
+    }
     return res;
-  }, [quotes, isAdminUser, activeCurrentUsername, activeCurrentUserId]);
+  }, [quotes, historyTotal, isAdminUser, activeCurrentUsername, activeCurrentUserId]);
 
   const renderStatusBadge = (status, q = null) => {
     const getMainBadge = () => {
@@ -2110,7 +2292,25 @@ export function QuoteApprovalPage() {
                 _placeholder={{ color: 'gray.400' }}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                pr={searchQuery ? "2.5rem" : "1rem"}
               />
+              {searchQuery && (
+                <InputRightElement>
+                  {isDeepSearching ? (
+                    <Spinner size="xs" color="emerald.600" mr={1} />
+                  ) : (
+                    <IconButton
+                      size="xs"
+                      variant="ghost"
+                      icon={<X className="w-3.5 h-3.5 text-gray-400 hover:text-gray-700" />}
+                      onClick={() => setSearchQuery("")}
+                      aria-label="Limpiar búsqueda"
+                      borderRadius="full"
+                      mr={1}
+                    />
+                  )}
+                </InputRightElement>
+              )}
             </InputGroup>
             <Tooltip label="Actualizar cotizaciones del servidor">
               <IconButton
@@ -2118,8 +2318,8 @@ export function QuoteApprovalPage() {
                 size="md"
                 variant="outline"
                 borderRadius="xl"
-                isLoading={isRefreshing || isServerLoading}
-                onClick={handleRefresh}
+                isLoading={isRefreshing || (isServerLoading && quotes.length === 0)}
+                onClick={() => handleRefresh(true)}
                 aria-label="Actualizar"
                 _hover={{ bg: "emerald.50", borderColor: "emerald.300" }}
               />
@@ -2127,27 +2327,27 @@ export function QuoteApprovalPage() {
           </HStack>
         </Flex>
 
-        {/* BARRA DE PROGRESO DISCRETA AL ACTUALIZAR */}
-        {(isRefreshing || isServerLoading) && (
+        {/* BARRA DE PROGRESO DISCRETA AL ACTUALIZAR O PAGINAR HISTÓRICO */}
+        {(isRefreshing || isServerLoading || (isHistoryTab && historyLoading)) && (
           <Box w="full" px={1} mb={-2}>
-            <Progress size="xs" isIndeterminate colorScheme="green" bg="green.50" borderRadius="full" />
+            <Progress size="xs" isIndeterminate colorScheme={isHistoryTab ? "blue" : "green"} bg={isHistoryTab ? "blue.50" : "green.50"} borderRadius="full" />
           </Box>
         )}
 
         {/* TABLA PRINCIPAL OPTIMIZADA CON ALTO CONTRASTE (solo escritorio) */}
-        <Box display={{ base: "none", lg: "block" }} bg="white" borderRadius="2xl" border="1.5px solid" borderColor="#cbd5e1" boxShadow="sm" overflow="hidden" width="100%">
-          <Table variant="simple" size="md" style={{ tableLayout: "fixed", width: "100%" }}>
+        <Box display={{ base: "none", lg: "block" }} bg="white" borderRadius="2xl" border="1.5px solid" borderColor="#cbd5e1" boxShadow="sm" overflowX="auto" overflowY="hidden" width="100%">
+          <Table variant="simple" size="md" style={{ tableLayout: "fixed", width: "100%", minWidth: "960px" }}>
             <Thead bg="#0e572b">
               <Tr>
-                <Th py={4} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" width="26%">DOCUMENTO Y CLIENTE</Th>
-                <Th fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" width="11%">FECHA</Th>
-                <Th fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="right" width="11%">TOTAL (USD)</Th>
-                <Th fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="center" width="16%">ESTADO DE APROBACIÓN</Th>
-                <Th fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="right" width="36%">ACCIONES DISPONIBLES</Th>
+                <Th py={4} px={4} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" width="34%">DOCUMENTO Y CLIENTE</Th>
+                <Th py={4} px={3} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" width="13%" whiteSpace="nowrap">FECHA</Th>
+                <Th py={4} px={3} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="right" width="11%" whiteSpace="nowrap">TOTAL (USD)</Th>
+                <Th py={4} px={3} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="center" width="17%" whiteSpace="nowrap">ESTADO DE APROBACIÓN</Th>
+                <Th py={4} px={4} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="right" width="25%">ACCIONES DISPONIBLES</Th>
               </Tr>
             </Thead>
             <Tbody>
-              {((isServerLoading || isRefreshing) && quotes.length === 0) ? (
+              {(((isServerLoading || isRefreshing) && quotes.length === 0) || (isHistoryTab && historyLoading && historyQuotes.length === 0)) ? (
                 <>
                   <Tr bg="linear-gradient(90deg, rgba(16, 185, 129, 0.08) 0%, rgba(5, 150, 105, 0.15) 50%, rgba(16, 185, 129, 0.08) 100%)">
                     <Td colSpan={5} py={3.5} textAlign="center" borderBottom="1.5px solid" borderColor="emerald.200">
@@ -2161,23 +2361,23 @@ export function QuoteApprovalPage() {
                   </Tr>
                   {[1, 2, 3, 4, 5].map((idx) => (
                     <Tr key={`skeleton-row-${idx}`} borderBottom="1px solid" borderColor="#e2e8f0" _hover={{ bg: "gray.50" }}>
-                      <Td py={3.5}>
+                      <Td py={3.5} px={4}>
                         <VStack align="flex-start" spacing={1.5}>
                           <Skeleton height="14px" width="120px" borderRadius="md" startColor="gray.100" endColor="green.100" speed={1.1} />
                           <Skeleton height="18px" width="240px" borderRadius="md" startColor="gray.100" endColor="green.100" speed={1.1} />
                           <Skeleton height="12px" width="90px" borderRadius="md" startColor="gray.100" endColor="green.100" speed={1.1} />
                         </VStack>
                       </Td>
-                      <Td py={3.5}>
+                      <Td py={3.5} px={3}>
                         <Skeleton height="14px" width="80px" borderRadius="md" startColor="gray.100" endColor="green.100" speed={1.1} />
                       </Td>
-                      <Td py={3.5} textAlign="right">
+                      <Td py={3.5} px={3} textAlign="right">
                         <Skeleton height="16px" width="70px" borderRadius="md" ml="auto" startColor="gray.100" endColor="green.100" speed={1.1} />
                       </Td>
-                      <Td py={3.5} textAlign="center">
+                      <Td py={3.5} px={3} textAlign="center">
                         <Skeleton height="24px" width="130px" borderRadius="full" mx="auto" startColor="gray.100" endColor="green.100" speed={1.1} />
                       </Td>
-                      <Td py={3.5} textAlign="right">
+                      <Td py={3.5} px={4} textAlign="right">
                         <HStack justify="flex-end" spacing={2}>
                           <Skeleton height="30px" width="75px" borderRadius="lg" startColor="gray.100" endColor="green.100" speed={1.1} />
                           <Skeleton height="30px" width="55px" borderRadius="lg" startColor="gray.100" endColor="green.100" speed={1.1} />
@@ -2200,12 +2400,7 @@ export function QuoteApprovalPage() {
                   const sellerName = cleanSellerName(q.sellerName || q.SlpName || q.salesPersonName);
                   const grandTotalUSD = getQuoteTotalUSD(q);
 
-                  const quoteProducts = q.products || q.items || q.totals?.products || q.totals?.normalizedProducts || [];
-                  const maxAdicDiscount = quoteProducts.reduce((max, it) => {
-                    const adic = Number(it.lineDiscount ?? it.LineDiscount ?? 0);
-                    return Math.max(max, adic);
-                  }, Number(q.totals?.maxDiscount || 0));
-                  const hasAdditionalDiscount = maxAdicDiscount > 0 || Boolean(q.totals?.hasDiscount);
+                  const hasAdditionalDiscount = checkHasAdditionalDiscount(q);
                   const sapDocNum = q.sapDocNum || q.totals?.sapDocNum || (q.isSapDirect ? (q.DocNum || q.totals?.DocNum) : null);
                   const isHighlighted = highlightedDocId && (String(docId) === highlightedDocId || String(q.id) === highlightedDocId);
 
@@ -2220,11 +2415,17 @@ export function QuoteApprovalPage() {
                       borderColor="#e2e8f0"
                     >
                       {/* Documento, Cliente y Vendedor consolidado */}
-                      <Td py={3}>
-                        <VStack align="flex-start" spacing={1}>
+                      <Td py={3} px={4} maxW="0">
+                        <VStack align="flex-start" spacing={1} maxW="full" w="full">
                           <HStack spacing={2} align="center" wrap="wrap">
-                            <Text fontSize="sm" fontWeight="950" color="#0e572b" fontFamily="mono">{docId}</Text>
-                            {sapDocNum && (
+                            {q.docNumber && String(q.docNumber).startsWith("COT-0") ? (
+                              <Text fontSize="sm" fontWeight="950" color="#0e572b" fontFamily="mono">{q.docNumber}</Text>
+                            ) : (
+                              <Badge colorScheme="orange" variant="subtle" px={2} py={0.5} borderRadius="md" fontSize="xs" fontWeight="900" letterSpacing="wide">
+                                COT-PENDIENTE
+                              </Badge>
+                            )}
+                            {!isDraftState(status) && sapDocNum && (
                               <Badge colorScheme="green" variant="solid" bg="#15803d" color="white" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="900" boxShadow="xs">
                                 🏛️ Orden SAP: #{sapDocNum}
                               </Badge>
@@ -2236,7 +2437,16 @@ export function QuoteApprovalPage() {
                               </Badge>
                             )}
                           </HStack>
-                          <Text fontWeight="900" color="#0f172a" fontSize="sm" lineHeight="tight" isTruncated maxW="380px" title={clientName}>
+                          <Text
+                            fontWeight="900"
+                            color="#0f172a"
+                            fontSize="sm"
+                            lineHeight="short"
+                            maxW="full"
+                            w="full"
+                            wordBreak="break-word"
+                            title={clientName}
+                          >
                             {clientName}
                           </Text>
                           <HStack spacing={2} wrap="wrap">
@@ -2253,24 +2463,24 @@ export function QuoteApprovalPage() {
                       </Td>
 
                       {/* Fecha */}
-                      <Td fontSize="sm" color="gray.850" fontWeight="800" py={3}>
-                        {q.docDate || (q.createdAt ? q.createdAt.split("T")[0] : "—")}
+                      <Td fontSize="sm" color="gray.850" fontWeight="800" py={3} px={3} whiteSpace="nowrap">
+                        {q.docDate ? String(q.docDate).split("T")[0] : (q.createdAt ? String(q.createdAt).split("T")[0] : "—")}
                       </Td>
 
                       {/* Total */}
-                      <Td textAlign="right" fontWeight="900" color="#0f172a" fontFamily="mono" fontSize="sm" py={3}>
+                      <Td textAlign="right" fontWeight="900" color="#0f172a" fontFamily="mono" fontSize="sm" py={3} px={3} whiteSpace="nowrap">
                         ${grandTotalUSD.toFixed(2)}
                       </Td>
 
                       {/* Píldora de Estado */}
-                      <Td textAlign="center" py={3}>
+                      <Td textAlign="center" py={3} px={3} whiteSpace="nowrap">
                         <Flex justify="center">
                           {renderStatusBadge(status, q)}
                         </Flex>
                       </Td>
 
                       {/* Acciones */}
-                      <Td textAlign="right" py={3}>
+                      <Td textAlign="right" py={3} px={4} whiteSpace="nowrap">
                         <HStack justify="flex-end" spacing={2.5}>
                           {renderRowActions(q, docId, status)}
                         </HStack>
@@ -2324,12 +2534,7 @@ export function QuoteApprovalPage() {
               const sellerName = cleanSellerName(q.sellerName || q.SlpName || q.salesPersonName);
               const grandTotalUSD = getQuoteTotalUSD(q);
 
-              const quoteProducts = q.products || q.items || q.totals?.products || q.totals?.normalizedProducts || [];
-              const maxAdicDiscount = quoteProducts.reduce((max, it) => {
-                const adic = Number(it.lineDiscount ?? it.LineDiscount ?? 0);
-                return Math.max(max, adic);
-              }, Number(q.totals?.maxDiscount || 0));
-              const hasAdditionalDiscount = maxAdicDiscount > 0 || Boolean(q.totals?.hasDiscount);
+              const hasAdditionalDiscount = checkHasAdditionalDiscount(q);
               const sapDocNum = q.sapDocNum || q.totals?.sapDocNum || (q.isSapDirect ? (q.DocNum || q.totals?.DocNum) : null);
               const isHighlighted = highlightedDocId && (String(docId) === highlightedDocId || String(q.id) === highlightedDocId);
 
@@ -2347,8 +2552,14 @@ export function QuoteApprovalPage() {
                   <VStack align="stretch" spacing={3}>
                     <Flex justify="space-between" align="flex-start" gap={2} wrap="wrap">
                       <HStack spacing={1.5} align="center" wrap="wrap">
-                        <Text fontSize="sm" fontWeight="950" color="#0e572b" fontFamily="mono">{docId}</Text>
-                        {sapDocNum && (
+                        {q.docNumber && String(q.docNumber).startsWith("COT-0") ? (
+                          <Text fontSize="sm" fontWeight="950" color="#0e572b" fontFamily="mono">{q.docNumber}</Text>
+                        ) : (
+                          <Badge colorScheme="orange" variant="subtle" px={2} py={0.5} borderRadius="md" fontSize="xs" fontWeight="900" letterSpacing="wide">
+                            COT-PENDIENTE
+                          </Badge>
+                        )}
+                        {!isDraftState(status) && sapDocNum && (
                           <Badge colorScheme="green" variant="solid" bg="#15803d" color="white" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="900" boxShadow="xs">
                             🏛️ Orden SAP: #{sapDocNum}
                           </Badge>
@@ -2433,7 +2644,7 @@ export function QuoteApprovalPage() {
                     color={pageSize === size ? "white" : "gray.700"}
                     borderColor={pageSize === size ? "#0e572b" : "gray.300"}
                     _hover={{ bg: pageSize === size ? "#0b4623" : "gray.50" }}
-                    onClick={() => setPageSize(size)}
+                    onClick={() => handlePageSizeChange(size)}
                     fontWeight="800"
                     borderRadius="md"
                   >
@@ -2451,7 +2662,7 @@ export function QuoteApprovalPage() {
                 variant="outline"
                 borderColor="gray.300"
                 isDisabled={validCurrentPage <= 1}
-                onClick={() => setCurrentPage(1)}
+                onClick={() => handlePageChange(1)}
                 aria-label="Primera página"
                 borderRadius="lg"
                 _hover={{ bg: "gray.50" }}
@@ -2462,7 +2673,7 @@ export function QuoteApprovalPage() {
                 variant="outline"
                 borderColor="gray.300"
                 isDisabled={validCurrentPage <= 1}
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                onClick={() => handlePageChange((p) => Math.max(1, p - 1))}
                 aria-label="Página anterior"
                 borderRadius="lg"
                 _hover={{ bg: "gray.50" }}
@@ -2480,7 +2691,7 @@ export function QuoteApprovalPage() {
                 variant="outline"
                 borderColor="gray.300"
                 isDisabled={validCurrentPage >= totalPages}
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                onClick={() => handlePageChange((p) => Math.min(totalPages, p + 1))}
                 aria-label="Página siguiente"
                 borderRadius="lg"
                 _hover={{ bg: "gray.50" }}
@@ -2491,7 +2702,7 @@ export function QuoteApprovalPage() {
                 variant="outline"
                 borderColor="gray.300"
                 isDisabled={validCurrentPage >= totalPages}
-                onClick={() => setCurrentPage(totalPages)}
+                onClick={() => handlePageChange(totalPages)}
                 aria-label="Última página"
                 borderRadius="lg"
                 _hover={{ bg: "gray.50" }}
@@ -2524,7 +2735,7 @@ export function QuoteApprovalPage() {
 
       {/* MODAL DE CONFIRMACIÓN DE ANULACIÓN / ELIMINACIÓN */}
       <Modal isOpen={!!deleteConfirmDoc} onClose={() => setDeleteConfirmDoc(null)} isCentered size="sm">
-        <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(3px)" />
+        <ModalOverlay bg="blackAlpha.600" />
         <ModalContent borderRadius="2xl" p={2}>
           <ModalHeader fontSize="md" fontWeight="900" color="red.700" display="flex" alignItems="center" gap={2}>
             <Trash2 className="w-5 h-5 text-red-600" />
@@ -2589,7 +2800,7 @@ export function QuoteApprovalPage() {
         closeOnEsc={false}
         size="xs"
       >
-        <ModalOverlay bg="blackAlpha.500" backdropFilter="blur(4px)" />
+        <ModalOverlay bg="blackAlpha.500" />
         <ModalContent
           borderRadius="2xl"
           overflow="hidden"

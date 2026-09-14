@@ -15,10 +15,12 @@ export const useGetQuotes = (filters = {}) => {
     const query = useQuery({
         queryKey: ["quotes", filters],
         queryFn: () => getQuotes(filters),
-        staleTime: 30000, // 30 segundos de caché; Socket.io actualiza instantáneamente con cero delay
-        refetchOnWindowFocus: true,
+        staleTime: 30000, // 1 minuto de caché; Socket.io actualiza en tiempo real
+        refetchOnWindowFocus: false,
+        placeholderData: (previousData) => previousData,
     })
-    return { ...query, data: query.data || [], isLoading: query.isLoading, isFetching: query.isFetching, error: query.error }
+    const safeData = Array.isArray(query.data) ? query.data : (query.data?.quotes || []);
+    return { ...query, data: safeData, pagination: !Array.isArray(query.data) ? query.data : null, isLoading: query.isLoading, isFetching: query.isFetching, error: query.error }
 }
 
 export const useQuotes = useGetQuotes;
@@ -34,11 +36,11 @@ export const useNotifications = (targetRole, targetUsername) => {
     return { ...query, data: query.data || [], isLoading: query.isLoading, isFetching: query.isFetching, error: query.error }
 }
 
-export const useGetQuoteById = (id) => {
+export const useGetQuoteById = (id, { enabled = true } = {}) => {
     const { data, isLoading, error } = useQuery({
         queryKey: ["quoteById", id],
         queryFn:  () => getQuoteById(id),
-        enabled: !!id,
+        enabled: enabled && !!id,
         staleTime: 0,
         refetchOnMount: "always",
         retry: false,
@@ -112,4 +114,4 @@ export const useGetPromotions = () => {
         isFetching,
         refetch,
     };
-};
+};

@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { socket } from "../../../shared/lib/socket";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
+import { checkIsAdmin } from "../../../shared/utils/permissions";
 import { useToast } from "@chakra-ui/react";
 
 export function useQuoteSocket() {
@@ -12,17 +13,52 @@ export function useQuoteSocket() {
   useEffect(() => {
     if (!socket) return;
 
+    // SAP puede emitir quote:created, quote:updated y varias notificaciones por
+    // una sola operación. Se agrupan para evitar ráfagas de HTTP y renders.
+    let refreshTimer = null;
+    const pendingRefresh = {
+      quotes: false,
+      notifications: false,
+      quoteDetails: false,
+      highlightDocId: null,
+    };
+    const scheduleRefresh = ({ quotes = false, notifications = false, quoteDetails = false, highlightDocId = null } = {}) => {
+      pendingRefresh.quotes ||= quotes;
+      pendingRefresh.notifications ||= notifications;
+      pendingRefresh.quoteDetails ||= quoteDetails;
+      pendingRefresh.highlightDocId = highlightDocId || pendingRefresh.highlightDocId;
+      if (refreshTimer) return;
+
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = null;
+        if (pendingRefresh.quotes) {
+          queryClient.invalidateQueries({ queryKey: ["quotes"] });
+          window.dispatchEvent(new Event("localQuotesUpdated"));
+        }
+        if (pendingRefresh.notifications) {
+          queryClient.invalidateQueries({ queryKey: ["notifications"] });
+          window.dispatchEvent(new Event("localNotificationsUpdated"));
+        }
+        if (pendingRefresh.quoteDetails) {
+          queryClient.invalidateQueries({ queryKey: ["quoteById"] });
+        }
+        if (pendingRefresh.highlightDocId) {
+          window.dispatchEvent(new CustomEvent("quoteHighlight", {
+            detail: { docId: pendingRefresh.highlightDocId },
+          }));
+        }
+        pendingRefresh.quotes = false;
+        pendingRefresh.notifications = false;
+        pendingRefresh.quoteDetails = false;
+        pendingRefresh.highlightDocId = null;
+      }, 100);
+    };
+
     // 1. Escuchar cotizaciones creadas en vivo
     const handleQuoteCreated = (quote) => {
       const docId = quote?.docNumber || quote?.id;
       console.log("⚡ [WS EVENT] quote:created recibido:", docId);
-      queryClient.invalidateQueries({ queryKey: ["quotes"] });
-      queryClient.invalidateQueries({ queryKey: ["notifications"] });
-      window.dispatchEvent(new Event("localQuotesUpdated"));
-      window.dispatchEvent(new Event("localNotificationsUpdated"));
-      if (docId) {
-        window.dispatchEvent(new CustomEvent("quoteHighlight", { detail: { docId } }));
-      }
+      scheduleRefresh({ quotes: true, notifications: true, quoteDetails: true, highlightDocId: docId });
     };
 
     // 2. Escuchar cotizaciones actualizadas (aprobadas, rechazadas, etc.)
@@ -48,13 +84,7 @@ export function useQuoteSocket() {
         }
       }
 
-      queryClient.invalidateQueries({ queryKey: ["quotes"] });
-      queryClient.invalidateQueries({ queryKey: ["notifications"] });
-      window.dispatchEvent(new Event("localQuotesUpdated"));
-      window.dispatchEvent(new Event("localNotificationsUpdated"));
-      if (docId) {
-        window.dispatchEvent(new CustomEvent("quoteHighlight", { detail: { docId } }));
-      }
+      scheduleRefresh({ quotes: true, notifications: true, quoteDetails: true, highlightDocId: docId });
     };
 
     // 3. Escuchar cotizaciones eliminadas
@@ -78,10 +108,7 @@ export function useQuoteSocket() {
         }
       }
 
-      queryClient.invalidateQueries({ queryKey: ["quotes"] });
-      queryClient.invalidateQueries({ queryKey: ["notifications"] });
-      window.dispatchEvent(new Event("localQuotesUpdated"));
-      window.dispatchEvent(new Event("localNotificationsUpdated"));
+      scheduleRefresh({ quotes: true, notifications: true, quoteDetails: true });
     };
 
     // 4. Escuchar notificaciones entrantes en vivo (tipo WhatsApp)
@@ -97,8 +124,7 @@ export function useQuoteSocket() {
         }
       } catch {}
 
-      queryClient.invalidateQueries({ queryKey: ["notifications"] });
-      window.dispatchEvent(new Event("localNotificationsUpdated"));
+      scheduleRefresh({ notifications: true });
 
       const authState = useAuthStore.getState();
       const currentUsername = authState.username;
@@ -117,8 +143,9 @@ export function useQuoteSocket() {
       const isSellerTarget = targetRoleUpper === "VENDEDOR" || targetRoleUpper === "SELLER";
       const isSellerActive = currentRoleUpper === "VENDEDOR" || currentRoleUpper === "SELLER";
 
+      const currentEndpoints = useAuthStore.getState().endpoints;
       const isAdminTarget = targetRoleUpper === "FACTURACION" || targetRoleUpper === "ADMIN" || targetRoleUpper === "SUPERVISOR";
-      const isAdminActive = currentRoleUpper === "ADMIN" || currentRoleUpper === "FACTURACION" || currentRoleUpper === "SUPERVISOR" || currentUsername?.toLowerCase() === "enrique";
+      const isAdminActive = currentRoleUpper === "ADMIN" || currentRoleUpper === "FACTURACION" || currentRoleUpper === "SUPERVISOR" || checkIsAdmin(currentEndpoints, currentUsername);
 
       const isUserMatch = Boolean(
         notif.targetUsername && currentUsername && (
@@ -215,6 +242,7 @@ export function useQuoteSocket() {
     socket.on("system:update", handleSystemUpdate);
 
     return () => {
+      if (refreshTimer) window.clearTimeout(refreshTimer);
       socket.off("quote:created", handleQuoteCreated);
       socket.off("quote:updated", handleQuoteUpdated);
       socket.off("quote:deleted", handleQuoteDeleted);
@@ -224,4 +252,3 @@ export function useQuoteSocket() {
     };
   }, [queryClient, toast]);
 }
-

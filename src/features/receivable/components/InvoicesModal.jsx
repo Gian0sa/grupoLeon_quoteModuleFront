@@ -11,6 +11,7 @@ import {
   Th,
   Tbody,
   Td,
+  Tfoot,
   Box,
   Button,
   Badge,
@@ -25,9 +26,9 @@ import { useState, useMemo } from "react";
 import { downloadInvoicePDFdirectly } from "../../../features/reports/utils/pdfGenerators";
 import { generateAccountStatementPDF } from "../utils/receivablePDF";
 import { WhatsAppStatementModal } from "./WhatsAppStatementModal";
-import { FileText, Download, Landmark, Calendar, DollarSign, AlertTriangle, CheckCircle2, MessageSquare } from "lucide-react";
+import { FileText, Download, Landmark, Calendar, DollarSign, AlertTriangle, CheckCircle2, MessageSquare, History, Calculator } from "lucide-react";
 
-export default function InvoicesModal({ isOpen, onClose, cliente = null, documentos = [] }) {
+export default function InvoicesModal({ isOpen, onClose, cliente = null, documentos = [], onOpenHistory = null }) {
   const [loadingRef, setLoadingRef] = useState(null);
   const [filterType, setFilterType] = useState("all"); // 'all' | 'facturas' | 'letras' | 'vencidos'
   const [isWhatsAppOpen, setIsWhatsAppOpen] = useState(false);
@@ -114,6 +115,50 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
     return `${prefix}${symbol} ${Math.abs(num).toFixed(2)}`;
   };
 
+  // Helper para desglose financiero (Total Factura - Descuento NC = Saldo a Pagar)
+  const getDocFinancials = (doc) => {
+    const currency = doc.moneda || doc.tipoCambio || doc.TIPOCAMBIO || "USD";
+    const isPEN = currency === "PEN" || currency === "SOL";
+    const symbol = isPEN ? "S/" : "$";
+
+    const numDoc = (doc.numeroDocumento || doc.NRO_DOC || "").toUpperCase();
+    const tipo = (doc.tipoDocumento || doc.TIPO_DOC || "").toUpperCase();
+    const isNC =
+      numDoc.startsWith("NC-") ||
+      numDoc.startsWith("ABO-") ||
+      numDoc.startsWith("AB0-") ||
+      tipo.includes("CREDITO") ||
+      tipo.includes("ABONO");
+
+    const saldo = doc.saldoPendiente
+      ? (isPEN ? doc.saldoPendiente.PEN : doc.saldoPendiente.USD)
+      : doc.totalDocumento;
+    let saldoNum = Math.abs(Number(saldo ?? doc.totalDocumento ?? 0));
+
+    const totalOriginalNum = Number(doc.totalOriginal ?? doc.totalDocumento ?? 0);
+    const montoAbonadoNum = Number(doc.montoAbonado ?? doc.descuentoNC ?? 0);
+
+    // Para una Nota de Crédito / Abono propia: si el saldo figura 0 (ya aplicado a la factura),
+    // mostramos el monto total original del abono/crédito.
+    if (isNC && saldoNum < 0.01 && totalOriginalNum > 0) {
+      saldoNum = totalOriginalNum;
+    }
+
+    const diff = totalOriginalNum - saldoNum;
+    const hasDiscount = !isNC && (montoAbonadoNum > 0.01 || diff > 0.05);
+    const finalDiscount = montoAbonadoNum > 0.01 ? montoAbonadoNum : Math.max(diff, 0);
+
+    return {
+      currency,
+      symbol,
+      saldoNum,
+      totalOriginalNum,
+      finalDiscount,
+      hasDiscount,
+      isNC,
+    };
+  };
+
   // Contadores para filtros
   const counts = useMemo(() => {
     let facturas = 0;
@@ -156,6 +201,69 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
     }
     return docList;
   }, [docList, filterType]);
+
+  const calcSummary = useMemo(() => {
+    let totalFacturasUSD = 0;
+    let totalAbonosUSD = 0;
+    let totalFacturasPEN = 0;
+    let totalAbonosPEN = 0;
+    let countCredits = 0;
+    let countPositives = 0;
+
+    for (const d of filteredDocs) {
+      const isCreditType =
+        d.tipoDocumento?.includes("ABONO") ||
+        d.tipoDocumento?.includes("CREDITO") ||
+        d.numeroDocumento?.startsWith("ABO-") ||
+        d.numeroDocumento?.startsWith("NC-") ||
+        d.numeroDocumento?.startsWith("AB0-");
+
+      const curr = d.moneda || d.tipoCambio || d.TIPOCAMBIO || "USD";
+      const isPEN = curr === "PEN" || curr === "SOL";
+      const rawVal = d.saldoPendiente
+        ? isPEN
+          ? d.saldoPendiente.PEN
+          : d.saldoPendiente.USD
+        : d.totalDocumento;
+      const numVal = Number(rawVal ?? d.totalDocumento ?? 0);
+
+      const isNegative = numVal < -0.001 || (isCreditType && numVal !== 0);
+
+      if (isNegative) {
+        countCredits++;
+        if (isPEN) {
+          totalAbonosPEN += Math.abs(numVal);
+        } else {
+          totalAbonosUSD += Math.abs(numVal);
+        }
+      } else if (numVal > 0.001) {
+        countPositives++;
+        if (isPEN) {
+          totalFacturasPEN += numVal;
+        } else {
+          totalFacturasUSD += numVal;
+        }
+      }
+    }
+
+    const hasCreditsUSD = totalAbonosUSD > 0.001 && totalFacturasUSD > 0.001;
+    const hasCreditsPEN = totalAbonosPEN > 0.001 && totalFacturasPEN > 0.001;
+    const hasCredits = (countCredits > 0 && countPositives > 0) || hasCreditsUSD || hasCreditsPEN;
+
+    const isPEN = totalFacturasPEN > 0 || totalAbonosPEN > 0;
+    const symbol = isPEN ? "S/" : "$";
+    const totalFacturas = isPEN ? totalFacturasPEN : totalFacturasUSD;
+    const totalAbonos = isPEN ? totalAbonosPEN : totalAbonosUSD;
+    const totalNeto = totalFacturas - totalAbonos;
+
+    return {
+      hasCredits,
+      symbol,
+      totalFacturas,
+      totalAbonos,
+      totalNeto,
+    };
+  }, [filteredDocs]);
 
   const clientName = cliente?.nombre || cliente?.clientName || docList[0]?.CARDNAME || "Cliente";
   const clientCode = cliente?.clientCode || cliente?.ruc || docList[0]?.CARDCODE || "";
@@ -302,7 +410,52 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
                 ⚠️ Vencidos ({counts.vencidos})
               </Button>
             )}
+
+            {onOpenHistory && (
+              <Button
+                size="xs"
+                variant="outline"
+                colorScheme="blue"
+                bg="blue.50"
+                color="blue.700"
+                borderColor="blue.200"
+                _hover={{ bg: "blue.100", borderColor: "blue.400" }}
+                onClick={() => onOpenHistory(cliente)}
+                borderRadius="full"
+                px={3}
+                h="26px"
+                fontWeight="700"
+                flexShrink={0}
+                leftIcon={<History size={13} />}
+              >
+                📜 Facturas Pasadas / SAP
+              </Button>
+            )}
           </HStack>
+
+          {/* Banner explicativo si hay facturas con deducciones o Notas de Crédito cruzadas */}
+          {filteredDocs.some((d) => getDocFinancials(d).hasDiscount) && (
+            <Box
+              bg="#f0fdf4"
+              border="1.5px solid"
+              borderColor="#86efac"
+              borderRadius="xl"
+              p={2.5}
+              px={3.5}
+              mb={3}
+            >
+              <HStack spacing={2} align="center">
+                <Text fontSize="14px">💚</Text>
+                <Text fontSize="11.5px" color="#14532d" fontWeight="600">
+                  Algunos comprobantes tienen un{" "}
+                  <strong>Abono o Nota de Crédito</strong> aplicados como descuento. Se
+                  muestra el total del comprobante, el descuento aplicado y el{" "}
+                  <strong>saldo neto a pagar</strong>.
+                </Text>
+              </HStack>
+            </Box>
+          )}
+
 
           {/* ══════════════════════════════════════════════════════════════════ */}
           {/* 📱 VISTA MÓVIL: LISTA DE TARJETAS FLUIDAS (display: base -> md)  */}
@@ -323,6 +476,7 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
                   .filter((r) => Boolean(r) && !r.includes("0002-"));
                 const numeroUnico = doc.idUnico || doc.ID_UNICO || doc.letraSAP || "";
                 const isOverdue = Boolean(doc.estaVencido);
+                const fin = getDocFinancials(doc);
 
                 return (
                   <Box
@@ -346,8 +500,8 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
                       bg={isOverdue ? "red.500" : isLetra ? "purple.500" : "green.500"}
                     />
 
-                    {/* Fila 1: Tipo + Saldo Pendiente */}
-                    <Flex justify="space-between" align="center" mb={2}>
+                    {/* Fila 1: Tipo + Saldo Pendiente y Desglose NC */}
+                    <Flex justify="space-between" align="flex-start" mb={2} wrap="wrap" gap={1}>
                       <HStack spacing={1.5}>
                         <Badge
                           colorScheme={typeInfo.color}
@@ -371,9 +525,19 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
                         )}
                       </HStack>
 
-                      <Text fontWeight="800" fontSize="15px" color={isOverdue ? "red.600" : "gray.900"}>
-                        {formatMoney(doc)}
-                      </Text>
+                      {/* Saldo Pendiente simple */}
+                      <VStack align="flex-end" spacing={0}>
+                        <Text fontSize="10.5px" color="gray.500" fontWeight="700">
+                          SALDO PENDIENTE:
+                        </Text>
+                        <Text
+                          fontWeight="900"
+                          fontSize="15px"
+                          color={formatMoney(doc).startsWith("-") ? "gray.900" : isOverdue ? "red.600" : "gray.900"}
+                        >
+                          {formatMoney(doc)}
+                        </Text>
+                      </VStack>
                     </Flex>
 
                     {/* Fila 2: N° Documento y Ref Matriz */}
@@ -383,7 +547,7 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
                       </Text>
                       {doc.facturaOrigen && (
                         <Text fontSize="11px" color="gray.500" fontWeight="600">
-                          Ref. Matriz: {normalizeRefCode(doc.facturaOrigen)}
+                          Ref: {normalizeRefCode(doc.facturaOrigen)}
                         </Text>
                       )}
                       {typeInfo.cuotaLabel && (
@@ -409,25 +573,36 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
                       {/* Caso Factura/Boleta con PDF descargable */}
                       {!isLetra && validRefs.length > 0 && (
                         <VStack spacing={1.5} align="stretch">
-                          {validRefs.map((ref, i) => (
-                            <Button
-                              key={i}
-                              size="sm"
-                              colorScheme="green"
-                              bg="#126C36"
-                              _hover={{ bg: "#0e572b" }}
-                              leftIcon={<Download className="w-4 h-4" />}
-                              onClick={() => handleDownloadReference(ref)}
-                              isLoading={loadingRef === ref}
-                              borderRadius="lg"
-                              fontSize="12px"
-                              fontWeight="700"
-                              h="34px"
-                              w="full"
-                            >
-                              Descargar PDF ({ref})
-                            </Button>
-                          ))}
+                          {validRefs.map((ref, i) => {
+                            const isNC =
+                              typeInfo.color === "cyan" ||
+                              typeInfo.label.includes("Nota Crédito") ||
+                              typeInfo.label.includes("Abono") ||
+                              ref.startsWith("07") ||
+                              (doc.numeroDocumento || "").startsWith("ABO-") ||
+                              (doc.numeroDocumento || "").startsWith("NC-");
+
+                            return (
+                              <Button
+                                key={i}
+                                size="sm"
+                                colorScheme={isNC ? "cyan" : "green"}
+                                bg={isNC ? "#0891b2" : "#126C36"}
+                                _hover={{ bg: isNC ? "#0e7490" : "#0e572b" }}
+                                color="white"
+                                leftIcon={<Download className="w-4 h-4" />}
+                                onClick={() => handleDownloadReference(ref)}
+                                isLoading={loadingRef === ref}
+                                borderRadius="lg"
+                                fontSize="12px"
+                                fontWeight="700"
+                                h="34px"
+                                w="full"
+                              >
+                                PDF ({ref})
+                              </Button>
+                            );
+                          })}
                         </VStack>
                       )}
 
@@ -491,11 +666,11 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
             <Table variant="simple" size="sm">
               <Thead bg="gray.100">
                 <Tr>
-                  <Th color="gray.700" fontWeight="700">Tipo / Cuota</Th>
-                  <Th color="gray.700" fontWeight="700">N° Documento</Th>
-                  <Th color="gray.700" fontWeight="700">Vencimiento</Th>
-                  <Th color="gray.700" fontWeight="700" isNumeric>Saldo Pendiente</Th>
-                  <Th color="gray.700" fontWeight="700">Comprobante / N° Único SAP</Th>
+                  <Th color="gray.700" fontWeight="700">TIPO / CUOTA</Th>
+                  <Th color="gray.700" fontWeight="700">N° DOCUMENTO</Th>
+                  <Th color="gray.700" fontWeight="700">VENCIMIENTO</Th>
+                  <Th color="gray.700" fontWeight="700" isNumeric>SALDO PENDIENTE</Th>
+                  <Th color="gray.700" fontWeight="700">COMPROBANTE / N° ÚNICO SAP</Th>
                 </Tr>
               </Thead>
               <Tbody>
@@ -550,32 +725,49 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
                             </Badge>
                           )}
                         </Td>
-                        <Td isNumeric fontWeight="800" color={doc.estaVencido ? "red.600" : "gray.800"} fontSize="xs">
-                          {formatMoney(doc)}
+                        <Td isNumeric fontSize="xs">
+                          <Text
+                            fontWeight="800"
+                            fontSize="13px"
+                            color={formatMoney(doc).startsWith("-") ? "gray.900" : doc.estaVencido ? "red.600" : "gray.900"}
+                          >
+                            {formatMoney(doc)}
+                          </Text>
                         </Td>
                         <Td>
                           {/* CASO 1: Factura o Boleta directa emitida */}
                           {!isLetra && validRefs.length > 0 && (
                             <VStack align="start" spacing={1}>
-                              {validRefs.map((ref, i) => (
-                                <Button
-                                  key={i}
-                                  size="xs"
-                                  colorScheme="green"
-                                  variant="solid"
-                                  bg="#126C36"
-                                  _hover={{ bg: "#0e572b" }}
-                                  leftIcon={<Download className="w-3 h-3" />}
-                                  onClick={() => handleDownloadReference(ref)}
-                                  isLoading={loadingRef === ref}
-                                  borderRadius="md"
-                                  fontSize="11px"
-                                  fontWeight="700"
-                                  h="26px"
-                                >
-                                  PDF ({ref})
-                                </Button>
-                              ))}
+                              {validRefs.map((ref, i) => {
+                                const isNC =
+                                  typeInfo.color === "cyan" ||
+                                  typeInfo.label.includes("Nota Crédito") ||
+                                  typeInfo.label.includes("Abono") ||
+                                  ref.startsWith("07") ||
+                                  (doc.numeroDocumento || "").startsWith("ABO-") ||
+                                  (doc.numeroDocumento || "").startsWith("NC-");
+
+                                return (
+                                  <Button
+                                    key={i}
+                                    size="xs"
+                                    colorScheme={isNC ? "cyan" : "green"}
+                                    variant="solid"
+                                    bg={isNC ? "#0891b2" : "#126C36"}
+                                    _hover={{ bg: isNC ? "#0e7490" : "#0e572b" }}
+                                    color="white"
+                                    leftIcon={<Download className="w-3 h-3" />}
+                                    onClick={() => handleDownloadReference(ref)}
+                                    isLoading={loadingRef === ref}
+                                    borderRadius="md"
+                                    fontSize="11px"
+                                    fontWeight="700"
+                                    h="26px"
+                                  >
+                                    PDF ({ref})
+                                  </Button>
+                                );
+                              })}
                             </VStack>
                           )}
 
@@ -656,8 +848,119 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
                   })
                 )}
               </Tbody>
+              {calcSummary.hasCredits && (
+                <Tfoot bg="#f8fafc" borderTop="2px solid" borderColor="gray.200">
+                  <Tr>
+                    <Td fontWeight="800" fontSize="11px" color="gray.600" textTransform="uppercase">
+                      TOTAL LIQUIDACIÓN
+                    </Td>
+                    <Td fontSize="xs" color="gray.600" fontWeight="600">
+                      Resta con Abonos / NC
+                    </Td>
+                    <Td></Td>
+                    <Td isNumeric fontSize="xs">
+                      <VStack align="flex-end" spacing={0}>
+                        <Text fontSize="10px" color="gray.500" fontWeight="700">
+                          {calcSummary.symbol} {calcSummary.totalFacturas.toFixed(2)} − {calcSummary.symbol} {calcSummary.totalAbonos.toFixed(2)}
+                        </Text>
+                        <Text fontSize="13.5px" fontWeight="900" color="#15803d">
+                          = {calcSummary.symbol} {calcSummary.totalNeto.toFixed(2)}
+                        </Text>
+                      </VStack>
+                    </Td>
+                    <Td></Td>
+                  </Tr>
+                </Tfoot>
+              )}
             </Table>
           </Box>
+
+          {/* Tarjeta de Resta / Liquidación (SOLO cuando hay Abonos / Notas de Crédito) */}
+          {calcSummary.hasCredits && (
+            <Box
+              mt={4}
+              p={3.5}
+              bg="#f0fdf4"
+              border="1.5px solid"
+              borderColor="#bbf7d0"
+              borderRadius="xl"
+              boxShadow="sm"
+            >
+              <Flex
+                direction={{ base: "column", sm: "row" }}
+                align={{ base: "stretch", sm: "center" }}
+                justify="space-between"
+                gap={3}
+              >
+                <HStack spacing={2.5}>
+                  <Box p={2} bg="green.100" color="green.800" borderRadius="lg">
+                    <Calculator className="w-5 h-5" />
+                  </Box>
+                  <VStack align="start" spacing={0}>
+                    <Text fontSize="12px" fontWeight="800" color="green.900" textTransform="uppercase" letterSpacing="wider">
+                      Liquidación con Abono / NC
+                    </Text>
+                    <Text fontSize="11px" color="green.700" fontWeight="600">
+                      Resta de crédito aplicada sobre las facturas
+                    </Text>
+                  </VStack>
+                </HStack>
+
+                <HStack
+                  spacing={{ base: 2, md: 3 }}
+                  align="center"
+                  justify={{ base: "space-between", sm: "flex-end" }}
+                  flexWrap="wrap"
+                  bg="white"
+                  px={4}
+                  py={2}
+                  borderRadius="lg"
+                  border="1px solid"
+                  borderColor="#86efac"
+                >
+                  {/* Total Facturas */}
+                  <VStack align={{ base: "start", sm: "center" }} spacing={0}>
+                    <Text fontSize="10px" color="gray.500" fontWeight="800" textTransform="uppercase">
+                      Total Facturas
+                    </Text>
+                    <Text fontSize="13px" fontWeight="800" color="gray.800">
+                      {calcSummary.symbol} {calcSummary.totalFacturas.toFixed(2)}
+                    </Text>
+                  </VStack>
+
+                  {/* Signo Menos */}
+                  <Text fontSize="18px" fontWeight="900" color="#0891b2" px={1}>
+                    −
+                  </Text>
+
+                  {/* Abono / NC */}
+                  <VStack align="center" spacing={0}>
+                    <Text fontSize="10px" color="#0891b2" fontWeight="800" textTransform="uppercase">
+                      Abono / NC
+                    </Text>
+                    <Text fontSize="13px" fontWeight="800" color="#0891b2">
+                      {calcSummary.symbol} {calcSummary.totalAbonos.toFixed(2)}
+                    </Text>
+                  </VStack>
+
+                  {/* Signo Igual */}
+                  <Text fontSize="18px" fontWeight="900" color="#15803d" px={1}>
+                    =
+                  </Text>
+
+                  {/* Total Neto a Pagar */}
+                  <VStack align={{ base: "end", sm: "center" }} spacing={0}>
+                    <Text fontSize="10px" color="#15803d" fontWeight="900" textTransform="uppercase">
+                      Total a Pagar
+                    </Text>
+                    <Text fontSize="15px" fontWeight="900" color="#15803d">
+                      {calcSummary.symbol} {calcSummary.totalNeto.toFixed(2)}
+                    </Text>
+                  </VStack>
+                </HStack>
+              </Flex>
+            </Box>
+          )}
         </ModalBody>
       </ModalContent>
     </Modal>

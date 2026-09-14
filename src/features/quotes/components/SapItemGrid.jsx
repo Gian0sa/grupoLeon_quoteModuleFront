@@ -181,7 +181,7 @@ export default function SapItemGrid({
                       <Box w="full" bg="#fffbeb" border="1px dashed #f59e0b" p={1.5} borderRadius="md" mt={1.5}>
                         <Flex justify="space-between" align="center" wrap="wrap" gap={1}>
                           <Badge bg="amber.400" color="amber.950" fontSize="10px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
-                            🏷️ OFERTA DEL MES: -{promoDisc}% EXTRA
+                            🏷️ {(item.campaignName || "OFERTA DEL MES").toUpperCase()}: -{promoDisc}% EXTRA
                           </Badge>
                           <Text fontSize="10px" color="gray.600">
                             P. Reg: <Text as="s">${price.toFixed(2)}</Text> ➔ Oferta: <strong style={{ color: "#b45309" }}>${(price * (1 - (sapDisc + promoDisc) / 100)).toFixed(2)}</strong>
@@ -210,33 +210,52 @@ export default function SapItemGrid({
                 <Grid templateColumns="1fr 1.2fr 0.9fr 1fr" gap={1.5} align="center" mb={2.5}>
                   <Box>
                     <Text fontSize="0.6rem" color="gray.500" fontWeight="800" mb={0.5} textAlign="center">CANT.</Text>
-                    <Input
-                      size="xs"
-                      h="26px"
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      textAlign="center"
-                      fontWeight="800"
-                      fontSize="xs"
-                      value={item.quantity ?? ""}
-                      isDisabled={isReadOnly}
-                      bg={isQtyExceedingStock(item, qty) ? "orange.50" : isItemOutOfStock(item) ? "red.50" : "gray.50"}
-                      color={isQtyExceedingStock(item, qty) ? "orange.800" : isItemOutOfStock(item) ? "red.600" : "inherit"}
-                      borderColor="gray.300"
-                      borderRadius="md"
-                      px={1}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => {
-                        const val = e.target.value.replace(/\D/g, "");
-                        if (val === "") {
-                          onUpdateProduct(item.id, { quantity: "" });
-                        } else {
-                          const parsed = parseInt(val, 10);
-                          onUpdateProduct(item.id, { quantity: parsed > 0 ? parsed : "" });
-                        }
-                      }}
-                    />
+                    {isReadOnly ? (
+                      <Flex
+                        h="26px"
+                        align="center"
+                        justify="center"
+                        bg="gray.100"
+                        borderRadius="md"
+                        border="1px solid"
+                        borderColor="gray.300"
+                        fontWeight="800"
+                        fontSize="xs"
+                        color="gray.800"
+                        userSelect="none"
+                        cursor="not-allowed"
+                        title="Artículos bloqueados en modo revisión"
+                      >
+                        {qty}
+                      </Flex>
+                    ) : (
+                      <Input
+                        size="xs"
+                        h="26px"
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        textAlign="center"
+                        fontWeight="800"
+                        fontSize="xs"
+                        value={item.quantity ?? ""}
+                        bg={isQtyExceedingStock(item, qty) ? "orange.50" : isItemOutOfStock(item) ? "red.50" : "gray.50"}
+                        color={isQtyExceedingStock(item, qty) ? "orange.800" : isItemOutOfStock(item) ? "red.600" : "inherit"}
+                        borderColor="gray.300"
+                        borderRadius="md"
+                        px={1}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/\D/g, "");
+                          if (val === "") {
+                            onUpdateProduct(item.id, { quantity: "" });
+                          } else {
+                            const parsed = parseInt(val, 10);
+                            onUpdateProduct(item.id, { quantity: parsed > 0 ? parsed : "" });
+                          }
+                        }}
+                      />
+                    )}
                     <Flex justify="center" mt={1}>
                       <PackagingHelper
                         itemName={itemName}
@@ -260,22 +279,39 @@ export default function SapItemGrid({
                   </Box>
                   <Box textAlign="center">
                     <Text fontSize="0.6rem" color="gray.500" fontWeight="800" mb={0.5}>D. ADIC.</Text>
-                    <Button
-                      size="xs"
-                      h="22px"
-                      bg={isVolume ? "#fff7ed" : "#eff6ff"}
-                      color={isVolume ? "#c2410c" : "#1e40af"}
-                      border="1px solid"
-                      borderColor={isVolume ? "#fdba74" : "#93c5fd"}
-                      isDisabled={isReadOnly}
-                      onClick={() => handleOpenDiscountModal(item)}
-                      fontWeight="900"
-                      fontSize="0.65rem"
-                      px={1}
-                      borderRadius="md"
-                    >
-                      {addDisc > 0 ? `+${addDisc}% ⚡` : "0%"}
-                    </Button>
+                    {isReadOnly ? (
+                      <Badge
+                        fontSize="0.65rem"
+                        fontWeight="800"
+                        px={1.5}
+                        py={0.5}
+                        borderRadius="md"
+                        bg={isVolume ? "#fff7ed" : "#eff6ff"}
+                        color={isVolume ? "#c2410c" : "#1e40af"}
+                        border="1px solid"
+                        borderColor={isVolume ? "#fdba74" : "#93c5fd"}
+                        cursor="not-allowed"
+                        title="Descuento bloqueado en modo revisión"
+                      >
+                        {addDisc > 0 ? `+${addDisc}%` : "0%"}
+                      </Badge>
+                    ) : (
+                      <Button
+                        size="xs"
+                        h="22px"
+                        bg={isVolume ? "#fff7ed" : "#eff6ff"}
+                        color={isVolume ? "#c2410c" : "#1e40af"}
+                        border="1px solid"
+                        borderColor={isVolume ? "#fdba74" : "#93c5fd"}
+                        onClick={() => handleOpenDiscountModal(item)}
+                        fontWeight="900"
+                        fontSize="0.65rem"
+                        px={1}
+                        borderRadius="md"
+                      >
+                        {addDisc > 0 ? `+${addDisc}% ⚡` : "0%"}
+                      </Button>
+                    )}
                   </Box>
                 </Grid>
                 <Flex justify="space-between" align="center" bg="gray.50" p={2} borderRadius="lg" border="1px solid" borderColor="gray.100">
@@ -384,7 +420,7 @@ export default function SapItemGrid({
                             <Box bg="#fffbeb" border="1px dashed #f59e0b" p={1.5} borderRadius="md" mt={1} maxW="380px">
                               <Flex justify="space-between" align="center" gap={1.5}>
                                 <Badge bg="amber.400" color="amber.950" fontSize="9px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
-                                  🏷️ OFERTA DEL MES: -{promoDisc}% EXTRA
+                                  🏷️ {(item.campaignName || "OFERTA DEL MES").toUpperCase()}: -{promoDisc}% EXTRA
                                 </Badge>
                                 <Text fontSize="10px" color="gray.600">
                                   P. Reg: <Text as="s">${price.toFixed(2)}</Text> ➔ Oferta: <strong style={{ color: "#b45309" }}>${(price * (1 - (sapDisc + promoDisc) / 100)).toFixed(2)}</strong>
@@ -401,31 +437,52 @@ export default function SapItemGrid({
                       </Td>
                       <Td px={2} textAlign="center">
                         <VStack spacing={1} align="center">
-                          <Input
-                            size="xs"
-                            maxW="75px"
-                            type="text"
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            textAlign="center"
-                            fontWeight="700"
-                            value={item.quantity ?? ""}
-                            isDisabled={isReadOnly}
-                            bg={isQtyExceedingStock(item, qty) ? "orange.50" : isItemOutOfStock(item) ? "red.50" : "white"}
-                            borderColor="gray.300"
-                            borderRadius="md"
-                            px={1}
-                            onFocus={(e) => e.target.select()}
-                            onChange={(e) => {
-                              const val = e.target.value.replace(/\D/g, "");
-                              if (val === "") {
-                                onUpdateProduct(item.id, { quantity: "" });
-                              } else {
-                                const parsed = parseInt(val, 10);
-                                onUpdateProduct(item.id, { quantity: parsed > 0 ? parsed : "" });
-                              }
-                            }}
-                          />
+                          {isReadOnly ? (
+                            <Flex
+                              h="26px"
+                              minW="45px"
+                              px={2}
+                              align="center"
+                              justify="center"
+                              bg="gray.100"
+                              borderRadius="md"
+                              border="1px solid"
+                              borderColor="gray.300"
+                              fontWeight="800"
+                              fontSize="xs"
+                              color="gray.800"
+                              userSelect="none"
+                              cursor="not-allowed"
+                              title="Artículos bloqueados en modo revisión"
+                            >
+                              {qty}
+                            </Flex>
+                          ) : (
+                            <Input
+                              size="xs"
+                              maxW="75px"
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              textAlign="center"
+                              fontWeight="700"
+                              value={item.quantity ?? ""}
+                              bg={isQtyExceedingStock(item, qty) ? "orange.50" : isItemOutOfStock(item) ? "red.50" : "white"}
+                              borderColor="gray.300"
+                              borderRadius="md"
+                              px={1}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => {
+                                const val = e.target.value.replace(/\D/g, "");
+                                if (val === "") {
+                                  onUpdateProduct(item.id, { quantity: "" });
+                                } else {
+                                  const parsed = parseInt(val, 10);
+                                  onUpdateProduct(item.id, { quantity: parsed > 0 ? parsed : "" });
+                                }
+                              }}
+                            />
+                          )}
                           <PackagingHelper
                             itemName={itemName}
                             sigla={item.sigla}
@@ -445,23 +502,40 @@ export default function SapItemGrid({
                         </Badge>
                       </Td>
                       <Td px={2} textAlign="center">
-                        <Button
-                          size="xs"
-                          bg={isVolume ? "#fff7ed" : "#eff6ff"}
-                          color={isVolume ? "#c2410c" : "#1e40af"}
-                          border="1px solid"
-                          borderColor={isVolume ? "#fdba74" : "#93c5fd"}
-                          isDisabled={isReadOnly}
-                          onClick={() => handleOpenDiscountModal(item)}
-                          fontWeight="900"
-                          fontSize="xs"
-                          px={2.5}
-                          py={1}
-                          borderRadius="md"
-                          title="Toca para desplegar el selector de descuentos"
-                        >
-                          {addDisc > 0 ? `+${addDisc}% ⚡` : "0%"}
-                        </Button>
+                        {isReadOnly ? (
+                          <Badge
+                            bg={isVolume ? "#fff7ed" : "#eff6ff"}
+                            color={isVolume ? "#c2410c" : "#1e40af"}
+                            border="1px solid"
+                            borderColor={isVolume ? "#fdba74" : "#93c5fd"}
+                            fontWeight="800"
+                            fontSize="xs"
+                            px={2.5}
+                            py={1}
+                            borderRadius="md"
+                            cursor="not-allowed"
+                            title="Descuento bloqueado en modo revisión"
+                          >
+                            {addDisc > 0 ? `+${addDisc}%` : "0%"}
+                          </Badge>
+                        ) : (
+                          <Button
+                            size="xs"
+                            bg={isVolume ? "#fff7ed" : "#eff6ff"}
+                            color={isVolume ? "#c2410c" : "#1e40af"}
+                            border="1px solid"
+                            borderColor={isVolume ? "#fdba74" : "#93c5fd"}
+                            onClick={() => handleOpenDiscountModal(item)}
+                            fontWeight="900"
+                            fontSize="xs"
+                            px={2.5}
+                            py={1}
+                            borderRadius="md"
+                            title="Toca para desplegar el selector de descuentos"
+                          >
+                            {addDisc > 0 ? `+${addDisc}% ⚡` : "0%"}
+                          </Button>
+                        )}
                       </Td>
                       <Td px={3} textAlign="right" fontWeight="900" fontSize="xs" color="emerald.700">
                         <Text fontWeight="900">{money(lineTotal, currency)}</Text>

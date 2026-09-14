@@ -14,7 +14,7 @@ export const useCreateNotification = () => {
   return useMutation({
     mutationFn: createNotification,
     onSuccess: () => {
-      queryClient.invalidateQueries(["notifications"]);
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
       toast({
         title: "Notificación creada",
         description: "La notificación se creó correctamente.",
@@ -45,8 +45,8 @@ export const useUpdateNotification = () => {
   return useMutation({
     mutationFn: ({ id, data }) => updateNotification(id, data),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries(["notifications"]);
-      queryClient.invalidateQueries(["notification", variables.id]);
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["notification", variables.id] });
       toast({
         title: "Notificación actualizada",
         description: "La notificación se actualizó correctamente.",
@@ -77,7 +77,7 @@ export const useDeleteNotification = () => {
   return useMutation({
     mutationFn: deleteNotification,
     onSuccess: () => {
-      queryClient.invalidateQueries(["notifications"]);
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
       toast({
         title: "Notificación eliminada",
         description: "La notificación se eliminó correctamente.",

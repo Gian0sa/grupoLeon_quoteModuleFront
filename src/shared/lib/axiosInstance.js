@@ -44,7 +44,11 @@ axiosInstance.interceptors.response.use((res) => res, async (error) => {
         path = originalRequest.url;
     }
 
-    const isAuthRoute = ["/authModule/login", "/authModule/refresh-token"].includes(path);
+    // También reconoce baseURL con prefijo /api y URLs con query string.
+    // Logout no debe esperar al mismo refresh que lo está ejecutando.
+    const isAuthRoute = /(?:^|\/)authModule\/(?:login|refresh-token|logout)\/?$/.test(
+        String(path || "").split(/[?#]/)[0]
+    );
     const authStore = useAuthStore.getState();
 
     // 🔹 Manejo de JWT expirada (solo en línea)

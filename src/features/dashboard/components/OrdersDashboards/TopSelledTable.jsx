@@ -23,6 +23,9 @@ export default function TopSelledTable({ data, isLoading, isError }) {
   const barColor = useColorModeValue("green.400", "green.500");
   const textColor = useColorModeValue("gray.700", "gray.300");
   const subTextColor = useColorModeValue("gray.500", "gray.400");
+  const errorBg = useColorModeValue("red.50", "red.900");
+  const surfaceBg = useColorModeValue("gray.50", "gray.700");
+  const [openIndex, setOpenIndex] = useState(null);
 
   const displayData = data?.slice(0, 5) || [];
   const maxValue = Math.max(...(displayData.map(i => i.Cantidad_Total_Pedida) || [1]));
@@ -54,7 +57,7 @@ export default function TopSelledTable({ data, isLoading, isError }) {
       <Box
         py={6}
         px={4}
-        bg={useColorModeValue("red.50", "red.900")}
+        bg={errorBg}
         borderRadius="lg"
         borderLeft="4px solid"
         borderColor="red.500"
@@ -70,7 +73,7 @@ export default function TopSelledTable({ data, isLoading, isError }) {
       <Box
         py={10}
         textAlign="center"
-        bg={useColorModeValue("gray.50", "gray.700")}
+        bg={surfaceBg}
         borderRadius="lg"
         border="2px dashed"
         borderColor={borderColor}
@@ -84,7 +87,7 @@ export default function TopSelledTable({ data, isLoading, isError }) {
     <Box bg={cardBg} borderRadius="xl" boxShadow="md" borderWidth="1px" borderColor={borderColor}>
       <VStack spacing={3} align="stretch">
         {displayData.map((item, index) => {
-          const [open, setOpen] = useState(false);
+          const open = openIndex === index;
           const percentage = (item.Cantidad_Total_Pedida / maxValue) * 100;
           const tasa = item.Tasa_Cumplimiento || 0;
           const colorScheme = getColor(tasa);
@@ -98,13 +101,13 @@ export default function TopSelledTable({ data, isLoading, isError }) {
               transition={{ type: "spring", stiffness: 200, damping: 15 }}
             >
               <Box
-                onClick={() => setOpen(!open)}
+                onClick={() => setOpenIndex(open ? null : index)}
                 cursor="pointer"
                 p={2}
                 borderRadius="md"
                 borderWidth="1px"
                 borderColor={borderColor}
-                bg={useColorModeValue("gray.50", "gray.700")}
+                bg={surfaceBg}
               >
                 <Flex align="center" gap={3}>
                   <Badge

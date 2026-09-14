@@ -23,6 +23,9 @@ export default function TopCanceledTable({ data, isLoading, isError }) {
   const barColor = useColorModeValue("red.400", "red.500");
   const textColor = useColorModeValue("gray.700", "gray.300");
   const subTextColor = useColorModeValue("gray.500", "gray.400");
+  const errorBg = useColorModeValue("red.50", "red.900");
+  const surfaceBg = useColorModeValue("gray.50", "gray.700");
+  const expandedBg = useColorModeValue("gray.100", "gray.800");
 
   const displayData = data?.slice(0, 5) || [];
   const maxUnidades = Math.max(
@@ -45,7 +48,7 @@ export default function TopCanceledTable({ data, isLoading, isError }) {
       <Box
         py={6}
         px={4}
-        bg={useColorModeValue("red.50", "red.900")}
+        bg={errorBg}
         borderRadius="lg"
         borderLeft="4px solid"
         borderColor="red.500"
@@ -61,7 +64,7 @@ export default function TopCanceledTable({ data, isLoading, isError }) {
       <Box
         py={10}
         textAlign="center"
-        bg={useColorModeValue("gray.50", "gray.700")}
+        bg={surfaceBg}
         borderRadius="lg"
         border="2px dashed"
         borderColor={borderColor}
@@ -104,7 +107,7 @@ export default function TopCanceledTable({ data, isLoading, isError }) {
                 borderRadius="md"
                 borderWidth="1px"
                 borderColor={borderColor}
-                bg={useColorModeValue("gray.50", "gray.700")}
+                bg={surfaceBg}
               >
                 <Badge
                   colorScheme={isTopThree ? "red" : "gray"}
@@ -175,7 +178,7 @@ export default function TopCanceledTable({ data, isLoading, isError }) {
                 <Box
                   px={3}
                   py={2}
-                  bg={useColorModeValue("gray.100", "gray.800")}
+                  bg={expandedBg}
                   borderLeft="3px solid"
                   borderColor="red.400"
                   borderRadius="md"

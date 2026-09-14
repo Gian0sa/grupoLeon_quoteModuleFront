@@ -343,7 +343,7 @@ export const QuotePdfDocument = React.forwardRef(({ quote, isPrintMode = false }
                 fontFamily: "'Courier New', Courier, monospace",
               }}
             >
-              Nº {quote.docNumber || quote.id || "065026"}
+              Nº {quote.docNumber && String(quote.docNumber).startsWith("COT-0") ? quote.docNumber : "COT-PENDIENTE"}
             </td>
           </tr>
         </tbody>

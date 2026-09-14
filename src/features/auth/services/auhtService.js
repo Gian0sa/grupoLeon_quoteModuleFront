@@ -17,8 +17,8 @@ export const logoutUser = async () => {
 };
 
 export const refreshAccessToken = async () => {
-  const response = await axiosInstance.get("/authModule/refresh-token");
-  return response.data.token;
+  const response = await axiosInstance.post("/authModule/refresh-token", {}, { withCredentials: true });
+  return response.data?.token ?? response.data;
 };
 
 export const sellersData = async () => {

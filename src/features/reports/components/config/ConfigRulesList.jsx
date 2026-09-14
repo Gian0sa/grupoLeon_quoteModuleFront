@@ -19,6 +19,7 @@ const ConfigRulesList = () => {
 
   const bg = useColorModeValue("white", "gray.800");
   const border = useColorModeValue("gray.200", "gray.700");
+  const ruleBg = useColorModeValue("gray.50", "gray.700");
 
   if (isLoading) {
     return (
@@ -51,7 +52,7 @@ const ConfigRulesList = () => {
             borderRadius="md"
             p={4}
             shadow="sm"
-            bg={useColorModeValue("gray.50", "gray.700")}
+            bg={ruleBg}
           >
             <Flex align="center" mb={2}>
               <Image

@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { updateProfileAdmin } from "../../services/authAdminService";
+import { updateProfileAdmin, updateUserStatus } from "../../services/authAdminService";
 import { useToast } from "@chakra-ui/react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -37,10 +37,13 @@ export function useAuthAdminMutations() {
 
 export function useUserActiveMutations() {
   const toast = useToast();
+  const queryClient = useQueryClient();
 
   const updateUserActive = useMutation({
-    mutationFn: updateUserActiveService,
+    mutationFn: updateUserStatus,
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["adminUsers"] });
+      queryClient.invalidateQueries({ queryKey: ["allUsersAdmin"] });
       toast({
         title: "Estado actualizado",
         description: "El usuario ha sido actualizado.",
