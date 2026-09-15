@@ -18,3 +18,8 @@ export const updateUserStatus = async ({ userId, active }) => {
   );
   return response.data;
 };
+
+export const unlockUser = async (userId) => {
+  const response = await axiosInstance.put(`/authModule/user/unlock/${userId}`);
+  return response.data;
+};

@@ -57,7 +57,9 @@ import {
   Mail,
   Hash,
   Sparkles,
-  RefreshCw
+  RefreshCw,
+  Unlock,
+  Lock,
 } from "lucide-react";
 import { useGetAllUsersAdmin } from "../hooks/queries/authAdminQueries";
 import { useAuthAdminMutations } from "../hooks/mutations/authAdminMutations";
@@ -70,18 +72,24 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { socket } from "../../../shared/lib/socket";
 
+// Helper para verificar si un usuario está bloqueado por intentos fallidos
+export const isUserBlocked = (user) => {
+  return Boolean(user?.blockedUntil && new Date(user.blockedUntil) > new Date());
+};
+
 // Componente de tarjeta para vista móvil
-function UserMobileCard({ user, onEdit }) {
+function UserMobileCard({ user, onEdit, onUnlock, isUnlocking }) {
   const permCount = Array.isArray(user.permittedServices) ? user.permittedServices.length : 0;
+  const blocked = isUserBlocked(user);
 
   return (
     <Card
       bg="white"
       borderRadius="xl"
       border="1px solid"
-      borderColor={user.active ? "gray.200" : "red.200"}
+      borderColor={blocked ? "red.300" : user.active ? "gray.200" : "red.200"}
       boxShadow="xs"
-      _hover={{ borderColor: "green.400", boxShadow: "sm" }}
+      _hover={{ borderColor: blocked ? "red.400" : "green.400", boxShadow: "sm" }}
       transition="all 0.15s ease-in-out"
       p={3.5}
     >
@@ -91,7 +99,7 @@ function UserMobileCard({ user, onEdit }) {
             <Avatar
               size="sm"
               name={user.username}
-              bg={user.active ? "#126C36" : "gray.400"}
+              bg={blocked ? "red.500" : user.active ? "#126C36" : "gray.400"}
               color="white"
               fontWeight="800"
             />
@@ -104,19 +112,34 @@ function UserMobileCard({ user, onEdit }) {
               </Text>
             </Box>
           </HStack>
-          <Badge
-            bg={user.active ? "#dcfce7" : "#fee2e2"}
-            color={user.active ? "#15803d" : "#991b1b"}
-            border="1px solid"
-            borderColor={user.active ? "#bbf7d0" : "#fecaca"}
-            px={2.5}
-            py={0.5}
-            borderRadius="full"
-            fontSize="10px"
-            fontWeight="900"
-          >
-            {user.active ? "ACTIVO" : "INACTIVO"}
-          </Badge>
+          {blocked ? (
+            <Badge
+              bg="#fee2e2"
+              color="#991b1b"
+              border="1px solid #fecaca"
+              px={2.5}
+              py={0.5}
+              borderRadius="full"
+              fontSize="10px"
+              fontWeight="900"
+            >
+              🔒 BLOQUEADO
+            </Badge>
+          ) : (
+            <Badge
+              bg={user.active ? "#dcfce7" : "#fee2e2"}
+              color={user.active ? "#15803d" : "#991b1b"}
+              border="1px solid"
+              borderColor={user.active ? "#bbf7d0" : "#fecaca"}
+              px={2.5}
+              py={0.5}
+              borderRadius="full"
+              fontSize="10px"
+              fontWeight="900"
+            >
+              {user.active ? "ACTIVO" : "INACTIVO"}
+            </Badge>
+          )}
         </Flex>
 
         <Divider borderColor="gray.100" />
@@ -133,20 +156,38 @@ function UserMobileCard({ user, onEdit }) {
           </Badge>
         </Flex>
 
-        <Button
-          leftIcon={<Edit3 className="w-3.5 h-3.5" />}
-          colorScheme="green"
-          bg="#126C36"
-          _hover={{ bg: "#0e572b" }}
-          size="sm"
-          w="full"
-          borderRadius="lg"
-          fontWeight="800"
-          onClick={() => onEdit(user)}
-          mt={1}
-        >
-          Editar Perfil y Permisos
-        </Button>
+        <HStack spacing={2} mt={1}>
+          {blocked && (
+            <Button
+              leftIcon={<Unlock className="w-3.5 h-3.5" />}
+              colorScheme="orange"
+              bg="#d97706"
+              _hover={{ bg: "#b45309" }}
+              size="sm"
+              flex={1}
+              borderRadius="lg"
+              fontWeight="800"
+              onClick={() => onUnlock(user.id)}
+              isLoading={isUnlocking}
+              loadingText="Desbloqueando..."
+            >
+              Desbloquear
+            </Button>
+          )}
+          <Button
+            leftIcon={<Edit3 className="w-3.5 h-3.5" />}
+            colorScheme="green"
+            bg="#126C36"
+            _hover={{ bg: "#0e572b" }}
+            size="sm"
+            flex={1}
+            borderRadius="lg"
+            fontWeight="800"
+            onClick={() => onEdit(user)}
+          >
+            Editar Perfil
+          </Button>
+        </HStack>
       </VStack>
     </Card>
   );
@@ -272,7 +313,7 @@ export function ProfileAdmin() {
   const navigate = useNavigate();
   const { data: users, isLoading, refetch: refetchUsers } = useGetAllUsersAdmin();
   const { data: services, isLoading: isLoadingServices } = useGetServices();
-  const { updateProfileAdmin } = useAuthAdminMutations();
+  const { updateProfileAdmin, unlockUser } = useAuthAdminMutations();
   const { isOpen, onOpen, onClose } = useDisclosure();
 
   const toast = useToast();
@@ -300,12 +341,13 @@ export function ProfileAdmin() {
 
   // Métricas del sistema
   const stats = useMemo(() => {
-    if (!users || !Array.isArray(users)) return { total: 0, active: 0, inactive: 0, servicesTotal: 0 };
+    if (!users || !Array.isArray(users)) return { total: 0, active: 0, inactive: 0, servicesTotal: 0, blocked: 0 };
     const total = users.length;
     const active = users.filter((u) => u.active).length;
     const inactive = total - active;
+    const blocked = users.filter((u) => isUserBlocked(u)).length;
     const servicesTotal = Array.isArray(services) ? services.length : 0;
-    return { total, active, inactive, servicesTotal };
+    return { total, active, inactive, servicesTotal, blocked };
   }, [users, services]);
 
   const filteredUsers = useMemo(() => {
@@ -326,6 +368,8 @@ export function ProfileAdmin() {
       result = result.filter((u) => u.active === true);
     } else if (statusFilter === "inactive") {
       result = result.filter((u) => u.active === false);
+    } else if (statusFilter === "blocked") {
+      result = result.filter((u) => isUserBlocked(u));
     }
 
     // Ordenamiento
@@ -465,6 +509,9 @@ export function ProfileAdmin() {
     if (formData.email && !/^[^@]+@[^@]+\.[^@]+$/.test(formData.email)) {
       newErrors.email = "Correo inválido";
     }
+    if (formData.newPassword && formData.newPassword.trim().length > 0 && formData.newPassword.trim().length < 4) {
+      newErrors.newPassword = "La contraseña debe tener al menos 4 caracteres";
+    }
     return newErrors;
   };
 
@@ -490,11 +537,20 @@ export function ProfileAdmin() {
       permittedServices: cleanPermissions,
     };
 
+    // CRÍTICO: Si newPassword está vacío, null o solo espacios, se elimina del payload
+    // para NUNCA sobreescribir ni resetear la clave actual del usuario al editar permisos.
+    if (!payload.newPassword || typeof payload.newPassword !== "string" || !payload.newPassword.trim()) {
+      delete payload.newPassword;
+    } else {
+      payload.newPassword = payload.newPassword.trim();
+    }
+
     console.log("📤 [ProfileAdmin] Enviando payload al servidor:", {
       userId: payload.userId,
       username: payload.username,
       permittedServices: payload.permittedServices,
       totalPermisos: payload.permittedServices.length,
+      hasNewPassword: Boolean(payload.newPassword),
     });
 
     updateProfileAdmin.mutate(payload, {
@@ -689,7 +745,7 @@ export function ProfileAdmin() {
                 <Select
                   size="sm"
                   borderRadius="lg"
-                  w="140px"
+                  w="160px"
                   bg="white"
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
@@ -697,6 +753,7 @@ export function ProfileAdmin() {
                   <option value="all">Todos los Estados</option>
                   <option value="active">Solo Activos</option>
                   <option value="inactive">Solo Inactivos</option>
+                  <option value="blocked">🔒 Bloqueados ({stats.blocked})</option>
                 </Select>
 
                 <Select
@@ -762,7 +819,13 @@ export function ProfileAdmin() {
                   </Center>
                 ) : (
                   paginatedUsers.map((user) => (
-                    <UserMobileCard key={user.id} user={user} onEdit={handleOpenModal} />
+                    <UserMobileCard
+                      key={user.id}
+                      user={user}
+                      onEdit={handleOpenModal}
+                      onUnlock={(id) => unlockUser.mutate(id)}
+                      isUnlocking={unlockUser.isPending && unlockUser.variables === user.id}
+                    />
                   ))
                 )}
               </VStack>
@@ -809,6 +872,7 @@ export function ProfileAdmin() {
                     ) : (
                       paginatedUsers.map((user) => {
                         const permCount = extractServiceIds(user.permittedServices, services || []).length;
+                        const blocked = isUserBlocked(user);
 
                         return (
                           <Tr key={user.id} _hover={{ bg: "gray.50" }} transition="background 0.15s">
@@ -817,7 +881,7 @@ export function ProfileAdmin() {
                                 <Avatar
                                   size="xs"
                                   name={user.username}
-                                  bg={user.active ? "#126C36" : "gray.400"}
+                                  bg={blocked ? "red.500" : user.active ? "#126C36" : "gray.400"}
                                   color="white"
                                   fontWeight="800"
                                 />
@@ -864,36 +928,78 @@ export function ProfileAdmin() {
                             </Td>
 
                             <Td px={3} py={2} textAlign="center">
-                              <Badge
-                                bg={user.active ? "#dcfce7" : "#fee2e2"}
-                                color={user.active ? "#15803d" : "#991b1b"}
-                                border="1px solid"
-                                borderColor={user.active ? "#bbf7d0" : "#fecaca"}
-                                px={2.5}
-                                py={0.5}
-                                borderRadius="full"
-                                fontSize="10.5px"
-                                fontWeight="900"
-                              >
-                                {user.active ? "ACTIVO" : "INACTIVO"}
-                              </Badge>
+                              {blocked ? (
+                                <Tooltip
+                                  label={`Bloqueado por ${user.failedLoginAttempts || 10} intentos fallidos`}
+                                  hasArrow
+                                  placement="top"
+                                >
+                                  <Badge
+                                    bg="#fee2e2"
+                                    color="#991b1b"
+                                    border="1px solid"
+                                    borderColor="#fecaca"
+                                    px={2.5}
+                                    py={0.5}
+                                    borderRadius="full"
+                                    fontSize="10px"
+                                    fontWeight="900"
+                                  >
+                                    🔒 BLOQUEADO
+                                  </Badge>
+                                </Tooltip>
+                              ) : (
+                                <Badge
+                                  bg={user.active ? "#dcfce7" : "#fee2e2"}
+                                  color={user.active ? "#15803d" : "#991b1b"}
+                                  border="1px solid"
+                                  borderColor={user.active ? "#bbf7d0" : "#fecaca"}
+                                  px={2.5}
+                                  py={0.5}
+                                  borderRadius="full"
+                                  fontSize="10.5px"
+                                  fontWeight="900"
+                                >
+                                  {user.active ? "ACTIVO" : "INACTIVO"}
+                                </Badge>
+                              )}
                             </Td>
 
                             <Td px={3} py={2} textAlign="right">
-                              <Button
-                                size="xs"
-                                variant="outline"
-                                borderColor="#126C36"
-                                color="#126C36"
-                                _hover={{ bg: "#f0fdf4" }}
-                                leftIcon={<Edit3 className="w-3.5 h-3.5" />}
-                                onClick={() => handleOpenModal(user)}
-                                fontWeight="800"
-                                borderRadius="lg"
-                                px={3}
-                              >
-                                Editar
-                              </Button>
+                              <HStack spacing={1.5} justify="flex-end">
+                                {blocked && (
+                                  <Button
+                                    size="xs"
+                                    colorScheme="orange"
+                                    bg="#d97706"
+                                    _hover={{ bg: "#b45309" }}
+                                    color="white"
+                                    leftIcon={<Unlock className="w-3.5 h-3.5" />}
+                                    onClick={() => unlockUser.mutate(user.id)}
+                                    isLoading={unlockUser.isPending && unlockUser.variables === user.id}
+                                    loadingText="Desbloqueando..."
+                                    fontWeight="800"
+                                    borderRadius="lg"
+                                    px={2.5}
+                                  >
+                                    Desbloquear
+                                  </Button>
+                                )}
+                                <Button
+                                  size="xs"
+                                  variant="outline"
+                                  borderColor="#126C36"
+                                  color="#126C36"
+                                  _hover={{ bg: "#f0fdf4" }}
+                                  leftIcon={<Edit3 className="w-3.5 h-3.5" />}
+                                  onClick={() => handleOpenModal(user)}
+                                  fontWeight="800"
+                                  borderRadius="lg"
+                                  px={3}
+                                >
+                                  Editar
+                                </Button>
+                              </HStack>
                             </Td>
                           </Tr>
                         );
@@ -944,19 +1050,35 @@ export function ProfileAdmin() {
                     <Heading size="sm" color="gray.900" fontWeight="900">
                       Editar Usuario: {formData.username || "Usuario"}
                     </Heading>
-                    <Badge
-                      bg={formData.active ? "#dcfce7" : "#fee2e2"}
-                      color={formData.active ? "#15803d" : "#991b1b"}
-                      border="1px solid"
-                      borderColor={formData.active ? "#bbf7d0" : "#fecaca"}
-                      px={2}
-                      py={0.2}
-                      borderRadius="full"
-                      fontSize="10px"
-                      fontWeight="900"
-                    >
-                      {formData.active ? "ACTIVO" : "INACTIVO"}
-                    </Badge>
+                    {isUserBlocked(selectedUser) ? (
+                      <Badge
+                        bg="#fee2e2"
+                        color="#991b1b"
+                        border="1px solid"
+                        borderColor="#fecaca"
+                        px={2}
+                        py={0.2}
+                        borderRadius="full"
+                        fontSize="10px"
+                        fontWeight="900"
+                      >
+                        🔒 BLOQUEADO
+                      </Badge>
+                    ) : (
+                      <Badge
+                        bg={formData.active ? "#dcfce7" : "#fee2e2"}
+                        color={formData.active ? "#15803d" : "#991b1b"}
+                        border="1px solid"
+                        borderColor={formData.active ? "#bbf7d0" : "#fecaca"}
+                        px={2}
+                        py={0.2}
+                        borderRadius="full"
+                        fontSize="10px"
+                        fontWeight="900"
+                      >
+                        {formData.active ? "ACTIVO" : "INACTIVO"}
+                      </Badge>
+                    )}
                   </HStack>
                   <Text fontSize="xs" color="gray.500" mt={0.5}>
                     ID #{formData.userId} • {formData.email}
@@ -975,7 +1097,14 @@ export function ProfileAdmin() {
                 <Text fontSize="xs" fontWeight="900" color="gray.700" textTransform="uppercase" letterSpacing="wider" mb={3}>
                   1. Información de Cuenta y Acceso
                 </Text>
-                <UserBasicFields formData={formData} errors={errors} onChange={handleChange} />
+                <UserBasicFields
+                  formData={formData}
+                  errors={errors}
+                  onChange={handleChange}
+                  selectedUser={selectedUser}
+                  onUnlock={(id) => unlockUser.mutate(id)}
+                  isUnlocking={unlockUser.isPending && unlockUser.variables === selectedUser?.id}
+                />
               </Box>
 
               {/* 2. Árbol de Permisos y Servicios */}
