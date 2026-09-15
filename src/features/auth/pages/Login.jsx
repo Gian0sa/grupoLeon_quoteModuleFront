@@ -345,32 +345,23 @@ export function Login() {
               <Turnstile
                 key={captchaKey}
                 siteKey={siteKey}
-                // Sin reintentos en local: la clave nunca podrá validarse en
-                // localhost y el bucle llena la consola de cientos de errores.
-                options={{ retry: import.meta.env.DEV ? "never" : "auto" }}
+                // Evita bucle infinito en navegadores con Prevención de Seguimiento (Edge / Brave / Safari)
+                options={{ retry: "never", refreshExpired: "auto" }}
                 onSuccess={(token) => {
                   setCaptchaToken(token);
                   setCaptchaError(null);
                   setCaptchaUnavailable(false);
                 }}
                 onError={() => {
-                  // En local la clave real está restringida al dominio de
-                  // producción, así que el widget falla siempre. Se deja pasar
-                  // el envío con un marcador para no bloquear el desarrollo;
-                  // quien decide es el backend, que solo lo acepta si tiene
-                  // TURNSTILE_DEV_BYPASS=true.
                   if (import.meta.env.DEV) {
                     setCaptchaToken("local-dev");
                     setCaptchaError(null);
                     setCaptchaUnavailable(true);
                     return;
                   }
-                  // En producción un fallo del captcha es un fallo real: no se
-                  // finge éxito, porque el backend lo rechazaría igual y el
-                  // usuario vería un error confuso al enviar.
                   setCaptchaToken(null);
                   setCaptchaError(
-                    "No se pudo cargar la verificación de seguridad. Revisa tu conexión y recarga la página."
+                    "Tu navegador bloqueó el almacenamiento de seguridad (Prevención de seguimiento de Edge). Haz clic en el candado 🔒 o escudo 🛡️ en la barra de direcciones y desactiva la prevención de seguimiento o permite cookies para este sitio."
                   );
                 }}
                 onExpire={() => {
@@ -380,9 +371,20 @@ export function Login() {
             </Center>
 
             {captchaError && (
-              <Box color="red.500" fontSize="sm" textAlign="center">
-                {captchaError}
-              </Box>
+              <VStack spacing={2} align="center">
+                <Box color="red.500" fontSize="xs" textAlign="center" px={2}>
+                  {captchaError}
+                </Box>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  colorScheme="green"
+                  onClick={resetCaptcha}
+                  borderRadius="md"
+                >
+                  🔄 Reintentar verificación
+                </Button>
+              </VStack>
             )}
 
             <Button
