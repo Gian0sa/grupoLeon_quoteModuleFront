@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { updateProfileAdmin, updateUserStatus } from "../../services/authAdminService";
+import { updateProfileAdmin, updateUserStatus, unlockUser } from "../../services/authAdminService";
 import { useToast } from "@chakra-ui/react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -30,8 +30,33 @@ export function useAuthAdminMutations() {
     },
   });
 
+  const unlockUserMutation = useMutation({
+    mutationFn: unlockUser,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["adminUsers"] });
+      queryClient.invalidateQueries({ queryKey: ["allUsersAdmin"] });
+      toast({
+        title: "Usuario desbloqueado",
+        description: "El usuario ha sido desbloqueado y puede iniciar sesión inmediatamente.",
+        status: "success",
+        duration: 4000,
+        isClosable: true,
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error al desbloquear",
+        description: error?.response?.data?.message || "No se pudo desbloquear el usuario.",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    },
+  });
+
   return {
-    updateProfileAdmin: updateProfileAdminMutation
+    updateProfileAdmin: updateProfileAdminMutation,
+    unlockUser: unlockUserMutation,
   };
 }
 
