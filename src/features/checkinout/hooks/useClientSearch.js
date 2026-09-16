@@ -8,19 +8,22 @@ export function parseSearchToInitialData(inputString) {
     if (!trimmed) return null;
 
     const isDigitsOnly = /^\d+$/.test(trimmed);
-    if (isDigitsOnly) {
-        if (trimmed.length === 11) {
+    const isCLCode = /^CL\d+$/i.test(trimmed);
+    const digits = isCLCode ? trimmed.replace(/^CL/i, "") : (isDigitsOnly ? trimmed : "");
+
+    if (digits) {
+        if (digits.length === 11) {
             return {
                 personType: "JURIDICO",
                 documentType: "RUC",
-                documentNumber: trimmed,
+                documentNumber: digits,
                 fullName: "",
             };
         } else {
             return {
                 personType: "NATURAL",
                 documentType: "DNI",
-                documentNumber: trimmed,
+                documentNumber: digits,
                 fullName: "",
             };
         }
@@ -54,9 +57,19 @@ export function useClientSearch() {
         const trimmedInput = inputValue.trim();
         if (!trimmedInput) return;
 
-        const isNumeric = /^\d+$/.test(trimmedInput);
-        setIsSearchingByCode(isNumeric);
-        setSearchTerm(isNumeric ? `CL${trimmedInput}` : trimmedInput);
+        const isDigitsOnly = /^\d+$/.test(trimmedInput);
+        const isCLCode = /^CL/i.test(trimmedInput);
+        const isCode = isDigitsOnly || isCLCode;
+
+        setIsSearchingByCode(isCode);
+
+        if (isDigitsOnly) {
+            setSearchTerm(`CL${trimmedInput}`);
+        } else if (isCLCode) {
+            setSearchTerm(trimmedInput.toUpperCase());
+        } else {
+            setSearchTerm(trimmedInput);
+        }
     };
 
     const handleKeyPress = (e) => {

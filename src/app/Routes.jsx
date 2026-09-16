@@ -21,8 +21,6 @@ const ProductosPage        = lazy(() => import("../features/products/pages/Produ
 const History              = lazy(() => import("../features/dashboard/components/History.jsx").then(m => ({ default: m.History })));
 const HistoryQuotesPage    = lazy(() => import("../features/quotes/pages/HistoryQuotesPage.jsx").then(m => ({ default: m.HistoryQuotesPage })));
 const QuoteApprovalPage    = lazy(() => import("../features/quotes/pages/QuoteApprovalPage.jsx").then(m => ({ default: m.QuoteApprovalPage })));
-const Requests             = lazy(() => import("../features/dashboard/components/Requests.jsx").then(m => ({ default: m.Requests })));
-const RequestQuotePage     = lazy(() => import("../features/supervisor/pages/RequestQuotePage.jsx").then(m => ({ default: m.RequestQuotePage })));
 const ReportPage           = lazy(() => import("../features/reports/pages/ReportPage.jsx").then(m => ({ default: m.ReportPage })));
 const ConfigRulesPage      = lazy(() => import("../features/reports/pages/ConfigPage.jsx").then(m => ({ default: m.ConfigRulesPage })));
 const ReceivablePage       = lazy(() => import("../features/receivable/pages/ReceivablePage.jsx").then(m => ({ default: m.ReceivablePage })));
@@ -73,8 +71,6 @@ const AppRoutes = () => {
           <Route path="/approvals"         element={<PrivateRoute><QuoteApprovalPage /></PrivateRoute>} />
           <Route path="/products"          element={<PrivateRoute><ProductosPage /></PrivateRoute>} />
           <Route path="/history"           element={<PrivateRoute><History /></PrivateRoute>} />
-          <Route path="/requests"          element={<PrivateRoute><Requests /></PrivateRoute>} />
-          <Route path="/detailRequests"    element={<PrivateRoute><RequestQuotePage /></PrivateRoute>} />
           <Route path="/reports"           element={<PrivateRoute><ReportPage /></PrivateRoute>} />
           <Route path="/configrules"       element={<PrivateRoute><ConfigRulesPage /></PrivateRoute>} />
           <Route path="/receivable"        element={<PrivateRoute><ReceivablePage /></PrivateRoute>} />
