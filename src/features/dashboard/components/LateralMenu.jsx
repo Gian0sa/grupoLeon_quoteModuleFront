@@ -21,7 +21,6 @@ import {
   MdRequestQuote,
   MdPersonAdd,
   MdPerson,
-  MdAssignmentTurnedIn,
   MdLocalShipping,
   MdAccountBalanceWallet,
   MdPriceChange,
@@ -48,7 +47,6 @@ import { HEADER_MAIN_BG } from '../../../components/TopHeaderBanner';
 // Opciones estáticas fuera del componente para evitar recreación de memoria en cada render
 const APPLICATION_OPTIONS = [
   { label: 'Gestión de Cotizaciones', icon: MdRequestQuote, path: '/historyquotes', access: 'POST:/quotations' },
-  { label: 'Solicitudes', icon: MdAssignmentTurnedIn, path: '#', access: 'GET:/requests' },
   { label: 'Pedidos', icon: MdLocalShipping, path: '/reports', access: 'GET:/reports' },
   { label: 'Cuentas por cobrar', icon: MdAccountBalanceWallet, path: '/receivable', access: 'GET:/receivable' },
   { label: 'Lista de precios', icon: MdPriceChange, path: '/productsPriceList', access: 'GET:/priceList' },
