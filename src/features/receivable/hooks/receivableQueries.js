@@ -6,7 +6,7 @@ export const useGetAccountsReceivable = ({ vendedor, cliente, clientecode, lastC
     queryKey: ["accountsReceivable", vendedor, cliente, clientecode, lastClient, skip],
     queryFn: () => getAccountsReceivable({ vendedor, cliente, clientecode, lastClient, skip }),
     enabled: Boolean(enabled),
-    staleTime: 5 * 60 * 1000,
-    refetchOnWindowFocus: false,
+    staleTime: 20 * 1000, // 20s para mantener la cartera siempre fresca y sincronizada con SAP
+    refetchOnWindowFocus: true, // Recargar automáticamente cuando el usuario regresa a la pestaña
   });
 };

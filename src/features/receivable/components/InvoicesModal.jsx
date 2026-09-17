@@ -34,7 +34,22 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
   const [isWhatsAppOpen, setIsWhatsAppOpen] = useState(false);
   const toast = useToast();
 
-  const docList = Array.isArray(documentos) ? documentos : (cliente?.documents || []);
+  const rawDocs = Array.isArray(documentos) && documentos.length > 0
+    ? documentos
+    : (cliente?.documents || []);
+
+  const docList = useMemo(() => {
+    return rawDocs.filter((d) => {
+      const info = (d?.INFORMACION_DETALLADA || d?.detalle || '').toLowerCase();
+      const tipo = (d?.tipoDocumento || d?.TIPO_DOC || '').toLowerCase();
+      const numDoc = (d?.numeroDocumento || d?.NRO_DOC || '').trim();
+
+      if (!numDoc || numDoc === '—' || numDoc === '-' || numDoc.toLowerCase() === 'null') return false;
+      if (tipo.includes('otro')) return false;
+      if (info.includes('dif. cambio') || info.includes('diferencia de cambio')) return false;
+      return true;
+    });
+  }, [rawDocs]);
 
   const normalizeRefCode = (code) => {
     if (!code) return "";
@@ -77,10 +92,11 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
   const formatDocType = (doc) => {
     const numDoc = (doc.numeroDocumento || doc.NRO_DOC || "").toUpperCase();
     const tipo = (doc.tipoDocumento || doc.TIPO_DOC || "").toUpperCase();
-    const condicion = doc.condicionPago || doc.CONDICION || "";
+    const tipoSap = (doc.tipoDocumentoSAP || doc.TIPO_DOC_SAP || "").toUpperCase();
+    const condicion = (doc.condicionPago || doc.CONDICION || "").trim();
     const cuota = doc.cuotaTexto || "";
 
-    if (numDoc.startsWith("LC-") || tipo.includes("LETRA") || doc.esLetra) {
+    if (numDoc.startsWith("LC-") || numDoc.startsWith("LT-") || tipo.includes("LETRA") || tipoSap === "LETRA" || doc.esLetra) {
       let cuotaBadge = cuota ? (condicion ? `${cuota} (${condicion})` : cuota) : (condicion || "Letra a Plazos");
       return {
         label: "Letra de Cambio",
@@ -89,19 +105,23 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
         icon: Landmark,
       };
     }
-    if (numDoc.startsWith("FAC-") || tipo.includes("FACTURA")) {
-      return { label: "Factura", cuotaLabel: "Contado / Crédito", color: "green", icon: FileText };
+    if (numDoc.startsWith("NC-") || numDoc.startsWith("ABO-") || numDoc.startsWith("AB0-") || tipo.includes("CREDITO") || tipo.includes("ABONO") || tipoSap === "07") {
+      return { label: "Nota Crédito / Abono", cuotaLabel: condicion || "Abono / Saldo a Favor", color: "cyan", icon: FileText };
     }
-    if (numDoc.startsWith("BOL-") || tipo.includes("BOLETA")) {
-      return { label: "Boleta", cuotaLabel: "Venta Directa", color: "blue", icon: FileText };
+    if (numDoc.startsWith("ND-") || tipo.includes("DEBITO") || tipoSap === "08") {
+      return { label: "Nota Débito", cuotaLabel: condicion || "Cargo Adicional", color: "orange", icon: FileText };
     }
-    if (numDoc.startsWith("NC-") || numDoc.startsWith("ABO-") || numDoc.startsWith("AB0-") || tipo.includes("CREDITO") || tipo.includes("ABONO")) {
-      return { label: "Nota Crédito / Abono", cuotaLabel: "Abono / Saldo a Favor", color: "cyan", icon: FileText };
+    if (numDoc.startsWith("BOL-") || numDoc.startsWith("BV-") || numDoc.startsWith("03B") || tipo.includes("BOLETA") || tipoSap === "03") {
+      return { label: "Boleta", cuotaLabel: condicion || "Boleta de Venta", color: "blue", icon: FileText };
     }
-    if (numDoc.startsWith("ND-") || tipo.includes("DEBITO")) {
-      return { label: "Nota Débito", cuotaLabel: "Cargo Adicional", color: "orange", icon: FileText };
+    if (numDoc.startsWith("FAC-") || numDoc.startsWith("FT-") || numDoc.startsWith("01F") || tipo.includes("FACTURA") || tipoSap === "01") {
+      return { label: "Factura", cuotaLabel: condicion || "Factura de Venta", color: "green", icon: FileText };
     }
-    return { label: doc.tipoDocumento || "Comprobante", cuotaLabel: condicion, color: "gray", icon: FileText };
+    let fallbackLabel = (doc.tipoDocumento || "Comprobante").trim();
+    if (fallbackLabel.toLowerCase().includes("otro") || !fallbackLabel) {
+      fallbackLabel = "Comprobante";
+    }
+    return { label: fallbackLabel, cuotaLabel: condicion || "Comprobante", color: "gray", icon: FileText };
   };
 
   const formatMoney = (doc) => {
@@ -137,12 +157,6 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
 
     const totalOriginalNum = Number(doc.totalOriginal ?? doc.totalDocumento ?? 0);
     const montoAbonadoNum = Number(doc.montoAbonado ?? doc.descuentoNC ?? 0);
-
-    // Para una Nota de Crédito / Abono propia: si el saldo figura 0 (ya aplicado a la factura),
-    // mostramos el monto total original del abono/crédito.
-    if (isNC && saldoNum < 0.01 && totalOriginalNum > 0) {
-      saldoNum = totalOriginalNum;
-    }
 
     const diff = totalOriginalNum - saldoNum;
     const hasDiscount = !isNC && (montoAbonadoNum > 0.01 || diff > 0.05);
@@ -267,7 +281,7 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
 
   const clientName = cliente?.nombre || cliente?.clientName || docList[0]?.CARDNAME || "Cliente";
   const clientCode = cliente?.clientCode || cliente?.ruc || docList[0]?.CARDCODE || "";
-  const salesperson = cliente?.vendedor || docList[0]?.NOMBVENDEDOR || "No asignado";
+  const salesperson = cliente?.vendedor || docList.find(d => d?.NOMBVENDEDOR && d.NOMBVENDEDOR.trim())?.NOMBVENDEDOR || docList[0]?.NOMBVENDEDOR || "No asignado";
 
   return (
     <>
@@ -374,7 +388,7 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
               fontWeight="700"
               flexShrink={0}
             >
-              📄 Facturas ({counts.facturas})
+              📄 Facturas / Boletas ({counts.facturas})
             </Button>
             <Button
               size="xs"

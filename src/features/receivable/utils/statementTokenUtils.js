@@ -94,11 +94,20 @@ import { axiosInstance } from "../../../shared/lib/axiosInstance";
 export const buildStatementPayload = (debtData) => {
   if (!debtData) return null;
 
-  const rawDocs = debtData.documents || debtData.documentos || [];
-  const clientName = debtData.nombre || debtData.clientName || rawDocs[0]?.CARDNAME || "CLIENTE";
-  const rawCode = debtData.clientCode || debtData.ruc || rawDocs[0]?.CARDCODE || "";
+  const allDocs = debtData.documents || debtData.documentos || [];
+  const rawDocs = allDocs.filter((d) => {
+    const info = (d?.INFORMACION_DETALLADA || d?.detalle || '').toLowerCase();
+    const tipo = (d?.tipoDocumento || d?.TIPO_DOC || '').toLowerCase();
+    const num = (d?.numeroDocumento || d?.NRO_DOC || '').trim();
+    if (!num || num === '—' || num === '-' || num.toLowerCase() === 'null') return false;
+    if (tipo.includes('otro')) return false;
+    if (info.includes('dif. cambio') || info.includes('diferencia de cambio')) return false;
+    return true;
+  });
+  const clientName = debtData.nombre || debtData.clientName || rawDocs[0]?.CARDNAME || allDocs[0]?.CARDNAME || "CLIENTE";
+  const rawCode = debtData.clientCode || debtData.ruc || rawDocs[0]?.CARDCODE || allDocs[0]?.CARDCODE || "";
   const clientCode = rawCode ? `CL${rawCode.replace(/^CL/i, "")}` : "";
-  const salesperson = debtData.vendedor || rawDocs[0]?.NOMBVENDEDOR || "Asesor Comercial";
+  const salesperson = debtData.vendedor || rawDocs.find(d => d?.NOMBVENDEDOR && d.NOMBVENDEDOR.trim())?.NOMBVENDEDOR || allDocs.find(d => d?.NOMBVENDEDOR && d.NOMBVENDEDOR.trim())?.NOMBVENDEDOR || "Asesor Comercial";
 
   const simplifiedDocs = rawDocs.map((d) => {
     const vdInfo = calculateVD(d.REFDATE || d.fechaContable || d.fechaVencimiento);
@@ -170,7 +179,7 @@ export const buildStatementPayload = (debtData) => {
       sPen: rawPen,
       sUsd: rawUsd,
       vd: vdInfo.days,
-      vdStatus: isCredit ? "POR_VENCER" : vdInfo.status,
+      vdStatus: isCredit ? "POR_VENCER" : (d.isVenceHoy || d.categoriaVencimiento === "HOY" ? "HOY" : vdInfo.status),
       isVD: Boolean(isVD),
       esLetra: Boolean(isLetra),
       enBanco: Boolean(enBanco),
@@ -264,9 +273,11 @@ export const createShortStatementUrl = async (debtData) => {
 export const fetchPublicStatementByCode = async (code) => {
   if (!code) return null;
   
-  // 1. Intentar desde el backend
+  // 1. Intentar desde el backend con timestamp para forzar siempre lectura fresca
   try {
-    const response = await axiosInstance.get(`/reportModule/statement/share/${code}`);
+    const response = await axiosInstance.get(`/reportModule/statement/share/${code}?_t=${Date.now()}`, {
+      headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+    });
     if (response.data) {
       saveLocalStatement(code, response.data);
       return response.data;

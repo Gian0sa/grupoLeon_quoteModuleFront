@@ -177,7 +177,15 @@ export function ClientStatementPage() {
     const cName = statementData.cName || "CLIENTE";
     const cCode = statementData.cCode || "";
     const sales = statementData.sales || "Autopartes S.A.";
-    const rawDocs = statementData.docs || [];
+    const rawDocs = (statementData.docs || []).filter((d) => {
+      const info = (d?.detalle || d?.INFORMACION_DETALLADA || '').toLowerCase();
+      const tipo = (d?.tipo || d?.tipoDocumento || d?.TIPO_DOC || '').toLowerCase();
+      const num = (d?.num || d?.numeroDocumento || d?.NRO_DOC || '').trim();
+      if (!num || num === '—' || num === '-' || num.toLowerCase() === 'null') return false;
+      if (tipo.includes('otro')) return false;
+      if (info.includes('dif. cambio') || info.includes('diferencia de cambio')) return false;
+      return true;
+    });
 
     let sumPEN = 0;
     let sumUSD = 0;
@@ -303,7 +311,7 @@ export function ClientStatementPage() {
     const sumPorVencerUSD = realPorVencer.reduce((acc, d) => acc + (d.sUsd || 0), 0);
     const sumPorVencerPEN = realPorVencer.reduce((acc, d) => acc + (d.sPen || 0), 0);
     const sumVenceHoyUSD = realVenceHoy.reduce((acc, d) => acc + (d.sUsd || 0), 0);
-    const sumVenceHoyPEN = realPorVencer.reduce((acc, d) => acc + (d.sPen || 0), 0);
+    const sumVenceHoyPEN = realVenceHoy.reduce((acc, d) => acc + (d.sPen || 0), 0);
 
     const isClientCreditOnly = (sumUSD <= 0 && sumPEN <= 0) && (sumUSD < 0 || sumPEN < 0);
     const hasRealOverdue = !isClientCreditOnly && realVencidos.length > 0;
@@ -353,6 +361,7 @@ export function ClientStatementPage() {
   const filteredDocs = useMemo(() => {
     return docs.filter((d) => {
       if (filterType === "overdue" && !d.isOverdue) return false;
+      if (filterType === "dueToday" && !d.isVenceHoy) return false;
       if (filterType === "current" && (d.isOverdue || d.isVenceHoy)) return false;
 
       if (searchTerm.trim()) {
@@ -522,11 +531,11 @@ export function ClientStatementPage() {
 
         {/* Hero Card de Estado Financiero */}
         <Box
-          bg={hasOverdue ? "#fff1f2" : "#f0fdf4"}
+          bg={hasOverdue ? "#fff1f2" : venceHoy.length > 0 ? "#fffbeb" : "#f0fdf4"}
           p={{ base: 3, md: 4 }}
           borderRadius="xl"
           border="1.5px solid"
-          borderColor={hasOverdue ? "#fecdd3" : "#bbf7d0"}
+          borderColor={hasOverdue ? "#fecdd3" : venceHoy.length > 0 ? "#fde68a" : "#bbf7d0"}
           mb={4}
         >
           <Flex direction={{ base: "column", sm: "row" }} justify="space-between" align={{ base: "flex-start", sm: "center" }} gap={3}>
@@ -535,17 +544,23 @@ export function ClientStatementPage() {
                 w="36px"
                 h="36px"
                 borderRadius="full"
-                bg={hasOverdue ? "#e11d48" : "#16a34a"}
+                bg={hasOverdue ? "#e11d48" : venceHoy.length > 0 ? "#d97706" : "#16a34a"}
                 align="center"
                 justify="center"
                 color="white"
                 flexShrink={0}
               >
-                {hasOverdue ? <AlertTriangle className="w-5 h-5" /> : <CheckCircle2 className="w-5 h-5" />}
+                {hasOverdue ? (
+                  <AlertTriangle className="w-5 h-5" />
+                ) : venceHoy.length > 0 ? (
+                  <Clock className="w-5 h-5" />
+                ) : (
+                  <CheckCircle2 className="w-5 h-5" />
+                )}
               </Flex>
               <Box>
                 <Badge
-                  colorScheme={hasOverdue ? "red" : "green"}
+                  colorScheme={hasOverdue ? "red" : venceHoy.length > 0 ? "orange" : "green"}
                   variant="solid"
                   fontSize="11px"
                   px={2.5}
@@ -553,11 +568,17 @@ export function ClientStatementPage() {
                   borderRadius="full"
                   fontWeight="900"
                 >
-                  {hasOverdue ? `⚠️ ${vencidos.length} CUOTAS VENCIDAS` : "✅ CLIENTE AL DÍA"}
+                  {hasOverdue
+                    ? `⚠️ ${vencidos.length} CUOTAS VENCIDAS`
+                    : venceHoy.length > 0
+                    ? `⏰ ${venceHoy.length} CUOTA${venceHoy.length > 1 ? "S" : ""} VENCE HOY • ÚLTIMO DÍA DE PAGO`
+                    : "✅ CLIENTE AL DÍA"}
                 </Badge>
                 <Text fontSize={{ base: "11px", sm: "xs" }} color="gray.700" fontWeight="600" mt={1}>
                   {hasOverdue
-                    ? "Registra documentos vencidos que requieren regularización."
+                    ? "Registra documentos vencidos que requieren regularización inmediata."
+                    : venceHoy.length > 0
+                    ? `Hoy es la fecha límite de pago para evitar el pase a mora ($${formatMoney(totalVenceHoyUSD)} USD${totalVenceHoyPEN > 0 ? ` + S/ ${formatMoney(totalVenceHoyPEN)}` : ""} por abonar hoy).`
                     : "No registra documentos vencidos a la fecha de corte."}
                 </Text>
               </Box>
@@ -642,6 +663,17 @@ export function ClientStatementPage() {
             >
               Vencidos ({vencidos.length})
             </Button>
+            {venceHoy.length > 0 && (
+              <Button
+                size="xs"
+                variant={filterType === "dueToday" ? "solid" : "outline"}
+                colorScheme="orange"
+                onClick={() => setFilterType("dueToday")}
+                fontWeight="800"
+              >
+                Vence Hoy ({venceHoy.length})
+              </Button>
+            )}
             <Button
               size="xs"
               variant={filterType === "current" ? "solid" : "outline"}
@@ -649,7 +681,7 @@ export function ClientStatementPage() {
               onClick={() => setFilterType("current")}
               fontWeight="800"
             >
-              Por Vencer ({porVencer.length + venceHoy.length})
+              Por Vencer ({porVencer.length})
             </Button>
           </HStack>
 
@@ -731,13 +763,14 @@ export function ClientStatementPage() {
                         </Text>
                       </Box>
                       <Badge
-                        colorScheme={doc.isOverdue ? "red" : "green"}
+                        colorScheme={doc.isOverdue ? "red" : doc.isVenceHoy ? "orange" : "green"}
                         fontSize="10px"
                         px={2}
                         py={0.5}
                         borderRadius="full"
+                        fontWeight="800"
                       >
-                        {doc.isOverdue ? "VENCIDO" : "AL DÍA"}
+                        {doc.isOverdue ? "VENCIDO" : doc.isVenceHoy ? "⏰ VENCE HOY" : "POR VENCER"}
                       </Badge>
                     </Flex>
 
@@ -748,8 +781,8 @@ export function ClientStatementPage() {
                       </Box>
                       <Box textAlign="center">
                         <Text fontSize="9px" color="gray.500" fontWeight="700">VENCIMIENTO</Text>
-                        <Text fontWeight="800" color={doc.isOverdue ? "red.600" : "gray.800"}>
-                          {doc.ven || "—"}
+                        <Text fontWeight="800" color={doc.isOverdue ? "red.600" : doc.isVenceHoy ? "orange.700" : "gray.800"}>
+                          {doc.ven || "—"} {doc.isVenceHoy ? "(HOY)" : ""}
                         </Text>
                       </Box>
                       <Box textAlign="right">
@@ -820,11 +853,18 @@ export function ClientStatementPage() {
                           py={1.5}
                           fontSize="11px"
                           fontWeight="700"
-                          bg={doc.isOverdue ? "#fee2e2" : undefined}
-                          color={doc.isOverdue ? "#991b1b" : "inherit"}
-                          borderRadius={doc.isOverdue ? "sm" : undefined}
+                          bg={doc.isOverdue ? "#fee2e2" : doc.isVenceHoy ? "#fef3c7" : undefined}
+                          color={doc.isOverdue ? "#991b1b" : doc.isVenceHoy ? "#92400e" : "inherit"}
+                          borderRadius={doc.isOverdue || doc.isVenceHoy ? "sm" : undefined}
                         >
-                          {doc.ven || "—"}
+                          <HStack spacing={1}>
+                            <Text>{doc.ven || "—"}</Text>
+                            {doc.isVenceHoy && (
+                              <Badge colorScheme="orange" variant="solid" fontSize="8.5px" px={1} py={0.2} borderRadius="sm" fontWeight="800">
+                                HOY
+                              </Badge>
+                            )}
+                          </HStack>
                         </Td>
                         <Td px={2} py={1.5} fontSize="11px" fontWeight="500">{doc.con || "—"}</Td>
                         <Td px={2} py={1.5} textAlign="center">

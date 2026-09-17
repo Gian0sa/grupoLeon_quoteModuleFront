@@ -23,6 +23,8 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
 
   const saldoVencidoPEN = debt.saldoVencidoPEN ?? 0;
   const saldoVencidoUSD = debt.saldoVencidoUSD ?? 0;
+  const saldoVenceHoyPEN = debt.saldoVenceHoyPEN ?? 0;
+  const saldoVenceHoyUSD = debt.saldoVenceHoyUSD ?? 0;
 
   const formatAmount = (amount, currency) => {
     if (amount == null || isNaN(Number(amount))) return null;
@@ -34,11 +36,12 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
     })}`;
   };
 
-  // Determinar tipo de estado
+  // Determinar tipo de estado (bancario: credit | overdue | dueToday | active)
   const getStatusType = () => {
     const isCredit = (saldoPEN < 0 || saldoUSD < 0) && saldoPEN <= 0 && saldoUSD <= 0;
     if (isCredit) return "credit";
     if (debt.documentosVencidos > 0 || saldoVencidoPEN > 0 || saldoVencidoUSD > 0 || debt.estado === "vencido" || debt.estado === "parcialmente_vencido") return "overdue";
+    if (debt.hasVenceHoy || (debt.venceHoyCount && debt.venceHoyCount > 0) || debt.dueTodayDocumentsCount > 0 || saldoVenceHoyPEN > 0 || saldoVenceHoyUSD > 0 || debt.estado === "vence_hoy") return "dueToday";
     return "active";
   };
 
@@ -61,6 +64,22 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
       primaryBtnShadow: "0 2px 6px rgba(15, 23, 42, 0.15)",
       badgeBg: "#fff1f2",
       badgeText: "#9f1239",
+    },
+    dueToday: {
+      accentColor: "#d97706",
+      topBar: "linear-gradient(90deg, #f59e0b 0%, #d97706 100%)",
+      avatarBg: "#fffbeb",
+      avatarColor: "#d97706",
+      avatarBorder: "1px solid #fde68a",
+      cardBorder: "1px solid #fde68a",
+      amountColor: "#b45309",
+      bgHoverShadow: "0 10px 25px rgba(217, 119, 6, 0.08)",
+      primaryBtnBg: "#0f172a",
+      primaryBtnHover: "#1e293b",
+      primaryBtnColor: "#ffffff",
+      primaryBtnShadow: "0 2px 6px rgba(15, 23, 42, 0.15)",
+      badgeBg: "#fffbeb",
+      badgeText: "#92400e",
     },
     active: {
       accentColor: "#10b981",
@@ -108,6 +127,15 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
         icon: FileText,
       };
     }
+    if (statusType === "dueToday") {
+      return {
+        text: `⏰ VENCE HOY • Último día de pago`,
+        bg: "#fffbeb",
+        color: "#b45309",
+        border: "1px solid #fde68a",
+        icon: Clock,
+      };
+    }
     if (days > 0) {
       if (days > 90) {
         return {
@@ -136,7 +164,11 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
       };
     }
     return {
-      text: debt.oldestDueDate ? `📅 Próximo vencimiento: ${debt.oldestDueDate}` : "✅ Al día (Sin moras)",
+      text: debt.nextUpcomingDueDate
+        ? `📅 Próximo vencimiento: ${debt.nextUpcomingDueDate}`
+        : debt.oldestDueDate
+        ? `📅 Próximo vencimiento: ${debt.oldestDueDate}`
+        : "✅ Al día (Sin moras)",
       bg: "#ecfdf5",
       color: "#047857",
       border: "1px solid #a7f3d0",
@@ -332,7 +364,7 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
               )}
               {saldoPEN === 0 && saldoUSD === 0 && (
                 <span style={{ fontSize: "15px", fontWeight: "700", color: "#94a3b8" }}>
-                  S/ 0.00
+                  {debt.monedaPrincipal === "PEN" ? "S/ 0.00" : "$ 0.00"}
                 </span>
               )}
             </div>
@@ -349,7 +381,7 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
             </div>
           </div>
 
-          {/* Columna 2: Vencido Real */}
+          {/* Columna 2: Vencido Real o Preventivo Vence Hoy */}
           <div
             style={{
               borderLeft: "1px solid #cbd5e1",
@@ -360,7 +392,7 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
               style={{
                 fontSize: "11.5px",
                 fontWeight: "700",
-                color: statusType !== "credit" && debt.documentosVencidos > 0 ? "#dc2626" : "#059669",
+                color: statusType === "overdue" ? "#dc2626" : statusType === "dueToday" ? "#d97706" : statusType === "credit" ? "#2563eb" : "#059669",
                 textTransform: "uppercase",
                 letterSpacing: "0.4px",
                 marginBottom: "4px",
@@ -369,32 +401,61 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
                 gap: "4px",
               }}
             >
-              {statusType !== "credit" && debt.documentosVencidos > 0 ? (
+              {statusType === "overdue" ? (
                 <AlertCircle size={13} color="#dc2626" />
+              ) : statusType === "dueToday" ? (
+                <Clock size={13} color="#d97706" />
               ) : (
-                <CheckCircle2 size={13} color="#059669" />
+                <CheckCircle2 size={13} color={statusType === "credit" ? "#2563eb" : "#059669"} />
               )}
               <span>
-                {statusType !== "credit" && debt.documentosVencidos > 0
+                {statusType === "overdue"
                   ? `${debt.documentosVencidos} Vencido(s)`
+                  : statusType === "dueToday"
+                  ? "⏰ Vence Hoy:"
+                  : statusType === "credit"
+                  ? "Saldo a Favor:"
                   : "Monto Vencido:"}
               </span>
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-              {statusType !== "credit" && saldoVencidoPEN > 0 && (
-                <span style={{ fontSize: "16px", fontWeight: "800", color: "#dc2626" }}>
-                  {formatAmount(saldoVencidoPEN, "PEN")}
-                </span>
+              {statusType === "overdue" && (
+                <>
+                  {saldoVencidoPEN > 0 && (
+                    <span style={{ fontSize: "16px", fontWeight: "800", color: "#dc2626" }}>
+                      {formatAmount(saldoVencidoPEN, "PEN")}
+                    </span>
+                  )}
+                  {saldoVencidoUSD > 0 && (
+                    <span style={{ fontSize: "16px", fontWeight: "800", color: "#dc2626" }}>
+                      {formatAmount(saldoVencidoUSD, "USD")}
+                    </span>
+                  )}
+                </>
               )}
-              {statusType !== "credit" && saldoVencidoUSD > 0 && (
-                <span style={{ fontSize: "16px", fontWeight: "800", color: "#dc2626" }}>
-                  {formatAmount(saldoVencidoUSD, "USD")}
-                </span>
+              {statusType === "dueToday" && (
+                <>
+                  {saldoVenceHoyPEN > 0 && (
+                    <span style={{ fontSize: "16px", fontWeight: "800", color: "#b45309" }}>
+                      {formatAmount(saldoVenceHoyPEN, "PEN")}
+                    </span>
+                  )}
+                  {saldoVenceHoyUSD > 0 && (
+                    <span style={{ fontSize: "16px", fontWeight: "800", color: "#b45309" }}>
+                      {formatAmount(saldoVenceHoyUSD, "USD")}
+                    </span>
+                  )}
+                  {saldoVenceHoyPEN <= 0 && saldoVenceHoyUSD <= 0 && (
+                    <span style={{ fontSize: "15px", fontWeight: "800", color: "#b45309" }}>
+                      {debt.monedaPrincipal === "PEN" || (saldoPEN > 0 && saldoUSD === 0) ? "S/ 0.00" : "$ 0.00"}
+                    </span>
+                  )}
+                </>
               )}
-              {(statusType === "credit" || (saldoVencidoPEN <= 0 && saldoVencidoUSD <= 0)) && (
-                <span style={{ fontSize: "15px", fontWeight: "800", color: "#059669" }}>
-                  $ 0.00
+              {statusType !== "overdue" && statusType !== "dueToday" && (
+                <span style={{ fontSize: "15px", fontWeight: "800", color: statusType === "credit" ? "#1d4ed8" : "#059669" }}>
+                  {debt.monedaPrincipal === "PEN" || (saldoPEN > 0 && saldoUSD === 0) ? "S/ 0.00" : "$ 0.00"}
                 </span>
               )}
             </div>
@@ -403,15 +464,19 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
               style={{
                 fontSize: "11px",
                 fontWeight: "600",
-                color: statusType !== "credit" && debt.documentosVencidos > 0 ? "#b91c1c" : "#047857",
+                color: statusType === "overdue" ? "#b91c1c" : statusType === "dueToday" ? "#b45309" : statusType === "credit" ? "#1e40af" : "#047857",
                 marginTop: "4px",
               }}
             >
               {statusType === "credit"
                 ? "Al día (Saldo a favor)"
-                : debt.documentosVencidos === 0
-                ? "Al día"
-                : `${debt.documentosVencidos} vencido(s)`}
+                : statusType === "dueToday"
+                ? `Último día (${debt.venceHoyCount || 1} cuota${(debt.venceHoyCount || 1) > 1 ? "s" : ""})`
+                : statusType === "overdue"
+                ? `${debt.documentosVencidos} vencido(s)`
+                : debt.nextUpcomingDueDate
+                ? `Próx. ${debt.nextUpcomingDueDate}`
+                : "Al día"}
             </div>
           </div>
         </div>
