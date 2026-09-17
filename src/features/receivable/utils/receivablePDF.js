@@ -500,7 +500,7 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
   const rawDocuments = debt.documents || debt.documentos || debt.docs || [];
   const documents = rawDocuments.filter((d) => {
     const info = (d?.detalle || d?.INFORMACION_DETALLADA || "").toLowerCase();
-    const tipo = (d?.tipoDocumento || d?.TIPO_DOC || "").toLowerCase();
+    const tipo = (d?.tipoDocumento || d?.TIPO_DOC || d?.tipo || "").toLowerCase();
     const num = (d?.numeroDocumento || d?.NRO_DOC || d?.num || "").trim();
     if (!num || num === "—" || num === "-" || num.toLowerCase() === "null") return false;
     if (tipo.includes("otro")) return false;
@@ -561,10 +561,11 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
 
   const tableRows = documents.map((d) => {
     const emision = formatDate(d.TAXDATE || d.fechaImpuesto || d.FECHA_DOC || d.fechaDocumento || d.emi);
-    const vence = formatDate(d.REFDATE || d.fechaContable || d.ven);
+    const vence = formatDate(d.REFDATE || d.fechaContable || d.fechaVencimiento || d.ven);
     const condicion = safeText(d.condicionPago || d.CONDICION || d.con, "—");
 
     const numDoc = safeText(d.numeroDocumento || d.NRO_DOC || d.num, "");
+    const tipoDoc = safeText(d.tipoDocumento || d.TIPO_DOC || d.tipo, "");
     const refMatriz = d.facturaOrigen || (Array.isArray(d.referencia) && d.referencia[0]) || d.ref || "";
     const folio = safeText(d.folioNum || d.FOLIONUM || d.docEntry || d.DOCENTRY || d.fol || "", "");
 
@@ -581,7 +582,7 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
     const numDocUpper = numDoc.toUpperCase();
     const isLetra = Boolean(
       d.esLetra ||
-      (d.tipoDocumento || "").toLowerCase().includes("letra") ||
+      tipoDoc.toLowerCase().includes("letra") ||
       numDocUpper.startsWith("LC-") ||
       numDocUpper.startsWith("LT-")
     );
@@ -613,7 +614,7 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
 
     const moneda = (d.moneda || d.TIPOCAMBIO || d.mon || "USD").toUpperCase();
     const isDocUSD = !moneda.includes("PEN") && !moneda.includes("SOL") && !moneda.includes("S/");
-    const totalOriginal = Number(d.totalDocumento || d.TOTAL_DOC || d.tot || 0);
+    const totalOriginal = Number(d.totalOriginal || d.totalOriginalExact || d.totalDocumento || d.TOTAL_DOC || d.tot || 0);
 
     let saldoPEN = 0;
     let saldoUSD = 0;
@@ -626,7 +627,7 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
       saldoUSD = 0;
     }
 
-    const isCredit = saldoPEN < 0 || saldoUSD < 0 || (d.tipoDocumento || "").toLowerCase().includes("credito") || (d.tipoDocumento || "").toLowerCase().includes("abono") || numDocUpper.startsWith("NC-") || numDocUpper.startsWith("ABO-") || numDocUpper.startsWith("AB0-") || numDocUpper.includes("07F");
+    const isCredit = saldoPEN < 0 || saldoUSD < 0 || tipoDoc.toLowerCase().includes("credito") || tipoDoc.toLowerCase().includes("abono") || numDocUpper.startsWith("NC-") || numDocUpper.startsWith("ABO-") || numDocUpper.startsWith("AB0-") || numDocUpper.startsWith("07F");
     if (isCredit) {
       if (saldoPEN > 0) saldoPEN = -saldoPEN;
       if (saldoUSD > 0) saldoUSD = -saldoUSD;
@@ -635,7 +636,7 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
     totalSaldoPEN += saldoPEN;
     totalSaldoUSD += saldoUSD;
 
-    const isOverdue = !isCredit && Boolean(d.estaVencido || d.vdStatus === "VENCIDO" || (d.saldoVencidoUSD && Number(d.saldoVencidoUSD) > 0)) && (saldoUSD > 0 || saldoPEN > 0);
+    const isOverdue = !isCredit && Boolean(d.isOverdue || d.estaVencido || d.vdStatus === "VENCIDO" || (d.saldoVencidoUSD && Number(d.saldoVencidoUSD) > 0)) && (saldoUSD > 0 || saldoPEN > 0);
     const isVenceHoy = !isCredit && !isOverdue && Boolean(d.isVenceHoy || d.vdStatus === "HOY" || d.vdStatus === "VENCE_HOY" || d.categoriaVencimiento === "HOY") && (saldoUSD > 0 || saldoPEN > 0);
 
     const formatMoney = (amount) =>
@@ -650,11 +651,13 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
       isVD,
       serieDocText,
       codigoUnico,
-      montoTexto: `${isDocUSD ? "USD" : "PEN"}  ${formatMoney(totalOriginal)}`,
+      montoTexto: `${isDocUSD ? "USD" : "PEN"}  ${formatMoney(Math.abs(totalOriginal))}`,
       saldoPENTexto: formatMoney(saldoPEN),
       saldoUSDTexto: formatMoney(saldoUSD),
       saldoPEN,
       saldoUSD,
+      numDoc,
+      tipoDoc,
       rawDoc: d,
     };
   });
@@ -675,8 +678,8 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
           r.serieDocText,
           r.codigoUnico,
           r.montoTexto,
-          r.saldoPEN > 0 ? r.saldoPENTexto : "—",
-          r.saldoUSD > 0 ? r.saldoUSDTexto : "—",
+          r.saldoPEN !== 0 ? r.saldoPENTexto : "0.00",
+          r.saldoUSD !== 0 ? r.saldoUSDTexto : "0.00",
         ])
       : [["—", "—", "Sin documentos pendientes", "", "—", "—", "—", "0.00", "0.00"]];
     colStyles = {
@@ -700,7 +703,7 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
           r.serieDocText,
           r.codigoUnico,
           r.montoTexto,
-          r.saldoPENTexto,
+          r.saldoPEN !== 0 ? r.saldoPENTexto : "0.00",
         ])
       : [["—", "—", "Sin documentos pendientes", "", "—", "—", "—", "0.00"]];
     colStyles = {
@@ -724,7 +727,7 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
           r.serieDocText,
           r.codigoUnico,
           r.montoTexto,
-          r.saldoUSDTexto,
+          r.saldoUSD !== 0 ? r.saldoUSDTexto : "0.00",
         ])
       : [["—", "—", "Sin documentos pendientes", "", "—", "—", "—", "0.00"]];
     colStyles = {
@@ -796,309 +799,226 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
 
   const startSummaryY = currentY;
 
-  const isMixed = hasPen && hasUsd;
+  // ─── RESUMEN CONSOLIDADO FIEL A SAP CRYSTAL REPORTS ───
+  // En SAP Crystal Reports (Autopartes S.A.), el resumen siempre se totaliza y consolida en USD
+  const summaryCurrency = "USD";
+  const currLabel = "USD";
+
+  const getDocEquiv = (r, targetCurrency = "USD") => {
+    const d = r.rawDoc || {};
+    if (targetCurrency === "USD") {
+      if (d.saldoUsdEquivalente !== undefined && d.saldoUsdEquivalente !== null && !isNaN(Number(d.saldoUsdEquivalente))) {
+        return Number(d.saldoUsdEquivalente);
+      }
+      if (d.SALDO_SYS !== undefined && d.SALDO_SYS !== null && !isNaN(Number(d.SALDO_SYS))) {
+        return Number(d.SALDO_SYS);
+      }
+      if (r.saldoUSD !== 0) return r.saldoUSD;
+      if (d.sUsd && Number(d.sUsd) !== 0) return Number(d.sUsd);
+      const rate = Number(d.docRate || d.DocRate || d.DOCRATE || 3.371);
+      const sPenVal = r.saldoPEN !== 0 ? r.saldoPEN : Number(d.sPen || 0);
+      if (rate > 0 && sPenVal !== 0) return Number((sPenVal / rate).toFixed(2));
+      return sPenVal;
+    } else {
+      if (r.saldoPEN !== 0) return r.saldoPEN;
+      if (d.sPen && Number(d.sPen) !== 0) return Number(d.sPen);
+      const rate = Number(d.docRate || d.DocRate || d.DOCRATE || 3.371);
+      const sUsdVal = r.saldoUSD !== 0 ? r.saldoUSD : Number(d.sUsd || 0);
+      if (rate > 0 && sUsdVal !== 0) return Number((sUsdVal * rate).toFixed(2));
+      return sUsdVal;
+    }
+  };
+
+  const getNumUpper = (r) => (r.numDoc || r.rawDoc?.numeroDocumento || r.rawDoc?.NRO_DOC || r.rawDoc?.num || r.serieDocText || "").toUpperCase();
+  const getTipoLower = (r) => (r.tipoDoc || r.rawDoc?.tipoDocumento || r.rawDoc?.TIPO_DOC || r.rawDoc?.tipo || "").toLowerCase();
+  const getSapDocType = (r) => String(r.rawDoc?.TIPO_DOC_SAP || "").trim();
 
   const vencidos = tableRows.filter((r) => r.isOverdue);
   const venceHoy = tableRows.filter((r) => r.isVenceHoy);
-  const porVencer = tableRows.filter((r) => !r.isOverdue && !r.isVenceHoy);
-
-  const totalVencidosUSD = vencidos.reduce((acc, r) => acc + r.saldoUSD, 0);
-  const totalVencidosPEN = vencidos.reduce((acc, r) => acc + r.saldoPEN, 0);
-  const totalVenceHoyUSD = venceHoy.reduce((acc, r) => acc + r.saldoUSD, 0);
-  const totalVenceHoyPEN = venceHoy.reduce((acc, r) => acc + r.saldoPEN, 0);
-  const totalPorVencerUSD = porVencer.reduce((acc, r) => acc + r.saldoUSD, 0);
-  const totalPorVencerPEN = porVencer.reduce((acc, r) => acc + r.saldoPEN, 0);
 
   const letras = tableRows.filter((r) => {
-    const num = (r.rawDoc?.numeroDocumento || r.rawDoc?.NRO_DOC || r.num || "").toUpperCase();
-    const tipo = (r.rawDoc?.tipoDocumento || r.tipo || "").toLowerCase();
-    return r.rawDoc?.esLetra || num.startsWith("LC-") || num.startsWith("LT-") || tipo.includes("letra");
+    const num = getNumUpper(r);
+    const tipo = getTipoLower(r);
+    return Boolean(r.rawDoc?.esLetra || num.startsWith("LC-") || num.startsWith("LT-") || tipo.includes("letra"));
   });
+
   const notasCred = tableRows.filter((r) => {
-    const num = (r.rawDoc?.numeroDocumento || r.rawDoc?.NRO_DOC || r.num || "").toUpperCase();
-    const tipo = (r.rawDoc?.tipoDocumento || r.tipo || "").toLowerCase();
-    return r.saldoUSD < 0 || r.saldoPEN < 0 || num.startsWith("NC-") || num.startsWith("ABO-") || num.startsWith("07F") || num.startsWith("07-") || num.includes("07F") || tipo.includes("credito") || tipo.includes("abono");
+    const num = getNumUpper(r);
+    const tipo = getTipoLower(r);
+    return r.saldoUSD < 0 || r.saldoPEN < 0 || (r.rawDoc?.sPen < 0) || (r.rawDoc?.sUsd < 0) || num.startsWith("NC-") || num.startsWith("ABO-") || num.startsWith("07F") || num.startsWith("07-") || num.includes("07F") || tipo.includes("credito") || tipo.includes("abono");
   });
+
   const notasDeb = tableRows.filter((r) => {
-    const num = (r.rawDoc?.numeroDocumento || r.rawDoc?.NRO_DOC || r.num || "").toUpperCase();
-    const tipo = (r.rawDoc?.tipoDocumento || r.tipo || "").toLowerCase();
+    const num = getNumUpper(r);
+    const tipo = getTipoLower(r);
     return num.startsWith("ND-") || num.startsWith("08F") || num.startsWith("08-") || num.includes("08F") || tipo.includes("debito");
   });
-  const facturas = tableRows.filter((r) => {
-    const num = (r.rawDoc?.numeroDocumento || r.rawDoc?.NRO_DOC || r.num || "").toUpperCase();
-    const tipo = (r.rawDoc?.tipoDocumento || r.tipo || "").toLowerCase();
-    const isCred = r.saldoUSD < 0 || r.saldoPEN < 0 || num.startsWith("NC-") || num.startsWith("ABO-") || num.startsWith("07F") || num.includes("07F") || tipo.includes("credito") || tipo.includes("abono");
-    return !isCred && (num.startsWith("FAC-") || num.startsWith("FT-") || num.startsWith("01F") || num.startsWith("01-") || tipo.includes("factura"));
-  });
+
   const boletas = tableRows.filter((r) => {
-    const num = (r.rawDoc?.numeroDocumento || r.rawDoc?.NRO_DOC || r.num || "").toUpperCase();
-    const tipo = (r.rawDoc?.tipoDocumento || r.tipo || "").toLowerCase();
-    const isCred = r.saldoUSD < 0 || r.saldoPEN < 0 || num.startsWith("NC-") || num.startsWith("ABO-") || num.startsWith("07F") || num.includes("07F") || tipo.includes("credito") || tipo.includes("abono");
-    return !isCred && (num.startsWith("BOL-") || num.startsWith("BV-") || num.startsWith("03B") || num.startsWith("03-") || tipo.includes("boleta"));
+    if (letras.includes(r) || notasCred.includes(r) || notasDeb.includes(r)) return false;
+    const num = getNumUpper(r);
+    const tipo = getTipoLower(r);
+    const sapType = getSapDocType(r);
+    return sapType === "03" || num.startsWith("BOL-") || num.startsWith("BV-") || num.startsWith("03B") || num.startsWith("03-") || tipo.includes("boleta");
   });
 
-  const totalLetrasUSD = letras.reduce((acc, r) => acc + r.saldoUSD, 0);
-  const totalLetrasPEN = letras.reduce((acc, r) => acc + r.saldoPEN, 0);
-  const totalLetrasCarteraUSD = letras.filter((r) => r.isVD).reduce((acc, r) => acc + r.saldoUSD, 0);
-  const totalLetrasCarteraPEN = letras.filter((r) => r.isVD).reduce((acc, r) => acc + r.saldoPEN, 0);
-  const totalLetrasBancoUSD = letras.filter((r) => !r.isVD).reduce((acc, r) => acc + r.saldoUSD, 0);
-  const totalLetrasBancoPEN = letras.filter((r) => !r.isVD).reduce((acc, r) => acc + r.saldoPEN, 0);
+  const facturas = tableRows.filter((r) => {
+    if (letras.includes(r) || notasCred.includes(r) || notasDeb.includes(r) || boletas.includes(r)) return false;
+    const num = getNumUpper(r);
+    const tipo = getTipoLower(r);
+    const sapType = getSapDocType(r);
+    return sapType === "01" || num.startsWith("FAC-") || num.startsWith("FT-") || num.startsWith("01F") || num.startsWith("01-") || tipo.includes("factura") || (!num.startsWith("BOL-") && !num.startsWith("03"));
+  });
 
-  const totalFacturasUSD = facturas.reduce((acc, r) => acc + r.saldoUSD, 0);
-  const totalFacturasPEN = facturas.reduce((acc, r) => acc + r.saldoPEN, 0);
-  const totalBoletasUSD = boletas.reduce((acc, r) => acc + r.saldoUSD, 0);
-  const totalBoletasPEN = boletas.reduce((acc, r) => acc + r.saldoPEN, 0);
-  const totalNCUSD = notasCred.reduce((acc, r) => acc + r.saldoUSD, 0);
-  const totalNCPEN = notasCred.reduce((acc, r) => acc + r.saldoPEN, 0);
-  const totalNDUSD = notasDeb.reduce((acc, r) => acc + r.saldoUSD, 0);
-  const totalNDPEN = notasDeb.reduce((acc, r) => acc + r.saldoPEN, 0);
+  const crystal = debt.resumenSapCrystal || {};
 
-  if (isMixed) {
-    // ─── RESUMEN MIXTO (USD Y PEN) ───
-    const leftX = 10;
-    doc.setFont("helvetica", "bold").setFontSize(7.5).setTextColor(0, 0, 0);
-    doc.text("RESUMEN POR VENCIMIENTO", leftX, startSummaryY);
+  const calcFacturas = crystal.totalFacturasUSD !== undefined
+    ? Number(crystal.totalFacturasUSD)
+    : Number(facturas.reduce((acc, r) => acc + getDocEquiv(r, "USD"), 0).toFixed(2));
 
-    doc.setFont("helvetica", "bold").setFontSize(6.5);
-    doc.text("Cant.", leftX + 36, startSummaryY + 5.5, { align: "right" });
-    doc.text("Total USD", leftX + 60, startSummaryY + 5.5, { align: "right" });
-    doc.text("Total PEN", leftX + 85, startSummaryY + 5.5, { align: "right" });
+  const calcBoletas = crystal.totalBoletasUSD !== undefined
+    ? Number(crystal.totalBoletasUSD)
+    : Number(boletas.reduce((acc, r) => acc + getDocEquiv(r, "USD"), 0).toFixed(2));
 
-    let yL = startSummaryY + 10.5;
-    doc.setFont("helvetica", "normal").setFontSize(7);
-    doc.text("Doc. Vencidos", leftX, yL);
-    doc.text(":", leftX + 22, yL);
+  const calcNC = crystal.totalNotasCreditoUSD !== undefined
+    ? Number(crystal.totalNotasCreditoUSD)
+    : Number(notasCred.reduce((acc, r) => acc + (getDocEquiv(r, "USD") < 0 ? getDocEquiv(r, "USD") : -Math.abs(getDocEquiv(r, "USD"))), 0).toFixed(2));
 
-    if (vencidos.length > 0) {
-      doc.setFillColor(220, 53, 69);
-      doc.rect(leftX + 28, yL - 3, 8, 4, "F");
-      doc.setTextColor(255, 255, 255).setFont("helvetica", "bold");
-      doc.text(String(vencidos.length), leftX + 32, yL - 0.2, { align: "center" });
-      doc.setTextColor(0, 0, 0).setFont("helvetica", "normal");
-    } else {
-      doc.text("0", leftX + 32, yL, { align: "center" });
-    }
-    doc.text(totalVencidosUSD > 0 ? formatMoney(totalVencidosUSD) : "—", leftX + 60, yL, { align: "right" });
-    doc.text(totalVencidosPEN > 0 ? formatMoney(totalVencidosPEN) : "—", leftX + 85, yL, { align: "right" });
+  const calcND = crystal.totalNDUSD !== undefined
+    ? Number(crystal.totalNDUSD)
+    : Number(notasDeb.reduce((acc, r) => acc + getDocEquiv(r, "USD"), 0).toFixed(2));
 
-    yL += 4.5;
-    doc.text("Doc. Vence Hoy", leftX, yL);
-    doc.text(":", leftX + 22, yL);
-    if (venceHoy.length > 0) {
-      doc.setFillColor(217, 119, 6);
-      doc.rect(leftX + 28, yL - 3, 8, 4, "F");
-      doc.setTextColor(255, 255, 255).setFont("helvetica", "bold");
-      doc.text(String(venceHoy.length), leftX + 32, yL - 0.2, { align: "center" });
-      doc.setTextColor(0, 0, 0).setFont("helvetica", "normal");
-    } else {
-      doc.text("0", leftX + 32, yL, { align: "center" });
-    }
-    doc.text(totalVenceHoyUSD > 0 ? formatMoney(totalVenceHoyUSD) : "—", leftX + 60, yL, { align: "right" });
-    doc.text(totalVenceHoyPEN > 0 ? formatMoney(totalVenceHoyPEN) : "—", leftX + 85, yL, { align: "right" });
+  const calcLetras = crystal.totalLetrasUSD !== undefined
+    ? Number(crystal.totalLetrasUSD)
+    : Number(letras.reduce((acc, r) => acc + getDocEquiv(r, "USD"), 0).toFixed(2));
 
-    yL += 4.5;
-    doc.text("Doc. por Vencer", leftX, yL);
-    doc.text(":", leftX + 22, yL);
-    doc.text(String(porVencer.length), leftX + 32, yL, { align: "center" });
-    doc.text(totalPorVencerUSD > 0 ? formatMoney(totalPorVencerUSD) : "—", leftX + 60, yL, { align: "right" });
-    doc.text(totalPorVencerPEN > 0 ? formatMoney(totalPorVencerPEN) : "—", leftX + 85, yL, { align: "right" });
+  const calcLetrasCartera = Number(letras.filter((r) => r.isVD).reduce((acc, r) => acc + getDocEquiv(r, "USD"), 0).toFixed(2));
+  const calcLetrasBanco = Number(letras.filter((r) => !r.isVD).reduce((acc, r) => acc + getDocEquiv(r, "USD"), 0).toFixed(2));
 
-    yL += 3.5;
-    doc.setLineWidth(0.4).line(leftX + 38, yL, leftX + 85, yL);
-    yL += 4.5;
-    doc.setFont("helvetica", "bold").setFontSize(7.5);
-    doc.text("TOTALES", leftX + 15, yL);
-    doc.text(formatMoney(totalSaldoUSD), leftX + 60, yL, { align: "right" });
-    doc.text(formatMoney(totalSaldoPEN), leftX + 85, yL, { align: "right" });
+  let calcTotalConsolidado = crystal.totalConsolidadoUSD !== undefined
+    ? Number(crystal.totalConsolidadoUSD)
+    : debt.totalConsolidadoUSD !== undefined
+    ? Number(debt.totalConsolidadoUSD)
+    : Number((calcFacturas + calcBoletas + calcNC + calcND + calcLetras).toFixed(2));
 
-    // ─── RESUMEN POR TIPO DE DOC (MIXTO) ───
-    const rightX = 100;
-    doc.setFont("helvetica", "bold").setFontSize(7.5).setTextColor(0, 0, 0);
-    doc.text("RESUMEN POR TIPO DE DOCUMENTO", rightX, startSummaryY);
+  const calcVenceHoy = crystal.venceHoyUSD !== undefined
+    ? Number(crystal.venceHoyUSD)
+    : Number(venceHoy.reduce((acc, r) => acc + getDocEquiv(r, "USD"), 0).toFixed(2));
 
-    doc.setFont("helvetica", "bold").setFontSize(6.5);
-    doc.text("Tipo Doc.", rightX, startSummaryY + 5.5);
-    doc.text("Total USD", rightX + 65, startSummaryY + 5.5, { align: "right" });
-    doc.text("Total PEN", rightX + 92, startSummaryY + 5.5, { align: "right" });
+  const calcPorVencer = crystal.porVencerUSD !== undefined
+    ? Number(crystal.porVencerUSD)
+    : Number(tableRows.filter((r) => !r.isOverdue && !r.isVenceHoy && r.saldoUSD >= 0 && r.saldoPEN >= 0 && !notasCred.includes(r)).reduce((acc, r) => acc + getDocEquiv(r, "USD"), 0).toFixed(2));
 
-    let yR = startSummaryY + 10.5;
-    doc.setFont("helvetica", "normal").setFontSize(7);
+  let calcVencidosNeto = crystal.vencidosNetoUSD !== undefined
+    ? Number(crystal.vencidosNetoUSD)
+    : Math.max(Number((calcTotalConsolidado - calcVenceHoy - calcPorVencer).toFixed(2)), 0);
 
-    doc.text("Total Factura", rightX, yR);
-    doc.text(":", rightX + 20, yR);
-    doc.text(totalFacturasUSD > 0 ? formatMoney(totalFacturasUSD) : "—", rightX + 65, yR, { align: "right" });
-    doc.text(totalFacturasPEN > 0 ? formatMoney(totalFacturasPEN) : "—", rightX + 92, yR, { align: "right" });
+  const countVencidos = crystal.countVencidos ?? vencidos.length;
+  const countVenceHoy = crystal.countVenceHoy ?? venceHoy.length;
+  const countPorVencer = crystal.countPorVencer ?? tableRows.filter((r) => !r.isOverdue && !r.isVenceHoy && !notasCred.includes(r)).length;
 
-    yR += 4;
-    doc.text("Total Boleta", rightX, yR);
-    doc.text(":", rightX + 20, yR);
-    doc.text(totalBoletasUSD > 0 ? formatMoney(totalBoletasUSD) : "—", rightX + 65, yR, { align: "right" });
-    doc.text(totalBoletasPEN > 0 ? formatMoney(totalBoletasPEN) : "—", rightX + 92, yR, { align: "right" });
+  const leftX = 18;
+  doc.setFont("helvetica", "bold").setFontSize(7.5).setTextColor(0, 0, 0);
+  doc.text("RESUMEN POR VENCIMIENTO", leftX, startSummaryY);
 
-    yR += 4;
-    doc.text("Total Nota Cred", rightX, yR);
-    doc.text(":", rightX + 20, yR);
-    doc.text(totalNCUSD !== 0 ? formatMoney(totalNCUSD) : "—", rightX + 65, yR, { align: "right" });
-    doc.text(totalNCPEN !== 0 ? formatMoney(totalNCPEN) : "—", rightX + 92, yR, { align: "right" });
+  doc.setFont("helvetica", "bold").setFontSize(7);
+  doc.text("Cant Doc.", leftX + 30, startSummaryY + 5.5, { align: "right" });
+  doc.text(`Total Doc. ${currLabel}`, leftX + 56, startSummaryY + 5.5, { align: "right" });
 
-    yR += 4;
-    doc.text("Total Nota Deb", rightX, yR);
-    doc.text(":", rightX + 20, yR);
-    doc.text(totalNDUSD > 0 ? formatMoney(totalNDUSD) : "—", rightX + 65, yR, { align: "right" });
-    doc.text(totalNDPEN > 0 ? formatMoney(totalNDPEN) : "—", rightX + 92, yR, { align: "right" });
+  let yL = startSummaryY + 10.5;
+  doc.setFont("helvetica", "normal").setFontSize(7.5);
+  doc.text("Doc. Vencidos", leftX - 8, yL);
+  doc.text(":", leftX + 13, yL);
 
-    yR += 4;
-    doc.text("Total Letras", rightX, yR);
-    doc.text(":", rightX + 20, yR);
-    doc.text(totalLetrasUSD > 0 ? formatMoney(totalLetrasUSD) : "—", rightX + 65, yR, { align: "right" });
-    doc.text(totalLetrasPEN > 0 ? formatMoney(totalLetrasPEN) : "—", rightX + 92, yR, { align: "right" });
-
-    if (totalLetrasUSD > 0 || totalLetrasPEN > 0) {
-      yR += 3.5;
-      doc.setFont("helvetica", "normal").setFontSize(6.5).setTextColor(60, 60, 60);
-      doc.text("En Cartera :", rightX + 10, yR);
-      doc.text(totalLetrasCarteraUSD > 0 ? formatMoney(totalLetrasCarteraUSD) : "—", rightX + 65, yR, { align: "right" });
-      doc.text(totalLetrasCarteraPEN > 0 ? formatMoney(totalLetrasCarteraPEN) : "—", rightX + 92, yR, { align: "right" });
-
-      yR += 3.2;
-      doc.text("En el Banco :", rightX + 10, yR);
-      doc.text(totalLetrasBancoUSD > 0 ? formatMoney(totalLetrasBancoUSD) : "—", rightX + 65, yR, { align: "right" });
-      doc.text(totalLetrasBancoPEN > 0 ? formatMoney(totalLetrasBancoPEN) : "—", rightX + 92, yR, { align: "right" });
-    }
-
-    yR += 2.5;
-    doc.setLineWidth(0.3).line(rightX + 42, yR, rightX + 92, yR);
-    doc.line(rightX + 42, yR + 0.5, rightX + 92, yR + 0.5);
-
-    yR += 4.5;
-    doc.setFont("helvetica", "bold").setFontSize(7.5).setTextColor(0, 0, 0);
-    doc.text("TOTALES", rightX + 15, yR);
-    doc.text(formatMoney(totalSaldoUSD), rightX + 65, yR, { align: "right" });
-    doc.text(formatMoney(totalSaldoPEN), rightX + 92, yR, { align: "right" });
-
-    doc.setLineWidth(0.5).line(96, startSummaryY - 2, 96, yR + 2);
+  if (countVencidos > 0) {
+    doc.setFillColor(220, 53, 69);
+    doc.rect(leftX + 21, yL - 3.2, 8, 4.3, "F");
+    doc.setTextColor(255, 255, 255).setFont("helvetica", "bold");
+    doc.text(String(countVencidos), leftX + 25, yL - 0.2, { align: "center" });
+    doc.setTextColor(0, 0, 0).setFont("helvetica", "normal");
   } else {
-    // ─── RESUMEN MONOMONEDA (SOLO USD O SOLO PEN) ───
-    const currLabel = hasPen ? "PEN" : "USD";
-    const currSym = hasPen ? "S/" : "$";
-    const totalVencidos = hasPen ? totalVencidosPEN : totalVencidosUSD;
-    const totalPorVencer = hasPen ? totalPorVencerPEN : totalPorVencerUSD;
-    const totalSaldo = hasPen ? totalSaldoPEN : totalSaldoUSD;
-
-    const totalFacturas = hasPen ? totalFacturasPEN : totalFacturasUSD;
-    const totalBoletas = hasPen ? totalBoletasPEN : totalBoletasUSD;
-    const totalNC = hasPen ? totalNCPEN : totalNCUSD;
-    const totalND = hasPen ? totalNDPEN : totalNDUSD;
-    const totalLetras = hasPen ? totalLetrasPEN : totalLetrasUSD;
-    const totalLetrasCartera = hasPen ? totalLetrasCarteraPEN : totalLetrasCarteraUSD;
-    const totalLetrasBanco = hasPen ? totalLetrasBancoPEN : totalLetrasBancoUSD;
-
-    const leftX = 18;
-    doc.setFont("helvetica", "bold").setFontSize(7.5).setTextColor(0, 0, 0);
-    doc.text("RESUMEN POR VENCIMIENTO", leftX, startSummaryY);
-
-    doc.setFont("helvetica", "bold").setFontSize(7);
-    doc.text("Cant Doc.", leftX + 30, startSummaryY + 5.5, { align: "right" });
-    doc.text(`Total Doc. ${currLabel}`, leftX + 56, startSummaryY + 5.5, { align: "right" });
-
-    let yL = startSummaryY + 10.5;
-    doc.setFont("helvetica", "normal").setFontSize(7.5);
-    doc.text("Doc. Vencidos", leftX - 8, yL);
-    doc.text(":", leftX + 13, yL);
-
-    if (vencidos.length > 0) {
-      doc.setFillColor(220, 53, 69);
-      doc.rect(leftX + 21, yL - 3.2, 8, 4.3, "F");
-      doc.setTextColor(255, 255, 255).setFont("helvetica", "bold");
-      doc.text(String(vencidos.length), leftX + 25, yL - 0.2, { align: "center" });
-      doc.setTextColor(0, 0, 0).setFont("helvetica", "normal");
-    } else {
-      doc.text("0", leftX + 25, yL, { align: "center" });
-    }
-    doc.text(formatMoney(totalVencidos), leftX + 56, yL, { align: "right" });
-
-    const totalVenceHoy = hasPen ? totalVenceHoyPEN : totalVenceHoyUSD;
-    yL += 4.5;
-    doc.text("Doc. Vence Hoy", leftX - 8, yL);
-    doc.text(":", leftX + 13, yL);
-    if (venceHoy.length > 0) {
-      doc.setFillColor(217, 119, 6);
-      doc.rect(leftX + 21, yL - 3.2, 8, 4.3, "F");
-      doc.setTextColor(255, 255, 255).setFont("helvetica", "bold");
-      doc.text(String(venceHoy.length), leftX + 25, yL - 0.2, { align: "center" });
-      doc.setTextColor(0, 0, 0).setFont("helvetica", "normal");
-    } else {
-      doc.text("0", leftX + 25, yL, { align: "center" });
-    }
-    doc.text(totalVenceHoy > 0 ? formatMoney(totalVenceHoy) : "0.00", leftX + 56, yL, { align: "right" });
-
-    yL += 4.5;
-    doc.text("Doc. por Vencer", leftX - 8, yL);
-    doc.text(":", leftX + 13, yL);
-    doc.text(String(porVencer.length), leftX + 25, yL, { align: "center" });
-    doc.text(formatMoney(totalPorVencer), leftX + 56, yL, { align: "right" });
-
-    yL += 3.5;
-    doc.setLineWidth(0.4).line(leftX + 32, yL, leftX + 56, yL);
-    yL += 4.5;
-    doc.setFont("helvetica", "bold").setFontSize(8);
-    doc.text(currLabel, leftX + 24, yL);
-    doc.text(formatMoney(totalSaldo), leftX + 56, yL, { align: "right" });
-
-    const rightX = 86;
-    doc.setFont("helvetica", "bold").setFontSize(7.5).setTextColor(0, 0, 0);
-    doc.text("RESUMEN POR TIPO DE DOCUMENTO", rightX, startSummaryY);
-
-    doc.setFont("helvetica", "bold").setFontSize(7);
-    doc.text("Tipo Doc.", rightX, startSummaryY + 5.5);
-    doc.text(`Total Doc. ${currLabel}`, rightX + 58, startSummaryY + 5.5, { align: "right" });
-
-    let yR = startSummaryY + 10.5;
-    doc.setFont("helvetica", "normal").setFontSize(7.5);
-
-    doc.text("Total Factura", rightX, yR);
-    doc.text(":", rightX + 20, yR);
-    doc.text(formatMoney(totalFacturas), rightX + 58, yR, { align: "right" });
-
-    yR += 4;
-    doc.text("Total Boleta", rightX, yR);
-    doc.text(":", rightX + 20, yR);
-    doc.text(formatMoney(totalBoletas), rightX + 58, yR, { align: "right" });
-
-    yR += 4;
-    doc.text("Total Nota Cred", rightX, yR);
-    doc.text(":", rightX + 20, yR);
-    doc.text(formatMoney(totalNC), rightX + 58, yR, { align: "right" });
-
-    yR += 4;
-    doc.text("Total Nota Deb", rightX, yR);
-    doc.text(":", rightX + 20, yR);
-    doc.text(formatMoney(totalND), rightX + 58, yR, { align: "right" });
-
-    yR += 4;
-    doc.text("Total Letras", rightX, yR);
-    doc.text(":", rightX + 20, yR);
-    doc.text(formatMoney(totalLetras), rightX + 58, yR, { align: "right" });
-
-    if (totalLetras > 0) {
-      yR += 3.5;
-      doc.setFont("helvetica", "normal").setFontSize(7).setTextColor(60, 60, 60);
-      doc.text(`En Cartera : ${formatMoney(totalLetrasCartera)}`, rightX + 16, yR);
-      yR += 3.2;
-      doc.text(`En el Banco : ${formatMoney(totalLetrasBanco)}`, rightX + 16, yR);
-    }
-
-    yR += 2.5;
-    doc.setLineWidth(0.3).line(rightX + 34, yR, rightX + 58, yR);
-    doc.line(rightX + 34, yR + 0.5, rightX + 58, yR + 0.5);
-
-    yR += 4.5;
-    doc.setFont("helvetica", "bold").setFontSize(8).setTextColor(0, 0, 0);
-    doc.text(currLabel, rightX + 26, yR);
-    doc.text(formatMoney(totalSaldo), rightX + 58, yR, { align: "right" });
-
-    doc.setLineWidth(0.6).line(77, startSummaryY - 2, 77, yR + 2);
+    doc.text("0", leftX + 25, yL, { align: "center" });
   }
+  doc.text(formatMoney(calcVencidosNeto), leftX + 56, yL, { align: "right" });
+
+  yL += 4.5;
+  doc.text("Doc. Vence Hoy", leftX - 8, yL);
+  doc.text(":", leftX + 13, yL);
+  if (countVenceHoy > 0) {
+    doc.setFillColor(217, 119, 6);
+    doc.rect(leftX + 21, yL - 3.2, 8, 4.3, "F");
+    doc.setTextColor(255, 255, 255).setFont("helvetica", "bold");
+    doc.text(String(countVenceHoy), leftX + 25, yL - 0.2, { align: "center" });
+    doc.setTextColor(0, 0, 0).setFont("helvetica", "normal");
+  } else {
+    doc.text("0", leftX + 25, yL, { align: "center" });
+  }
+  doc.text(formatMoney(calcVenceHoy), leftX + 56, yL, { align: "right" });
+
+  yL += 4.5;
+  doc.text("Doc. por Vencer", leftX - 8, yL);
+  doc.text(":", leftX + 13, yL);
+  doc.text(String(countPorVencer), leftX + 25, yL, { align: "center" });
+  doc.text(formatMoney(calcPorVencer), leftX + 56, yL, { align: "right" });
+
+  yL += 3.5;
+  doc.setLineWidth(0.4).line(leftX + 32, yL, leftX + 56, yL);
+  yL += 4.5;
+  doc.setFont("helvetica", "bold").setFontSize(8);
+  doc.text(currLabel, leftX + 24, yL);
+  doc.text(formatMoney(calcTotalConsolidado), leftX + 56, yL, { align: "right" });
+
+  const rightX = 86;
+  doc.setFont("helvetica", "bold").setFontSize(7.5).setTextColor(0, 0, 0);
+  doc.text("RESUMEN POR TIPO DE DOCUMENTO", rightX, startSummaryY);
+
+  doc.setFont("helvetica", "bold").setFontSize(7);
+  doc.text("Tipo Doc.", rightX, startSummaryY + 5.5);
+  doc.text(`Total Doc. ${currLabel}`, rightX + 58, startSummaryY + 5.5, { align: "right" });
+
+  let yR = startSummaryY + 10.5;
+  doc.setFont("helvetica", "normal").setFontSize(7.5);
+
+  doc.text("Total Factura", rightX, yR);
+  doc.text(":", rightX + 20, yR);
+  doc.text(formatMoney(calcFacturas), rightX + 58, yR, { align: "right" });
+
+  yR += 4;
+  doc.text("Total Boleta", rightX, yR);
+  doc.text(":", rightX + 20, yR);
+  doc.text(formatMoney(calcBoletas), rightX + 58, yR, { align: "right" });
+
+  yR += 4;
+  doc.text("Total Nota Cred", rightX, yR);
+  doc.text(":", rightX + 20, yR);
+  doc.text(formatMoney(calcNC), rightX + 58, yR, { align: "right" });
+
+  yR += 4;
+  doc.text("Total Nota Deb", rightX, yR);
+  doc.text(":", rightX + 20, yR);
+  doc.text(formatMoney(calcND), rightX + 58, yR, { align: "right" });
+
+  yR += 4;
+  doc.text("Total Letras", rightX, yR);
+  doc.text(":", rightX + 20, yR);
+  doc.text(formatMoney(calcLetras), rightX + 58, yR, { align: "right" });
+
+  yR += 3.5;
+  doc.setFont("helvetica", "normal").setFontSize(7).setTextColor(60, 60, 60);
+  doc.text(`En Cartera : ${formatMoney(calcLetrasCartera)}`, rightX + 16, yR);
+  yR += 3.2;
+  doc.text(`En el Banco : ${formatMoney(calcLetrasBanco)}`, rightX + 16, yR);
+
+  yR += 2.5;
+  doc.setLineWidth(0.3).line(rightX + 34, yR, rightX + 58, yR);
+  doc.line(rightX + 34, yR + 0.5, rightX + 58, yR + 0.5);
+
+  yR += 4.5;
+  doc.setFont("helvetica", "bold").setFontSize(8).setTextColor(0, 0, 0);
+  doc.text(currLabel, rightX + 26, yR);
+  doc.text(formatMoney(calcTotalConsolidado), rightX + 58, yR, { align: "right" });
+
+  doc.setLineWidth(0.6).line(77, startSummaryY - 2, 77, Math.max(yL, yR) + 2);
 
   const safeClientSlug = cleanCode.replace(/[^A-Za-z0-9]/g, "");
   const finalFilename = filename || `EstadoDeCuenta_${safeClientSlug}_${dateFormatted.replace(/\//g, "-")}.pdf`;

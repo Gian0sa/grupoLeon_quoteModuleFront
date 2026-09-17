@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { FormControl, FormLabel, Spinner, FormErrorMessage } from "@chakra-ui/react";
 import Select from "react-select";
 import { useSellersData } from "../features/auth/hooks/queries/authQueries";
@@ -13,16 +14,39 @@ export default function SellerSelect({
 }) {
   const { data: sellers, isLoading } = useSellersData();
 
-  const sellerOptions = [
-    { value: 0, label: "Todos los vendedores" }, // ✅ Opción global
-    ...(sellers?.sellers || [])
-      .filter((s) => s.SalesEmployeeCode !== -1 && s.Active === "tYES")
+  const rawSellers = useMemo(() => {
+    const list = Array.isArray(sellers) ? sellers : (sellers?.sellers || []);
+    const parsed = list
+      .filter((s) => {
+        const code = Number(s.SalesEmployeeCode ?? s.value ?? -1);
+        const active = String(s.Active ?? "tYES").toUpperCase();
+        return code > 0 && (active === "TYES" || active === "Y" || active === "TRUE");
+      })
       .map((s) => ({
-        value: s.SalesEmployeeCode,
-        label: s.SalesEmployeeName,
-        email: s.Email,
-      })),
-  ];
+        value: s.SalesEmployeeCode ?? s.value,
+        label: s.SalesEmployeeName ?? s.label,
+        email: s.Email ?? s.email,
+      }));
+
+    if (parsed.length > 0) {
+      try {
+        localStorage.setItem("cached_sap_sellers", JSON.stringify(parsed));
+      } catch {}
+      return parsed;
+    }
+
+    try {
+      const saved = localStorage.getItem("cached_sap_sellers");
+      if (saved) return JSON.parse(saved);
+    } catch {}
+
+    return [];
+  }, [sellers]);
+
+  const sellerOptions = useMemo(() => [
+    { value: 0, label: "Todos los vendedores" }, // ✅ Opción global
+    ...rawSellers,
+  ], [rawSellers]);
 
   const isSmall = size === "sm";
 

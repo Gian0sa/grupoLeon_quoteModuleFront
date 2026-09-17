@@ -5,8 +5,10 @@ export function useSellersData() {
   return useQuery({
     queryKey: ["sellersData"],
     queryFn: sellersData,
-    onSuccess: (data) => {
-    },
+    staleTime: 1000 * 60 * 15, // 15 min
+    cacheTime: 1000 * 60 * 60, // 1 hora
+    refetchOnWindowFocus: false,
+    retry: 2,
     onError: (error) => {
       console.error("Error al obtener los datos de los vendedores:", error);
     },

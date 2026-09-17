@@ -193,6 +193,7 @@ export function WhatsAppStatementModal({ isOpen, onClose, debt }) {
     salesperson,
     totalUSD,
     totalPEN,
+    totalConsolidado,
     hasUsd,
     hasPen,
     isCreditBalance,
@@ -206,7 +207,7 @@ export function WhatsAppStatementModal({ isOpen, onClose, debt }) {
     venceHoyDocs,
     nextUpcomingDue,
   } = useMemo(() => {
-    if (!debt) return { clientName: "", totalUSD: 0, totalPEN: 0, hasUsd: false, hasPen: false, isCreditBalance: false, hasOverdue: false, vencidosCount: 0, hasVenceHoy: false, totalVenceHoyUSD: 0, totalVenceHoyPEN: 0, venceHoyCount: 0, venceHoyDocs: [], nextUpcomingDue: null };
+    if (!debt) return { clientName: "", totalUSD: 0, totalPEN: 0, totalConsolidado: 0, hasUsd: false, hasPen: false, isCreditBalance: false, hasOverdue: false, vencidosCount: 0, hasVenceHoy: false, totalVenceHoyUSD: 0, totalVenceHoyPEN: 0, venceHoyCount: 0, venceHoyDocs: [], nextUpcomingDue: null };
     const rawDocs = debt.documents || debt.documentos || [];
     const docs = rawDocs.filter((d) => {
       const info = (d?.INFORMACION_DETALLADA || d?.detalle || '').toLowerCase();
@@ -282,12 +283,55 @@ export function WhatsAppStatementModal({ isOpen, onClose, debt }) {
     const realHasOverdue = !isCredit && (vCount > 0 || (debt.saldoVencidoUSD && Number(debt.saldoVencidoUSD) > 0));
     const realHasVenceHoy = !isCredit && !realHasOverdue && (vhCount > 0 || debt.dueTodayDocumentsCount > 0 || debt.hasVenceHoy);
 
+    let totalConsolidado = debt.totalConsolidadoUSD ?? 
+      debt.saldoConsolidadoUSD ?? 
+      debt.resumenSapCrystal?.totalConsolidadoUSD;
+
+    if (totalConsolidado == null) {
+      if (docs.length > 0) {
+        totalConsolidado = Number(
+          docs.reduce((acc, d) => {
+            const num = (d.numeroDocumento || d.NRO_DOC || d.num || "").toUpperCase();
+            const tipo = (d.tipoDocumento || d.TIPO_DOC || "").toLowerCase();
+            const isCredit = num.startsWith("NC-") ||
+              num.startsWith("ABO-") ||
+              num.startsWith("AB0-") ||
+              num.includes("07F") ||
+              tipo.includes("credito") ||
+              tipo.includes("abono") ||
+              Number(d.saldoPendiente?.PEN ?? d.SALDO_PEN ?? d.sPen ?? 0) < 0 ||
+              Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? d.sUsd ?? 0) < 0;
+            
+            let valUSD = 0;
+            if (d.saldoUsdEquivalente != null && !isNaN(Number(d.saldoUsdEquivalente))) {
+              valUSD = Math.abs(Number(d.saldoUsdEquivalente));
+            } else if (d.SALDO_SYS != null && !isNaN(Number(d.SALDO_SYS))) {
+              valUSD = Math.abs(Number(d.SALDO_SYS));
+            } else {
+              const sUsd = Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? d.sUsd ?? d.saldoUsd ?? 0);
+              const sPen = Number(d.saldoPendiente?.PEN ?? d.SALDO_PEN ?? d.sPen ?? d.saldoPen ?? 0);
+              if (sUsd !== 0) {
+                valUSD = Math.abs(sUsd);
+              } else if (sPen !== 0) {
+                const rate = Number(d.docRate || d.DocRate || d.DOCRATE || 3.371);
+                valUSD = rate > 0 ? Number((Math.abs(sPen) / rate).toFixed(2)) : Math.abs(sPen);
+              }
+            }
+            return acc + (isCredit ? -valUSD : valUSD);
+          }, 0).toFixed(2)
+        );
+      } else {
+        totalConsolidado = finalUSD + (finalPEN !== 0 ? Number((finalPEN / 3.371).toFixed(2)) : 0);
+      }
+    }
+
     return {
       clientName: name,
       clientCode: code,
       salesperson: sales,
       totalUSD: finalUSD,
       totalPEN: finalPEN,
+      totalConsolidado,
       hasUsd: Math.abs(finalUSD) > 0.001,
       hasPen: Math.abs(finalPEN) > 0.001,
       isCreditBalance: isCredit,
@@ -330,21 +374,9 @@ export function WhatsAppStatementModal({ isOpen, onClose, debt }) {
 
     let saldoText = "";
     if (isCreditBalance) {
-      if (hasUsd && hasPen) {
-        saldoText = `$ ${formatMoney(totalUSD)} USD y S/ ${formatMoney(totalPEN)} PEN (A favor del cliente)`;
-      } else if (hasPen) {
-        saldoText = `S/ ${formatMoney(totalPEN)} PEN (A favor del cliente)`;
-      } else {
-        saldoText = `$ ${formatMoney(totalUSD)} USD (A favor del cliente)`;
-      }
+      saldoText = `$ ${formatMoney(totalConsolidado)} USD (A favor del cliente)`;
     } else {
-      if (hasUsd && hasPen) {
-        saldoText = `$ ${formatMoney(totalUSD)} USD y S/ ${formatMoney(totalPEN)} PEN`;
-      } else if (hasPen) {
-        saldoText = `S/ ${formatMoney(totalPEN)} PEN`;
-      } else {
-        saldoText = `$ ${formatMoney(totalUSD)} USD`;
-      }
+      saldoText = `$ ${formatMoney(totalConsolidado)} USD`;
     }
 
     let cuotaHoyText = "";
@@ -578,21 +610,21 @@ ${hasVenceHoy ? "Le sugerimos realizar su abono el día de hoy para mantener su 
                     Vendedor: <strong>{salesperson}</strong>
                   </Text>
                 </HStack>
-                <Text
-                  fontSize="sm"
-                  fontWeight="900"
-                  color={isCreditBalance ? "blue.600" : "emerald.700"}
-                  fontFamily="mono"
-                >
-                  {isCreditBalance ? "Saldo a Favor: " : "Saldo: "}
-                  {hasUsd && hasPen ? (
-                    `$${Math.abs(totalUSD).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD + S/ ${Math.abs(totalPEN).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                  ) : hasPen ? (
-                    `S/ ${Math.abs(totalPEN).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                  ) : (
-                    `$${Math.abs(totalUSD).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`
+                <VStack align={{ base: "flex-start", sm: "flex-end" }} spacing={0}>
+                  <Text
+                    fontSize="sm"
+                    fontWeight="900"
+                    color={isCreditBalance ? "blue.600" : "emerald.700"}
+                  >
+                    {isCreditBalance ? "Saldo a Favor Total: " : "Saldo Total: "}
+                    $ {Math.abs(Number(totalConsolidado || 0)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+                  </Text>
+                  {hasUsd && hasPen && (
+                    <Text fontSize="11px" color="gray.500" fontWeight="600">
+                      ($ {Math.abs(totalUSD).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD + S/ {Math.abs(totalPEN).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                    </Text>
                   )}
-                </Text>
+                </VStack>
               </Flex>
             </Box>
 
@@ -603,7 +635,7 @@ ${hasVenceHoy ? "Le sugerimos realizar su abono el día de hoy para mantener su 
                   <FormLabel fontSize="xs" fontWeight="800" color="gray.700" display="flex" alignItems="center" gap={1.5} mb={0}>
                     <Phone className="w-3.5 h-3.5 text-emerald-600" />
                     {hasSapPhone && !isUsingAlternativePhone
-                      ? "Número Oficial en SAP B1:"
+                      ? "Número Oficial:"
                       : isUsingAlternativePhone
                       ? "Número Alternativo para este Envío:"
                       : "Número de WhatsApp del Cliente:"}
@@ -611,7 +643,7 @@ ${hasVenceHoy ? "Le sugerimos realizar su abono el día de hoy para mantener su 
 
                   {hasSapPhone && !isUsingAlternativePhone ? (
                     <Badge colorScheme="green" fontSize="10px" px={2} py={0.5} borderRadius="full" display="flex" alignItems="center" gap={1}>
-                      <Lock className="w-2.5 h-2.5" /> Oficial SAP B1
+                      <Lock className="w-2.5 h-2.5" /> Oficial
                     </Badge>
                   ) : isUsingAlternativePhone ? (
                     <Button
@@ -673,7 +705,7 @@ ${hasVenceHoy ? "Le sugerimos realizar su abono el día de hoy para mantener su 
                     cursor={hasSapPhone && !isUsingAlternativePhone ? "default" : "text"}
                   />
                   {hasSapPhone && !isUsingAlternativePhone ? (
-                    <Tooltip label="Teléfono oficial registrado en SAP Business One (Protegido contra cambios)">
+                    <Tooltip label="Teléfono oficial registrado (Protegido contra cambios)">
                       <Box p={1.5} color="emerald.600">
                         <Lock className="w-4 h-4" />
                       </Box>
@@ -686,13 +718,13 @@ ${hasVenceHoy ? "Le sugerimos realizar su abono el día de hoy para mantener su 
                   {isLoadingSapPhone ? (
                     <HStack spacing={1.5} color="emerald.600" fontSize="10.5px">
                       <Loader2 className="w-3 h-3 animate-spin" />
-                      <Text>Consultando teléfono en SAP Business One...</Text>
+                      <Text>Consultando teléfono oficial...</Text>
                     </HStack>
                   ) : hasSapPhone && !isUsingAlternativePhone ? (
                     <Flex justify="space-between" align="center" wrap="wrap" gap={2}>
                       <HStack spacing={1.5} color="emerald.700" fontSize="10.5px" fontWeight="600">
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                        <Text>Teléfono oficial verificado en SAP B1 (+51 {phoneNumber}).</Text>
+                        <Text>Teléfono oficial verificado (+51 {phoneNumber}).</Text>
                       </HStack>
                       <Button
                         size="xs"
@@ -710,11 +742,11 @@ ${hasVenceHoy ? "Le sugerimos realizar su abono el día de hoy para mantener su 
                     </Flex>
                   ) : isUsingAlternativePhone ? (
                     <Text fontSize="10.5px" color="orange.700" fontWeight="600">
-                      ℹ️ Modo número alternativo: Solo se usará para abrir el chat de este envío (no altera la base de datos de SAP).
+                      ℹ️ Modo número alternativo: Solo se usará para abrir el chat de este envío.
                     </Text>
                   ) : (
                     <Text fontSize="10.5px" color="gray.500">
-                      ℹ️ Cliente sin teléfono en SAP. Ingresa el número para enviar el mensaje por WhatsApp.
+                      ℹ️ Cliente sin teléfono registrado. Ingresa el número para enviar el mensaje por WhatsApp.
                     </Text>
                   )}
                 </Box>
