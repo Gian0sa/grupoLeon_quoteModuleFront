@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import {
   FormControl,
   Skeleton,
@@ -14,18 +15,39 @@ export default function SellerSelectReceivable({
 }) {
   const { data: sellers, isLoading } = useSellersData();
 
-  const rawSellers = (sellers?.sellers || [])
-    .filter((s) => s.SalesEmployeeCode !== -1 && s.Active === "tYES")
-    .map((s) => ({
-      value: s.SalesEmployeeCode,
-      label: s.SalesEmployeeName,
-      email: s.Email,
-    }));
+  const rawSellers = useMemo(() => {
+    const list = Array.isArray(sellers) ? sellers : (sellers?.sellers || []);
+    const parsed = list
+      .filter((s) => {
+        const code = Number(s.SalesEmployeeCode ?? s.value ?? -1);
+        const active = String(s.Active ?? "tYES").toUpperCase();
+        return code > 0 && (active === "TYES" || active === "Y" || active === "TRUE");
+      })
+      .map((s) => ({
+        value: s.SalesEmployeeCode ?? s.value,
+        label: s.SalesEmployeeName ?? s.label,
+        email: s.Email ?? s.email,
+      }));
 
-  const sellerOptions = [
+    if (parsed.length > 0) {
+      try {
+        localStorage.setItem("cached_sap_sellers", JSON.stringify(parsed));
+      } catch {}
+      return parsed;
+    }
+
+    try {
+      const saved = localStorage.getItem("cached_sap_sellers");
+      if (saved) return JSON.parse(saved);
+    } catch {}
+
+    return [];
+  }, [sellers]);
+
+  const sellerOptions = useMemo(() => [
     { value: "", label: "Todos los vendedores" },
     ...rawSellers,
-  ];
+  ], [rawSellers]);
 
   return (
     <FormControl isInvalid={!!error}>

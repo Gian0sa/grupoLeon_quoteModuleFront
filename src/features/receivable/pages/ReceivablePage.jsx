@@ -4,7 +4,7 @@ import { DebtList } from "../components/DebtList";
 import { ReceivableStatusFilter } from "../components/ReceivableStatusFilter";
 import SellerSelectReceivable from "../components/SellerSelectReceivable";
 import { useGetAccountsReceivable } from "../hooks/receivableQueries";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import InvoicesModal from "../components/InvoicesModal";
 import ClientInvoiceHistoryModal from "../components/ClientInvoiceHistoryModal";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
@@ -40,48 +40,8 @@ export function ReceivablePage() {
     }
   }, [isSellerProfile, sellerCode, username]);
 
-  const debounceTimer = useRef(null);
-  const lastSearchValue = useRef("");
-
-  // Búsqueda de cliente con debounce
-  useEffect(() => {
-    if (searchValue && searchValue !== lastSearchValue.current && searchValue.length > 2) {
-      if (debounceTimer.current) clearTimeout(debounceTimer.current);
-      debounceTimer.current = setTimeout(() => {
-        const trimmedValue = searchValue.trim();
-        if (/^\d+$/.test(trimmedValue)) {
-          setClientecode(`CL${trimmedValue}`);
-          setCliente("");
-        } else {
-          setCliente(trimmedValue);
-          setClientecode("");
-        }
-        setLastClient(null);
-        setCurrentSkip(0);
-        setAllClients([]);
-        lastSearchValue.current = searchValue;
-      }, 800);
-    }
-
-    if (!searchValue && (cliente || clientecode)) {
-      if (debounceTimer.current) clearTimeout(debounceTimer.current);
-      debounceTimer.current = setTimeout(() => {
-        setCliente("");
-        setClientecode("");
-        setLastClient(null);
-        setCurrentSkip(0);
-        setAllClients([]);
-        lastSearchValue.current = "";
-      }, 500);
-    }
-    return () => {
-      if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    };
-  }, [searchValue, cliente, clientecode]);
-
   const handleClientSearch = (value) => {
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    const trimmedValue = value.trim();
+    const trimmedValue = (value || "").trim();
     if (/^\d+$/.test(trimmedValue)) {
       setClientecode(`CL${trimmedValue}`);
       setCliente("");
@@ -92,13 +52,12 @@ export function ReceivablePage() {
     setLastClient(null);
     setCurrentSkip(0);
     setAllClients([]);
-    lastSearchValue.current = trimmedValue;
+    setSearchValue(value || "");
   };
 
   const handleSearchInputChange = (value) => setSearchValue(value);
 
   const handleSellerChange = (seller) => {
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
     if (selectedSeller?.value !== seller?.value) {
       setSelectedSeller(seller);
       setCliente("");
@@ -107,7 +66,6 @@ export function ReceivablePage() {
       setLastClient(null);
       setCurrentSkip(0);
       setAllClients([]);
-      lastSearchValue.current = "";
     }
   };
 
@@ -223,11 +181,11 @@ export function ReceivablePage() {
     return !isClientCredit(c) && !isClientOverdue(c);
   };
 
-  // Conteos exactos y mutuamente excluyentes para las 4 pestañas:
-  const totalCount = allClients.length;
-  const overdueCount = allClients.filter(isClientOverdue).length;
-  const creditCount = allClients.filter(isClientCredit).length;
-  const onTimeCount = allClients.filter(isClientActive).length;
+  // Conteos exactos y mutuamente excluyentes para las 4 pestañas memoizados:
+  const totalCount = useMemo(() => allClients.length, [allClients]);
+  const overdueCount = useMemo(() => allClients.filter(isClientOverdue).length, [allClients]);
+  const creditCount = useMemo(() => allClients.filter(isClientCredit).length, [allClients]);
+  const onTimeCount = useMemo(() => allClients.filter(isClientActive).length, [allClients]);
 
   const [ageFilter, setAgeFilter] = useState("all"); // 'all' | '1-30' | '31-60' | '61-90' | '90+'
   const [sortBy, setSortBy] = useState("debt"); // 'debt' | 'age'
@@ -246,31 +204,33 @@ export function ReceivablePage() {
     return (overduePEN > 0 ? overduePEN / 3.43 : 0) + (overdueUSD > 0 ? overdueUSD : 0);
   };
 
-  // RN-FECHAS-03 y RN-FECHAS-04: Filtrado por tramo de días de mora y ordenación inteligente
-  const filteredClients = allClients
-    .filter((debt) => {
-      if (statusFilter === "rechazados") {
-        if (!isClientOverdue(debt)) return false;
-        const maxDays = getMaxOverdueDays(debt);
-        if (ageFilter === "1-30") return maxDays >= 1 && maxDays <= 30;
-        if (ageFilter === "31-60") return maxDays >= 31 && maxDays <= 60;
-        if (ageFilter === "61-90") return maxDays >= 61 && maxDays <= 90;
-        if (ageFilter === "90+") return maxDays > 90;
-        return true;
-      }
-      if (statusFilter === "activos") return isClientActive(debt);
-      if (statusFilter === "credito") return isClientCredit(debt);
-      return true;
-    })
-    .sort((a, b) => {
-      if (statusFilter === "rechazados") {
-        if (sortBy === "age") {
-          return getMaxOverdueDays(b) - getMaxOverdueDays(a); // Más antiguo primero
+  // RN-FECHAS-03 y RN-FECHAS-04: Filtrado por tramo de días de mora y ordenación inteligente con useMemo
+  const filteredClients = useMemo(() => {
+    return allClients
+      .filter((debt) => {
+        if (statusFilter === "rechazados") {
+          if (!isClientOverdue(debt)) return false;
+          const maxDays = getMaxOverdueDays(debt);
+          if (ageFilter === "1-30") return maxDays >= 1 && maxDays <= 30;
+          if (ageFilter === "31-60") return maxDays >= 31 && maxDays <= 60;
+          if (ageFilter === "61-90") return maxDays >= 61 && maxDays <= 90;
+          if (ageFilter === "90+") return maxDays > 90;
+          return true;
         }
-        return getEquivUSD(b) - getEquivUSD(a); // Mayor deudor primero (por defecto)
-      }
-      return 0;
-    });
+        if (statusFilter === "activos") return isClientActive(debt);
+        if (statusFilter === "credito") return isClientCredit(debt);
+        return true;
+      })
+      .sort((a, b) => {
+        if (statusFilter === "rechazados") {
+          if (sortBy === "age") {
+            return getMaxOverdueDays(b) - getMaxOverdueDays(a); // Más antiguo primero
+          }
+          return getEquivUSD(b) - getEquivUSD(a); // Mayor deudor primero (por defecto)
+        }
+        return 0;
+      });
+  }, [allClients, statusFilter, ageFilter, sortBy]);
 
   if ((isLoading || (isInitialFetching && data?.hasMore)) && allClients.length === 0) {
     return (
@@ -380,7 +340,7 @@ export function ReceivablePage() {
                 <History size={16} />
               </Box>
               <Text fontSize="13px" fontWeight="600" color="blue.950">
-                ¿Deseas consultar facturas pasadas o pagadas en SAP para <strong>"{searchValue.trim()}"</strong>?
+                ¿Deseas consultar facturas pasadas o pagadas para <strong>"{searchValue.trim()}"</strong>?
               </Text>
             </HStack>
             <Button
@@ -400,7 +360,7 @@ export function ReceivablePage() {
                 })
               }
             >
-              Consultar Historial en SAP
+              Consultar Historial
             </Button>
           </HStack>
         </Box>

@@ -88,7 +88,7 @@ export function ClientInvoiceHistoryModal({
         setError(
           err.response?.data?.message ||
             err.message ||
-            "No se pudo consultar el historial de facturas en SAP."
+            "No se pudo consultar el historial de facturas."
         );
       } else {
         toast({
@@ -223,7 +223,7 @@ export function ClientInvoiceHistoryModal({
                     letterSpacing="-0.02em"
                     lineHeight="short"
                   >
-                    Historial de Facturación SAP
+                    Historial de Facturación
                   </Text>
                   {data?.totalCount !== undefined && (
                     <Badge
@@ -266,7 +266,7 @@ export function ClientInvoiceHistoryModal({
               </Box>
             </HStack>
 
-            <Tooltip label="Actualizar desde SAP" placement="left">
+            <Tooltip label="Actualizar historial" placement="left">
               <Button
                 size="sm"
                 variant="ghost"
@@ -415,7 +415,7 @@ export function ClientInvoiceHistoryModal({
               <Spinner size="xl" thickness="3px" color="#0284c7" />
               <VStack spacing={1}>
                 <Text fontWeight="700" color="#334155" fontSize="15px">
-                  Consultando facturas en SAP Business One...
+                  Consultando facturas...
                 </Text>
                 <Text fontSize="13px" color="#64748b">
                   Extrayendo historial comercial y referencias de TeFacturo
@@ -465,7 +465,7 @@ export function ClientInvoiceHistoryModal({
               <Text fontSize="13px" color="#94a3b8">
                 {searchTerm
                   ? `No hay facturas que coincidan con "${searchTerm}"`
-                  : "No hay registros registrados en SAP para los filtros seleccionados."}
+                  : "No hay registros para los filtros seleccionados."}
               </Text>
             </Flex>
           ) : (
@@ -627,7 +627,7 @@ export function ClientInvoiceHistoryModal({
                       </HStack>
 
                       <HStack spacing={1}>
-                        <Text color="#94a3b8">DocNum SAP:</Text>
+                        <Text color="#94a3b8">N° Interno:</Text>
                         <Text fontWeight="700" color="#334155">
                           {inv.docNum}
                         </Text>
@@ -690,7 +690,7 @@ export function ClientInvoiceHistoryModal({
                     fontWeight="700"
                     fontSize="13px"
                     isLoading={loadingMore}
-                    loadingText="Consultando más facturas en SAP..."
+                    loadingText="Consultando más facturas..."
                     onClick={() =>
                       fetchHistory(
                         clientDocOrCode,

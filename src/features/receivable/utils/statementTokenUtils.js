@@ -178,6 +178,9 @@ export const buildStatementPayload = (debtData) => {
       tot: Number(d.totalDocumento || d.TOTAL_DOC || 0),
       sPen: rawPen,
       sUsd: rawUsd,
+      docRate: d.docRate || null,
+      saldoUsdEquivalente: d.saldoUsdEquivalente != null ? Number(d.saldoUsdEquivalente) : null,
+      SALDO_SYS: d.SALDO_SYS != null ? Number(d.SALDO_SYS) : null,
       vd: vdInfo.days,
       vdStatus: isCredit ? "POR_VENCER" : (d.isVenceHoy || d.categoriaVencimiento === "HOY" ? "HOY" : vdInfo.status),
       isVD: Boolean(isVD),
@@ -194,6 +197,8 @@ export const buildStatementPayload = (debtData) => {
     createdAt: new Date().toISOString(),
     phone: debtData.telefono || debtData.cellular || debtData.Cellular || debtData.Phone1 || "",
     email: debtData.email || debtData.E_Mail || "",
+    resumenSapCrystal: debtData.resumenSapCrystal || null,
+    totalConsolidadoUSD: debtData.totalConsolidadoUSD || debtData.resumenSapCrystal?.totalConsolidadoUSD || null,
   };
 };
 

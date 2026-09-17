@@ -26,6 +26,96 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
   const saldoVenceHoyPEN = debt.saldoVenceHoyPEN ?? 0;
   const saldoVenceHoyUSD = debt.saldoVenceHoyUSD ?? 0;
 
+  let totalConsolidadoUSD = debt.totalConsolidadoUSD ?? 
+     debt.saldoConsolidadoUSD ?? 
+     debt.resumenSapCrystal?.totalConsolidadoUSD;
+
+  if (totalConsolidadoUSD == null) {
+    const docs = Array.isArray(debt.documents) ? debt.documents : [];
+    if (docs.length > 0) {
+      totalConsolidadoUSD = Number(
+        docs.reduce((acc, d) => {
+          const num = (d.numeroDocumento || d.NRO_DOC || d.num || "").toUpperCase();
+          const tipo = (d.tipoDocumento || d.TIPO_DOC || "").toLowerCase();
+          const isCredit = num.startsWith("NC-") ||
+            num.startsWith("ABO-") ||
+            num.startsWith("AB0-") ||
+            num.includes("07F") ||
+            tipo.includes("credito") ||
+            tipo.includes("abono") ||
+            Number(d.saldoPendiente?.PEN ?? d.SALDO_PEN ?? d.sPen ?? 0) < 0 ||
+            Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? d.sUsd ?? 0) < 0;
+          
+          let valUSD = 0;
+          if (d.saldoUsdEquivalente != null && !isNaN(Number(d.saldoUsdEquivalente))) {
+            valUSD = Number(d.saldoUsdEquivalente);
+          } else if (d.SALDO_SYS != null && !isNaN(Number(d.SALDO_SYS))) {
+            valUSD = Number(d.SALDO_SYS);
+          } else {
+            const sUsd = Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? d.sUsd ?? d.saldoUsd ?? 0);
+            const sPen = Number(d.saldoPendiente?.PEN ?? d.SALDO_PEN ?? d.sPen ?? d.saldoPen ?? 0);
+            if (sUsd !== 0) {
+              valUSD = sUsd;
+            } else if (sPen !== 0) {
+              const rate = Number(d.docRate || d.DocRate || d.DOCRATE || 3.371);
+              valUSD = rate > 0 ? Number((sPen / rate).toFixed(2)) : sPen;
+            }
+          }
+          if (isCredit && valUSD > 0) valUSD = -valUSD;
+          return acc + valUSD;
+        }, 0).toFixed(2)
+      );
+    } else {
+      const sUsd = Number(saldoUSD || 0);
+      const sPen = Number(saldoPEN || 0);
+      if (sUsd !== 0 && sPen === 0) {
+        totalConsolidadoUSD = sUsd;
+      } else if (sPen !== 0 && sUsd === 0) {
+        totalConsolidadoUSD = Number((sPen / 3.371).toFixed(2));
+      } else {
+        totalConsolidadoUSD = Number((sUsd + (sPen / 3.371)).toFixed(2));
+      }
+    }
+  }
+
+  const vencidosNetoUSD = debt.resumenSapCrystal?.vencidosNetoUSD !== undefined
+    ? Number(debt.resumenSapCrystal.vencidosNetoUSD)
+    : debt.vencidosNetoUSD !== undefined
+    ? Number(debt.vencidosNetoUSD)
+    : null;
+
+  const calcVencidosUSD = vencidosNetoUSD ?? (
+    debt.documents && debt.documents.length > 0
+      ? Number(
+          debt.documents
+            .filter(d => (d.estaVencido || d.isOverdue || d.vdStatus === "VENCIDO") && !d.isCreditDoc)
+            .reduce((acc, d) => {
+              let valUSD = 0;
+              if (d.saldoUsdEquivalente != null && !isNaN(Number(d.saldoUsdEquivalente))) {
+                valUSD = Number(d.saldoUsdEquivalente);
+              } else if (d.SALDO_SYS != null && !isNaN(Number(d.SALDO_SYS))) {
+                valUSD = Number(d.SALDO_SYS);
+              } else {
+                const sUsd = Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? d.sUsd ?? 0);
+                const sPen = Number(d.saldoPendiente?.PEN ?? d.SALDO_PEN ?? d.sPen ?? 0);
+                if (sUsd !== 0) valUSD = sUsd;
+                else if (sPen !== 0) {
+                  const rate = Number(d.docRate || d.DocRate || d.DOCRATE || 3.371);
+                  valUSD = rate > 0 ? Number((sPen / rate).toFixed(2)) : sPen;
+                }
+              }
+              return acc + valUSD;
+            }, 0).toFixed(2)
+        )
+      : Number((saldoVencidoUSD + (saldoVencidoPEN > 0 ? saldoVencidoPEN / 3.371 : 0)).toFixed(2))
+  );
+
+  const venceHoyUSD = debt.resumenSapCrystal?.venceHoyUSD !== undefined
+    ? Number(debt.resumenSapCrystal.venceHoyUSD)
+    : debt.venceHoyUSD !== undefined
+    ? Number(debt.venceHoyUSD)
+    : Number((saldoVenceHoyUSD + (saldoVenceHoyPEN > 0 ? saldoVenceHoyPEN / 3.371 : 0)).toFixed(2));
+
   const formatAmount = (amount, currency) => {
     if (amount == null || isNaN(Number(amount))) return null;
     const num = Number(amount);
@@ -318,7 +408,7 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
             marginBottom: "16px",
           }}
         >
-          {/* Columna 1: Pendiente Total */}
+          {/* Columna 1: Saldo Final Consolidado en USD */}
           <div>
             <div
               style={{
@@ -335,38 +425,25 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
             >
               <FileText size={13} color="#64748b" />
               <span>
-                {statusType === "credit" ? "Saldo a Favor:" : "Monto Pendiente:"}
+                {statusType === "credit" || (totalConsolidadoUSD != null && totalConsolidadoUSD < 0)
+                  ? "Saldo a Favor:"
+                  : "Saldo Final:"}
               </span>
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-              {saldoPEN !== 0 && (
-                <span
-                  style={{
-                    fontSize: "16px",
-                    fontWeight: "800",
-                    color: statusType === "credit" ? "#1d4ed8" : "#1e293b",
-                  }}
-                >
-                  {formatAmount(saldoPEN, "PEN")}
-                </span>
-              )}
-              {saldoUSD !== 0 && (
-                <span
-                  style={{
-                    fontSize: "16px",
-                    fontWeight: "800",
-                    color: statusType === "credit" ? "#1d4ed8" : "#1e293b",
-                  }}
-                >
-                  {formatAmount(saldoUSD, "USD")}
-                </span>
-              )}
-              {saldoPEN === 0 && saldoUSD === 0 && (
-                <span style={{ fontSize: "15px", fontWeight: "700", color: "#94a3b8" }}>
-                  {debt.monedaPrincipal === "PEN" ? "S/ 0.00" : "$ 0.00"}
-                </span>
-              )}
+              <span
+                style={{
+                  fontSize: "18px",
+                  fontWeight: "900",
+                  color: totalConsolidadoUSD < 0 ? "#1d4ed8" : "#0f172a",
+                }}
+              >
+                $ {Math.abs(Number(totalConsolidadoUSD || 0)).toLocaleString("es-PE", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })} USD
+              </span>
             </div>
 
             <div
@@ -421,41 +498,24 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
 
             <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
               {statusType === "overdue" && (
-                <>
-                  {saldoVencidoPEN > 0 && (
-                    <span style={{ fontSize: "16px", fontWeight: "800", color: "#dc2626" }}>
-                      {formatAmount(saldoVencidoPEN, "PEN")}
-                    </span>
-                  )}
-                  {saldoVencidoUSD > 0 && (
-                    <span style={{ fontSize: "16px", fontWeight: "800", color: "#dc2626" }}>
-                      {formatAmount(saldoVencidoUSD, "USD")}
-                    </span>
-                  )}
-                </>
+                <span style={{ fontSize: "16px", fontWeight: "800", color: "#dc2626" }}>
+                  $ {Math.abs(Number(calcVencidosUSD || 0)).toLocaleString("es-PE", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })} USD
+                </span>
               )}
               {statusType === "dueToday" && (
-                <>
-                  {saldoVenceHoyPEN > 0 && (
-                    <span style={{ fontSize: "16px", fontWeight: "800", color: "#b45309" }}>
-                      {formatAmount(saldoVenceHoyPEN, "PEN")}
-                    </span>
-                  )}
-                  {saldoVenceHoyUSD > 0 && (
-                    <span style={{ fontSize: "16px", fontWeight: "800", color: "#b45309" }}>
-                      {formatAmount(saldoVenceHoyUSD, "USD")}
-                    </span>
-                  )}
-                  {saldoVenceHoyPEN <= 0 && saldoVenceHoyUSD <= 0 && (
-                    <span style={{ fontSize: "15px", fontWeight: "800", color: "#b45309" }}>
-                      {debt.monedaPrincipal === "PEN" || (saldoPEN > 0 && saldoUSD === 0) ? "S/ 0.00" : "$ 0.00"}
-                    </span>
-                  )}
-                </>
+                <span style={{ fontSize: "16px", fontWeight: "800", color: "#b45309" }}>
+                  $ {Math.abs(Number(venceHoyUSD || 0)).toLocaleString("es-PE", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })} USD
+                </span>
               )}
               {statusType !== "overdue" && statusType !== "dueToday" && (
                 <span style={{ fontSize: "15px", fontWeight: "800", color: statusType === "credit" ? "#1d4ed8" : "#059669" }}>
-                  {debt.monedaPrincipal === "PEN" || (saldoPEN > 0 && saldoUSD === 0) ? "S/ 0.00" : "$ 0.00"}
+                  $ 0.00 USD
                 </span>
               )}
             </div>

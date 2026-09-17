@@ -134,6 +134,18 @@ export function ClientStatementPage() {
     hasPenDocs,
     hasUsdDocs,
     isMixed,
+    totalConsolidadoUSD,
+    crystalFacturasUSD,
+    crystalBoletasUSD,
+    crystalNCUSD,
+    crystalNDUSD,
+    crystalLetrasUSD,
+    crystalVencidosNetoUSD,
+    crystalVenceHoyUSD,
+    crystalPorVencerUSD,
+    crystalCountVencidos,
+    crystalCountVenceHoy,
+    crystalCountPorVencer,
   } = useMemo(() => {
     if (!statementData) {
       return {
@@ -171,6 +183,18 @@ export function ClientStatementPage() {
         hasPenDocs: false,
         hasUsdDocs: false,
         isMixed: false,
+        totalConsolidadoUSD: 0,
+        crystalFacturasUSD: 0,
+        crystalBoletasUSD: 0,
+        crystalNCUSD: 0,
+        crystalNDUSD: 0,
+        crystalLetrasUSD: 0,
+        crystalVencidosNetoUSD: 0,
+        crystalVenceHoyUSD: 0,
+        crystalPorVencerUSD: 0,
+        crystalCountVencidos: 0,
+        crystalCountVenceHoy: 0,
+        crystalCountPorVencer: 0,
       };
     }
 
@@ -319,6 +343,75 @@ export function ClientStatementPage() {
     const hasPen = Math.abs(sumPEN) > 0.001 || parsedDocs.some((d) => Math.abs(d.sPen || 0) > 0.001);
     const hasUsd = Math.abs(sumUSD) > 0.001 || parsedDocs.some((d) => Math.abs(d.sUsd || 0) > 0.001);
 
+    // Cálculo fiel a SAP Crystal Reports (Conversión a Dólares con Tipo de Cambio del Comprobante)
+    const getDocEquivUSD = (d) => {
+      if (d.saldoUsdEquivalente != null && !isNaN(Number(d.saldoUsdEquivalente))) {
+        return Number(d.saldoUsdEquivalente);
+      }
+      if (d.SALDO_SYS != null && !isNaN(Number(d.SALDO_SYS))) {
+        return Number(d.SALDO_SYS);
+      }
+      if (d.sUsd !== 0) return d.sUsd;
+      const rate = Number(d.docRate || d.DocRate || d.DOCRATE || 3.371);
+      if (rate > 0) return Number((d.sPen / rate).toFixed(2));
+      return d.sPen;
+    };
+
+    const crystal = statementData.resumenSapCrystal;
+
+    const isBoletaDoc = (d) => {
+      const num = (d.num || d.numeroDocumento || d.NRO_DOC || "").toUpperCase();
+      const tipo = (d.tipoDocumento || d.TIPO_DOC || d.tipo || "").toLowerCase();
+      const sapType = String(d.TIPO_DOC_SAP || "").trim();
+      return sapType === "03" || num.startsWith("BOL-") || num.startsWith("BV-") || num.startsWith("03B") || num.startsWith("03-") || tipo.includes("boleta");
+    };
+
+    let calcFacturasUSD = crystal?.totalFacturasUSD !== undefined
+      ? Number(crystal.totalFacturasUSD)
+      : Number(parsedDocs.filter(d => !d.isCreditDoc && !d.esLetra && !(d.num || "").toUpperCase().startsWith("LC-") && !isBoletaDoc(d)).reduce((acc, d) => acc + getDocEquivUSD(d), 0).toFixed(2));
+
+    const calcBoletasUSD = crystal?.totalBoletasUSD !== undefined
+      ? Number(crystal.totalBoletasUSD)
+      : Number(parsedDocs.filter(d => !d.isCreditDoc && isBoletaDoc(d)).reduce((acc, d) => acc + getDocEquivUSD(d), 0).toFixed(2));
+
+    const calcNCUSD = crystal?.totalNotasCreditoUSD !== undefined
+      ? Number(crystal.totalNotasCreditoUSD)
+      : Number(parsedDocs.filter(d => d.isCreditDoc).reduce((acc, d) => acc + (getDocEquivUSD(d) < 0 ? getDocEquivUSD(d) : -Math.abs(getDocEquivUSD(d))), 0).toFixed(2));
+
+    const calcNDUSD = Number(parsedDocs.filter(d => (d.num || "").toUpperCase().startsWith("ND-")).reduce((acc, d) => acc + getDocEquivUSD(d), 0).toFixed(2));
+
+    const calcLetrasUSD = crystal?.totalLetrasUSD !== undefined
+      ? Number(crystal.totalLetrasUSD)
+      : Number(parsedDocs.filter(d => d.esLetra || (d.num || "").toUpperCase().startsWith("LC-")).reduce((acc, d) => acc + getDocEquivUSD(d), 0).toFixed(2));
+
+    let calcTotalConsolidadoUSD = crystal?.totalConsolidadoUSD !== undefined
+      ? Number(crystal.totalConsolidadoUSD)
+      : statementData.totalConsolidadoUSD !== undefined
+      ? Number(statementData.totalConsolidadoUSD)
+      : Number((calcFacturasUSD + calcBoletasUSD + calcNCUSD + calcNDUSD + calcLetrasUSD).toFixed(2));
+
+    if (isNaN(calcTotalConsolidadoUSD) || calcTotalConsolidadoUSD === 0) {
+      if (Math.abs(sumUSD) > 0 && Math.abs(sumPEN) === 0) {
+        calcTotalConsolidadoUSD = sumUSD;
+      }
+    }
+
+    const calcVenceHoyUSD = crystal?.venceHoyUSD !== undefined
+      ? Number(crystal.venceHoyUSD)
+      : Number(parsedDocs.filter(d => d.isVenceHoy && !d.isCreditDoc).reduce((acc, d) => acc + getDocEquivUSD(d), 0).toFixed(2));
+
+    const calcPorVencerUSD = crystal?.porVencerUSD !== undefined
+      ? Number(crystal.porVencerUSD)
+      : Number(parsedDocs.filter(d => !d.isOverdue && !d.isVenceHoy && !d.isCreditDoc && (d.sUsd > 0 || d.sPen > 0)).reduce((acc, d) => acc + getDocEquivUSD(d), 0).toFixed(2));
+
+    let calcVencidosNetoUSD = crystal?.vencidosNetoUSD !== undefined
+      ? Number(crystal.vencidosNetoUSD)
+      : Math.max(Number((calcTotalConsolidadoUSD - calcVenceHoyUSD - calcPorVencerUSD).toFixed(2)), 0);
+
+    const countVencidos = crystal?.countVencidos ?? realVencidos.length;
+    const countVenceHoy = crystal?.countVenceHoy ?? realVenceHoy.length;
+    const countPorVencer = crystal?.countPorVencer ?? realPorVencer.length;
+
     return {
       clientName: cName,
       clientCode: cCode,
@@ -354,6 +447,18 @@ export function ClientStatementPage() {
       hasPenDocs: hasPen,
       hasUsdDocs: hasUsd,
       isMixed: hasPen && hasUsd,
+      totalConsolidadoUSD: calcTotalConsolidadoUSD,
+      crystalFacturasUSD: calcFacturasUSD,
+      crystalBoletasUSD: calcBoletasUSD,
+      crystalNCUSD: calcNCUSD,
+      crystalNDUSD: calcNDUSD,
+      crystalLetrasUSD: calcLetrasUSD,
+      crystalVencidosNetoUSD: calcVencidosNetoUSD,
+      crystalVenceHoyUSD: calcVenceHoyUSD,
+      crystalPorVencerUSD: calcPorVencerUSD,
+      crystalCountVencidos: countVencidos,
+      crystalCountVenceHoy: countVenceHoy,
+      crystalCountPorVencer: countPorVencer,
     };
   }, [statementData]);
 
@@ -404,7 +509,28 @@ export function ClientStatementPage() {
     setIsDownloadingPdf(true);
     try {
       const cleanSlug = (clientCode || "CLIENTE").replace(/[^a-zA-Z0-9]/g, "");
-      await generateAccountStatementPDF(statementData, {
+      await generateAccountStatementPDF({
+        ...statementData,
+        cName: clientName,
+        cCode: clientCode,
+        sales: salesperson,
+        documents: docs,
+        totalConsolidadoUSD,
+        resumenSapCrystal: {
+          totalFacturasUSD: crystalFacturasUSD,
+          totalBoletasUSD: crystalBoletasUSD,
+          totalNotasCreditoUSD: crystalNCUSD,
+          totalNDUSD: crystalNDUSD,
+          totalLetrasUSD: crystalLetrasUSD,
+          totalConsolidadoUSD: totalConsolidadoUSD,
+          vencidosNetoUSD: crystalVencidosNetoUSD,
+          venceHoyUSD: crystalVenceHoyUSD,
+          porVencerUSD: crystalPorVencerUSD,
+          countVencidos: crystalCountVencidos,
+          countVenceHoy: crystalCountVenceHoy,
+          countPorVencer: crystalCountPorVencer,
+        },
+      }, {
         filename: `EstadoDeCuenta_${cleanSlug}_${dateFormatted.replace(/\//g, "-")}.pdf`,
         autoDownload: true,
       });
@@ -578,33 +704,33 @@ export function ClientStatementPage() {
                   {hasOverdue
                     ? "Registra documentos vencidos que requieren regularización inmediata."
                     : venceHoy.length > 0
-                    ? `Hoy es la fecha límite de pago para evitar el pase a mora ($${formatMoney(totalVenceHoyUSD)} USD${totalVenceHoyPEN > 0 ? ` + S/ ${formatMoney(totalVenceHoyPEN)}` : ""} por abonar hoy).`
+                    ? `Hoy es la fecha límite de pago para evitar el pase a mora ($${formatMoney(crystalVenceHoyUSD > 0 ? crystalVenceHoyUSD : totalVenceHoyUSD)} USD por abonar hoy).`
                     : "No registra documentos vencidos a la fecha de corte."}
                 </Text>
               </Box>
             </HStack>
 
-            <HStack spacing={4} align="center" w={{ base: "full", sm: "auto" }} justify={{ base: "space-between", sm: "flex-end" }}>
-              {hasUsdDocs && (
-                <Box textAlign={{ base: "left", sm: "right" }}>
-                  <Text fontSize="10px" color={totalSaldoUSD < 0 ? "blue.600" : "gray.500"} fontWeight="700" textTransform="uppercase">
-                    {totalSaldoUSD < 0 ? (hasPenDocs ? "Saldo a Favor USD" : "Saldo a Favor") : (hasPenDocs ? "Saldo Total USD" : "Saldo Total")}
-                  </Text>
-                  <Text fontSize={{ base: "md", sm: "xl" }} fontWeight="900" color={totalSaldoUSD < 0 ? "blue.700" : "gray.900"} fontFamily="mono">
-                    ${formatMoney(Math.abs(totalSaldoUSD))} {hasPenDocs ? "USD" : ""}
-                  </Text>
-                </Box>
-              )}
-              {hasPenDocs && (
-                <Box textAlign="right">
-                  <Text fontSize="10px" color={totalSaldoPEN < 0 ? "blue.600" : "gray.500"} fontWeight="700" textTransform="uppercase">
-                    {totalSaldoPEN < 0 ? (hasUsdDocs ? "Saldo a Favor PEN" : "Saldo a Favor") : (hasUsdDocs ? "Saldo Total PEN" : "Saldo Total")}
-                  </Text>
-                  <Text fontSize={{ base: "md", sm: "xl" }} fontWeight="900" color={totalSaldoPEN < 0 ? "blue.700" : "gray.900"} fontFamily="mono">
-                    S/ {formatMoney(Math.abs(totalSaldoPEN))}
-                  </Text>
-                </Box>
-              )}
+            <HStack spacing={{ base: 3, sm: 4 }} align="center" w={{ base: "full", sm: "auto" }} justify={{ base: "space-between", sm: "flex-end" }}>
+              <Box textAlign={{ base: "left", sm: "right" }}>
+                <Text
+                  fontSize="11px"
+                  color={totalConsolidadoUSD < 0 ? "blue.600" : "gray.500"}
+                  fontWeight="800"
+                  textTransform="uppercase"
+                  letterSpacing="0.4px"
+                >
+                  {totalConsolidadoUSD < 0 ? "Saldo a Favor" : "Saldo Final"}
+                </Text>
+                <Text
+                  fontSize={{ base: "xl", sm: "2xl" }}
+                  fontWeight="900"
+                  color={totalConsolidadoUSD < 0 ? "blue.700" : "#0f172a"}
+                  fontFamily="mono"
+                  lineHeight="1.1"
+                >
+                  ${formatMoney(Math.abs(totalConsolidadoUSD))} USD
+                </Text>
+              </Box>
             </HStack>
           </Flex>
         </Box>
@@ -889,12 +1015,12 @@ export function ClientStatementPage() {
                         </Td>
                         {hasPenDocs && (
                           <Td px={2} py={1.5} fontSize="11px" textAlign="right" fontFamily="mono" fontWeight="600" color={doc.sPen !== 0 ? (doc.sPen < 0 ? "blue.600" : "gray.900") : "gray.400"}>
-                            {doc.sPen !== 0 ? formatMoney(doc.sPen) : "—"}
+                            {doc.sPen !== 0 ? formatMoney(doc.sPen) : "0.00"}
                           </Td>
                         )}
                         {hasUsdDocs && (
                           <Td px={2} py={1.5} fontSize="11px" textAlign="right" fontFamily="mono" fontWeight="700" color={doc.sUsd !== 0 ? (doc.sUsd < 0 ? "blue.600" : "gray.900") : "gray.400"}>
-                            {doc.sUsd !== 0 ? formatMoney(doc.sUsd) : "—"}
+                            {doc.sUsd !== 0 ? formatMoney(doc.sUsd) : "0.00"}
                           </Td>
                         )}
                       </Tr>
@@ -908,7 +1034,7 @@ export function ClientStatementPage() {
 
         {/* Fila de Totales con Doble Subrayado Contable */}
         <Flex justify="flex-end" mb={6}>
-          <Box minW={{ base: "180px", sm: "240px" }}>
+          <Box minW={{ base: "220px", sm: "340px" }}>
             <Flex justify="space-between" py={1} borderTop="1px solid #0f172a" fontSize="xs" fontWeight="900" color="gray.900" fontFamily="mono">
               <Text>TOTALES:</Text>
               <HStack spacing={{ base: 4, sm: 6 }}>
@@ -916,12 +1042,18 @@ export function ClientStatementPage() {
                 {hasUsdDocs && <Text>{formatMoney(totalSaldoUSD)}</Text>}
               </HStack>
             </Flex>
+            {hasPenDocs && (
+              <Flex justify="space-between" py={0.5} fontSize="xs" fontWeight="900" color="blue.800" fontFamily="mono">
+                <Text>TOTAL CONSOLIDADO:</Text>
+                <Text>${formatMoney(totalConsolidadoUSD)} USD</Text>
+              </Flex>
+            )}
             <Divider borderColor="#0f172a" borderWidth="1.5px" mt={0.5} />
             <Divider borderColor="#0f172a" borderWidth="1.5px" mt={0.5} />
           </Box>
         </Flex>
 
-        {/* Sección de Resúmenes en 2 Columnas (Idéntica a SAP B1) */}
+        {/* Sección de Resúmenes en 2 Columnas (Idéntica a SAP Crystal Reports) */}
         <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={{ base: 4, md: 8 }} pt={2}>
           <GridItem>
             <Box bg="gray.50" p={3.5} borderRadius="xl" border="1px solid" borderColor="gray.200">
@@ -929,12 +1061,10 @@ export function ClientStatementPage() {
                 <Text fontSize="11px" fontWeight="900" color="gray.900" textTransform="uppercase" letterSpacing="wider">
                   RESUMEN POR VENCIMIENTO
                 </Text>
-                {isMixed && (
-                  <HStack spacing={3} fontSize="10px" fontWeight="800" color="gray.500" fontFamily="mono">
-                    <Text w="75px" textAlign="right">TOTAL USD</Text>
-                    <Text w="75px" textAlign="right">TOTAL PEN</Text>
-                  </HStack>
-                )}
+                <HStack spacing={4} fontSize="10px" fontWeight="800" color="gray.500" fontFamily="mono">
+                  <Text w="55px" textAlign="right">Cant Doc.</Text>
+                  <Text w="95px" textAlign="right">Total Doc. USD</Text>
+                </HStack>
               </Flex>
 
               <VStack align="stretch" spacing={2} fontSize="xs">
@@ -943,28 +1073,17 @@ export function ClientStatementPage() {
                   <HStack spacing={1.5}>
                     <Text color="gray.600">Doc. Vencidos</Text>
                     <Text color="gray.400">:</Text>
-                    <Badge colorScheme={vencidos.length > 0 ? "red" : "gray"} fontSize="10px" px={2} borderRadius="full">
-                      {vencidos.length}
-                    </Badge>
                   </HStack>
-                  {isMixed ? (
-                    <HStack spacing={3} fontFamily="mono">
-                      <Text w="75px" textAlign="right" fontWeight="800" color={totalVencidosUSD > 0 ? "red.600" : "gray.400"}>
-                        {totalVencidosUSD > 0 ? `$${formatMoney(totalVencidosUSD)}` : "—"}
-                      </Text>
-                      <Text w="75px" textAlign="right" fontWeight="800" color={totalVencidosPEN > 0 ? "red.600" : "gray.400"}>
-                        {totalVencidosPEN > 0 ? `S/${formatMoney(totalVencidosPEN)}` : "—"}
-                      </Text>
-                    </HStack>
-                  ) : hasPenDocs ? (
-                    <Text fontFamily="mono" fontWeight="800" color={vencidos.length > 0 ? "red.600" : "gray.700"}>
-                      S/ {formatMoney(totalVencidosPEN)}
+                  <HStack spacing={4} fontFamily="mono">
+                    <Box w="55px" textAlign="right">
+                      <Badge colorScheme={crystalCountVencidos > 0 ? "red" : "gray"} fontSize="10px" px={2} borderRadius="full">
+                        {crystalCountVencidos}
+                      </Badge>
+                    </Box>
+                    <Text w="95px" textAlign="right" fontWeight="800" color={crystalVencidosNetoUSD > 0 ? "red.600" : "gray.400"}>
+                      ${formatMoney(crystalVencidosNetoUSD)}
                     </Text>
-                  ) : (
-                    <Text fontFamily="mono" fontWeight="800" color={vencidos.length > 0 ? "red.600" : "gray.700"}>
-                      ${formatMoney(totalVencidosUSD)}
-                    </Text>
-                  )}
+                  </HStack>
                 </Flex>
 
                 {/* Doc. Vence Hoy */}
@@ -972,28 +1091,17 @@ export function ClientStatementPage() {
                   <HStack spacing={1.5}>
                     <Text color="gray.600">Doc. Vence Hoy</Text>
                     <Text color="gray.400">:</Text>
-                    <Badge colorScheme={venceHoy.length > 0 ? "orange" : "gray"} fontSize="10px" px={2} borderRadius="full">
-                      {venceHoy.length}
-                    </Badge>
                   </HStack>
-                  {isMixed ? (
-                    <HStack spacing={3} fontFamily="mono">
-                      <Text w="75px" textAlign="right" fontWeight="700" color={totalVenceHoyUSD > 0 ? "orange.600" : "gray.400"}>
-                        {totalVenceHoyUSD > 0 ? `$${formatMoney(totalVenceHoyUSD)}` : "—"}
-                      </Text>
-                      <Text w="75px" textAlign="right" fontWeight="700" color={totalVenceHoyPEN > 0 ? "orange.600" : "gray.400"}>
-                        {totalVenceHoyPEN > 0 ? `S/${formatMoney(totalVenceHoyPEN)}` : "—"}
-                      </Text>
-                    </HStack>
-                  ) : hasPenDocs ? (
-                    <Text fontFamily="mono" fontWeight="700">
-                      S/ {formatMoney(totalVenceHoyPEN)}
+                  <HStack spacing={4} fontFamily="mono">
+                    <Box w="55px" textAlign="right">
+                      <Badge colorScheme={crystalCountVenceHoy > 0 ? "orange" : "gray"} fontSize="10px" px={2} borderRadius="full">
+                        {crystalCountVenceHoy}
+                      </Badge>
+                    </Box>
+                    <Text w="95px" textAlign="right" fontWeight="700" color={crystalVenceHoyUSD > 0 ? "orange.600" : "gray.400"}>
+                      ${formatMoney(crystalVenceHoyUSD)}
                     </Text>
-                  ) : (
-                    <Text fontFamily="mono" fontWeight="700">
-                      ${formatMoney(totalVenceHoyUSD)}
-                    </Text>
-                  )}
+                  </HStack>
                 </Flex>
 
                 {/* Doc. por Vencer */}
@@ -1001,49 +1109,28 @@ export function ClientStatementPage() {
                   <HStack spacing={1.5}>
                     <Text color="gray.600">Doc. por Vencer</Text>
                     <Text color="gray.400">:</Text>
-                    <Badge colorScheme="green" fontSize="10px" px={2} borderRadius="full">
-                      {porVencer.length}
-                    </Badge>
                   </HStack>
-                  {isMixed ? (
-                    <HStack spacing={3} fontFamily="mono">
-                      <Text w="75px" textAlign="right" fontWeight="800" color={totalPorVencerUSD > 0 ? "green.700" : "gray.400"}>
-                        {totalPorVencerUSD > 0 ? `$${formatMoney(totalPorVencerUSD)}` : "—"}
-                      </Text>
-                      <Text w="75px" textAlign="right" fontWeight="800" color={totalPorVencerPEN > 0 ? "green.700" : "gray.400"}>
-                        {totalPorVencerPEN > 0 ? `S/${formatMoney(totalPorVencerPEN)}` : "—"}
-                      </Text>
-                    </HStack>
-                  ) : hasPenDocs ? (
-                    <Text fontFamily="mono" fontWeight="800" color="green.700">
-                      S/ {formatMoney(totalPorVencerPEN)}
+                  <HStack spacing={4} fontFamily="mono">
+                    <Box w="55px" textAlign="right">
+                      <Badge colorScheme={crystalCountPorVencer > 0 ? "green" : "gray"} fontSize="10px" px={2} borderRadius="full">
+                        {crystalCountPorVencer}
+                      </Badge>
+                    </Box>
+                    <Text w="95px" textAlign="right" fontWeight="800" color={crystalPorVencerUSD > 0 ? "green.700" : "gray.400"}>
+                      ${formatMoney(crystalPorVencerUSD)}
                     </Text>
-                  ) : (
-                    <Text fontFamily="mono" fontWeight="800" color="green.700">
-                      ${formatMoney(totalPorVencerUSD)}
-                    </Text>
-                  )}
+                  </HStack>
                 </Flex>
 
                 <Divider borderColor="gray.300" my={1} />
 
                 {/* Total por Vencimiento */}
                 <Flex justify="space-between" align="center" fontWeight="900" fontSize="xs">
-                  <Text>{isMixed ? "TOTALES" : hasPenDocs ? "PEN" : "USD"}</Text>
-                  {isMixed ? (
-                    <HStack spacing={3} fontFamily="mono">
-                      <Text w="75px" textAlign="right" color="gray.900">${formatMoney(totalSaldoUSD)}</Text>
-                      <Text w="75px" textAlign="right" color="gray.900">S/ {formatMoney(totalSaldoPEN)}</Text>
-                    </HStack>
-                  ) : hasPenDocs ? (
-                    <Text fontFamily="mono" fontSize="sm" color="gray.900">
-                      S/ {formatMoney(totalSaldoPEN)}
-                    </Text>
-                  ) : (
-                    <Text fontFamily="mono" fontSize="sm" color="gray.900">
-                      ${formatMoney(totalSaldoUSD)}
-                    </Text>
-                  )}
+                  <Text>TOTALES</Text>
+                  <HStack spacing={4} fontFamily="mono">
+                    <Text w="55px" textAlign="right" color="gray.500" fontSize="10px">USD</Text>
+                    <Text w="95px" textAlign="right" color="gray.900" fontSize="sm">${formatMoney(totalConsolidadoUSD)}</Text>
+                  </HStack>
                 </Flex>
               </VStack>
             </Box>
@@ -1055,12 +1142,10 @@ export function ClientStatementPage() {
                 <Text fontSize="11px" fontWeight="900" color="gray.900" textTransform="uppercase" letterSpacing="wider">
                   RESUMEN POR TIPO DE DOCUMENTO
                 </Text>
-                {isMixed && (
-                  <HStack spacing={3} fontSize="10px" fontWeight="800" color="gray.500" fontFamily="mono">
-                    <Text w="75px" textAlign="right">TOTAL USD</Text>
-                    <Text w="75px" textAlign="right">TOTAL PEN</Text>
-                  </HStack>
-                )}
+                <HStack spacing={4} fontSize="10px" fontWeight="800" color="gray.500" fontFamily="mono">
+                  <Text w="65px" textAlign="right">Tipo Doc.</Text>
+                  <Text w="95px" textAlign="right">Total Doc. USD</Text>
+                </HStack>
               </Flex>
 
               <VStack align="stretch" spacing={1.5} fontSize="xs">
@@ -1070,20 +1155,9 @@ export function ClientStatementPage() {
                     <Text color="gray.600">Total Factura</Text>
                     <Text color="gray.400">:</Text>
                   </HStack>
-                  {isMixed ? (
-                    <HStack spacing={3} fontFamily="mono">
-                      <Text w="75px" textAlign="right" fontWeight="700" color={totalFacturasUSD > 0 ? "gray.900" : "gray.400"}>
-                        {totalFacturasUSD > 0 ? `$${formatMoney(totalFacturasUSD)}` : "—"}
-                      </Text>
-                      <Text w="75px" textAlign="right" fontWeight="700" color={totalFacturasPEN > 0 ? "gray.900" : "gray.400"}>
-                        {totalFacturasPEN > 0 ? `S/${formatMoney(totalFacturasPEN)}` : "—"}
-                      </Text>
-                    </HStack>
-                  ) : hasPenDocs ? (
-                    <Text fontFamily="mono" fontWeight="700">S/ {formatMoney(totalFacturasPEN)}</Text>
-                  ) : (
-                    <Text fontFamily="mono" fontWeight="700">${formatMoney(totalFacturasUSD)}</Text>
-                  )}
+                  <Text w="95px" textAlign="right" fontFamily="mono" fontWeight="700" color="gray.900">
+                    ${formatMoney(crystalFacturasUSD)}
+                  </Text>
                 </Flex>
 
                 {/* Total Boleta */}
@@ -1092,20 +1166,9 @@ export function ClientStatementPage() {
                     <Text color="gray.600">Total Boleta</Text>
                     <Text color="gray.400">:</Text>
                   </HStack>
-                  {isMixed ? (
-                    <HStack spacing={3} fontFamily="mono">
-                      <Text w="75px" textAlign="right" fontWeight="700" color={totalBoletasUSD > 0 ? "gray.900" : "gray.400"}>
-                        {totalBoletasUSD > 0 ? `$${formatMoney(totalBoletasUSD)}` : "—"}
-                      </Text>
-                      <Text w="75px" textAlign="right" fontWeight="700" color={totalBoletasPEN > 0 ? "gray.900" : "gray.400"}>
-                        {totalBoletasPEN > 0 ? `S/${formatMoney(totalBoletasPEN)}` : "—"}
-                      </Text>
-                    </HStack>
-                  ) : hasPenDocs ? (
-                    <Text fontFamily="mono" fontWeight="700">S/ {formatMoney(totalBoletasPEN)}</Text>
-                  ) : (
-                    <Text fontFamily="mono" fontWeight="700">${formatMoney(totalBoletasUSD)}</Text>
-                  )}
+                  <Text w="95px" textAlign="right" fontFamily="mono" fontWeight="700" color="gray.900">
+                    ${formatMoney(crystalBoletasUSD)}
+                  </Text>
                 </Flex>
 
                 {/* Total Nota Cred */}
@@ -1114,20 +1177,9 @@ export function ClientStatementPage() {
                     <Text color="gray.600">Total Nota Cred</Text>
                     <Text color="gray.400">:</Text>
                   </HStack>
-                  {isMixed ? (
-                    <HStack spacing={3} fontFamily="mono">
-                      <Text w="75px" textAlign="right" fontWeight="700" color={totalNCUSD !== 0 ? "gray.900" : "gray.400"}>
-                        {totalNCUSD !== 0 ? `$${formatMoney(totalNCUSD)}` : "—"}
-                      </Text>
-                      <Text w="75px" textAlign="right" fontWeight="700" color={totalNCPEN !== 0 ? "gray.900" : "gray.400"}>
-                        {totalNCPEN !== 0 ? `S/${formatMoney(totalNCPEN)}` : "—"}
-                      </Text>
-                    </HStack>
-                  ) : hasPenDocs ? (
-                    <Text fontFamily="mono" fontWeight="700">S/ {formatMoney(totalNCPEN)}</Text>
-                  ) : (
-                    <Text fontFamily="mono" fontWeight="700">${formatMoney(totalNCUSD)}</Text>
-                  )}
+                  <Text w="95px" textAlign="right" fontFamily="mono" fontWeight="700" color={crystalNCUSD !== 0 ? "red.600" : "gray.900"}>
+                    {crystalNCUSD !== 0 ? `-$${formatMoney(Math.abs(crystalNCUSD))}` : "$0.00"}
+                  </Text>
                 </Flex>
 
                 {/* Total Nota Deb */}
@@ -1136,20 +1188,9 @@ export function ClientStatementPage() {
                     <Text color="gray.600">Total Nota Deb</Text>
                     <Text color="gray.400">:</Text>
                   </HStack>
-                  {isMixed ? (
-                    <HStack spacing={3} fontFamily="mono">
-                      <Text w="75px" textAlign="right" fontWeight="700" color={totalNDUSD > 0 ? "gray.900" : "gray.400"}>
-                        {totalNDUSD > 0 ? `$${formatMoney(totalNDUSD)}` : "—"}
-                      </Text>
-                      <Text w="75px" textAlign="right" fontWeight="700" color={totalNDPEN > 0 ? "gray.900" : "gray.400"}>
-                        {totalNDPEN > 0 ? `S/${formatMoney(totalNDPEN)}` : "—"}
-                      </Text>
-                    </HStack>
-                  ) : hasPenDocs ? (
-                    <Text fontFamily="mono" fontWeight="700">S/ {formatMoney(totalNDPEN)}</Text>
-                  ) : (
-                    <Text fontFamily="mono" fontWeight="700">${formatMoney(totalNDUSD)}</Text>
-                  )}
+                  <Text w="95px" textAlign="right" fontFamily="mono" fontWeight="700" color="gray.900">
+                    ${formatMoney(crystalNDUSD)}
+                  </Text>
                 </Flex>
 
                 {/* Total Letras */}
@@ -1158,58 +1199,21 @@ export function ClientStatementPage() {
                     <Text>Total Letras</Text>
                     <Text color="gray.400">:</Text>
                   </HStack>
-                  {isMixed ? (
-                    <HStack spacing={3} fontFamily="mono">
-                      <Text w="75px" textAlign="right" color={totalLetrasUSD > 0 ? "emerald.800" : "gray.400"}>
-                        {totalLetrasUSD > 0 ? `$${formatMoney(totalLetrasUSD)}` : "—"}
-                      </Text>
-                      <Text w="75px" textAlign="right" color={totalLetrasPEN > 0 ? "emerald.800" : "gray.400"}>
-                        {totalLetrasPEN > 0 ? `S/${formatMoney(totalLetrasPEN)}` : "—"}
-                      </Text>
-                    </HStack>
-                  ) : hasPenDocs ? (
-                    <Text fontFamily="mono" color="emerald.800">S/ {formatMoney(totalLetrasPEN)}</Text>
-                  ) : (
-                    <Text fontFamily="mono" color="emerald.800">${formatMoney(totalLetrasUSD)}</Text>
-                  )}
+                  <Text w="95px" textAlign="right" fontFamily="mono" color={crystalLetrasUSD > 0 ? "emerald.800" : "gray.900"}>
+                    ${formatMoney(crystalLetrasUSD)}
+                  </Text>
                 </Flex>
 
                 {/* Sub-desglose de Letras si existen */}
-                {(totalLetrasUSD > 0 || totalLetrasPEN > 0) && (
+                {crystalLetrasUSD > 0 && (
                   <VStack align="stretch" spacing={1} pl={3} fontSize="11px" color="gray.600" borderLeft="2px solid" borderColor="emerald.300">
                     <Flex justify="space-between" align="center">
                       <Text>En Cartera :</Text>
-                      {isMixed ? (
-                        <HStack spacing={3} fontFamily="mono">
-                          <Text w="75px" textAlign="right" color={totalLetrasCarteraUSD > 0 ? "gray.800" : "gray.400"}>
-                            {totalLetrasCarteraUSD > 0 ? `$${formatMoney(totalLetrasCarteraUSD)}` : "—"}
-                          </Text>
-                          <Text w="75px" textAlign="right" color={totalLetrasCarteraPEN > 0 ? "gray.800" : "gray.400"}>
-                            {totalLetrasCarteraPEN > 0 ? `S/${formatMoney(totalLetrasCarteraPEN)}` : "—"}
-                          </Text>
-                        </HStack>
-                      ) : hasPenDocs ? (
-                        <Text fontFamily="mono" fontWeight="600">S/ {formatMoney(totalLetrasCarteraPEN)}</Text>
-                      ) : (
-                        <Text fontFamily="mono" fontWeight="600">${formatMoney(totalLetrasCarteraUSD)}</Text>
-                      )}
+                      <Text w="95px" textAlign="right" fontFamily="mono" fontWeight="600">${formatMoney(totalLetrasCarteraUSD)}</Text>
                     </Flex>
                     <Flex justify="space-between" align="center">
                       <Text>En el Banco :</Text>
-                      {isMixed ? (
-                        <HStack spacing={3} fontFamily="mono">
-                          <Text w="75px" textAlign="right" color={totalLetrasBancoUSD > 0 ? "gray.800" : "gray.400"}>
-                            {totalLetrasBancoUSD > 0 ? `$${formatMoney(totalLetrasBancoUSD)}` : "—"}
-                          </Text>
-                          <Text w="75px" textAlign="right" color={totalLetrasBancoPEN > 0 ? "gray.800" : "gray.400"}>
-                            {totalLetrasBancoPEN > 0 ? `S/${formatMoney(totalLetrasBancoPEN)}` : "—"}
-                          </Text>
-                        </HStack>
-                      ) : hasPenDocs ? (
-                        <Text fontFamily="mono" fontWeight="600">S/ {formatMoney(totalLetrasBancoPEN)}</Text>
-                      ) : (
-                        <Text fontFamily="mono" fontWeight="600">${formatMoney(totalLetrasBancoUSD)}</Text>
-                      )}
+                      <Text w="95px" textAlign="right" fontFamily="mono" fontWeight="600">${formatMoney(totalLetrasBancoUSD)}</Text>
                     </Flex>
                   </VStack>
                 )}
@@ -1218,21 +1222,11 @@ export function ClientStatementPage() {
 
                 {/* Total por Tipo de Documento */}
                 <Flex justify="space-between" align="center" fontWeight="900" fontSize="xs">
-                  <Text>{isMixed ? "TOTALES" : hasPenDocs ? "PEN" : "USD"}</Text>
-                  {isMixed ? (
-                    <HStack spacing={3} fontFamily="mono">
-                      <Text w="75px" textAlign="right" color="gray.900">${formatMoney(totalSaldoUSD)}</Text>
-                      <Text w="75px" textAlign="right" color="gray.900">S/ {formatMoney(totalSaldoPEN)}</Text>
-                    </HStack>
-                  ) : hasPenDocs ? (
-                    <Text fontFamily="mono" fontSize="sm" color="gray.900">
-                      S/ {formatMoney(totalSaldoPEN)}
-                    </Text>
-                  ) : (
-                    <Text fontFamily="mono" fontSize="sm" color="gray.900">
-                      ${formatMoney(totalSaldoUSD)}
-                    </Text>
-                  )}
+                  <Text>TOTALES</Text>
+                  <HStack spacing={4} fontFamily="mono">
+                    <Text w="65px" textAlign="right" color="gray.500" fontSize="10px">USD</Text>
+                    <Text w="95px" textAlign="right" color="gray.900" fontSize="sm">${formatMoney(totalConsolidadoUSD)}</Text>
+                  </HStack>
                 </Flex>
               </VStack>
             </Box>

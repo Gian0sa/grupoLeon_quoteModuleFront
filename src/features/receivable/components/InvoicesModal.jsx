@@ -155,7 +155,7 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
       : doc.totalDocumento;
     let saldoNum = Math.abs(Number(saldo ?? doc.totalDocumento ?? 0));
 
-    const totalOriginalNum = Number(doc.totalOriginal ?? doc.totalDocumento ?? 0);
+    const totalOriginalNum = Number(doc.totalOriginal ?? doc.totalOriginalExact ?? doc.totalDocumento ?? 0);
     const montoAbonadoNum = Number(doc.montoAbonado ?? doc.descuentoNC ?? 0);
 
     const diff = totalOriginalNum - saldoNum;
@@ -218,66 +218,175 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
 
   const calcSummary = useMemo(() => {
     let totalFacturasUSD = 0;
+    let totalBoletasUSD = 0;
+    let totalLetrasUSD = 0;
     let totalAbonosUSD = 0;
+
     let totalFacturasPEN = 0;
+    let totalBoletasPEN = 0;
+    let totalLetrasPEN = 0;
     let totalAbonosPEN = 0;
-    let countCredits = 0;
-    let countPositives = 0;
+
+    let totalFacturasPENEquivUSD = 0;
+    let totalBoletasPENEquivUSD = 0;
+    let totalLetrasPENEquivUSD = 0;
+    let totalAbonosPENEquivUSD = 0;
+
+    let totalFacturasEquivUSD = 0;
+    let totalBoletasEquivUSD = 0;
+    let totalLetrasEquivUSD = 0;
+    let totalAbonosEquivUSD = 0;
 
     for (const d of filteredDocs) {
-      const isCreditType =
-        d.tipoDocumento?.includes("ABONO") ||
-        d.tipoDocumento?.includes("CREDITO") ||
-        d.numeroDocumento?.startsWith("ABO-") ||
-        d.numeroDocumento?.startsWith("NC-") ||
-        d.numeroDocumento?.startsWith("AB0-");
+      const numUpper = (d.numeroDocumento || d.NRO_DOC || d.num || "").toUpperCase();
+      const tipoLower = (d.tipoDocumento || d.TIPO_DOC || "").toLowerCase();
 
-      const curr = d.moneda || d.tipoCambio || d.TIPOCAMBIO || "USD";
-      const isPEN = curr === "PEN" || curr === "SOL";
+      const isCreditType =
+        tipoLower.includes("abono") ||
+        tipoLower.includes("credito") ||
+        numUpper.startsWith("ABO-") ||
+        numUpper.startsWith("NC-") ||
+        numUpper.startsWith("AB0-") ||
+        numUpper.includes("07F");
+
+      const isLetra = Boolean(d.esLetra) || numUpper.startsWith("LC-") || numUpper.startsWith("LT-") || tipoLower.includes("letra");
+      const isBoleta = !isCreditType && (numUpper.startsWith("BOL-") || numUpper.startsWith("BV-") || numUpper.startsWith("03B") || tipoLower.includes("boleta"));
+
+      const curr = (d.moneda || d.tipoCambio || d.TIPOCAMBIO || "USD").toUpperCase();
+      const isPEN = curr.includes("PEN") || curr.includes("SOL") || curr.includes("S/");
+
       const rawVal = d.saldoPendiente
         ? isPEN
           ? d.saldoPendiente.PEN
           : d.saldoPendiente.USD
         : d.totalDocumento;
       const numVal = Number(rawVal ?? d.totalDocumento ?? 0);
-
       const isNegative = numVal < -0.001 || (isCreditType && numVal !== 0);
+      const absVal = Math.abs(numVal);
+
+      // Calcular equivalente en USD con docRate / saldoUsdEquivalente / SALDO_SYS
+      let equivUSD = 0;
+      if (!isPEN) {
+        equivUSD = absVal;
+      } else {
+        if (d.saldoUsdEquivalente != null && !isNaN(Number(d.saldoUsdEquivalente))) {
+          equivUSD = Math.abs(Number(d.saldoUsdEquivalente));
+        } else if (d.SALDO_SYS != null && !isNaN(Number(d.SALDO_SYS))) {
+          equivUSD = Math.abs(Number(d.SALDO_SYS));
+        } else {
+          const rate = Number(d.docRate || d.DocRate || d.DOCRATE || 3.371);
+          equivUSD = rate > 0 ? Number((absVal / rate).toFixed(2)) : absVal;
+        }
+      }
 
       if (isNegative) {
-        countCredits++;
         if (isPEN) {
-          totalAbonosPEN += Math.abs(numVal);
+          totalAbonosPEN += absVal;
+          totalAbonosPENEquivUSD += equivUSD;
         } else {
-          totalAbonosUSD += Math.abs(numVal);
+          totalAbonosUSD += absVal;
         }
+        totalAbonosEquivUSD += equivUSD;
       } else if (numVal > 0.001) {
-        countPositives++;
-        if (isPEN) {
-          totalFacturasPEN += numVal;
+        if (isLetra) {
+          if (isPEN) {
+            totalLetrasPEN += absVal;
+            totalLetrasPENEquivUSD += equivUSD;
+          } else {
+            totalLetrasUSD += absVal;
+          }
+          totalLetrasEquivUSD += equivUSD;
+        } else if (isBoleta) {
+          if (isPEN) {
+            totalBoletasPEN += absVal;
+            totalBoletasPENEquivUSD += equivUSD;
+          } else {
+            totalBoletasUSD += absVal;
+          }
+          totalBoletasEquivUSD += equivUSD;
         } else {
-          totalFacturasUSD += numVal;
+          if (isPEN) {
+            totalFacturasPEN += absVal;
+            totalFacturasPENEquivUSD += equivUSD;
+          } else {
+            totalFacturasUSD += absVal;
+          }
+          totalFacturasEquivUSD += equivUSD;
         }
       }
     }
 
-    const hasCreditsUSD = totalAbonosUSD > 0.001 && totalFacturasUSD > 0.001;
-    const hasCreditsPEN = totalAbonosPEN > 0.001 && totalFacturasPEN > 0.001;
-    const hasCredits = (countCredits > 0 && countPositives > 0) || hasCreditsUSD || hasCreditsPEN;
+    const crystalFacturasUSD = cliente?.resumenSapCrystal?.totalFacturasUSD != null
+      ? Number(cliente.resumenSapCrystal.totalFacturasUSD)
+      : Number(totalFacturasEquivUSD.toFixed(2));
 
-    const isPEN = totalFacturasPEN > 0 || totalAbonosPEN > 0;
-    const symbol = isPEN ? "S/" : "$";
-    const totalFacturas = isPEN ? totalFacturasPEN : totalFacturasUSD;
-    const totalAbonos = isPEN ? totalAbonosPEN : totalAbonosUSD;
-    const totalNeto = totalFacturas - totalAbonos;
+    const crystalBoletasUSD = cliente?.resumenSapCrystal?.totalBoletasUSD != null
+      ? Number(cliente.resumenSapCrystal.totalBoletasUSD)
+      : Number(totalBoletasEquivUSD.toFixed(2));
+
+    const crystalLetrasUSD = cliente?.resumenSapCrystal?.totalLetrasUSD != null
+      ? Number(cliente.resumenSapCrystal.totalLetrasUSD)
+      : Number(totalLetrasEquivUSD.toFixed(2));
+
+    const crystalAbonosUSD = cliente?.resumenSapCrystal?.totalNotasCreditoUSD != null
+      ? Math.abs(Number(cliente.resumenSapCrystal.totalNotasCreditoUSD))
+      : Number(totalAbonosEquivUSD.toFixed(2));
+
+    let totalConsolidadoUSD = cliente?.resumenSapCrystal?.totalConsolidadoUSD != null
+      ? Number(cliente.resumenSapCrystal.totalConsolidadoUSD)
+      : (cliente?.totalConsolidadoUSD != null
+          ? Number(cliente.totalConsolidadoUSD)
+          : Number((crystalFacturasUSD + crystalBoletasUSD + crystalLetrasUSD - crystalAbonosUSD).toFixed(2)));
+
+    const totalEmisionUSD = Number((crystalFacturasUSD + crystalBoletasUSD + crystalLetrasUSD).toFixed(2));
+
+    let emissionLabel = "Total Facturas";
+    if (crystalBoletasUSD > 0 && crystalFacturasUSD === 0 && crystalLetrasUSD === 0) {
+      emissionLabel = "Total Boletas";
+    } else if (crystalLetrasUSD > 0 && crystalFacturasUSD === 0 && crystalBoletasUSD === 0) {
+      emissionLabel = "Total Letras";
+    } else if (
+      (crystalFacturasUSD > 0 && crystalBoletasUSD > 0) ||
+      (crystalFacturasUSD > 0 && crystalLetrasUSD > 0) ||
+      (crystalBoletasUSD > 0 && crystalLetrasUSD > 0)
+    ) {
+      emissionLabel = "Total Facturado";
+    }
+
+    const hasPENEmision = totalFacturasPEN > 0 || totalBoletasPEN > 0 || totalLetrasPEN > 0;
+    const totalNetoUSD = Math.max(totalFacturasUSD + totalBoletasUSD + totalLetrasUSD - totalAbonosUSD, 0);
 
     return {
-      hasCredits,
-      symbol,
-      totalFacturas,
-      totalAbonos,
-      totalNeto,
+      hasCredits: crystalAbonosUSD > 0.001,
+      isMixed: (totalFacturasUSD > 0 || totalAbonosUSD > 0 || totalLetrasUSD > 0 || totalBoletasUSD > 0) &&
+               (totalFacturasPEN > 0 || totalAbonosPEN > 0 || totalLetrasPEN > 0 || totalBoletasPEN > 0),
+      totalFacturasUSD,
+      totalFacturasPEN,
+      totalFacturasPENEquivUSD,
+      totalFacturasEquivUSD,
+      totalBoletasUSD,
+      totalBoletasPEN,
+      totalBoletasPENEquivUSD,
+      totalBoletasEquivUSD,
+      totalLetrasUSD,
+      totalLetrasPEN,
+      totalLetrasPENEquivUSD,
+      totalLetrasEquivUSD,
+      totalAbonosUSD,
+      totalAbonosPEN,
+      totalAbonosPENEquivUSD,
+      totalAbonosEquivUSD,
+      crystalFacturasUSD,
+      crystalBoletasUSD,
+      crystalLetrasUSD,
+      crystalAbonosUSD,
+      totalEmisionUSD,
+      emissionLabel,
+      hasPENEmision,
+      totalNetoUSD,
+      totalConsolidadoUSD,
     };
-  }, [filteredDocs]);
+  }, [filteredDocs, cliente]);
 
   const clientName = cliente?.nombre || cliente?.clientName || docList[0]?.CARDNAME || "Cliente";
   const clientCode = cliente?.clientCode || cliente?.ruc || docList[0]?.CARDCODE || "";
@@ -442,7 +551,7 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
                 flexShrink={0}
                 leftIcon={<History size={13} />}
               >
-                📜 Facturas Pasadas / SAP
+                📜 Facturas Pasadas
               </Button>
             )}
           </HStack>
@@ -651,11 +760,11 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
                           <HStack spacing={1.5}>
                             <Landmark className="w-4 h-4 text-purple-700" />
                             <Text fontSize="11.5px" fontWeight="800" color="purple.900">
-                              N° Único SAP:
+                              N° Único:
                             </Text>
                           </HStack>
                           <Badge colorScheme="purple" variant="solid" bg="purple.700" color="white" px={2} py={0.5} borderRadius="md" fontSize="11px" fontWeight="800">
-                            {numeroUnico || "Registrada SAP"}
+                            {numeroUnico || "Registrada"}
                           </Badge>
                         </Flex>
                       )}
@@ -684,7 +793,7 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
                   <Th color="gray.700" fontWeight="700">N° DOCUMENTO</Th>
                   <Th color="gray.700" fontWeight="700">VENCIMIENTO</Th>
                   <Th color="gray.700" fontWeight="700" isNumeric>SALDO PENDIENTE</Th>
-                  <Th color="gray.700" fontWeight="700">COMPROBANTE / N° ÚNICO SAP</Th>
+                  <Th color="gray.700" fontWeight="700">COMPROBANTE / N° ÚNICO</Th>
                 </Tr>
               </Thead>
               <Tbody>
@@ -740,13 +849,45 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
                           )}
                         </Td>
                         <Td isNumeric fontSize="xs">
-                          <Text
-                            fontWeight="800"
-                            fontSize="13px"
-                            color={formatMoney(doc).startsWith("-") ? "gray.900" : doc.estaVencido ? "red.600" : "gray.900"}
-                          >
-                            {formatMoney(doc)}
-                          </Text>
+                          <VStack align="flex-end" spacing={0.5}>
+                            <Text
+                              fontWeight="800"
+                              fontSize="13px"
+                              color={formatMoney(doc).startsWith("-") ? "gray.900" : doc.estaVencido ? "red.600" : "gray.900"}
+                            >
+                              {formatMoney(doc)}
+                            </Text>
+                            {(() => {
+                              const curr = (doc.moneda || doc.tipoCambio || doc.TIPOCAMBIO || "USD").toUpperCase();
+                              const isPEN = curr.includes("PEN") || curr.includes("SOL") || curr.includes("S/");
+                              if (!isPEN) return null;
+                              
+                              const saldoNum = Math.abs(Number(doc.saldoPendiente?.PEN ?? doc.totalDocumento ?? 0));
+                              let equivUSD = 0;
+                              let rate = Number(doc.docRate || doc.DocRate || doc.DOCRATE || 0);
+
+                              if (doc.saldoUsdEquivalente != null && !isNaN(Number(doc.saldoUsdEquivalente))) {
+                                equivUSD = Math.abs(Number(doc.saldoUsdEquivalente));
+                              } else if (doc.SALDO_SYS != null && !isNaN(Number(doc.SALDO_SYS))) {
+                                equivUSD = Math.abs(Number(doc.SALDO_SYS));
+                              } else {
+                                if (!rate || rate <= 0) rate = 3.371;
+                                equivUSD = Number((saldoNum / rate).toFixed(2));
+                              }
+                              if (!rate || rate <= 0) {
+                                rate = equivUSD > 0 ? Number((saldoNum / equivUSD).toFixed(3)) : 3.371;
+                              }
+
+                              return (
+                                <Text fontSize="10px" color="blue.600" fontWeight="700" whiteSpace="nowrap">
+                                  ≈ $ {equivUSD.toFixed(2)} USD{" "}
+                                  <span style={{ color: "#64748b", fontWeight: "500", fontSize: "9px" }}>
+                                    (T.C. {rate.toFixed(3)})
+                                  </span>
+                                </Text>
+                              );
+                            })()}
+                          </VStack>
                         </Td>
                         <Td>
                           {/* CASO 1: Factura o Boleta directa emitida */}
@@ -824,7 +965,7 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
                                 fontSize="10.5px"
                                 fontWeight="700"
                               >
-                                🏛️ N° Único: {numeroUnico || "Registrada SAP"}
+                                🏛️ N° Único: {numeroUnico || "Registrada"}
                               </Badge>
                               {(() => {
                                 const loc = String(doc.ubicacion || doc.UBICACION || "").trim().toUpperCase();
@@ -865,112 +1006,202 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
               {calcSummary.hasCredits && (
                 <Tfoot bg="#f8fafc" borderTop="2px solid" borderColor="gray.200">
                   <Tr>
-                    <Td fontWeight="800" fontSize="11px" color="gray.600" textTransform="uppercase">
-                      TOTAL LIQUIDACIÓN
-                    </Td>
-                    <Td fontSize="xs" color="gray.600" fontWeight="600">
-                      Resta con Abonos / NC
-                    </Td>
-                    <Td></Td>
-                    <Td isNumeric fontSize="xs">
-                      <VStack align="flex-end" spacing={0}>
-                        <Text fontSize="10px" color="gray.500" fontWeight="700">
-                          {calcSummary.symbol} {calcSummary.totalFacturas.toFixed(2)} − {calcSummary.symbol} {calcSummary.totalAbonos.toFixed(2)}
+                    <Td colSpan={2} verticalAlign="top" py={4} pl={4}>
+                      <VStack align="start" spacing={0.5}>
+                        <Text fontWeight="800" fontSize="12px" color="gray.800" letterSpacing="0.5px">
+                          TOTAL LIQUIDACIÓN
                         </Text>
-                        <Text fontSize="13.5px" fontWeight="900" color="#15803d">
-                          = {calcSummary.symbol} {calcSummary.totalNeto.toFixed(2)}
+                        <Text fontSize="11px" color="gray.500" fontWeight="600">
+                          Consolidado Oficial
                         </Text>
                       </VStack>
                     </Td>
-                    <Td></Td>
+                    <Td colSpan={3} isNumeric verticalAlign="top" py={4} pr={6}>
+                      <VStack align="flex-end" spacing={1} ml="auto">
+                        {calcSummary.totalFacturasUSD > 0 && (
+                          <Text fontSize="11.5px" color="gray.700" fontWeight="700">
+                            Facturas USD: <strong>$ {calcSummary.totalFacturasUSD.toFixed(2)}</strong>
+                          </Text>
+                        )}
+                        {calcSummary.totalFacturasPEN > 0 && (
+                          <Text fontSize="11.5px" color="gray.700" fontWeight="700">
+                            Facturas PEN: <strong>S/ {calcSummary.totalFacturasPEN.toFixed(2)}</strong>{" "}
+                            <span style={{ color: "#2563eb", fontWeight: "700" }}>
+                              (≈ $ {calcSummary.totalFacturasPENEquivUSD.toFixed(2)} USD)
+                            </span>
+                          </Text>
+                        )}
+                        {calcSummary.totalFacturasUSD > 0 && calcSummary.totalFacturasPEN > 0 && (
+                          <Text fontSize="11.5px" color="gray.900" fontWeight="800">
+                            Subtotal Facturas: <strong>$ {calcSummary.crystalFacturasUSD.toFixed(2)} USD</strong>
+                          </Text>
+                        )}
+                        {/* Boletas */}
+                        {calcSummary.totalBoletasUSD > 0 && (
+                          <Text fontSize="11.5px" color="gray.700" fontWeight="700">
+                            Boletas USD: <strong>$ {calcSummary.totalBoletasUSD.toFixed(2)}</strong>
+                          </Text>
+                        )}
+                        {calcSummary.totalBoletasPEN > 0 && (
+                          <Text fontSize="11.5px" color="gray.700" fontWeight="700">
+                            Boletas PEN: <strong>S/ {calcSummary.totalBoletasPEN.toFixed(2)}</strong>{" "}
+                            <span style={{ color: "#2563eb", fontWeight: "700" }}>
+                              (≈ $ {calcSummary.totalBoletasPENEquivUSD.toFixed(2)} USD)
+                            </span>
+                          </Text>
+                        )}
+                        {calcSummary.totalBoletasUSD > 0 && calcSummary.totalBoletasPEN > 0 && (
+                          <Text fontSize="11.5px" color="gray.900" fontWeight="800">
+                            Subtotal Boletas: <strong>$ {calcSummary.crystalBoletasUSD.toFixed(2)} USD</strong>
+                          </Text>
+                        )}
+
+                        {/* Letras */}
+                        {calcSummary.totalLetrasUSD > 0 && (
+                          <Text fontSize="11.5px" color="gray.700" fontWeight="700">
+                            Letras USD: <strong>$ {calcSummary.totalLetrasUSD.toFixed(2)}</strong>
+                          </Text>
+                        )}
+                        {calcSummary.totalLetrasPEN > 0 && (
+                          <Text fontSize="11.5px" color="gray.700" fontWeight="700">
+                            Letras PEN: <strong>S/ {calcSummary.totalLetrasPEN.toFixed(2)}</strong>{" "}
+                            <span style={{ color: "#2563eb", fontWeight: "700" }}>
+                              (≈ $ {calcSummary.totalLetrasPENEquivUSD.toFixed(2)} USD)
+                            </span>
+                          </Text>
+                        )}
+                        {calcSummary.totalLetrasUSD > 0 && calcSummary.totalLetrasPEN > 0 && (
+                          <Text fontSize="11.5px" color="gray.900" fontWeight="800">
+                            Subtotal Letras: <strong>$ {calcSummary.crystalLetrasUSD.toFixed(2)} USD</strong>
+                          </Text>
+                        )}
+
+                        {/* Abonos / Notas de Crédito */}
+                        {calcSummary.crystalAbonosUSD > 0 && (
+                          <Text fontSize="11.5px" color="#0891b2" fontWeight="700">
+                            Abonos / NC: <strong>− $ {calcSummary.crystalAbonosUSD.toFixed(2)} USD</strong>
+                          </Text>
+                        )}
+                        <Box pt={1} borderTop="1.5px solid #cbd5e1" w="full" textAlign="right">
+                          <Text fontSize="13.5px" fontWeight="900" color="#1e40af">
+                            Saldo Final: $ {calcSummary.totalConsolidadoUSD.toFixed(2)} USD
+                          </Text>
+                        </Box>
+                      </VStack>
+                    </Td>
                   </Tr>
                 </Tfoot>
               )}
             </Table>
           </Box>
 
-          {/* Tarjeta de Resta / Liquidación (SOLO cuando hay Abonos / Notas de Crédito) */}
+          {/* Tarjeta de Liquidación Consolidada */}
           {calcSummary.hasCredits && (
             <Box
               mt={4}
-              p={3.5}
+              p={{ base: 3, sm: 4 }}
               bg="#f0fdf4"
               border="1.5px solid"
-              borderColor="#bbf7d0"
+              borderColor="#86efac"
               borderRadius="xl"
               boxShadow="sm"
             >
               <Flex
-                direction={{ base: "column", sm: "row" }}
-                align={{ base: "stretch", sm: "center" }}
+                direction={{ base: "column", md: "row" }}
+                align={{ base: "flex-start", md: "center" }}
                 justify="space-between"
                 gap={3}
               >
-                <HStack spacing={2.5}>
-                  <Box p={2} bg="green.100" color="green.800" borderRadius="lg">
+                <HStack spacing={3}>
+                  <Box p={2.5} bg="green.100" color="green.800" borderRadius="lg" flexShrink={0}>
                     <Calculator className="w-5 h-5" />
                   </Box>
-                  <VStack align="start" spacing={0}>
-                    <Text fontSize="12px" fontWeight="800" color="green.900" textTransform="uppercase" letterSpacing="wider">
-                      Liquidación con Abono / NC
-                    </Text>
-                    <Text fontSize="11px" color="green.700" fontWeight="600">
-                      Resta de crédito aplicada sobre las facturas
+                  <VStack align="start" spacing={0.5}>
+                    <HStack spacing={2} wrap="wrap">
+                      <Text fontSize="13px" fontWeight="800" color="green.900" textTransform="uppercase" letterSpacing="wider">
+                        Liquidación Consolidada
+                      </Text>
+                      <Badge colorScheme="green" variant="solid" fontSize="10px" px={2} borderRadius="full">
+                        Consolidado Oficial
+                      </Badge>
+                    </HStack>
+                    <Text fontSize="11px" color="green.700" fontWeight="500">
+                      Resta de créditos y notas de crédito aplicada sobre el total facturado
                     </Text>
                   </VStack>
                 </HStack>
 
+                {/* Bloque limpio de 3 términos: Facturación − Abonos = Saldo Final */}
                 <HStack
-                  spacing={{ base: 2, md: 3 }}
+                  spacing={{ base: 2.5, sm: 4 }}
                   align="center"
-                  justify={{ base: "space-between", sm: "flex-end" }}
-                  flexWrap="wrap"
                   bg="white"
-                  px={4}
-                  py={2}
-                  borderRadius="lg"
+                  px={{ base: 3, sm: 5 }}
+                  py={2.5}
+                  borderRadius="xl"
                   border="1px solid"
-                  borderColor="#86efac"
+                  borderColor="#bbf7d0"
+                  boxShadow="xs"
+                  w={{ base: "full", md: "auto" }}
+                  justify={{ base: "space-between", md: "flex-end" }}
+                  flexWrap="nowrap"
                 >
-                  {/* Total Facturas */}
-                  <VStack align={{ base: "start", sm: "center" }} spacing={0}>
+                  {/* 1. Total Emisión (Facturas / Boletas / Letras / Total Facturado) */}
+                  <VStack align="center" spacing={0} minW="80px">
                     <Text fontSize="10px" color="gray.500" fontWeight="800" textTransform="uppercase">
-                      Total Facturas
+                      {calcSummary.emissionLabel}
                     </Text>
-                    <Text fontSize="13px" fontWeight="800" color="gray.800">
-                      {calcSummary.symbol} {calcSummary.totalFacturas.toFixed(2)}
+                    <Text fontSize={{ base: "13.5px", sm: "15px" }} fontWeight="900" color="gray.800">
+                      $ {calcSummary.totalEmisionUSD.toFixed(2)}
                     </Text>
+                    {calcSummary.hasPENEmision ? (
+                      <Text fontSize="9px" color="blue.600" fontWeight="700">
+                        (inc. soles al T.C.)
+                      </Text>
+                    ) : (
+                      <Text fontSize="9px" color="gray.400" fontWeight="600">
+                        (en dólares)
+                      </Text>
+                    )}
                   </VStack>
 
                   {/* Signo Menos */}
-                  <Text fontSize="18px" fontWeight="900" color="#0891b2" px={1}>
+                  <Text fontSize={{ base: "18px", sm: "20px" }} fontWeight="900" color="#0891b2" px={1}>
                     −
                   </Text>
 
-                  {/* Abono / NC */}
-                  <VStack align="center" spacing={0}>
+                  {/* 2. Abonos / NC */}
+                  <VStack align="center" spacing={0} minW="80px">
                     <Text fontSize="10px" color="#0891b2" fontWeight="800" textTransform="uppercase">
-                      Abono / NC
+                      Abonos / NC
                     </Text>
-                    <Text fontSize="13px" fontWeight="800" color="#0891b2">
-                      {calcSummary.symbol} {calcSummary.totalAbonos.toFixed(2)}
+                    <Text fontSize={{ base: "13.5px", sm: "15px" }} fontWeight="900" color="#0891b2">
+                      $ {calcSummary.crystalAbonosUSD.toFixed(2)}
+                    </Text>
+                    <Text fontSize="9px" color="#0891b2" fontWeight="600">
+                      (a favor cliente)
                     </Text>
                   </VStack>
 
                   {/* Signo Igual */}
-                  <Text fontSize="18px" fontWeight="900" color="#15803d" px={1}>
+                  <Text fontSize={{ base: "18px", sm: "20px" }} fontWeight="900" color="#16a34a" px={1}>
                     =
                   </Text>
 
-                  {/* Total Neto a Pagar */}
-                  <VStack align={{ base: "end", sm: "center" }} spacing={0}>
-                    <Text fontSize="10px" color="#15803d" fontWeight="900" textTransform="uppercase">
-                      Total a Pagar
-                    </Text>
-                    <Text fontSize="15px" fontWeight="900" color="#15803d">
-                      {calcSummary.symbol} {calcSummary.totalNeto.toFixed(2)}
-                    </Text>
-                  </VStack>
+                  {/* 3. Saldo Final */}
+                  <Box pl={{ base: 2, sm: 3 }} borderLeft="1.5px solid #e2e8f0" minW="95px">
+                    <VStack align="center" spacing={0}>
+                      <Text fontSize="10px" color="#16a34a" fontWeight="900" textTransform="uppercase">
+                        Saldo Final USD
+                      </Text>
+                      <Text fontSize={{ base: "14px", sm: "16px" }} fontWeight="900" color="#15803d">
+                        $ {calcSummary.totalConsolidadoUSD.toFixed(2)}
+                      </Text>
+                      <Text fontSize="9px" color="green.600" fontWeight="700">
+                        Total por cobrar
+                      </Text>
+                    </VStack>
+                  </Box>
                 </HStack>
               </Flex>
             </Box>
