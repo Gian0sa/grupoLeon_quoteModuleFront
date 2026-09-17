@@ -57,6 +57,7 @@ export function ReceivablePage() {
           setClientecode("");
         }
         setLastClient(null);
+        setCurrentSkip(0);
         setAllClients([]);
         lastSearchValue.current = searchValue;
       }, 800);
@@ -110,9 +111,23 @@ export function ReceivablePage() {
     }
   };
 
+  const sanitizeDocs = (docs) => {
+    if (!Array.isArray(docs)) return [];
+    return docs.filter((d) => {
+      const info = (d?.INFORMACION_DETALLADA || d?.detalle || '').toLowerCase();
+      const tipo = (d?.tipoDocumento || d?.TIPO_DOC || '').toLowerCase();
+      const numDoc = (d?.numeroDocumento || d?.NRO_DOC || '').trim();
+      if (!numDoc || numDoc === '—' || numDoc === '-' || numDoc.toLowerCase() === 'null') return false;
+      if (tipo.includes('otro')) return false;
+      if (info.includes('dif. cambio') || info.includes('diferencia de cambio')) return false;
+      return true;
+    });
+  };
+
   const handleViewInvoices = (debt) => {
-    setSelectedClient(debt);
-    setSelectedInvoices(debt.documents || []);
+    const cleanDocs = sanitizeDocs(debt.documents || []);
+    setSelectedClient({ ...debt, documents: cleanDocs });
+    setSelectedInvoices(cleanDocs);
     setIsModalOpen(true);
   };
 
@@ -123,7 +138,9 @@ export function ReceivablePage() {
 
   const vendedorNombre = isSellerProfile
     ? username
-    : selectedSeller?.label?.split(".")[1]?.trim() || "";
+    : (cliente || clientecode)
+      ? "" // Si busca un cliente específico, buscar en toda la cartera
+      : (selectedSeller?.value ? (selectedSeller.label.includes(".") ? selectedSeller.label.split(".")[1].trim() : selectedSeller.label) : "");
 
   const { data, isLoading, error } = useGetAccountsReceivable({
     vendedor: vendedorNombre,
@@ -136,14 +153,34 @@ export function ReceivablePage() {
   const [isInitialFetching, setIsInitialFetching] = useState(true);
 
   useEffect(() => {
-    if (data?.clients?.clients) {
+    const rawIncomingClients = Array.isArray(data?.clients?.clients)
+      ? data.clients.clients
+      : Array.isArray(data?.clients)
+      ? data.clients
+      : null;
+
+    if (rawIncomingClients) {
+      const incomingClients = rawIncomingClients
+        .map((c) => ({
+          ...c,
+          documents: sanitizeDocs(c.documents || []),
+        }))
+        .filter((c) => Array.isArray(c.documents) && c.documents.length > 0);
+
       setAllClients((prev) => {
-        const newClients = data.clients.clients;
+        const newClients = incomingClients;
         if (!lastClient && currentSkip === 0) return newClients;
-        // Evitar duplicados por CardCode
+        
+        // Actualizar clientes existentes con sus nuevos datos de SAP
+        const incomingMap = new Map(newClients.map((c) => [c.clientCode || c.cardCode, c]));
+        const updatedPrev = prev.map((c) => {
+          const code = c.clientCode || c.cardCode;
+          return incomingMap.has(code) ? incomingMap.get(code) : c;
+        });
+
         const existingCodes = new Set(prev.map((c) => c.clientCode || c.cardCode));
-        const filteredNew = newClients.filter((c) => !existingCodes.has(c.clientCode || c.cardCode));
-        return [...prev, ...filteredNew];
+        const trulyNew = newClients.filter((c) => !existingCodes.has(c.clientCode || c.cardCode));
+        return [...updatedPrev, ...trulyNew];
       });
     }
 

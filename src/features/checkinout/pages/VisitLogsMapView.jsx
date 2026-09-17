@@ -347,7 +347,29 @@ export default function VisitLogsMapView() {
         const grouped = {};
 
         groupsWithSequence.forEach(group => {
-            const visitDateTime = new Date(group.in?.createdAt || group.out?.createdAt);
+            let visitDateTime = new Date(group.in?.createdAt || group.out?.createdAt);
+
+            if (group.in?.createdAt && group.out?.createdAt) {
+                const inDate = new Date(group.in.createdAt);
+                const outDate = new Date(group.out.createdAt);
+
+                // Si el Check-In y el Check-Out ocurrieron en días distintos (visita que cruzó la noche):
+                if (inDate.toDateString() !== outDate.toDateString()) {
+                    // Si se está filtrando un día específico que coincide con el Check-Out, agrupar bajo la fecha de Check-Out
+                    if (dateFrom && (dateFrom === dateTo || !dateTo)) {
+                        const filterDay = new Date(dateFrom.includes("T") ? dateFrom : `${dateFrom}T00:00:00`);
+                        if (filterDay.toDateString() === outDate.toDateString()) {
+                            visitDateTime = outDate;
+                        } else {
+                            visitDateTime = inDate;
+                        }
+                    } else {
+                        // En vistas generales o de rango, agrupar por el día en que se completó (Check-Out)
+                        visitDateTime = outDate;
+                    }
+                }
+            }
+
             const localDate = new Date(visitDateTime.getFullYear(), visitDateTime.getMonth(), visitDateTime.getDate());
             const dateKey = formatDate(localDate);
 
@@ -363,7 +385,7 @@ export default function VisitLogsMapView() {
         });
 
         return Object.values(grouped).sort((a, b) => b.fullDate - a.fullDate);
-    }, [groupsWithSequence]);
+    }, [groupsWithSequence, dateFrom, dateTo]);
 
     const stats = useMemo(() => {
         const completedVisits = filteredGroups.filter(g => g.in && g.out).length;
@@ -908,7 +930,12 @@ export default function VisitLogsMapView() {
                                                                 {group.in && (
                                                                     <Box p={2} bg="green.50" borderRadius="md" border="1px solid" borderColor="green.100">
                                                                         <HStack justify="space-between" mb={0.5} flexWrap="wrap" gap={1}>
-                                                                            <Badge colorScheme="green" fontSize="9px" fontWeight="800">✓ CHECK IN</Badge>
+                                                                            <HStack spacing={1}>
+                                                                                <Badge colorScheme="green" fontSize="9px" fontWeight="800">✓ CHECK IN</Badge>
+                                                                                {group.out && new Date(group.in.createdAt).toDateString() !== new Date(group.out.createdAt).toDateString() && (
+                                                                                    <Badge colorScheme="purple" fontSize="8px" borderRadius="full">Día anterior</Badge>
+                                                                                )}
+                                                                            </HStack>
                                                                             <Text fontSize="10px" fontWeight="800" color="green.900">
                                                                                 🕐 {formatTime(group.in.createdAt)}
                                                                             </Text>

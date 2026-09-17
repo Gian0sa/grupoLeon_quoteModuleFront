@@ -497,7 +497,16 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
   const dateLongStr = `${now.getDate()} de ${months[now.getMonth()]} de ${now.getFullYear()}`;
   doc.text(`Estado de Cuenta al ${dateLongStr}`, 105, 27.5, { align: "center" });
 
-  const documents = debt.documents || debt.documentos || debt.docs || [];
+  const rawDocuments = debt.documents || debt.documentos || debt.docs || [];
+  const documents = rawDocuments.filter((d) => {
+    const info = (d?.detalle || d?.INFORMACION_DETALLADA || "").toLowerCase();
+    const tipo = (d?.tipoDocumento || d?.TIPO_DOC || "").toLowerCase();
+    const num = (d?.numeroDocumento || d?.NRO_DOC || d?.num || "").trim();
+    if (!num || num === "—" || num === "-" || num.toLowerCase() === "null") return false;
+    if (tipo.includes("otro")) return false;
+    if (info.includes("dif. cambio") || info.includes("diferencia de cambio")) return false;
+    return true;
+  });
   const hasPen = documents.some((d) => {
     const mon = (d.moneda || d.TIPOCAMBIO || d.mon || "USD").toUpperCase();
     return mon.includes("PEN") || mon.includes("SOL") || mon.includes("S/");
@@ -626,7 +635,8 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
     totalSaldoPEN += saldoPEN;
     totalSaldoUSD += saldoUSD;
 
-    const isOverdue = !isCredit && Boolean(d.estaVencido || d.vdStatus === "VENCIDO") && (saldoUSD > 0 || saldoPEN > 0);
+    const isOverdue = !isCredit && Boolean(d.estaVencido || d.vdStatus === "VENCIDO" || (d.saldoVencidoUSD && Number(d.saldoVencidoUSD) > 0)) && (saldoUSD > 0 || saldoPEN > 0);
+    const isVenceHoy = !isCredit && !isOverdue && Boolean(d.isVenceHoy || d.vdStatus === "HOY" || d.vdStatus === "VENCE_HOY" || d.categoriaVencimiento === "HOY") && (saldoUSD > 0 || saldoPEN > 0);
 
     const formatMoney = (amount) =>
       Number(amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -635,6 +645,7 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
       emision,
       vence,
       isOverdue,
+      isVenceHoy,
       condicion,
       isVD,
       serieDocText,
@@ -750,6 +761,11 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
           data.cell.styles.textColor = [255, 255, 255];
           data.cell.styles.fontStyle = "bold";
           data.cell.styles.halign = "center";
+        } else if (rowObj?.isVenceHoy) {
+          data.cell.styles.fillColor = [254, 243, 199];
+          data.cell.styles.textColor = [146, 64, 14];
+          data.cell.styles.fontStyle = "bold";
+          data.cell.styles.halign = "center";
         }
       }
     },
@@ -783,10 +799,13 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
   const isMixed = hasPen && hasUsd;
 
   const vencidos = tableRows.filter((r) => r.isOverdue);
-  const porVencer = tableRows.filter((r) => !r.isOverdue);
+  const venceHoy = tableRows.filter((r) => r.isVenceHoy);
+  const porVencer = tableRows.filter((r) => !r.isOverdue && !r.isVenceHoy);
 
   const totalVencidosUSD = vencidos.reduce((acc, r) => acc + r.saldoUSD, 0);
   const totalVencidosPEN = vencidos.reduce((acc, r) => acc + r.saldoPEN, 0);
+  const totalVenceHoyUSD = venceHoy.reduce((acc, r) => acc + r.saldoUSD, 0);
+  const totalVenceHoyPEN = venceHoy.reduce((acc, r) => acc + r.saldoPEN, 0);
   const totalPorVencerUSD = porVencer.reduce((acc, r) => acc + r.saldoUSD, 0);
   const totalPorVencerPEN = porVencer.reduce((acc, r) => acc + r.saldoPEN, 0);
 
@@ -865,9 +884,17 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
     yL += 4.5;
     doc.text("Doc. Vence Hoy", leftX, yL);
     doc.text(":", leftX + 22, yL);
-    doc.text("0", leftX + 32, yL, { align: "center" });
-    doc.text("—", leftX + 60, yL, { align: "right" });
-    doc.text("—", leftX + 85, yL, { align: "right" });
+    if (venceHoy.length > 0) {
+      doc.setFillColor(217, 119, 6);
+      doc.rect(leftX + 28, yL - 3, 8, 4, "F");
+      doc.setTextColor(255, 255, 255).setFont("helvetica", "bold");
+      doc.text(String(venceHoy.length), leftX + 32, yL - 0.2, { align: "center" });
+      doc.setTextColor(0, 0, 0).setFont("helvetica", "normal");
+    } else {
+      doc.text("0", leftX + 32, yL, { align: "center" });
+    }
+    doc.text(totalVenceHoyUSD > 0 ? formatMoney(totalVenceHoyUSD) : "—", leftX + 60, yL, { align: "right" });
+    doc.text(totalVenceHoyPEN > 0 ? formatMoney(totalVenceHoyPEN) : "—", leftX + 85, yL, { align: "right" });
 
     yL += 4.5;
     doc.text("Doc. por Vencer", leftX, yL);
@@ -990,11 +1017,20 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
     }
     doc.text(formatMoney(totalVencidos), leftX + 56, yL, { align: "right" });
 
+    const totalVenceHoy = hasPen ? totalVenceHoyPEN : totalVenceHoyUSD;
     yL += 4.5;
     doc.text("Doc. Vence Hoy", leftX - 8, yL);
     doc.text(":", leftX + 13, yL);
-    doc.text("0", leftX + 25, yL, { align: "center" });
-    doc.text("0.00", leftX + 56, yL, { align: "right" });
+    if (venceHoy.length > 0) {
+      doc.setFillColor(217, 119, 6);
+      doc.rect(leftX + 21, yL - 3.2, 8, 4.3, "F");
+      doc.setTextColor(255, 255, 255).setFont("helvetica", "bold");
+      doc.text(String(venceHoy.length), leftX + 25, yL - 0.2, { align: "center" });
+      doc.setTextColor(0, 0, 0).setFont("helvetica", "normal");
+    } else {
+      doc.text("0", leftX + 25, yL, { align: "center" });
+    }
+    doc.text(totalVenceHoy > 0 ? formatMoney(totalVenceHoy) : "0.00", leftX + 56, yL, { align: "right" });
 
     yL += 4.5;
     doc.text("Doc. por Vencer", leftX - 8, yL);

@@ -83,6 +83,7 @@ import { updateQuote, deleteQuote, createQuote, getQuotes } from "../services/qu
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { cleanSellerName, cleanClientName } from "../../../shared/utils/quoteLogisticsFormatters";
+import { useSellersData } from "../../auth/hooks/queries/authQueries";
 
 const isDraftState = (status) => {
   if (!status) return true;
@@ -268,6 +269,7 @@ export function QuoteApprovalPage() {
   const [pageSize, setPageSize] = useState(isAdminUser ? 10 : 10);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [highlightedDocId, setHighlightedDocId] = useState(null);
+  const { data: sellersResponse } = useSellersData();
   
   // Paginación y almacenamiento de alto rendimiento para la pestaña de Histórico Completo
   const [historyPage, setHistoryPage] = useState(1);
@@ -1437,14 +1439,24 @@ export function QuoteApprovalPage() {
   // Lista de vendedores disponibles para el filtro de histórico (solo Admin)
   const availableSellers = useMemo(() => {
     const map = new Map();
-    quotes.forEach((q) => {
+    // 1. Vendedores maestros desde SAP
+    (sellersResponse?.sellers || [])
+      .filter((s) => s.SalesEmployeeCode !== -1 && s.Active === "tYES")
+      .forEach((s) => {
+        const rawName = (s.SalesEmployeeName || "").trim();
+        if (rawName) {
+          map.set(rawName.toUpperCase(), rawName);
+        }
+      });
+    // 2. Vendedores presentes en cotizaciones cargadas o en histórico
+    [...quotes, ...historyQuotes].forEach((q) => {
       const name = q.sellerName || q.createdByUsername;
       if (name && name !== "—" && name !== "null" && name !== "undefined") {
         map.set(name.trim().toUpperCase(), name.trim());
       }
     });
     return Array.from(map.values()).sort();
-  }, [quotes]);
+  }, [sellersResponse, quotes, historyQuotes]);
 
   // Filtrado de la lista por Pestañas, Buscador y Filtros Avanzados de Histórico
   const filteredQuotes = useMemo(() => {
@@ -1556,7 +1568,10 @@ export function QuoteApprovalPage() {
         // Filtro por Vendedor (si Admin seleccionó un vendedor específico)
         if (isAdminUser && historySellerFilter && historySellerFilter !== "TODOS") {
           const qSeller = (q.sellerName || q.createdByUsername || "").trim().toUpperCase();
-          if (!qSeller.includes(historySellerFilter.toUpperCase())) {
+          const filterVal = historySellerFilter.trim().toUpperCase();
+          const cleanFilter = filterVal.replace(/^([0-9A-Z]{3,4}\.|\d+\.)\s*/, "").trim();
+          const cleanSeller = qSeller.replace(/^([0-9A-Z]{3,4}\.|\d+\.)\s*/, "").trim();
+          if (!qSeller.includes(filterVal) && !cleanSeller.includes(cleanFilter) && !cleanFilter.includes(cleanSeller)) {
             return false;
           }
         }
@@ -2256,9 +2271,12 @@ export function QuoteApprovalPage() {
                     fontWeight="700"
                   >
                     <option value="TODOS">Todos los Vendedores</option>
-                    {availableSellers.map((s) => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
+                    {availableSellers.map((s) => {
+                      const cleanLabel = s.replace(/^([0-9A-Z]{3,4}\.|\d+\.)\s*/, "").trim();
+                      return (
+                        <option key={s} value={s}>{cleanLabel || s}</option>
+                      );
+                    })}
                   </Select>
                 </Box>
               )}

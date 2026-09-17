@@ -50,6 +50,7 @@ import {
 import {
   generateStatementUrl,
   createShortStatementUrl,
+  calculateVD,
 } from "../utils/statementTokenUtils";
 import { generateAccountStatementPDF } from "../utils/receivablePDF";
 import { fetchClientByCode } from "../../clients/services/clientService";
@@ -198,18 +199,40 @@ export function WhatsAppStatementModal({ isOpen, onClose, debt }) {
     totalVencidoUSD,
     vencidosCount,
     hasOverdue,
+    hasVenceHoy,
+    totalVenceHoyUSD,
+    totalVenceHoyPEN,
+    venceHoyCount,
+    venceHoyDocs,
+    nextUpcomingDue,
   } = useMemo(() => {
-    if (!debt) return { clientName: "", totalUSD: 0, totalPEN: 0, hasUsd: false, hasPen: false, isCreditBalance: false, hasOverdue: false, vencidosCount: 0 };
-    const docs = debt.documents || debt.documentos || [];
-    const name = debt.nombre || debt.clientName || docs[0]?.CARDNAME || "Estimado(a) Cliente";
-    const code = debt.clientCode || debt.ruc || docs[0]?.CARDCODE || "";
-    const sales = debt.vendedor || docs[0]?.NOMBVENDEDOR || "Autopartes S.A.";
+    if (!debt) return { clientName: "", totalUSD: 0, totalPEN: 0, hasUsd: false, hasPen: false, isCreditBalance: false, hasOverdue: false, vencidosCount: 0, hasVenceHoy: false, totalVenceHoyUSD: 0, totalVenceHoyPEN: 0, venceHoyCount: 0, venceHoyDocs: [], nextUpcomingDue: null };
+    const rawDocs = debt.documents || debt.documentos || [];
+    const docs = rawDocs.filter((d) => {
+      const info = (d?.INFORMACION_DETALLADA || d?.detalle || '').toLowerCase();
+      const tipo = (d?.tipoDocumento || d?.TIPO_DOC || '').toLowerCase();
+      const numDoc = (d?.numeroDocumento || d?.NRO_DOC || '').trim();
+      if (!numDoc || numDoc === '—' || numDoc === '-' || numDoc.toLowerCase() === 'null') return false;
+      if (tipo.includes('otro')) return false;
+      if (info.includes('dif. cambio') || info.includes('diferencia de cambio')) return false;
+      return true;
+    });
+    const name = debt.nombre || debt.clientName || docs[0]?.CARDNAME || rawDocs[0]?.CARDNAME || "Estimado(a) Cliente";
+    const code = debt.clientCode || debt.ruc || docs[0]?.CARDCODE || rawDocs[0]?.CARDCODE || "";
+    const sales = debt.vendedor || docs.find(d => d?.NOMBVENDEDOR && d.NOMBVENDEDOR.trim())?.NOMBVENDEDOR || rawDocs.find(d => d?.NOMBVENDEDOR && d.NOMBVENDEDOR.trim())?.NOMBVENDEDOR || "Autopartes S.A.";
 
     let sUSD = 0;
     let sPEN = 0;
     let vUSD = 0;
     let vPEN = 0;
     let vCount = 0;
+    let vhUSD = 0;
+    let vhPEN = 0;
+    let vhCount = 0;
+    const vhDocList = [];
+
+    // Rastrear próximo vencimiento para deudas al día
+    let earliestFutureDue = null;
 
     docs.forEach((d) => {
       const mon = (d.moneda || d.TIPOCAMBIO || d.mon || "USD").toUpperCase();
@@ -219,11 +242,37 @@ export function WhatsAppStatementModal({ isOpen, onClose, debt }) {
       sUSD += saldoU;
       sPEN += saldoP;
 
-      const isDocOverdue = Boolean(d.estaVencido || d.vdStatus === "VENCIDO" || (d.saldoVencidoUSD && Number(d.saldoVencidoUSD) > 0));
+      const dateStr = d.REFDATE || d.fechaContable || d.fechaVencimiento || d.ven || "";
+      const vdInfo = calculateVD(dateStr);
+      const isDocOverdue = Boolean(d.estaVencido || d.vdStatus === "VENCIDO" || vdInfo.status === "VENCIDO" || (d.saldoVencidoUSD && Number(d.saldoVencidoUSD) > 0));
+      const isDocVenceHoy = !isDocOverdue && Boolean(
+        d.isVenceHoy || 
+        d.vdStatus === "HOY" || 
+        d.vdStatus === "VENCE_HOY" || 
+        d.categoriaVencimiento === "HOY" || 
+        vdInfo.status === "HOY"
+      );
+
       if (isDocOverdue && (saldoU > 0 || saldoP > 0)) {
         vUSD += saldoU;
         vPEN += saldoP;
         vCount++;
+      } else if (isDocVenceHoy && (saldoU > 0 || saldoP > 0)) {
+        vhUSD += saldoU;
+        vhPEN += saldoP;
+        vhCount++;
+        const num = d.numeroDocumento || d.NRO_DOC || d.num || "";
+        if (num) vhDocList.push(num);
+      } else if (!isDocOverdue && !isDocVenceHoy && (saldoU > 0 || saldoP > 0) && vdInfo.status === "POR_VENCER") {
+        if (!earliestFutureDue || vdInfo.days < earliestFutureDue.days) {
+          earliestFutureDue = {
+            dateStr: d.ven || d.fechaContable || dateStr,
+            days: vdInfo.days,
+            saldoUSD: saldoU,
+            saldoPEN: saldoP,
+            num: d.numeroDocumento || d.NRO_DOC || d.num || "",
+          };
+        }
       }
     });
 
@@ -231,6 +280,7 @@ export function WhatsAppStatementModal({ isOpen, onClose, debt }) {
     const finalPEN = sPEN || Number(debt.saldoPEN || 0);
     const isCredit = finalUSD < -0.001 || finalPEN < -0.001 || debt.tipoDocumento === "Nota de Crédito";
     const realHasOverdue = !isCredit && (vCount > 0 || (debt.saldoVencidoUSD && Number(debt.saldoVencidoUSD) > 0));
+    const realHasVenceHoy = !isCredit && !realHasOverdue && (vhCount > 0 || debt.dueTodayDocumentsCount > 0 || debt.hasVenceHoy);
 
     return {
       clientName: name,
@@ -245,17 +295,25 @@ export function WhatsAppStatementModal({ isOpen, onClose, debt }) {
       totalVencidoPEN: isCredit ? 0 : vPEN,
       vencidosCount: isCredit ? 0 : vCount,
       hasOverdue: realHasOverdue,
+      hasVenceHoy: realHasVenceHoy,
+      totalVenceHoyUSD: vhUSD || Number(debt.dueTodayAmount?.USD || 0),
+      totalVenceHoyPEN: vhPEN || Number(debt.dueTodayAmount?.PEN || 0),
+      venceHoyCount: vhCount || Number(debt.dueTodayDocumentsCount || (realHasVenceHoy ? 1 : 0)),
+      venceHoyDocs: vhDocList,
+      nextUpcomingDue: earliestFutureDue,
     };
   }, [debt]);
 
-  // Sincronizar automáticamente tono obligatorio: Si tiene vencimiento, fuerza 'urgent' (Aviso de Vencimiento)
+  // Sincronizar automáticamente tono según el estado financiero bancario
   React.useEffect(() => {
     if (hasOverdue) {
       setMessageTone("urgent");
+    } else if (hasVenceHoy) {
+      setMessageTone("preventive");
     } else {
       setMessageTone("friendly");
     }
-  }, [hasOverdue, isOpen]);
+  }, [hasOverdue, hasVenceHoy, isOpen]);
 
   // Construir plantilla de mensaje según el tono seleccionado
   const generatedMessage = useMemo(() => {
@@ -289,8 +347,29 @@ export function WhatsAppStatementModal({ isOpen, onClose, debt }) {
       }
     }
 
+    let cuotaHoyText = "";
+    if (totalVenceHoyUSD > 0 && totalVenceHoyPEN > 0) {
+      cuotaHoyText = `$ ${formatMoney(totalVenceHoyUSD)} USD y S/ ${formatMoney(totalVenceHoyPEN)} PEN`;
+    } else if (totalVenceHoyPEN > 0) {
+      cuotaHoyText = `S/ ${formatMoney(totalVenceHoyPEN)} PEN`;
+    } else if (totalVenceHoyUSD > 0) {
+      cuotaHoyText = `$ ${formatMoney(totalVenceHoyUSD)} USD`;
+    }
+
+    const docHoyRef = venceHoyDocs.length > 0 ? ` (${venceHoyDocs.join(", ")})` : "";
+
+    let proximoVenceText = "";
+    if (nextUpcomingDue && !hasOverdue && !hasVenceHoy) {
+      const pMonto = nextUpcomingDue.saldoUSD > 0
+        ? `$ ${formatMoney(nextUpcomingDue.saldoUSD)} USD`
+        : `S/ ${formatMoney(nextUpcomingDue.saldoPEN)} PEN`;
+      proximoVenceText = `📅 *Próximo Vencimiento:* ${nextUpcomingDue.dateStr} (en ${nextUpcomingDue.days} ${nextUpcomingDue.days === 1 ? "día" : "días"}) - ${pMonto}`;
+    }
+
     const estadoBadge = hasOverdue
       ? `⚠️ *Estado:* Pendiente de regularización (Cuotas vencidas)`
+      : hasVenceHoy
+      ? `⏰ *Estado:* Cuota vence hoy (Fecha límite: ${fechaHoy})`
       : isCreditBalance
       ? `💳 *Estado:* Saldo a favor disponible (Nota de crédito)`
       : `✅ *Estado:* Al día (Sin cuotas vencidas)`;
@@ -310,6 +389,22 @@ ${statementUrl}
 
 Por favor, si ya realizó el abono, compártanos su constancia por este medio para regularizar su cuenta. ¡Muchas gracias!`
       );
+    } else if (messageTone === "preventive") {
+      return (
+`Hola *${clientName}*, le saluda *${salesperson}* de *Autopartes S.A.* 🚗
+
+Le escribimos para recordarle cordialmente que el día de hoy *${fechaHoy}* es la fecha límite de pago de su cuota:
+
+📌 ⏰ *Estado:* Vence Hoy (Último día de pago)
+💳 *Cuota que vence hoy:* ${cuotaHoyText}${docHoyRef}
+💰 *Saldo Total en Cuenta:* ${saldoText}
+📅 *Fecha Límite:* ${fechaHoy}
+
+🔗 *Consulte el detalle completo e interactivo de sus comprobantes aquí:*
+${statementUrl}
+
+Le recordamos realizar su abono el día de hoy para mantener su línea de crédito activa y su récord comercial impecable. Si ya realizó el pago, por favor compártanos su constancia por este medio. ¡Muchas gracias!`
+      );
     } else if (messageTone === "formal") {
       return (
 `Estimado(a) *${clientName}*,
@@ -318,12 +413,12 @@ Por medio de la presente, *Autopartes S.A.* le hace llegar su *Estado de Cuenta 
 
 📌 ${estadoBadge}
 💰 *${isCreditBalance ? "Saldo a Favor" : "Saldo Actual"}:* ${saldoText}
-👤 *Asesor Comercial:* ${salesperson}
+${hasVenceHoy ? `⏰ *Cuota con vencimiento hoy:* ${cuotaHoyText}${docHoyRef}\n` : ""}${proximoVenceText ? `${proximoVenceText}\n` : ""}👤 *Asesor Comercial:* ${salesperson}
 
 🔗 *Puede visualizar sus documentos, comprobantes y descargar el reporte oficial en:*
 ${statementUrl}
 
-Quedamos atentos a sus consultas. Saludos cordiales.`
+${hasVenceHoy ? "Le sugerimos realizar su abono a tiempo para mantener su línea de crédito habilitada. " : "Quedamos atentos a cualquier consulta. "}Saludos cordiales.`
       );
     } else {
       // Friendly / Estándar
@@ -334,15 +429,15 @@ Le compartimos su *Estado de Cuenta Comercial* actualizado:
 
 📌 ${estadoBadge}
 💰 *${isCreditBalance ? "Saldo a Favor" : "Saldo Total"}:* ${saldoText}
-📅 *Corte:* ${fechaHoy}
+${hasVenceHoy ? `⏰ *Cuota que vence hoy:* ${cuotaHoyText}${docHoyRef}\n` : ""}${proximoVenceText ? `${proximoVenceText}\n` : ""}📅 *Corte:* ${fechaHoy}
 
 🔗 *Revise el detalle de sus comprobantes en el siguiente enlace:*
 ${statementUrl}
 
-Cualquier consulta estamos a su entera disposición. ¡Que tenga un excelente día!`
+${hasVenceHoy ? "Le sugerimos realizar su abono el día de hoy para mantener su cuenta al día. " : proximoVenceText ? "Le recordamos tener presente su próxima fecha de vencimiento para mantener su línea activa. " : ""}Cualquier consulta estamos a su entera disposición. ¡Que tenga un excelente día!`
       );
     }
-  }, [debt, clientName, salesperson, totalUSD, totalPEN, isCreditBalance, hasOverdue, statementUrl, messageTone]);
+  }, [debt, clientName, salesperson, totalUSD, totalPEN, isCreditBalance, hasOverdue, hasVenceHoy, totalVenceHoyUSD, totalVenceHoyPEN, venceHoyDocs, nextUpcomingDue, statementUrl, messageTone]);
 
   // Guardar teléfono manualmente en el directorio
   const handleSavePhoneManually = () => {
@@ -464,7 +559,7 @@ Cualquier consulta estamos a su entera disposición. ¡Que tenga un excelente d�
               <Flex justify="space-between" align="center" wrap="wrap" gap={2}>
                 <HStack spacing={2}>
                   <Badge
-                    colorScheme={hasOverdue ? "red" : isCreditBalance ? "blue" : "green"}
+                    colorScheme={hasOverdue ? "red" : hasVenceHoy ? "orange" : isCreditBalance ? "blue" : "green"}
                     fontSize="11px"
                     px={2.5}
                     py={0.8}
@@ -473,6 +568,8 @@ Cualquier consulta estamos a su entera disposición. ¡Que tenga un excelente d�
                   >
                     {hasOverdue
                       ? `⚠️ ${vencidosCount} Cuotas Vencidas`
+                      : hasVenceHoy
+                      ? `⏰ ${venceHoyCount} Cuota${venceHoyCount > 1 ? "s" : ""} Vence Hoy (Último día)`
                       : isCreditBalance
                       ? "💳 Saldo a Favor"
                       : "✅ Cliente al Día"}
@@ -630,16 +727,20 @@ Cualquier consulta estamos a su entera disposición. ¡Que tenga un excelente d�
               p={3.5}
               borderRadius="xl"
               border="1px solid"
-              borderColor={hasOverdue ? "red.200" : "gray.200"}
+              borderColor={hasOverdue ? "red.200" : hasVenceHoy ? "orange.200" : "gray.200"}
               boxShadow="xs"
             >
               <Flex justify="space-between" align="center" mb={2} wrap="wrap" gap={1}>
-                <Text fontSize="xs" fontWeight="800" color={hasOverdue ? "red.700" : "gray.700"}>
+                <Text fontSize="xs" fontWeight="800" color={hasOverdue ? "red.700" : hasVenceHoy ? "orange.700" : "gray.700"}>
                   Tipo de Mensaje:
                 </Text>
                 {hasOverdue ? (
                   <Badge colorScheme="red" variant="subtle" fontSize="10px" px={2} py={0.5} borderRadius="full">
                     ⚠️ Obligatorio: Cliente con deuda vencida
+                  </Badge>
+                ) : hasVenceHoy ? (
+                  <Badge colorScheme="orange" variant="subtle" fontSize="10px" px={2} py={0.5} borderRadius="full">
+                    ⏰ Preventivo: Cuota vence hoy (Último día)
                   </Badge>
                 ) : (
                   <Badge colorScheme="green" variant="subtle" fontSize="10px" px={2} py={0.5} borderRadius="full">
@@ -655,6 +756,20 @@ Cualquier consulta estamos a su entera disposición. ¡Que tenga un excelente d�
                         Aviso de Vencimiento ({vencidosCount} {vencidosCount === 1 ? "Cuota Vencida" : "Cuotas Vencidas"})
                       </Text>
                     </Radio>
+                  ) : hasVenceHoy ? (
+                    <>
+                      <Radio value="preventive" colorScheme="orange" size="sm">
+                        <Text fontSize="xs" fontWeight="800" color="orange.700">
+                          ⏰ Recordatorio Preventivo (Vence Hoy)
+                        </Text>
+                      </Radio>
+                      <Radio value="friendly" colorScheme="orange" size="sm">
+                        <Text fontSize="xs" fontWeight="700">Amable y Cercano</Text>
+                      </Radio>
+                      <Radio value="formal" colorScheme="orange" size="sm">
+                        <Text fontSize="xs" fontWeight="700">Formal Corporativo</Text>
+                      </Radio>
+                    </>
                   ) : (
                     <>
                       <Radio value="friendly" colorScheme="green" size="sm">
