@@ -26,7 +26,8 @@ import { useState, useMemo } from "react";
 import { downloadInvoicePDFdirectly } from "../../../features/reports/utils/pdfGenerators";
 import { generateAccountStatementPDF } from "../utils/receivablePDF";
 import { WhatsAppStatementModal } from "./WhatsAppStatementModal";
-import { FileText, Download, Landmark, Calendar, DollarSign, AlertTriangle, CheckCircle2, MessageSquare, History, Calculator } from "lucide-react";
+import { FileText, Download, Landmark, Calendar, DollarSign, AlertTriangle, CheckCircle2, MessageSquare, History, Calculator, Clock } from "lucide-react";
+import { getLetraBadgeInfo } from "../utils/statementTokenUtils";
 
 export default function InvoicesModal({ isOpen, onClose, cliente = null, documentos = [], onOpenHistory = null }) {
   const [loadingRef, setLoadingRef] = useState(null);
@@ -754,20 +755,61 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
                         </VStack>
                       )}
 
-                      {/* Caso Letra Pendiente con N° Único SAP */}
-                      {isLetra && !isPaid && (
-                        <Flex justify="space-between" align="center" bg="purple.50" p={2} borderRadius="md" border="1px solid" borderColor="purple.200">
-                          <HStack spacing={1.5}>
-                            <Landmark className="w-4 h-4 text-purple-700" />
-                            <Text fontSize="11.5px" fontWeight="800" color="purple.900">
-                              N° Único:
-                            </Text>
-                          </HStack>
-                          <Badge colorScheme="purple" variant="solid" bg="purple.700" color="white" px={2} py={0.5} borderRadius="md" fontSize="11px" fontWeight="800">
-                            {numeroUnico || "Registrada"}
-                          </Badge>
-                        </Flex>
-                      )}
+                      {/* Caso Letra Pendiente -> N° Único Bancario / Cartilla / Falta Recoger */}
+                      {isLetra && !isPaid && (() => {
+                        const letraInfo = getLetraBadgeInfo(doc);
+                        const isCartilla = letraInfo.type === "CARTILLA";
+                        const isFaltaRecoger = letraInfo.type === "FALTA_RECOGER";
+
+                        const cardBg = isCartilla ? "blue.50" : isFaltaRecoger ? "orange.50" : "purple.50";
+                        const cardBorder = isCartilla ? "blue.200" : isFaltaRecoger ? "orange.200" : "purple.200";
+                        const textColor = isCartilla ? "blue.900" : isFaltaRecoger ? "orange.900" : "purple.900";
+                        const iconColor = isCartilla ? "text-blue-700" : isFaltaRecoger ? "text-orange-700" : "text-purple-700";
+
+                        return (
+                          <Flex justify="space-between" align="center" bg={cardBg} p={2} borderRadius="md" border="1px solid" borderColor={cardBorder}>
+                            <HStack spacing={1.5}>
+                              {isCartilla ? (
+                                <FileText className={`w-4 h-4 ${iconColor}`} />
+                              ) : isFaltaRecoger ? (
+                                <Clock className={`w-4 h-4 ${iconColor}`} />
+                              ) : (
+                                <Landmark className={`w-4 h-4 ${iconColor}`} />
+                              )}
+                              <Text fontSize="11.5px" fontWeight="800" color={textColor}>
+                                {letraInfo.mobileTitle}
+                              </Text>
+                            </HStack>
+                            <HStack spacing={1.5}>
+                              <Badge
+                                colorScheme={letraInfo.colorScheme}
+                                variant="solid"
+                                bg={letraInfo.bg}
+                                color={letraInfo.color}
+                                px={2}
+                                py={0.5}
+                                borderRadius="md"
+                                fontSize="11px"
+                                fontWeight="800"
+                              >
+                                {letraInfo.valueText}
+                              </Badge>
+                              {letraInfo.ubicacionLabel && (
+                                <Badge
+                                  colorScheme={letraInfo.ubicacionColor}
+                                  variant="subtle"
+                                  fontSize="9px"
+                                  px={1.5}
+                                  borderRadius="sm"
+                                  fontWeight="800"
+                                >
+                                  {letraInfo.ubicacionLabel}
+                                </Badge>
+                              )}
+                            </HStack>
+                          </Flex>
+                        );
+                      })()}
 
                       {/* Caso sin PDF */}
                       {!isLetra && validRefs.length === 0 && (
@@ -951,45 +993,40 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
                             </VStack>
                           )}
 
-                          {/* CASO 3: Letra de Cambio PENDIENTE -> N° Único SAP */}
-                          {isLetra && !isPaid && (
-                            <HStack spacing={1.5}>
-                              <Badge
-                                colorScheme="purple"
-                                variant="solid"
-                                bg="purple.700"
-                                color="white"
-                                px={2}
-                                py={0.5}
-                                borderRadius="md"
-                                fontSize="10.5px"
-                                fontWeight="700"
-                              >
-                                🏛️ N° Único: {numeroUnico || "Registrada"}
-                              </Badge>
-                              {(() => {
-                                const loc = String(doc.ubicacion || doc.UBICACION || "").trim().toUpperCase();
-                                if (!loc) return null;
-                                let label = loc;
-                                let color = "blue";
-                                if (loc === "VD" || loc === "0" || loc.includes("CARTERA")) {
-                                  label = "VD";
-                                  color = "blue";
-                                } else if (loc === "1" || loc.includes("BANCO") || loc.includes("COBRANZA")) {
-                                  label = "Banco";
-                                  color = "purple";
-                                } else if (loc === "2" || loc.includes("CUSTODIA")) {
-                                  label = "Custodia";
-                                  color = "teal";
-                                }
-                                return (
-                                  <Badge colorScheme={color} variant="subtle" fontSize="9px" px={1.5} borderRadius="sm" fontWeight="800">
-                                    {label}
+                          {/* CASO 3: Letra de Cambio PENDIENTE -> N° Único SAP vs Cartilla vs Falta Recoger */}
+                          {isLetra && !isPaid && (() => {
+                            const letraInfo = getLetraBadgeInfo(doc);
+
+                            return (
+                              <HStack spacing={1.5}>
+                                <Badge
+                                  colorScheme={letraInfo.colorScheme}
+                                  variant="solid"
+                                  bg={letraInfo.bg}
+                                  color={letraInfo.color}
+                                  px={2}
+                                  py={0.5}
+                                  borderRadius="md"
+                                  fontSize="10.5px"
+                                  fontWeight="700"
+                                >
+                                  {letraInfo.badgeText}
+                                </Badge>
+                                {letraInfo.ubicacionLabel && (
+                                  <Badge
+                                    colorScheme={letraInfo.ubicacionColor}
+                                    variant="subtle"
+                                    fontSize="9px"
+                                    px={1.5}
+                                    borderRadius="sm"
+                                    fontWeight="800"
+                                  >
+                                    {letraInfo.ubicacionLabel}
                                   </Badge>
-                                );
-                              })()}
-                            </HStack>
-                          )}
+                                )}
+                              </HStack>
+                            );
+                          })()}
 
                           {/* CASO 4: Sin PDF */}
                           {!isLetra && validRefs.length === 0 && (

@@ -2,8 +2,9 @@
 export const STANDARD_DISCOUNT_CEILING = 50.0; // Tope comercial estándar ordinario (50.0%)
 export const MAX_DISCOUNT_CEILING = 56.0;      // Tope máximo absoluto para volumen / mayoreo (56.0%)
 
-export function calculateQuoteTotals(products = [], exchangeRate = 3.76) {
+export function calculateQuoteTotals(products = [], exchangeRate = 3.76, options = {}) {
   const tc = Number(exchangeRate) || 3.76;
+  const isSapDoc = Boolean(options.isSapDoc || options.isSapDirect);
 
   let grossSubtotalUSD = 0;   // Suma de (qty × precio de lista) antes de descuentos
   let totalDiscountUSD = 0;  // Suma de montos descontados
@@ -16,8 +17,8 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.76) {
     const qty = Math.max(0, Number(p.quantity ?? p.Quantity ?? 1));
     const listPrice = Math.max(0, Number(p.price ?? p.Price ?? p.unitPrice ?? p.UnitPrice ?? p.importe ?? p.itemPrice ?? 0));
 
-    // Descuento base de SAP (%)
-    const sapDisc = Math.max(0, Math.min(100, Number(p.discount ?? p.sapDiscount ?? 0)));
+    // Descuento base de SAP (%) - Priorizar siempre sapDiscount si existe
+    const sapDisc = Math.max(0, Math.min(100, Number(p.sapDiscount ?? p.discount ?? 0)));
     // Descuento por Promoción / Oferta del Mes (%)
     const promoDisc = Math.max(0, Math.min(100, Number(p.promoDiscount ?? p.PromoDiscount ?? 0)));
     // Descuento adicional de línea (%)
@@ -29,23 +30,32 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.76) {
 
     const grossLine = qty * listPrice;
     
-    // Cálculo sumatorio directo (Desc. SAP + Desc. Promo + Desc. Adicional)
-    // Regla de Negocio: Descuento mayor al 50% (hasta 56%) aplica ÚNICAMENTE si la cantidad es mayor a 100 (>100 uds)
-    const rawTotalDisc = sapDisc + promoDisc + addDisc;
-    const applicableCeiling = qty > 100 ? MAX_DISCOUNT_CEILING : STANDARD_DISCOUNT_CEILING;
-    const totalDisc = Math.min(applicableCeiling, Math.max(0, rawTotalDisc));
-    const discountedUnitPrice = listPrice * (1 - totalDisc / 100);
-    const netLine = qty * discountedUnitPrice;
+    // Si la línea proviene directamente de un documento emitido/registrado en SAP:
+    // Respetar el total de descuento y montos oficiales aprobados en SAP sin recortarlos
+    const isLineFromSap = isSapDoc || Boolean(p.isSapDirect || p.fromSap);
+    let totalDisc;
+    if (isLineFromSap && p.discountPercent !== undefined && p.discountPercent !== null) {
+      totalDisc = Math.max(0, Math.min(100, Number(p.discountPercent)));
+    } else {
+      const rawTotalDisc = sapDisc + promoDisc + addDisc;
+      const applicableCeiling = qty > 100 ? MAX_DISCOUNT_CEILING : STANDARD_DISCOUNT_CEILING;
+      totalDisc = Math.min(applicableCeiling, Math.max(0, rawTotalDisc));
+      if (rawTotalDisc > applicableCeiling + 0.01) {
+        hasExceededDiscountCeiling = true;
+      }
+    }
+
+    const discountedUnitPrice = isLineFromSap && p.finalPrice
+      ? Number(p.finalPrice)
+      : listPrice * (1 - totalDisc / 100);
+    const netLine = isLineFromSap && (p.subtotal || p.lineTotal)
+      ? Number(p.subtotal || p.lineTotal)
+      : qty * discountedUnitPrice;
     const discAmount = Math.max(0, grossLine - netLine);
-    const effectiveDiscPct = grossLine > 0 ? (discAmount / grossLine) * 100 : totalDisc;
 
     const isVolumeLine = qty > 100 && totalDisc > STANDARD_DISCOUNT_CEILING + 0.01;
     if (isVolumeLine) {
       hasVolumeDiscount = true;
-    }
-
-    if (rawTotalDisc > applicableCeiling + 0.01) {
-      hasExceededDiscountCeiling = true;
     }
 
     grossSubtotalUSD += grossLine;
@@ -68,7 +78,7 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.76) {
       lineTotal: Number(netLine.toFixed(2)),
       requiresApproval: addDisc > 0 || isVolumeLine,
       isVolumeDiscount: isVolumeLine,
-      isExceedingCeiling: rawTotalDisc > applicableCeiling + 0.01,
+      isExceedingCeiling: !isLineFromSap && (sapDisc + promoDisc + addDisc > (qty > 100 ? MAX_DISCOUNT_CEILING : STANDARD_DISCOUNT_CEILING) + 0.01),
     };
   });
   

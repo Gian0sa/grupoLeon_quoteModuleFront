@@ -612,25 +612,37 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
       ))
     );
 
+    let displayCodigo = codigoUnico;
+    if (isLetra) {
+      const isNumOnly = /^\d+$/.test(codigoUnico);
+      const isBank = isNumOnly && codigoUnico.length >= 6 && (enBanco || codigoUnico.length >= 7);
+      if (isBank) {
+        displayCodigo = codigoUnico;
+      } else if (codigoUnico && codigoUnico !== "0" && codigoUnico.toLowerCase() !== "null" && codigoUnico !== "—") {
+        displayCodigo = `Cart. ${codigoUnico}`;
+      } else {
+        displayCodigo = isVD ? "Falta Recoger" : "—";
+      }
+    }
+
     const moneda = (d.moneda || d.TIPOCAMBIO || d.mon || "USD").toUpperCase();
     const isDocUSD = !moneda.includes("PEN") && !moneda.includes("SOL") && !moneda.includes("S/");
     const totalOriginal = Number(d.totalOriginal || d.totalOriginalExact || d.totalDocumento || d.TOTAL_DOC || d.tot || 0);
 
     let saldoPEN = 0;
     let saldoUSD = 0;
-
     if (isDocUSD) {
-      saldoUSD = Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? d.sUsd ?? totalOriginal);
-      saldoPEN = 0;
+      saldoUSD = Number(d.saldoUSD ?? d.saldoUsd ?? d.SALDO_USD ?? d.sUsd ?? d.saldoPendiente?.USD ?? 0);
+      if (saldoUSD === 0 && d.totalDocumento && !d.saldoPendiente) saldoUSD = totalOriginal;
     } else {
-      saldoPEN = Number(d.saldoPendiente?.PEN ?? d.SALDO_PEN ?? d.sPen ?? totalOriginal);
-      saldoUSD = 0;
+      saldoPEN = Number(d.saldoPEN ?? d.saldoPen ?? d.SALDO_PEN ?? d.sPen ?? d.saldoPendiente?.PEN ?? 0);
+      if (saldoPEN === 0 && d.totalDocumento && !d.saldoPendiente) saldoPEN = totalOriginal;
     }
 
     const isCredit = saldoPEN < 0 || saldoUSD < 0 || tipoDoc.toLowerCase().includes("credito") || tipoDoc.toLowerCase().includes("abono") || numDocUpper.startsWith("NC-") || numDocUpper.startsWith("ABO-") || numDocUpper.startsWith("AB0-") || numDocUpper.startsWith("07F");
     if (isCredit) {
-      if (saldoPEN > 0) saldoPEN = -saldoPEN;
-      if (saldoUSD > 0) saldoUSD = -saldoUSD;
+      if (saldoPEN !== 0) saldoPEN = -Math.abs(saldoPEN);
+      if (saldoUSD !== 0) saldoUSD = -Math.abs(saldoUSD);
     }
 
     totalSaldoPEN += saldoPEN;
@@ -650,7 +662,7 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
       condicion,
       isVD,
       serieDocText,
-      codigoUnico,
+      codigoUnico: displayCodigo,
       montoTexto: `${isDocUSD ? "USD" : "PEN"}  ${formatMoney(Math.abs(totalOriginal))}`,
       saldoPENTexto: formatMoney(saldoPEN),
       saldoUSDTexto: formatMoney(saldoUSD),

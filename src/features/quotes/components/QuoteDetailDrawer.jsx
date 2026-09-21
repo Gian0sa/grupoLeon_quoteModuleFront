@@ -487,7 +487,8 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
   // Calcular Totales unificados con calculadora global
   const tcVal = Number(effectiveQuote.totals?.tc || effectiveQuote.totals?.exchangeRate || effectiveQuote.exchangeRate) || 3.76;
-  const calcRes = calculateQuoteTotals(products, tcVal);
+  const isSapDirect = Boolean(effectiveQuote.isSapDirect || effectiveQuote.sapDocNum || effectiveQuote.DocNum);
+  const calcRes = calculateQuoteTotals(products, tcVal, { isSapDirect });
   const displayProducts = calcRes.normalizedProducts && calcRes.normalizedProducts.length > 0 ? calcRes.normalizedProducts : products;
   const fallbackUSD = effectiveQuote.DocTotalSys
     ? Number(effectiveQuote.DocTotalSys)
@@ -497,10 +498,18 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
             ? Number((effectiveQuote.DocTotal / effectiveQuote.DocRate).toFixed(2))
             : Number(effectiveQuote.DocTotal || 0)));
 
-  const grandTotalUSD = calcRes.grandTotalUSD || Number(effectiveQuote.totals?.grandTotalUSD || 0) || fallbackUSD;
-  const subtotalUSD = calcRes.subtotalUSD || Number(effectiveQuote.totals?.subTotalUSD || 0) || Number((grandTotalUSD / 1.18).toFixed(2));
-  const igvUSD = calcRes.igvUSD || Number(effectiveQuote.totals?.igvUSD || 0) || Number((grandTotalUSD - subtotalUSD).toFixed(2));
-  const grandTotalSOL = calcRes.grandTotalSOL || Number(effectiveQuote.totals?.grandTotalPEN || (effectiveQuote.DocTotal && (effectiveQuote.DocCurrency === "USD" || !effectiveQuote.DocCurrency) ? effectiveQuote.DocTotal : (grandTotalUSD * tcVal).toFixed(2)));
+  const grandTotalUSD = isSapDirect
+    ? (Number(effectiveQuote.totals?.grandTotalUSD || 0) || fallbackUSD || calcRes.grandTotalUSD)
+    : (calcRes.grandTotalUSD || Number(effectiveQuote.totals?.grandTotalUSD || 0) || fallbackUSD);
+  const subtotalUSD = isSapDirect
+    ? (Number(effectiveQuote.totals?.subTotalUSD || 0) || calcRes.subtotalUSD || Number((grandTotalUSD / 1.18).toFixed(2)))
+    : (calcRes.subtotalUSD || Number(effectiveQuote.totals?.subTotalUSD || 0) || Number((grandTotalUSD / 1.18).toFixed(2)));
+  const igvUSD = isSapDirect
+    ? (Number(effectiveQuote.totals?.igvUSD || 0) || calcRes.igvUSD || Number((grandTotalUSD - subtotalUSD).toFixed(2)))
+    : (calcRes.igvUSD || Number(effectiveQuote.totals?.igvUSD || 0) || Number((grandTotalUSD - subtotalUSD).toFixed(2)));
+  const grandTotalSOL = isSapDirect
+    ? (Number(effectiveQuote.totals?.grandTotalPEN || 0) || (effectiveQuote.DocTotal && (effectiveQuote.DocCurrency === "PEN" || effectiveQuote.DocCurrency === "SOL") ? Number(effectiveQuote.DocTotal) : Number((grandTotalUSD * tcVal).toFixed(2))))
+    : (calcRes.grandTotalSOL || Number(effectiveQuote.totals?.grandTotalPEN || (grandTotalUSD * tcVal).toFixed(2)));
 
   // Formateadores y cálculos de marca de tiempo en vivo
   const formatTimeStr = (isoStr) => {

@@ -29,9 +29,9 @@ export const useNotifications = (targetRole, targetUsername) => {
     const query = useQuery({
         queryKey: ["notifications", targetRole, targetUsername],
         queryFn: () => getNotifications(targetRole, targetUsername),
-        staleTime: 0,
-        refetchOnMount: "always",
-        refetchOnWindowFocus: true,
+        staleTime: 60 * 1000,
+        refetchOnMount: false,
+        refetchOnWindowFocus: false,
     })
     return { ...query, data: query.data || [], isLoading: query.isLoading, isFetching: query.isFetching, error: query.error }
 }
