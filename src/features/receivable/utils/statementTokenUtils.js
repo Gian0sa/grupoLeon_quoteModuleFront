@@ -306,3 +306,100 @@ export const generateStatementUrl = (debtData) => {
   const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
   return `${baseUrl}/s/${code}`;
 };
+
+/**
+ * Clasifica y diferencia las etiquetas de una Letra de Cambio:
+ * 1. N° Único Bancario: Si tiene ~7 dígitos (>= 6 numérico) y/o está en Banco.
+ * 2. Cartilla: Si tiene un número corto (ej. 4236) o está en Cartera / VD.
+ * 3. Falta Recoger (VD): Si está en Cartera / VD y no tiene número asignado.
+ */
+export const getLetraBadgeInfo = (doc) => {
+  if (!doc) return { type: "UNKNOWN", badgeText: "—", valueText: "—", ubicacionLabel: "", ubicacionColor: "gray" };
+
+  const rawNum = String(doc.idUnico || doc.ID_UNICO || doc.letraSAP || doc.uni || "").trim();
+  const loc = String(doc.ubicacion || doc.UBICACION || doc.ESTADO || "").trim().toUpperCase();
+  const cond = String(doc.condicionPago || doc.CONDICION || doc.con || "").toUpperCase();
+
+  const isEnBanco = Boolean(
+    loc === "1" ||
+    loc.includes("BANCO") ||
+    loc.includes("COBRANZA") ||
+    cond.includes("BANCO")
+  );
+  const isEnCustodia = Boolean(loc === "2" || loc.includes("CUSTODIA"));
+  const isVDExplicit = Boolean(
+    loc === "0" ||
+    loc === "VD" ||
+    loc.includes("CARTERA") ||
+    loc.includes("VD") ||
+    cond.includes("VD") ||
+    cond.includes("CARTERA")
+  );
+
+  let ubicacionLabel = "";
+  let ubicacionColor = "blue";
+  if (isEnBanco) {
+    ubicacionLabel = "Banco";
+    ubicacionColor = "purple";
+  } else if (isEnCustodia) {
+    ubicacionLabel = "Custodia";
+    ubicacionColor = "teal";
+  } else if (isVDExplicit) {
+    ubicacionLabel = "VD";
+    ubicacionColor = "blue";
+  }
+
+  // Un número único bancario real suele tener al rededor de 7 dígitos (ej: >= 6 dígitos puramente numéricos)
+  // o está asignado explícitamente a banco.
+  const isNumericOnly = /^\d+$/.test(rawNum);
+  const isBankUnique = isNumericOnly && rawNum.length >= 6 && (isEnBanco || isEnCustodia || rawNum.length >= 7);
+
+  if (isBankUnique) {
+    return {
+      type: "NUMERO_UNICO",
+      badgeText: `🏛️ N° Único: ${rawNum}`,
+      mobileTitle: "N° Único Bancario:",
+      valueText: rawNum,
+      colorScheme: "purple",
+      bg: "purple.700",
+      color: "white",
+      ubicacionLabel: isEnBanco ? "Banco" : isEnCustodia ? "Custodia" : ubicacionLabel,
+      ubicacionColor: isEnCustodia ? "teal" : "purple",
+      isBankUnique: true,
+      isVD: false,
+    };
+  }
+
+  // Si tiene un número pero es corto (<= 5 dígitos, como 4236) o proviene de Cartera/VD/Cartilla
+  if (rawNum && rawNum !== "0" && rawNum.toLowerCase() !== "null" && rawNum !== "—") {
+    return {
+      type: "CARTILLA",
+      badgeText: `📋 Cartilla: ${rawNum}`,
+      mobileTitle: "Cartilla:",
+      valueText: rawNum,
+      colorScheme: "blue",
+      bg: "blue.700",
+      color: "white",
+      ubicacionLabel,
+      ubicacionColor,
+      isBankUnique: false,
+      isVD: isVDExplicit,
+    };
+  }
+
+  // Si no tiene número o está pendiente de recojo físico en Cartera/VD
+  return {
+    type: "FALTA_RECOGER",
+    badgeText: isVDExplicit ? "📂 Falta Recoger (VD)" : "📂 Falta Recoger",
+    mobileTitle: "Estado Letra:",
+    valueText: isVDExplicit ? "Falta Recoger (VD)" : "Falta Recoger",
+    colorScheme: "orange",
+    bg: "orange.600",
+    color: "white",
+    ubicacionLabel,
+    ubicacionColor,
+    isBankUnique: false,
+    isVD: isVDExplicit,
+  };
+};
+

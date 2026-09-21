@@ -1561,7 +1561,7 @@ export function QuoteApprovalPage() {
           if (historyStatusFilter === "PENDIENTE" && !["ENVIADO", "EN_PROCESO", "PENDIENTE_APROBACION"].includes(currentStatus)) return false;
           if (historyStatusFilter === "APROBADO_COMERCIAL" && !["APROBADO_COMERCIAL", "APROBADO_CREDITOS"].includes(currentStatus)) return false;
           if (historyStatusFilter === "PENDIENTE_FACTURACION" && !["PENDIENTE_FACTURACION", "EN_FACTURACION"].includes(currentStatus)) return false;
-          if (historyStatusFilter === "EMITIDO" && (!["APROBADO", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO"].includes(currentStatus) || isCancelledState(currentStatus))) return false;
+          if (historyStatusFilter === "EMITIDO" && (!["APROBADO", "EMITIDO", "EMITIDO_SAP", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO"].includes(currentStatus) || isCancelledState(currentStatus))) return false;
           if (historyStatusFilter === "CANCELADO" && !isCancelledState(currentStatus)) return false;
         }
 
@@ -1608,7 +1608,7 @@ export function QuoteApprovalPage() {
       } else if (selectedTab === "PENDIENTE_FACTURACION") {
         if (!["PENDIENTE_FACTURACION", "EN_FACTURACION"].includes(currentStatus)) return false;
       } else if (selectedTab === "APROBADO") {
-        if (!["APROBADO", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO"].includes(currentStatus) || isCancelled) return false;
+        if (!["APROBADO", "EMITIDO", "EMITIDO_SAP", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO"].includes(currentStatus) || isCancelled) return false;
       } else if (selectedTab === "ANULADO" || selectedTab === "RECHAZADO") {
         if (!isCancelled) return false;
       }
@@ -1618,8 +1618,8 @@ export function QuoteApprovalPage() {
 
     // Ordenamiento numérico estricto descendente por número de documento (COT-XXXXXX)
     return result.sort((a, b) => {
-      const numA = parseInt(String(a.docNumber || a.id || "").replace(/[^0-9]/g, "") || "0", 10);
-      const numB = parseInt(String(b.docNumber || b.id || "").replace(/[^0-9]/g, "") || "0", 10);
+      const numA = parseInt(String(a.docNumber || a.sapDocNum || a.DocNum || a.id || "").replace(/[^0-9]/g, "") || "0", 10);
+      const numB = parseInt(String(b.docNumber || b.sapDocNum || b.DocNum || b.id || "").replace(/[^0-9]/g, "") || "0", 10);
       if (numA !== numB) return numB - numA;
       const dateA = new Date(a.createdAt || a.docDate || 0).getTime();
       const dateB = new Date(b.createdAt || b.docDate || 0).getTime();

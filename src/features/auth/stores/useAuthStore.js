@@ -20,15 +20,16 @@ const getSafeJsonValue = (key) => {
 
 export const useAuthStore = create((set) => ({
   userId: getSafeValue('userId'),
-  username: getSafeValue('username'),
+  username: typeof getSafeValue('username') === 'string' ? getSafeValue('username').trim() : getSafeValue('username'),
   salesEmployeeCode: getSafeValue('salesEmployeeCode'),
   endpoints: getSafeJsonValue('endpoints') || [],
   isAuthenticated: !!getSafeValue('userId'),
 
   login: ({ userId, username, salesEmployeeCode, endpoints }) => {
+    const cleanUsername = typeof username === 'string' ? username.trim() : username;
     const safeValues = {
       userId: userId?.toString() || null,
-      username: username || null,
+      username: cleanUsername || null,
       salesEmployeeCode: salesEmployeeCode || null,
       endpoints: endpoints || [],
     };

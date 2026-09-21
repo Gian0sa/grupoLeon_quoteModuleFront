@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import {
   Box,
   Flex,
@@ -49,7 +49,9 @@ export function CreditAlertsCard({ selectedSeller, canFilterSellers }) {
   );
 
   // Estructura devuelta por el API /reportModule/accountsReceivable
-  const allClients = data?.clients?.clients || data?.clients || data?.data || (Array.isArray(data) ? data : []);
+  const allClients = useMemo(() => {
+    return data?.clients?.clients || data?.clients || data?.data || (Array.isArray(data) ? data : []);
+  }, [data]);
 
   // Helper para identificar si un cliente es de TARJETA AZUL (Saldo a favor / Nota de crédito)
   const isClientCredit = (c) => {
@@ -77,16 +79,18 @@ export function CreditAlertsCard({ selectedSeller, canFilterSellers }) {
   // RN-COB-01 & RN-COB-02: Ranking por Criticidad Financiera y Umbral Mínimo Anti-Ruido ($10 USD)
   const MIN_CRITICAL_DEBT_USD = 10.00;
 
-  const criticalClients = allClients
-    .filter((c) => {
-      if (isClientCredit(c)) return false;
-      const overdueDocs = Number(c.overdueDocumentsCount ?? c.documentosVencidos ?? 0);
-      const equivUSD = getEquivUSD(c);
-      return overdueDocs > 0 && equivUSD >= MIN_CRITICAL_DEBT_USD;
-    })
-    .sort((a, b) => getEquivUSD(b) - getEquivUSD(a)); // Mayor deuda vencida para encajar perfectamente con la tarjeta de productos sin scrollbar
+  const criticalClients = useMemo(() => {
+    return allClients
+      .filter((c) => {
+        if (isClientCredit(c)) return false;
+        const overdueDocs = Number(c.overdueDocumentsCount ?? c.documentosVencidos ?? 0);
+        const equivUSD = getEquivUSD(c);
+        return overdueDocs > 0 && equivUSD >= MIN_CRITICAL_DEBT_USD;
+      })
+      .sort((a, b) => getEquivUSD(b) - getEquivUSD(a)); // Mayor deuda vencida para encajar perfectamente con la tarjeta de productos sin scrollbar
+  }, [allClients]);
   const itemCount = useBreakpointValue({ base: 3, lg: 5 }) || 4;
-  const displayClients = criticalClients.slice(0, itemCount);
+  const displayClients = useMemo(() => criticalClients.slice(0, itemCount), [criticalClients, itemCount]);
 
   // ─── Renderizado del cuerpo de la tarjeta ──────────────────────────────────
   const renderContent = () => {

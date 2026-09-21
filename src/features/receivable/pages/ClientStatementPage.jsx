@@ -885,7 +885,17 @@ export function ClientStatementPage() {
                           )}
                         </HStack>
                         <Text fontSize="10px" color="gray.500" fontWeight="600" mt={0.5}>
-                          Condición: {doc.con || "—"} {doc.uni ? `• Cód. Único: ${doc.uni}` : ""}
+                          Condición: {doc.con || "—"}{" "}
+                          {(() => {
+                            if (!doc.esLetra && !doc.num?.toUpperCase().startsWith("LC-")) {
+                              return doc.uni ? `• Cód. Único: ${doc.uni}` : "";
+                            }
+                            const isNum = /^\d+$/.test(doc.uni || "");
+                            const isBank = isNum && (doc.uni || "").length >= 6 && (doc.enBanco || (doc.uni || "").length >= 7);
+                            if (isBank) return `• 🏛️ N° Único: ${doc.uni}`;
+                            if (doc.uni && doc.uni !== "0" && doc.uni.toLowerCase() !== "null") return `• 📋 Cartilla: ${doc.uni}`;
+                            return doc.isVD ? "• 📂 Falta Recoger (VD)" : "";
+                          })()}
                         </Text>
                       </Box>
                       <Badge
@@ -1009,7 +1019,18 @@ export function ClientStatementPage() {
                           ) : null}
                         </Td>
                         <Td px={2} py={1.5} fontSize="11px" fontFamily="mono" fontWeight="700">{serieText}</Td>
-                        <Td px={2} py={1.5} fontSize="11px" fontFamily="mono">{doc.uni || "—"}</Td>
+                        <Td px={2} py={1.5} fontSize="11px" fontFamily="mono">
+                          {(() => {
+                            if (!doc.esLetra && !doc.num?.toUpperCase().startsWith("LC-")) {
+                              return doc.uni || "—";
+                            }
+                            const isNum = /^\d+$/.test(doc.uni || "");
+                            const isBank = isNum && (doc.uni || "").length >= 6 && (doc.enBanco || (doc.uni || "").length >= 7);
+                            if (isBank) return doc.uni;
+                            if (doc.uni && doc.uni !== "0" && doc.uni.toLowerCase() !== "null") return `Cart. ${doc.uni}`;
+                            return doc.isVD ? "Falta Recoger" : "—";
+                          })()}
+                        </Td>
                         <Td px={2} py={1.5} fontSize="11px" textAlign="right" fontFamily="mono">
                           {doc.mon} {formatMoney(doc.tot)}
                         </Td>
