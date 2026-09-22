@@ -40,7 +40,7 @@ const EntradaPage          = lazy(() => import("../features/entrada/pages/Entrad
 const AttendanceAdminPage  = lazy(() => import("../features/entrada/pages/AttendanceAdminPage.jsx").then(m => ({ default: m.AttendanceAdminPage })));
 const NewClientsPage       = lazy(() => import("../features/clients/pages/NewClientsPage.jsx").then(m => ({ default: m.NewClientsPage })));
 const FAQPage              = lazy(() => import("../features/help/pages/FAQPage.jsx").then(m => ({ default: m.FAQPage })));
-
+const GuiaSalidaPage       = lazy(() => import("../features/warehouse/pages/GuiaSalidaPage.jsx").then(m => ({ default: m.GuiaSalidaPage })));
 // ─── Fallback de carga: spinner mínimo centrado con color de marca ───────────
 function PageLoader() {
   return (
@@ -94,6 +94,7 @@ const AppRoutes = () => {
           <Route path="/entrada"           element={<PrivateRoute><EntradaPage /></PrivateRoute>} />
           <Route path="/admin/attendance"  element={<RoleRoute requiredPermission="PUT:/profile/admin/:userId"><AttendanceAdminPage /></RoleRoute>} />
           <Route path="/faq"               element={<PrivateRoute><FAQPage /></PrivateRoute>} />
+          <Route path="/guiaSalida"        element={<PrivateRoute><GuiaSalidaPage /></PrivateRoute>} />
         </Routes>
       </Suspense>
     </>

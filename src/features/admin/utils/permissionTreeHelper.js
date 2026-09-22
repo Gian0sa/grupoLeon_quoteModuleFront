@@ -59,6 +59,8 @@ export function buildPermissionTree(services = []) {
     "dashboard",
     "cotizaciones",
     "ventas",
+    "almacén",
+    "almacen",
     "catálogo",
     "visitas",
     "asistencia",
