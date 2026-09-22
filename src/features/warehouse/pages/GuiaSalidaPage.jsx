@@ -1,9 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Flex,
   Text,
   Input,
+  InputGroup,
+  InputRightElement,
+  IconButton,
   Button,
   VStack,
   HStack,
@@ -16,7 +19,7 @@ import {
   TabPanel,
   Badge,
 } from '@chakra-ui/react';
-import { SearchIcon, CheckCircleIcon } from '@chakra-ui/icons';
+import { SearchIcon, CheckCircleIcon, CloseIcon } from '@chakra-ui/icons';
 import { MdLocalShipping, MdInventory, MdAssignment, MdLock } from 'react-icons/md';
 import { TopHeaderBanner } from '../../../components/TopHeaderBanner';
 import { axiosInstance } from '../../../shared/lib/axiosInstance';
@@ -40,6 +43,14 @@ export function GuiaSalidaPage() {
   const [deliveryData, setDeliveryData] = useState(null);
   const [tabIndex, setTabIndex] = useState(0); // 0: Picking, 1: Embalaje, 2: Despacho
   const toast = useToast();
+  const inputBusquedaRef = useRef(null);
+  const timerBusquedaRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerBusquedaRef.current) clearTimeout(timerBusquedaRef.current);
+    };
+  }, []);
 
   // 1. Estados de Picking (Almacén)
   const [lineas, setLineas] = useState([]);
@@ -390,18 +401,36 @@ export function GuiaSalidaPage() {
     }
   };
 
-  const handleBuscar = async (e) => {
-    if (e) e.preventDefault();
-    const cleanNum = docNumInput.trim();
+  const handleLimpiarBusqueda = () => {
+    if (timerBusquedaRef.current) {
+      clearTimeout(timerBusquedaRef.current);
+    }
+    setDocNumInput('');
+    setDeliveryData(null);
+    setLineas([]);
+    setCajas([]);
+    setBultos(0);
+    setPesoKg('');
+    setTimeout(() => {
+      inputBusquedaRef.current?.focus();
+    }, 50);
+  };
+
+  const ejecutarBusqueda = async (codigoDirecto = null) => {
+    const cleanNum = (codigoDirecto !== null && codigoDirecto !== undefined ? String(codigoDirecto) : docNumInput).trim();
     if (!cleanNum) {
       toast({
         title: 'Ingresa un número',
-        description: 'Por favor escribe el número de Entrega SAP (ej: 21490).',
+        description: 'Por favor escribe o escanea el número de Entrega SAP (ej: 000021535).',
         status: 'warning',
         duration: 3000,
         isClosable: true,
       });
       return;
+    }
+
+    if (timerBusquedaRef.current) {
+      clearTimeout(timerBusquedaRef.current);
     }
 
     setLoading(true);
@@ -439,6 +468,32 @@ export function GuiaSalidaPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleInputChange = (e) => {
+    const val = e.target.value;
+    setDocNumInput(val);
+
+    if (timerBusquedaRef.current) {
+      clearTimeout(timerBusquedaRef.current);
+    }
+
+    const clean = val.trim();
+    // Cuando el escáner de códigos de barras llena el código completo (mínimo 4 caracteres)
+    // dispara la búsqueda automáticamente tras breve pausa de 300ms
+    if (clean.length >= 4) {
+      timerBusquedaRef.current = setTimeout(() => {
+        ejecutarBusqueda(clean);
+      }, 300);
+    }
+  };
+
+  const handleBuscar = (e) => {
+    if (e) e.preventDefault();
+    if (timerBusquedaRef.current) {
+      clearTimeout(timerBusquedaRef.current);
+    }
+    ejecutarBusqueda(docNumInput);
   };
 
   const handleCambioCantidadSalida = (index, valor) => {
@@ -688,11 +743,18 @@ export function GuiaSalidaPage() {
         >
           <form onSubmit={handleBuscar}>
             <Flex gap={3} flexWrap="wrap" align="center">
-              <Box flex="1" minW="260px">
+              <InputGroup size="lg" flex="1" minW="260px">
                 <Input
-                  placeholder="Ingresa N° de Entrega SAP (ej: 21490 o 21484)..."
+                  ref={inputBusquedaRef}
+                  placeholder="Escanea código de barras o escribe N° de Entrega (ej: 000021535)..."
                   value={docNumInput}
-                  onChange={(e) => setDocNumInput(e.target.value)}
+                  onChange={handleInputChange}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      if (timerBusquedaRef.current) clearTimeout(timerBusquedaRef.current);
+                      handleBuscar(e);
+                    }
+                  }}
                   size="lg"
                   borderRadius="xl"
                   bg="white"
@@ -701,7 +763,21 @@ export function GuiaSalidaPage() {
                   boxShadow="sm"
                   autoFocus
                 />
-              </Box>
+                {docNumInput && (
+                  <InputRightElement h="full" pr={2}>
+                    <IconButton
+                      size="sm"
+                      icon={<CloseIcon />}
+                      aria-label="Limpiar búsqueda"
+                      variant="ghost"
+                      color="gray.400"
+                      _hover={{ color: 'red.500', bg: 'gray.100' }}
+                      borderRadius="full"
+                      onClick={handleLimpiarBusqueda}
+                    />
+                  </InputRightElement>
+                )}
+              </InputGroup>
               <Button
                 leftIcon={<SearchIcon />}
                 colorScheme="green"
@@ -713,11 +789,27 @@ export function GuiaSalidaPage() {
                 borderRadius="xl"
                 type="submit"
                 isLoading={loading}
-                loadingText="Consultando..."
+                loadingText="Buscando..."
                 boxShadow="md"
               >
                 Buscar Entrega
               </Button>
+              {(docNumInput || deliveryData) && (
+                <Button
+                  leftIcon={<CloseIcon />}
+                  variant="outline"
+                  bg="whiteAlpha.200"
+                  _hover={{ bg: "whiteAlpha.300", color: "white" }}
+                  color="white"
+                  borderColor="whiteAlpha.400"
+                  size="lg"
+                  px={6}
+                  borderRadius="xl"
+                  onClick={handleLimpiarBusqueda}
+                >
+                  Borrar Búsqueda
+                </Button>
+              )}
             </Flex>
           </form>
         </Box>
