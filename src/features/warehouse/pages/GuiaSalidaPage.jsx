@@ -45,9 +45,20 @@ export function GuiaSalidaPage() {
   const toast = useToast();
   const inputBusquedaRef = useRef(null);
   const timerBusquedaRef = useRef(null);
+  const lastKeyTimeRef = useRef(0);
+  const resetOnNextScanRef = useRef(false);
 
   useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      const activeTag = document.activeElement?.tagName?.toLowerCase();
+      if (activeTag === 'input' || activeTag === 'textarea') return;
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        inputBusquedaRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
     return () => {
+      window.removeEventListener('keydown', handleGlobalKeyDown);
       if (timerBusquedaRef.current) clearTimeout(timerBusquedaRef.current);
     };
   }, []);
@@ -439,6 +450,10 @@ export function GuiaSalidaPage() {
       if (res.data?.success && res.data?.data) {
         const d = res.data.data;
         sincronizarDatosFormulario(d);
+        resetOnNextScanRef.current = true;
+        setTimeout(() => {
+          inputBusquedaRef.current?.select();
+        }, 100);
 
         toast({
           title: res.data.origen === 'BASE_DE_DATOS_LOCAL' ? 'Guía cargada de BD' : 'Entrega consultada en SAP',
@@ -470,8 +485,32 @@ export function GuiaSalidaPage() {
     }
   };
 
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      if (timerBusquedaRef.current) clearTimeout(timerBusquedaRef.current);
+      handleBuscar(e);
+      return;
+    }
+
+    const now = Date.now();
+    // Si ya existe una búsqueda cargada y se empieza a pistolear un nuevo código tras una pausa (>600ms),
+    // o el flag resetOnNextScanRef está activo, limpiamos el campo para que el nuevo código reemplace directamente
+    if (
+      (resetOnNextScanRef.current || (docNumInput && now - lastKeyTimeRef.current > 600)) &&
+      e.key.length === 1 &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey
+    ) {
+      resetOnNextScanRef.current = false;
+      setDocNumInput('');
+    }
+    lastKeyTimeRef.current = now;
+  };
+
   const handleInputChange = (e) => {
     const val = e.target.value;
+    lastKeyTimeRef.current = Date.now();
     setDocNumInput(val);
 
     if (timerBusquedaRef.current) {
@@ -749,12 +788,9 @@ export function GuiaSalidaPage() {
                   placeholder="Escanea código de barras o escribe N° de Entrega (ej: 000021535)..."
                   value={docNumInput}
                   onChange={handleInputChange}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      if (timerBusquedaRef.current) clearTimeout(timerBusquedaRef.current);
-                      handleBuscar(e);
-                    }
-                  }}
+                  onKeyDown={handleKeyDown}
+                  onFocus={(e) => e.target.select()}
+                  onClick={(e) => e.target.select()}
                   size="lg"
                   borderRadius="xl"
                   bg="white"
