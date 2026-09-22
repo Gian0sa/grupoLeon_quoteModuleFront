@@ -44,7 +44,8 @@ export default function SalespersonReports({ salespersonId }) {
   const btnRef = useRef();
 
   const hasAccess = useHasAccess();
-  const { data: reglas = [] } = useRules();
+  const { data: rawReglas } = useRules();
+  const reglas = Array.isArray(rawReglas) ? rawReglas : [];
 
   const [searchTerm, setSearchTerm] = useState("");
   const debouncedSearch = useDebounce(searchTerm, 300);
@@ -295,7 +296,7 @@ export default function SalespersonReports({ salespersonId }) {
             </DrawerHeader>
             <DrawerBody p={4}>
               <FiltersWithSummary
-                statuses={reglas.map((regla) => ({
+                statuses={(reglas || []).map((regla) => ({
                   label: regla.name,
                   value: regla.name,
                   color: regla.color,

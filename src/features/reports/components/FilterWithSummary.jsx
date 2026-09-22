@@ -11,7 +11,7 @@ import {
 } from "@chakra-ui/react";
 
 export default function FiltersWithSummary({
-  statuses,
+  statuses = [],
   activeStatus,
   setStatus,
   setStartDate,
@@ -43,7 +43,7 @@ export default function FiltersWithSummary({
 
 
   const getStatusColor = (statusValue) => {
-    const statusObj = statuses.find(s => s.value === statusValue);
+    const statusObj = (statuses || []).find(s => s.value === statusValue);
     if (statusObj?.color) {
       return statusObj.color;
     }
@@ -77,7 +77,7 @@ export default function FiltersWithSummary({
               },
             }}
           >
-            {statuses.slice().reverse().map((statusObj) => {
+            {(statuses || []).slice().reverse().map((statusObj) => {
               const statusValue = statusObj.value;
               const statusLabel = statusObj.label;
 

@@ -2436,11 +2436,15 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                           const qty = Number(item.quantity ?? 1);
                           const sapDisc = Number(item.sapDiscount ?? item.discount ?? 0);
                           const promoDisc = Number(item.promoDiscount ?? 0);
-                          const addDisc = Number(item.lineDiscount ?? 0);
-                          const maxAllowedCeiling = qty > 100 ? 56 : 50;
-                          const totalDisc = Number(item.discountPercent ?? Math.min(maxAllowedCeiling, sapDisc + promoDisc + addDisc));
-                          const isVolume = qty > 100 && totalDisc > 50;
-                          const reqAppr = addDisc > 0 || isVolume;
+                          let addDisc = Number(item.lineDiscount ?? 0);
+                          const maxAllowedCeiling = qty > 100 ? 65 : 55;
+                          const totalDisc = Number(item.discountPercent ?? Math.min(maxAllowedCeiling, Math.max(0, sapDisc + promoDisc + addDisc)));
+                          if (addDisc === 0 && (sapDisc + promoDisc) > 0 && Math.abs(totalDisc - (sapDisc + promoDisc)) > 0.01) {
+                            addDisc = Number((totalDisc - (sapDisc + promoDisc)).toFixed(2));
+                          }
+                          const isVolume = qty > 100 && totalDisc > 55;
+                          const reqAppr = totalDisc > 50.009 || isVolume;
+                          const isHigherMargin = addDisc < 0;
                           const { isOutOfStock } = getItemStockInfo(item);
 
                           return (
@@ -2493,9 +2497,16 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                   </Box>
                                 )}
                                 <Box textAlign="center" borderLeft="1px solid" borderRight="1px solid" borderColor="gray.200">
-                                  <Text color="gray.500" fontWeight="700">Desc. Adic.</Text>
-                                  <Badge colorScheme={addDisc > 0 ? "purple" : "gray"} fontSize="9px">
-                                    {addDisc > 0 ? `+${addDisc}%` : "0%"}
+                                  <Text color="gray.500" fontWeight="700">
+                                    {addDisc < 0 ? "Margen" : "Desc. Adic."}
+                                  </Text>
+                                  <Badge
+                                    colorScheme={addDisc > 0 ? "purple" : addDisc < 0 ? "green" : "gray"}
+                                    bg={addDisc < 0 ? "emerald.100" : undefined}
+                                    color={addDisc < 0 ? "emerald.900" : undefined}
+                                    fontSize="9px"
+                                  >
+                                    {addDisc > 0 ? `+${addDisc}%` : addDisc < 0 ? `${addDisc}%` : "0%"}
                                   </Badge>
                                 </Box>
                                 <Box textAlign="center">
@@ -2508,7 +2519,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                 <Text>Cant: <Text as="span" fontWeight="800" color="gray.900">{item.quantity} uds</Text></Text>
                                 <Text>P. Lista: <Text as="span" fontWeight="800" color="gray.900">${item.price.toFixed(2)}</Text></Text>
                                 <Badge colorScheme={isVolume ? "orange" : reqAppr ? "orange" : "green"} fontSize="9px" px={1.5}>
-                                  {isVolume ? "🔥 Mayoreo >50%" : reqAppr ? "⚠️ Req. Aprobación" : "🟢 Estándar"}
+                                  {isVolume ? "🔥 Mayoreo (hasta 65%)" : reqAppr ? "⚠️ Req. Aprobación" : isHigherMargin ? "✨ Mayor Margen" : "🟢 Estándar"}
                                 </Badge>
                               </Flex>
                             </Box>
@@ -2539,11 +2550,15 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                               const qty = Number(item.quantity ?? 1);
                               const sapDisc = Number(item.sapDiscount ?? item.discount ?? 0);
                               const promoDisc = Number(item.promoDiscount ?? 0);
-                              const addDisc = Number(item.lineDiscount ?? 0);
-                              const maxAllowedCeiling = qty > 100 ? 56 : 50;
-                              const totalDisc = Number(item.discountPercent ?? Math.min(maxAllowedCeiling, sapDisc + promoDisc + addDisc));
-                              const isVolume = qty > 100 && totalDisc > 50;
-                              const reqAppr = addDisc > 0 || isVolume;
+                              let addDisc = Number(item.lineDiscount ?? 0);
+                              const maxAllowedCeiling = qty > 100 ? 65 : 55;
+                              const totalDisc = Number(item.discountPercent ?? Math.min(maxAllowedCeiling, Math.max(0, sapDisc + promoDisc + addDisc)));
+                              if (addDisc === 0 && (sapDisc + promoDisc) > 0 && Math.abs(totalDisc - (sapDisc + promoDisc)) > 0.01) {
+                                addDisc = Number((totalDisc - (sapDisc + promoDisc)).toFixed(2));
+                              }
+                              const isVolume = qty > 100 && totalDisc > 55;
+                              const reqAppr = totalDisc > 50.009 || isVolume;
+                              const isHigherMargin = addDisc < 0;
                               const { isOutOfStock } = getItemStockInfo(item);
 
                               return (
@@ -2581,8 +2596,15 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                           Promo -{promoDisc}%
                                         </Badge>
                                       )}
-                                      <Badge colorScheme={addDisc > 0 ? "purple" : "gray"} fontSize="10px" px={1.5}>
-                                        {addDisc > 0 ? `+${addDisc}%` : "0%"}
+                                      <Badge
+                                        colorScheme={addDisc > 0 ? "purple" : addDisc < 0 ? "green" : "gray"}
+                                        fontSize="10px"
+                                        px={1.5}
+                                        py={0.5}
+                                        borderRadius="md"
+                                        title={addDisc < 0 ? `Mayor margen comercial (${addDisc}%).` : undefined}
+                                      >
+                                        {addDisc > 0 ? `+${addDisc}%` : addDisc < 0 ? `${addDisc}%` : "0%"}
                                       </Badge>
                                     </VStack>
                                   </Td>
@@ -2600,7 +2622,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                       borderRadius="full"
                                       fontWeight="800"
                                     >
-                                      {isVolume ? "🔥 Mayoreo >50%" : reqAppr ? "⚠️ Requiere" : "🟢 No"}
+                                      {isVolume ? "🔥 Mayoreo (hasta 65%)" : reqAppr ? "⚠️ Requiere" : "🟢 No"}
                                     </Badge>
                                   </Td>
                                   <Td textAlign="right" fontWeight="850" color="emerald.900" fontFamily="mono" px={2.5}>${item.lineTotal.toFixed(2)}</Td>

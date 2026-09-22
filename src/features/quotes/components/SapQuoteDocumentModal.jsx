@@ -76,7 +76,7 @@ const normalizeItem = (item) => {
     finalUnitPrice = Number((lineTotalNum / qty).toFixed(2));
   } else {
     const listPrice = Number(item.price ?? item.unitPrice ?? item.Price ?? item.UnitPrice ?? item.importe ?? 0);
-    const totalDisc = Math.min(56.0, Number(item.discountPercent ?? (sapDisc + promoDisc + addDisc)));
+    const totalDisc = Math.min(65.0, Number(item.discountPercent ?? (sapDisc + promoDisc + addDisc)));
     finalUnitPrice = Number((listPrice * (1 - totalDisc / 100)).toFixed(2));
     lineTotalNum = Number((qty * finalUnitPrice).toFixed(2));
   }

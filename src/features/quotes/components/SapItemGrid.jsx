@@ -278,7 +278,7 @@ export default function SapItemGrid({
                     </Badge>
                   </Box>
                   <Box textAlign="center">
-                    <Text fontSize="0.6rem" color="gray.500" fontWeight="800" mb={0.5}>D. ADIC.</Text>
+                    <Text fontSize="0.6rem" color="gray.500" fontWeight="800" mb={0.5}>AJUSTE</Text>
                     {isReadOnly ? (
                       <Badge
                         fontSize="0.65rem"
@@ -286,30 +286,31 @@ export default function SapItemGrid({
                         px={1.5}
                         py={0.5}
                         borderRadius="md"
-                        bg={isVolume ? "#fff7ed" : "#eff6ff"}
-                        color={isVolume ? "#c2410c" : "#1e40af"}
-                        border="1px solid"
-                        borderColor={isVolume ? "#fdba74" : "#93c5fd"}
+                        colorScheme={isVolume ? "orange" : addDisc > 0 ? "red" : addDisc < 0 ? "green" : "gray"}
                         cursor="not-allowed"
                         title="Descuento bloqueado en modo revisión"
                       >
-                        {addDisc > 0 ? `+${addDisc}%` : "0%"}
+                        {addDisc > 0 ? `+${addDisc}%` : addDisc < 0 ? `${addDisc}%` : "0%"}
                       </Badge>
                     ) : (
                       <Button
                         size="xs"
-                        h="22px"
-                        bg={isVolume ? "#fff7ed" : "#eff6ff"}
-                        color={isVolume ? "#c2410c" : "#1e40af"}
-                        border="1px solid"
-                        borderColor={isVolume ? "#fdba74" : "#93c5fd"}
-                        onClick={() => handleOpenDiscountModal(item)}
-                        fontWeight="900"
-                        fontSize="0.65rem"
-                        px={1}
+                        h="auto"
+                        minW="unset"
+                        px={1.5}
+                        py={0.5}
                         borderRadius="md"
+                        fontWeight="800"
+                        fontSize="0.65rem"
+                        bg={isVolume ? "orange.100" : addDisc > 0 ? "red.100" : addDisc < 0 ? "green.100" : "gray.100"}
+                        color={isVolume ? "orange.800" : addDisc > 0 ? "red.800" : addDisc < 0 ? "green.800" : "gray.600"}
+                        _hover={{
+                          bg: isVolume ? "orange.200" : addDisc > 0 ? "red.200" : addDisc < 0 ? "green.200" : "gray.200",
+                        }}
+                        onClick={() => handleOpenDiscountModal(item)}
+                        title={addDisc > 0 ? `Se bajó de precio (+${addDisc}%).` : addDisc < 0 ? `Mayor margen (${addDisc}%).` : "Ajuste de precio"}
                       >
-                        {addDisc > 0 ? `+${addDisc}% ⚡` : "0%"}
+                        {addDisc > 0 ? `+${addDisc}%` : addDisc < 0 ? `${addDisc}%` : "0%"}
                       </Button>
                     )}
                   </Box>
@@ -318,7 +319,7 @@ export default function SapItemGrid({
                   <Text fontSize="0.65rem" fontWeight="800" color="gray.600">TOTAL LÍNEA:</Text>
                   <HStack spacing={1.5}>
                     <Text fontSize="xs" fontWeight="900" color="emerald.700">{money(lineTotal, currency)}</Text>
-                    {(sapDisc > 0 || addDisc > 0) && (
+                    {(sapDisc > 0 || addDisc !== 0) && (
                       <Text fontSize="10px" color="gray.500" fontWeight="700">
                         ({money(finalUnitPrice, currency)}/u)
                       </Text>
@@ -346,10 +347,10 @@ export default function SapItemGrid({
                   Precio unidad
                 </Th>
                 <Th color="white" py={3} textAlign="center" fontSize="xs" fontWeight="800" textTransform="none" letterSpacing="normal">
-                  % Desc SAP
+                  Desc. Base
                 </Th>
                 <Th color="white" py={3} textAlign="center" fontSize="xs" fontWeight="800" textTransform="none" letterSpacing="normal">
-                  % Desc Adic.
+                  Ajuste Precio
                 </Th>
                 <Th color="white" py={3} textAlign="right" fontSize="xs" fontWeight="800" textTransform="none" letterSpacing="normal">
                   Total (doc.)
@@ -379,13 +380,13 @@ export default function SapItemGrid({
                   const sapDisc = Number(item.discount || item.sapDiscount || 0);
                   const promoDisc = Number(item.promoDiscount || 0);
                   const addDisc = Number(item.lineDiscount || 0);
-                  const maxAllowedCeiling = qty > 100 ? 56 : 50;
-                  const totalDisc = Math.min(maxAllowedCeiling, sapDisc + promoDisc + addDisc);
+                  const maxAllowedCeiling = qty > 100 ? 65 : 55;
+                  const totalDisc = Math.min(maxAllowedCeiling, Math.max(0, sapDisc + promoDisc + addDisc));
                   const finalUnitPrice = price * (1 - totalDisc / 100);
                   const lineTotal = qty * finalUnitPrice;
                   const itemName = item.name || item.productName || item.description || item.ItemName || item.ItemDescription || "Artículo General";
                   const itemCode = item.code || item.productCode || item.itemCode || "";
-                  const isVolume = qty > 100 && totalDisc > 50;
+                  const isVolume = qty > 100 && totalDisc > 55;
 
                   return (
                     <Tr key={item.id || index} _hover={{ bg: "gray.50" }} transition="background 0.2s">
@@ -430,7 +431,7 @@ export default function SapItemGrid({
                           )}
                           {isVolume && (
                             <Badge bg="#ea580c" color="white" fontSize="9px" px={1.5} py={0.2} borderRadius="md" fontWeight="900" mt={0.5}>
-                              🔥 MAYOREO ESPECIAL ({totalDisc}%)
+                              🔥 MAYOREO ({totalDisc}%)
                             </Badge>
                           )}
                         </VStack>
@@ -504,42 +505,44 @@ export default function SapItemGrid({
                       <Td px={2} textAlign="center">
                         {isReadOnly ? (
                           <Badge
-                            bg={isVolume ? "#fff7ed" : "#eff6ff"}
-                            color={isVolume ? "#c2410c" : "#1e40af"}
-                            border="1px solid"
-                            borderColor={isVolume ? "#fdba74" : "#93c5fd"}
-                            fontWeight="800"
+                            colorScheme={isVolume ? "orange" : totalDisc > 50.009 ? "red" : addDisc > 0 ? "green" : addDisc < 0 ? "green" : "gray"}
                             fontSize="xs"
-                            px={2.5}
-                            py={1}
+                            fontWeight="800"
+                            px={2}
+                            py={0.5}
                             borderRadius="md"
                             cursor="not-allowed"
                             title="Descuento bloqueado en modo revisión"
                           >
-                            {addDisc > 0 ? `+${addDisc}%` : "0%"}
+                            {addDisc > 0 ? `+${addDisc}%` : addDisc < 0 ? `${addDisc}%` : "0%"}
                           </Badge>
                         ) : (
                           <Button
                             size="xs"
-                            bg={isVolume ? "#fff7ed" : "#eff6ff"}
-                            color={isVolume ? "#c2410c" : "#1e40af"}
-                            border="1px solid"
-                            borderColor={isVolume ? "#fdba74" : "#93c5fd"}
-                            onClick={() => handleOpenDiscountModal(item)}
-                            fontWeight="900"
-                            fontSize="xs"
-                            px={2.5}
-                            py={1}
+                            h="auto"
+                            minW="unset"
+                            px={2}
+                            py={0.5}
                             borderRadius="md"
-                            title="Toca para desplegar el selector de descuentos"
+                            fontWeight="800"
+                            fontSize="xs"
+                            bg={isVolume ? "orange.100" : totalDisc > 50.009 ? "red.100" : addDisc > 0 ? "emerald.100" : addDisc < 0 ? "green.100" : "gray.100"}
+                            color={isVolume ? "orange.800" : totalDisc > 50.009 ? "red.800" : addDisc > 0 ? "emerald.800" : addDisc < 0 ? "green.800" : "gray.600"}
+                            _hover={{
+                              bg: isVolume ? "orange.200" : totalDisc > 50.009 ? "red.200" : addDisc > 0 ? "emerald.200" : addDisc < 0 ? "green.200" : "gray.200",
+                              transform: "scale(1.05)",
+                            }}
+                            transition="all 0.15s ease"
+                            onClick={() => handleOpenDiscountModal(item)}
+                            title={isVolume ? `Mayoreo (${totalDisc}%). Requiere aprobación gerencial.` : totalDisc > 50.009 ? `Descuento (${totalDisc}%). Requiere aprobación comercial.` : addDisc > 0 ? `Rebaja dentro del margen (${totalDisc}%). Aprobación inmediata.` : addDisc < 0 ? `Mayor margen (${addDisc}%).` : "Toca para ajustar precio o descuento"}
                           >
-                            {addDisc > 0 ? `+${addDisc}% ⚡` : "0%"}
+                            {addDisc > 0 ? `+${addDisc}%` : addDisc < 0 ? `${addDisc}%` : "0%"}
                           </Button>
                         )}
                       </Td>
                       <Td px={3} textAlign="right" fontWeight="900" fontSize="xs" color="emerald.700">
                         <Text fontWeight="900">{money(lineTotal, currency)}</Text>
-                        {(sapDisc > 0 || addDisc > 0) && (
+                        {(sapDisc > 0 || addDisc !== 0) && (
                           <Text fontSize="10px" color="gray.500" fontWeight="700">
                             ({money(finalUnitPrice, currency)}/u)
                           </Text>

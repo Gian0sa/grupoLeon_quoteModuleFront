@@ -1815,7 +1815,7 @@ export function QuoteApprovalPage() {
         const s = Number(p.discount || p.sapDiscount || 0);
         const pr = Number(p.promoDiscount || 0);
         const a = Number(p.lineDiscount || 0);
-        return qty > 100 && (s + pr + a) > 50.01;
+        return qty > 100 && (s + pr + a) > 55.01;
       }))
     );
 
@@ -1837,7 +1837,7 @@ export function QuoteApprovalPage() {
           letterSpacing="wider"
           boxShadow="xs"
         >
-          🔥 Mayoreo (&gt;50% a 56%)
+          🔥 Mayoreo (&gt;55% a 65%)
         </Badge>
       </VStack>
     );

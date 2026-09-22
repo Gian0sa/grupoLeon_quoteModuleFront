@@ -98,10 +98,10 @@ export const getOrderswithStatusReports = async ({
       `/reportModule/orderswithStatus/${salesPersonCode}/${estado}`,
       { params }
     );
-    return response.data;
+    return response.data || { data: [], hasMore: false, page, pageSize };
   } catch (error) {
     console.error("Error al obtener Orders with Status:", error);
-    return null;
+    return { data: [], hasMore: false, page, pageSize };
   }
 };
 

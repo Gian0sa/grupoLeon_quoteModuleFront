@@ -33,7 +33,7 @@ export const normalizeQuoteItem = (item) => {
   const price = rawPrice > 0 ? rawPrice : 25.0;
   const discount = Number(item.discount ?? item.Discount ?? item.sapDiscount ?? 0);
   const lineDiscount = Number(item.lineDiscount ?? item.LineDiscount ?? 0);
-  const totalDisc = Math.min(55, Number((discount + lineDiscount).toFixed(2)));
+  const totalDisc = Math.max(0, Math.min(56, Number((discount + lineDiscount).toFixed(2))));
   const discountedUnitPrice = Number((price * (1 - totalDisc / 100)).toFixed(4));
 
   // Permitir temporalmente string vacío al tipear para que el usuario pueda borrar y cambiar la cantidad libremente

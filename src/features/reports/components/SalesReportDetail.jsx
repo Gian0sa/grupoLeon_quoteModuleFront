@@ -19,7 +19,11 @@ import {
   useBreakpointValue,
 } from "@chakra-ui/react";
 import { Check, Download, FileText } from "lucide-react";
-import { useGetCompareOrderAndDeliveryNote } from "../hooks/queries/reportQueries";
+import {
+  useGetCompareOrderAndDeliveryNote,
+  useGetDeliveryNoteByCode,
+  useGetInvoiceByCode,
+} from "../hooks/queries/reportQueries";
 import {
   getOrderByCode,
   getDeliveryNoteByCode,
@@ -36,6 +40,22 @@ export default function TrackingPage({ orden, data }) {
   const [loadingOrden, setLoadingOrden] = useState(false);
   const [loadingEntrega, setLoadingEntrega] = useState(false);
   const [loadingFactura, setLoadingFactura] = useState(false);
+
+  const handleDownloadDelivery = async (eId) => {
+    if (!eId) return;
+    setLoadingEntrega(true);
+    try {
+      const deliveryData = await getDeliveryNoteByCode(eId);
+      if (deliveryData) {
+        await generateDeliveryPDF(deliveryData);
+      }
+    } catch (err) {
+      console.error("Error al generar PDF de entrega:", err);
+      alert("No se pudo generar la guía de entrega.");
+    } finally {
+      setLoadingEntrega(false);
+    }
+  };
 
   const handleDownloadInvoice = async (facturaId) => {
     if (!facturaId) return;
@@ -117,6 +137,12 @@ export default function TrackingPage({ orden, data }) {
     useGetCompareOrderAndDeliveryNote(orderId, entregaId, {
       enabled: Boolean(orderId),
     });
+
+  const { data: entregaDetalle } =
+    useGetDeliveryNoteByCode(entregaId, Boolean(entregaId));
+
+  const { data: facturaDetalle } =
+    useGetInvoiceByCode(facturaId, Boolean(facturaId));
 
   // Mapear productos comparados
   const productosComparados = (comparisonData || []).map((item) => ({
@@ -301,10 +327,32 @@ export default function TrackingPage({ orden, data }) {
             <Box bg="white" p={3} borderRadius="lg" border="1px solid" borderColor="gray.100">
               {entregas.length > 0 ? (
                 entregas.map((e, idx) => (
-                  <Flex key={idx} justify="space-between" align="center">
-                    <Text fontSize="13px" color="gray.600">Fecha de entrega:</Text>
-                    <Text fontSize="13px" fontWeight="700" color="gray.800">{e.fecha}</Text>
-                  </Flex>
+                  <VStack key={idx} align="stretch" spacing={2}>
+                    <Flex justify="space-between" align="center">
+                      <Text fontSize="13px" color="gray.600">N° de Entrega (Guía):</Text>
+                      <Badge colorScheme="green" fontSize="12.5px" px={2.5} py={0.5} borderRadius="md" fontWeight="800">
+                        #{entregaDetalle?.docNum || e.id}
+                      </Badge>
+                    </Flex>
+                    <Flex justify="space-between" align="center">
+                      <Text fontSize="13px" color="gray.600">Fecha de entrega:</Text>
+                      <Text fontSize="13px" fontWeight="700" color="gray.800">{e.fecha}</Text>
+                    </Flex>
+                    {(entregaDetalle?.totalUsd !== undefined || entregaDetalle?.total !== undefined) && (
+                      <Flex justify="space-between" align="center">
+                        <Text fontSize="13px" color="gray.600">Monto entregado:</Text>
+                        <Text fontSize="13px" fontWeight="800" color="green.600">
+                          ${Number(
+                            entregaDetalle?.totalUsd !== undefined
+                              ? entregaDetalle.totalUsd
+                              : (entregaDetalle?.currency === 'USD' && entregaDetalle?.docRate
+                                  ? entregaDetalle.total / entregaDetalle.docRate
+                                  : (ordenData?.montoUsd || entregaDetalle?.total || 0))
+                          ).toFixed(2)} USD
+                        </Text>
+                      </Flex>
+                    )}
+                  </VStack>
                 ))
               ) : (
                 <Text fontSize="12.5px" color="gray.400" textAlign="center">
@@ -336,6 +384,12 @@ export default function TrackingPage({ orden, data }) {
               {facturas.length > 0 ? (
                 facturas.map((f, idx) => (
                   <VStack key={idx} align="stretch" spacing={2}>
+                    <Flex justify="space-between" align="center">
+                      <Text fontSize="13px" color="gray.600">N° Factura:</Text>
+                      <Badge colorScheme="purple" fontSize="12.5px" px={2.5} py={0.5} borderRadius="md" fontWeight="800">
+                        {facturaDetalle?.numAtCard || (facturaDetalle?.docNum ? `#${facturaDetalle.docNum}` : `#${f.id}`)}
+                      </Badge>
+                    </Flex>
                     <Flex justify="space-between" align="center">
                       <Text fontSize="13px" color="gray.600">Fecha factura:</Text>
                       <Text fontSize="13px" fontWeight="700" color="gray.800">{f.fecha}</Text>
