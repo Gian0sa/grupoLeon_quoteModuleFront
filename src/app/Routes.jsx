@@ -58,7 +58,6 @@ const AppRoutes = () => {
         <Routes>
           {/* Público */}
           <Route path="/"                      element={<Login />} />
-          <Route path="/register"              element={<Register />} />
           <Route path="/s/:code"               element={<ClientStatementPage />} />
           <Route path="/estado-cuenta/:token"  element={<ClientStatementPage />} />
           <Route path="/statement/:token"      element={<ClientStatementPage />} />
@@ -72,14 +71,15 @@ const AppRoutes = () => {
           <Route path="/products"          element={<PrivateRoute><ProductosPage /></PrivateRoute>} />
           <Route path="/history"           element={<PrivateRoute><History /></PrivateRoute>} />
           <Route path="/reports"           element={<PrivateRoute><ReportPage /></PrivateRoute>} />
-          <Route path="/configrules"       element={<PrivateRoute><ConfigRulesPage /></PrivateRoute>} />
+          <Route path="/configrules"       element={<RoleRoute requiredPermission="PUT:/rules/:id"><ConfigRulesPage /></RoleRoute>} />
           <Route path="/receivable"        element={<PrivateRoute><ReceivablePage /></PrivateRoute>} />
           <Route path="/profile"           element={<PrivateRoute><Profile /></PrivateRoute>} />
-          <Route path="/profileAdmin"      element={<PrivateRoute><ProfileAdmin /></PrivateRoute>} />
-          <Route path="/notification"      element={<PrivateRoute><NotificationPage /></PrivateRoute>} />
+          <Route path="/profileAdmin"      element={<RoleRoute requiredPermission="PUT:/profile/admin/:userId"><ProfileAdmin /></RoleRoute>} />
+          <Route path="/register"          element={<RoleRoute requiredPermission="POST:/register"><Register /></RoleRoute>} />
+          <Route path="/notification"      element={<RoleRoute requiredPermission="PUT:/profile/admin/:userId"><NotificationPage /></RoleRoute>} />
           <Route path="/productsPriceList" element={<PrivateRoute><ProductList /></PrivateRoute>} />
-          <Route path="/catalog/create"    element={<PrivateRoute><FormCatalogPage /></PrivateRoute>} />
-          <Route path="/catalog/edit/:id"  element={<PrivateRoute><FormCatalogPage /></PrivateRoute>} />
+          <Route path="/catalog/create"    element={<RoleRoute requiredPermission="POST:/catalogProducts"><FormCatalogPage /></RoleRoute>} />
+          <Route path="/catalog/edit/:id"  element={<RoleRoute requiredPermission="PUT:/catalogProducts/:id"><FormCatalogPage /></RoleRoute>} />
           <Route path="/catalog/product/:slug" element={<PrivateRoute><ProductDetailPage /></PrivateRoute>} />
           <Route path="/catalog"           element={<PrivateRoute><CatalogPage /></PrivateRoute>} />
           <Route path="/OrdersDashboard"   element={<PrivateRoute><OrdersDashboard /></PrivateRoute>} />
@@ -92,7 +92,7 @@ const AppRoutes = () => {
           <Route path="/myVisits"          element={<PrivateRoute><MyVisitsPage /></PrivateRoute>} />
           <Route path="/newClients"        element={<PrivateRoute><NewClientsPage /></PrivateRoute>} />
           <Route path="/entrada"           element={<PrivateRoute><EntradaPage /></PrivateRoute>} />
-          <Route path="/admin/attendance"  element={<PrivateRoute><AttendanceAdminPage /></PrivateRoute>} />
+          <Route path="/admin/attendance"  element={<RoleRoute requiredPermission="PUT:/profile/admin/:userId"><AttendanceAdminPage /></RoleRoute>} />
           <Route path="/faq"               element={<PrivateRoute><FAQPage /></PrivateRoute>} />
         </Routes>
       </Suspense>
