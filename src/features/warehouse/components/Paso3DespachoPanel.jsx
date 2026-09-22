@@ -195,49 +195,193 @@ export function Paso3DespachoPanel({
         </Alert>
       )}
 
-      {/* Barra de Acciones de la Hoja */}
-      <Flex justify="space-between" align="center" px={1}>
-        <HStack>
-          <Text fontWeight="bold" color="gray.700" fontSize="sm">
-            Vista Previa de Hoja de Despacho (Talonario Rosado Oficial):
-          </Text>
-        </HStack>
-        <HStack spacing={3}>
-          <Button
-            size="sm"
-            leftIcon={<DownloadIcon />}
-            colorScheme="pink"
-            bg="#d63384"
-            _hover={{ bg: "#b02a6b" }}
-            color="white"
-            borderRadius="xl"
-            isLoading={descargandoPdf}
-            loadingText="Generando PDF..."
-            onClick={handleDescargarPDF}
-          >
-            Descargar PDF (Rosada)
-          </Button>
-          <Button
-            size="sm"
-            leftIcon={<Icon as={MdPrint} />}
-            variant="outline"
-            colorScheme="green"
-            borderRadius="xl"
-            onClick={() => window.print()}
-          >
-            Imprimir Hoja
-          </Button>
-        </HStack>
-      </Flex>
 
-      {/* 📋 HOJA FÍSICA ROSADA: CONTROL DE DESPACHO - LIMA (Autopartes S.A. Serie A1) */}
+      {/* 📋 VISTA EN PANTALLA: Tarjeta Moderna de Control de Despacho (Versión preferida) */}
+      <Card
+        bg="#fff5f7"
+        border="2px solid #f1aeb5"
+        borderRadius="2xl"
+        p={6}
+        boxShadow="sm"
+      >
+        {/* Cabecera */}
+        <Flex justify="space-between" align="center" mb={4} flexWrap="wrap" gap={2}>
+          <HStack spacing={2} align="center">
+            <Text color="#0e6b38" fontSize="22px" fontWeight="900" letterSpacing="-0.5px">
+              ▲ Autopartes s.a.
+            </Text>
+          </HStack>
+          <Box textAlign="center">
+            <Text fontSize="18px" color="#113f28" fontWeight="900" letterSpacing="0.8px" textTransform="uppercase">
+              CONTROL DE DESPACHO - LIMA
+            </Text>
+          </Box>
+          <Badge
+            border="1.5px solid #113f28"
+            bg="transparent"
+            color="#113f28"
+            fontSize="16px"
+            fontWeight="900"
+            px={3}
+            py={0.5}
+            borderRadius="md"
+          >
+            A1
+          </Badge>
+        </Flex>
+
+        {/* Datos Generales */}
+        <Box mb={4} fontSize="xs" fontWeight="semibold" color="gray.700">
+          <SimpleGrid columns={{ base: 1, sm: 3 }} spacingY={2} spacingX={4} mb={2}>
+            <Flex align="center">
+              <Text fontWeight="bold" color="gray.600" mr={2}>GUIA Nº:</Text>
+              <Text fontWeight="900" color="#0e6b38" fontSize="sm">
+                {deliveryData.numeroGuiaInterna || deliveryData.docNumEntrega}
+              </Text>
+            </Flex>
+            <Flex align="center">
+              <Text fontWeight="bold" color="gray.600" mr={2}>FECHA:</Text>
+              <Text fontWeight="bold" color="gray.800">
+                {fechaFormat}
+              </Text>
+            </Flex>
+            <Flex align="center">
+              <Text fontWeight="bold" color="gray.600" mr={2}>PLACA:</Text>
+              <Text fontWeight="bold" color="blue.700">
+                {vehiculoPlaca || '— — — —'}
+              </Text>
+            </Flex>
+          </SimpleGrid>
+
+          <SimpleGrid columns={{ base: 1, sm: 3 }} spacingY={2} spacingX={4} mb={2}>
+            <Flex align="center">
+              <Text fontWeight="bold" color="gray.600" mr={2}>FACTURA Nº:</Text>
+              <Text fontWeight="bold" color="gray.800">
+                {codigoFactura || '— — — —'}
+              </Text>
+            </Flex>
+            <Flex align="center">
+              <Text fontWeight="bold" color="gray.600" mr={2}>B/V Nº:</Text>
+              <Text fontWeight="bold" color="gray.800">— — — —</Text>
+            </Flex>
+            <Flex align="center">
+              <Text fontWeight="bold" color="gray.600" mr={2}>CONDUCTOR:</Text>
+              <Text fontWeight="bold" color="gray.800">
+                {choferNombre || '— — — —'}
+              </Text>
+            </Flex>
+          </SimpleGrid>
+
+          <SimpleGrid columns={{ base: 1, sm: 2 }} spacingY={2} spacingX={4}>
+            <Flex align="center">
+              <Text fontWeight="bold" color="gray.600" mr={2}>CLIENTE:</Text>
+              <Text fontWeight="bold" color="gray.900" noOfLines={1}>
+                {deliveryData.clienteNombre}
+              </Text>
+            </Flex>
+            <Flex align="center">
+              <Text fontWeight="bold" color="gray.600" mr={2}>AG. TRANSPORTE:</Text>
+              <Text fontWeight="bold" color="gray.900" noOfLines={1}>
+                {deliveryData.transportistaNombre || 'AUTOPARTES S.A.'}
+              </Text>
+            </Flex>
+          </SimpleGrid>
+        </Box>
+
+        {/* Tabla Limpia de Bultos */}
+        <Box border="1px solid #f8d7da" borderRadius="xl" overflow="hidden" bg="white" mb={4}>
+          <Table size="sm" variant="simple">
+            <Thead bg="#fde8ec">
+              <Tr>
+                <Th w="80px" textAlign="center" color="#842029" fontWeight="bold">BULTO</Th>
+                <Th color="#842029" fontWeight="bold">CONTENIDO</Th>
+                <Th w="100px" textAlign="center" color="#842029" fontWeight="bold">ESTADO</Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {cajas.length === 0 ? (
+                <Tr>
+                  <Td colSpan={3} textAlign="center" py={4} color="gray.500">
+                    No hay bultos registrados
+                  </Td>
+                </Tr>
+              ) : (
+                cajas.map((caja, idx) => (
+                  <Tr key={caja.id || idx} _hover={{ bg: "#fffbfc" }}>
+                    <Td textAlign="center" fontWeight="bold" color="gray.700">
+                      {caja.bultoNumero || idx + 1}
+                    </Td>
+                    <Td fontSize="xs" fontWeight="semibold" color="gray.800">
+                      {caja.items?.map((it) => `${it.codigoArticulo} (${it.cantidad})`).join(' - ') || 'Bulto sin ítems'}
+                      {caja.pesoKg ? (
+                        <Badge ml={2} colorScheme="teal" borderRadius="full" px={2}>
+                          {caja.pesoKg} Kg
+                        </Badge>
+                      ) : null}
+                    </Td>
+                    <Td textAlign="center">
+                      <Badge colorScheme="green" variant="subtle" borderRadius="full" px={2}>
+                        ✔
+                      </Badge>
+                    </Td>
+                  </Tr>
+                ))
+              )}
+            </Tbody>
+          </Table>
+        </Box>
+
+        {/* Totales y Embalador */}
+        <Flex justify="space-between" align="center" flexWrap="wrap" gap={3}>
+          <HStack spacing={4}>
+            <HStack>
+              <Text fontWeight="bold" color="gray.700" fontSize="sm">
+                TOTAL Nº BULTOS:
+              </Text>
+              <Badge colorScheme="purple" fontSize="md" px={3} py={0.5} borderRadius="lg">
+                {String(cajas.length).padStart(2, '0')}
+              </Badge>
+            </HStack>
+            <HStack>
+              <Text fontWeight="bold" color="gray.700" fontSize="sm">
+                KILOS:
+              </Text>
+              <Text fontWeight="900" color="gray.800" fontSize="md">
+                {pesoKg ? `${pesoKg} Kg` : '0 Kg'}
+              </Text>
+            </HStack>
+          </HStack>
+
+          <Box
+            border="1.5px dashed #f1aeb5"
+            borderRadius="xl"
+            px={4}
+            py={2}
+            bg="white"
+            textAlign="center"
+          >
+            <Text fontSize="10px" fontWeight="bold" color="gray.500" textTransform="uppercase">
+              EMBALADORES
+            </Text>
+            <Text fontSize="xs" fontWeight="bold" color="#0e6b38">
+              ✍️ {responsablePacking || 'CONTROL ALMACEN'}
+            </Text>
+          </Box>
+        </Flex>
+      </Card>
+
+      {/* 📋 PLANTILLA OFICIAL TALONARIO ROSADO (OCULTA FUERA DE PANTALLA, USADA PARA EXPORTAR EL PDF IDÉNTICO AL FÍSICO) */}
       <Box
         id="hoja-control-despacho-impresion"
+        position="fixed"
+        left="-9999px"
+        top="0"
+        w="1050px"
+        zIndex="-100"
         bg="#ffd8e2"
         border="2px solid #1b4332"
-        borderRadius="xl"
+        borderRadius="none"
         p={6}
-        boxShadow="md"
         fontFamily="'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
       >
         {/* Cabecera Membrete */}
@@ -558,7 +702,10 @@ export function Paso3DespachoPanel({
               leftIcon={<ArrowBackIcon />}
               variant="ghost"
               borderRadius="xl"
-              onClick={() => setTabIndex(1)}
+              onClick={() => {
+                setTabIndex(1);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
             >
               Volver a Embalaje (Paso 2)
             </Button>
@@ -575,17 +722,7 @@ export function Paso3DespachoPanel({
                 loadingText="Generando PDF..."
                 onClick={handleDescargarPDF}
               >
-                Descargar PDF (Rosada)
-              </Button>
-
-              <Button
-                leftIcon={<Icon as={MdPrint} />}
-                variant="outline"
-                colorScheme="green"
-                borderRadius="xl"
-                onClick={() => window.print()}
-              >
-                Imprimir Hoja
+                Descargar PDF
               </Button>
 
               {deliveryData.estado !== 'DESPACHADA' && (

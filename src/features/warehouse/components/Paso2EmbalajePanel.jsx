@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
   Box,
   Flex,
@@ -34,10 +34,23 @@ import {
   ModalFooter,
   ModalCloseButton,
   useToast,
-} from '@chakra-ui/react';
-import { AddIcon, DeleteIcon, CloseIcon, ArrowBackIcon, CheckCircleIcon } from '@chakra-ui/icons';
-import { MdInventory, MdInbox, MdAddBox, MdAssignment, MdLocalShipping, MdLock } from 'react-icons/md';
-import { axiosInstance } from '../../../shared/lib/axiosInstance';
+} from "@chakra-ui/react";
+import {
+  AddIcon,
+  DeleteIcon,
+  CloseIcon,
+  ArrowBackIcon,
+  CheckCircleIcon,
+} from "@chakra-ui/icons";
+import {
+  MdInventory,
+  MdInbox,
+  MdAddBox,
+  MdAssignment,
+  MdLocalShipping,
+  MdLock,
+} from "react-icons/md";
+import { axiosInstance } from "../../../shared/lib/axiosInstance";
 
 export function Paso2EmbalajePanel({
   deliveryData,
@@ -65,21 +78,27 @@ export function Paso2EmbalajePanel({
 }) {
   const [embaladoresList, setEmbaladoresList] = useState([]);
   const [cargandoEmbaladores, setCargandoEmbaladores] = useState(false);
-  const { isOpen: isModalNuevoOpen, onOpen: onOpenModalNuevo, onClose: onCloseModalNuevo } = useDisclosure();
-  const [nuevoDni, setNuevoDni] = useState('');
-  const [nuevoNombre, setNuevoNombre] = useState('');
+  const {
+    isOpen: isModalNuevoOpen,
+    onOpen: onOpenModalNuevo,
+    onClose: onCloseModalNuevo,
+  } = useDisclosure();
+  const [nuevoDni, setNuevoDni] = useState("");
+  const [nuevoNombre, setNuevoNombre] = useState("");
   const [guardandoNuevo, setGuardandoNuevo] = useState(false);
   const toast = useToast();
 
   const cargarEmbaladores = async () => {
     try {
       setCargandoEmbaladores(true);
-      const res = await axiosInstance.get('/warehouseModule/guias-salida/embaladores');
+      const res = await axiosInstance.get(
+        "/warehouseModule/guias-salida/embaladores",
+      );
       if (res.data?.success && Array.isArray(res.data?.data)) {
         setEmbaladoresList(res.data.data);
       }
     } catch (e) {
-      console.error('Error cargando embaladores:', e);
+      console.error("Error cargando embaladores:", e);
     } finally {
       setCargandoEmbaladores(false);
     }
@@ -91,26 +110,42 @@ export function Paso2EmbalajePanel({
 
   const handleGuardarNuevoEmbalador = async () => {
     if (!nuevoDni.trim() || !nuevoNombre.trim()) {
-      toast({ title: 'DNI y Nombre son requeridos', status: 'warning', duration: 3000 });
+      toast({
+        title: "DNI y Nombre son requeridos",
+        status: "warning",
+        duration: 3000,
+      });
       return;
     }
     try {
       setGuardandoNuevo(true);
-      const res = await axiosInstance.post('/warehouseModule/guias-salida/embaladores', {
-        dni: nuevoDni.trim(),
-        nombre: nuevoNombre.trim().toUpperCase(),
-      });
+      const res = await axiosInstance.post(
+        "/warehouseModule/guias-salida/embaladores",
+        {
+          dni: nuevoDni.trim(),
+          nombre: nuevoNombre.trim().toUpperCase(),
+        },
+      );
       if (res.data?.success) {
-        toast({ title: 'Embalador registrado exitosamente', status: 'success', duration: 3000 });
+        toast({
+          title: "Embalador registrado exitosamente",
+          status: "success",
+          duration: 3000,
+        });
         const valorNuevo = `${nuevoDni.trim()} - ${nuevoNombre.trim().toUpperCase()}`;
         await cargarEmbaladores();
         setResponsablePacking(valorNuevo);
-        setNuevoDni('');
-        setNuevoNombre('');
+        setNuevoDni("");
+        setNuevoNombre("");
         onCloseModalNuevo();
       }
     } catch (err) {
-      toast({ title: 'Error al registrar', description: err.response?.data?.message || err.message, status: 'error', duration: 4000 });
+      toast({
+        title: "Error al registrar",
+        description: err.response?.data?.message || err.message,
+        status: "error",
+        duration: 4000,
+      });
     } finally {
       setGuardandoNuevo(false);
     }
@@ -118,14 +153,21 @@ export function Paso2EmbalajePanel({
 
   if (!tieneVistoBuenoPicking) {
     return (
-      <Card boxShadow="sm" borderRadius="2xl" bg="white" p={8} textAlign="center">
+      <Card
+        boxShadow="sm"
+        borderRadius="2xl"
+        bg="white"
+        p={8}
+        textAlign="center"
+      >
         <VStack spacing={4}>
           <Icon as={MdLock} w={16} h={16} color="orange.400" />
           <Heading size="md" color="gray.700">
             Paso 2 Bloqueado: Requiere Visto Bueno de Picking
           </Heading>
           <Text color="gray.500" maxW="500px">
-            Antes de embalar y registrar los bultos, el equipo de almacén debe confirmar la revisión física de los ítems en el <b>Paso 1</b>.
+            Antes de embalar y registrar los bultos, el equipo de almacén debe
+            confirmar la revisión física de los ítems en el <b>Paso 1</b>.
           </Text>
           <Button
             leftIcon={<ArrowBackIcon />}
@@ -143,8 +185,15 @@ export function Paso2EmbalajePanel({
     );
   }
 
-  const totalAprobado = lineas.reduce((acc, l) => acc + Number(l.cantidadSalida || 0), 0);
-  const totalEnCajas = cajas.reduce((acc, c) => acc + c.items.reduce((s, it) => s + Number(it.cantidad || 0), 0), 0);
+  const totalAprobado = lineas.reduce(
+    (acc, l) => acc + Number(l.cantidadSalida || 0),
+    0,
+  );
+  const totalEnCajas = cajas.reduce(
+    (acc, c) =>
+      acc + c.items.reduce((s, it) => s + Number(it.cantidad || 0), 0),
+    0,
+  );
 
   return (
     <VStack spacing={6} align="stretch">
@@ -159,41 +208,56 @@ export function Paso2EmbalajePanel({
               </Heading>
             </HStack>
             <HStack spacing={3} flexWrap="wrap">
-              <Badge colorScheme="blue" px={3} py={1} borderRadius="lg" fontSize="sm">
+              <Badge
+                colorScheme="blue"
+                px={3}
+                py={1}
+                borderRadius="lg"
+                fontSize="sm"
+              >
                 Total Aprobado: {totalAprobado} und.
               </Badge>
-              <Badge colorScheme="green" px={3} py={1} borderRadius="lg" fontSize="sm">
+              <Badge
+                colorScheme="green"
+                px={3}
+                py={1}
+                borderRadius="lg"
+                fontSize="sm"
+              >
                 En Cajas: {totalEnCajas} und.
               </Badge>
-              {deliveryData.estado !== 'DESPACHADA' && handleEmpacarTodoEnUnSoloBulto && (
-                <Button
-                  size="sm"
-                  colorScheme="green"
-                  bg="#126C36"
-                  _hover={{ bg: "#0e572b" }}
-                  color="white"
-                  borderRadius="xl"
-                  leftIcon={<Icon as={MdInbox} />}
-                  onClick={handleEmpacarTodoEnUnSoloBulto}
-                >
-                  📦 Empacar Todo en 1 Solo Bulto
-                </Button>
-              )}
+              {deliveryData.estado !== "DESPACHADA" &&
+                handleEmpacarTodoEnUnSoloBulto && (
+                  <Button
+                    size="sm"
+                    colorScheme="green"
+                    bg="#126C36"
+                    _hover={{ bg: "#0e572b" }}
+                    color="white"
+                    borderRadius="xl"
+                    leftIcon={<Icon as={MdInbox} />}
+                    onClick={handleEmpacarTodoEnUnSoloBulto}
+                  >
+                    📦 Empacar Todo en 1 Solo Bulto
+                  </Button>
+                )}
             </HStack>
           </Flex>
         </CardHeader>
         <CardBody pt={2}>
-          <Box overflowX="auto" border="1px solid" borderColor="gray.200" borderRadius="xl">
+          <Box
+            overflowX="auto"
+            border="1px solid"
+            borderColor="gray.200"
+            borderRadius="xl"
+          >
             <Table size="sm" variant="simple">
               <Thead bg="gray.50">
                 <Tr>
-                  <Th>Cód. Art.</Th>
-                  <Th>Descripción</Th>
-                  <Th textAlign="center">Und.</Th>
-                  <Th textAlign="center">Cant. Aprobada</Th>
-                  <Th textAlign="center">En Cajas</Th>
-                  <Th textAlign="center">Pendiente</Th>
-                  <Th textAlign="center">Acción</Th>
+                  <Th>Descripción de Producto (Toca la fila para empacar)</Th>
+                  <Th w="120px" textAlign="center">Cant. Aprobada</Th>
+                  <Th w="100px" textAlign="center">En Cajas</Th>
+                  <Th w="120px" textAlign="center">Pendiente</Th>
                 </Tr>
               </Thead>
               <Tbody>
@@ -201,46 +265,61 @@ export function Paso2EmbalajePanel({
                   const empacado = getCantidadEmpacada(l.codigoArticulo);
                   const pendiente = getCantidadPendiente(l);
                   const estaCompleto = pendiente === 0;
+                  const esCliqueable = deliveryData.estado !== "DESPACHADA" && pendiente > 0;
                   return (
                     <Tr
                       key={i}
-                      bg={estaCompleto ? '#e8f5e9' : 'white'}
-                      _hover={{ bg: estaCompleto ? '#c8e6c9' : 'gray.50' }}
-                      transition="background-color 0.15s"
+                      bg={estaCompleto ? "#f0fdf4" : "white"}
+                      _hover={{ bg: estaCompleto ? "#dcfce7" : "blue.50" }}
+                      cursor={esCliqueable ? "pointer" : "default"}
+                      onClick={() => {
+                        if (esCliqueable) {
+                          handleAbrirModalEmpaque(l);
+                        }
+                      }}
+                      transition="all 0.15s ease"
                     >
-                      <Td fontWeight="bold" fontSize="xs">{l.codigoArticulo}</Td>
-                      <Td fontSize="xs">{l.nombreProducto}</Td>
-                      <Td textAlign="center" fontSize="xs">{l.unidadMedida}</Td>
-                      <Td textAlign="center" fontWeight="bold" color="gray.700" fontSize="xs">
+                      <Td py={3}>
+                        <Text fontWeight="bold" color="gray.800" fontSize="sm">
+                          {l.nombreProducto}
+                        </Text>
+                      </Td>
+                      <Td
+                        textAlign="center"
+                        fontWeight="bold"
+                        color="gray.700"
+                        fontSize="sm"
+                      >
                         {l.cantidadSalida}
                       </Td>
-                      <Td textAlign="center" fontWeight="bold" color="teal.600" fontSize="xs">
+                      <Td
+                        textAlign="center"
+                        fontWeight="bold"
+                        color="teal.600"
+                        fontSize="sm"
+                      >
                         {empacado}
                       </Td>
-                      <Td textAlign="center" fontWeight="bold" color={pendiente > 0 ? "orange.600" : "green.600"} fontSize="xs">
-                        {pendiente}
-                      </Td>
-                      <Td textAlign="center">
-                        {deliveryData.estado !== 'DESPACHADA' ? (
-                          pendiente > 0 ? (
-                            <Button
-                              size="xs"
-                              colorScheme="teal"
-                              variant="solid"
-                              borderRadius="lg"
-                              leftIcon={<AddIcon />}
-                              onClick={() => handleAbrirModalEmpaque(l)}
-                            >
-                              Empacar
-                            </Button>
-                          ) : (
-                            <Badge colorScheme="green" px={2} py={0.5} borderRadius="md" fontSize="xs">
-                              ✔ Completo
-                            </Badge>
-                          )
+                      <Td textAlign="center" fontWeight="bold" fontSize="sm">
+                        {pendiente > 0 ? (
+                          <Badge
+                            colorScheme="orange"
+                            px={2.5}
+                            py={1}
+                            borderRadius="md"
+                            fontSize="xs"
+                          >
+                            📦 {pendiente} pend.
+                          </Badge>
                         ) : (
-                          <Badge colorScheme="gray" px={2} py={0.5} borderRadius="md" fontSize="xs">
-                            Cerrado
+                          <Badge
+                            colorScheme="green"
+                            px={2}
+                            py={1}
+                            borderRadius="md"
+                            fontSize="xs"
+                          >
+                            ✔ Completo
                           </Badge>
                         )}
                       </Td>
@@ -264,11 +343,12 @@ export function Paso2EmbalajePanel({
                   Cajas & Bultos de Salida ({cajas.length})
                 </Heading>
                 <Text fontSize="xs" color="gray.500">
-                  Arma las cajas dinámicamente. Cada caja acumula sus ítems y genera el control de despacho.
+                  Arma las cajas dinámicamente. Cada caja acumula sus ítems y
+                  genera el control de despacho.
                 </Text>
               </Box>
             </HStack>
-            {deliveryData.estado !== 'DESPACHADA' && (
+            {deliveryData.estado !== "DESPACHADA" && (
               <Button
                 size="sm"
                 colorScheme="green"
@@ -287,7 +367,10 @@ export function Paso2EmbalajePanel({
         <CardBody>
           <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4}>
             {cajas.map((caja) => {
-              const unidadesEnCaja = caja.items.reduce((s, it) => s + Number(it.cantidad || 0), 0);
+              const unidadesEnCaja = caja.items.reduce(
+                (s, it) => s + Number(it.cantidad || 0),
+                0,
+              );
               return (
                 <Box
                   key={caja.id}
@@ -329,28 +412,42 @@ export function Paso2EmbalajePanel({
                           textAlign="right"
                           fontWeight="bold"
                           color="green.800"
-                          value={caja.pesoKg ?? ''}
-                          onChange={(e) => handleCambioPesoCaja && handleCambioPesoCaja(caja.id, e.target.value)}
-                          isDisabled={deliveryData.estado === 'DESPACHADA'}
+                          value={caja.pesoKg ?? ""}
+                          onChange={(e) =>
+                            handleCambioPesoCaja &&
+                            handleCambioPesoCaja(caja.id, e.target.value)
+                          }
+                          isDisabled={deliveryData.estado === "DESPACHADA"}
                         />
-                        <Text fontSize="10px" fontWeight="bold" color="gray.500">
+                        <Text
+                          fontSize="10px"
+                          fontWeight="bold"
+                          color="gray.500"
+                        >
                           Kg
                         </Text>
                       </HStack>
 
-                      <Badge colorScheme="green" borderRadius="md" px={2} py={0.5} fontSize="xs">
+                      <Badge
+                        colorScheme="green"
+                        borderRadius="md"
+                        px={2}
+                        py={0.5}
+                        fontSize="xs"
+                      >
                         {unidadesEnCaja} und.
                       </Badge>
-                      {cajas.length > 1 && deliveryData.estado !== 'DESPACHADA' && (
-                        <IconButton
-                          size="xs"
-                          colorScheme="red"
-                          variant="ghost"
-                          icon={<DeleteIcon />}
-                          aria-label="Eliminar caja"
-                          onClick={() => handleEliminarCaja(caja.id)}
-                        />
-                      )}
+                      {cajas.length > 1 &&
+                        deliveryData.estado !== "DESPACHADA" && (
+                          <IconButton
+                            size="xs"
+                            colorScheme="red"
+                            variant="ghost"
+                            icon={<DeleteIcon />}
+                            aria-label="Eliminar caja"
+                            onClick={() => handleEliminarCaja(caja.id)}
+                          />
+                        )}
                     </HStack>
                   </Flex>
 
@@ -359,11 +456,17 @@ export function Paso2EmbalajePanel({
                   {caja.items.length === 0 ? (
                     <Box py={6} textAlign="center">
                       <Text fontSize="xs" color="gray.400">
-                        Caja vacía. Agrega productos arriba con el botón "Empacar".
+                        Caja vacía. Agrega productos arriba con el botón
+                        "Empacar".
                       </Text>
                     </Box>
                   ) : (
-                    <VStack spacing={2} align="stretch" maxH="160px" overflowY="auto">
+                    <VStack
+                      spacing={2}
+                      align="stretch"
+                      maxH="160px"
+                      overflowY="auto"
+                    >
                       {caja.items.map((it, itIdx) => (
                         <Flex
                           key={itIdx}
@@ -376,21 +479,34 @@ export function Paso2EmbalajePanel({
                           borderColor="gray.200"
                         >
                           <Box flex="1" pr={2}>
-                            <Text fontSize="xs" fontWeight="bold" color="gray.800">
+                            <Text
+                              fontSize="xs"
+                              fontWeight="bold"
+                              color="gray.800"
+                            >
                               {it.codigoArticulo} ({it.cantidad})
                             </Text>
-                            <Text fontSize="10px" color="gray.500" noOfLines={1}>
+                            <Text
+                              fontSize="10px"
+                              color="gray.500"
+                              noOfLines={1}
+                            >
                               {it.nombreProducto}
                             </Text>
                           </Box>
-                          {deliveryData.estado !== 'DESPACHADA' && (
+                          {deliveryData.estado !== "DESPACHADA" && (
                             <IconButton
                               size="xs"
                               colorScheme="red"
                               variant="ghost"
                               icon={<CloseIcon boxSize="8px" />}
                               aria-label="Quitar de caja"
-                              onClick={() => handleRemoverItemDeCaja(caja.id, it.codigoArticulo)}
+                              onClick={() =>
+                                handleRemoverItemDeCaja(
+                                  caja.id,
+                                  it.codigoArticulo,
+                                )
+                              }
                             />
                           )}
                         </Flex>
@@ -420,12 +536,13 @@ export function Paso2EmbalajePanel({
               <Text fontSize="xs" fontWeight="bold" mb={1} color="gray.700">
                 Bultos Totales
               </Text>
-              <NumberInput
-                min={1}
-                value={cajas.length}
-                isReadOnly
-              >
-                <NumberInputField borderRadius="xl" fontWeight="bold" bg="gray.50" color="green.700" />
+              <NumberInput min={1} value={cajas.length} isReadOnly>
+                <NumberInputField
+                  borderRadius="xl"
+                  fontWeight="bold"
+                  bg="gray.50"
+                  color="green.700"
+                />
               </NumberInput>
             </Box>
 
@@ -442,7 +559,7 @@ export function Paso2EmbalajePanel({
                 bg="green.50"
                 color="green.800"
                 borderColor="green.200"
-                isDisabled={deliveryData.estado === 'DESPACHADA'}
+                isDisabled={deliveryData.estado === "DESPACHADA"}
               />
             </Box>
 
@@ -451,7 +568,7 @@ export function Paso2EmbalajePanel({
                 <Text fontSize="xs" fontWeight="bold" color="gray.700">
                   Responsable Embalaje / Packing *
                 </Text>
-                {deliveryData.estado !== 'DESPACHADA' && (
+                {deliveryData.estado !== "DESPACHADA" && (
                   <Button
                     size="xs"
                     variant="ghost"
@@ -466,20 +583,31 @@ export function Paso2EmbalajePanel({
                 )}
               </HStack>
               <Select
-                placeholder={cargandoEmbaladores ? 'Cargando embaladores...' : '-- Seleccionar Embalador (DNI - Nombre) --'}
-                value={responsablePacking || ''}
+                placeholder={
+                  cargandoEmbaladores
+                    ? "Cargando embaladores..."
+                    : "-- Seleccionar Embalador (DNI - Nombre) --"
+                }
+                value={responsablePacking || ""}
                 onChange={(e) => setResponsablePacking(e.target.value)}
                 borderRadius="xl"
                 fontWeight="bold"
-                bg={deliveryData.estado === 'DESPACHADA' ? 'gray.50' : 'white'}
+                bg={deliveryData.estado === "DESPACHADA" ? "gray.50" : "white"}
                 color="blue.900"
                 borderColor="blue.200"
-                isDisabled={deliveryData.estado === 'DESPACHADA'}
+                isDisabled={deliveryData.estado === "DESPACHADA"}
               >
                 {/* Si ya hay un responsable previo o guardado que no coincide exactamente, preservarlo */}
-                {responsablePacking && !embaladoresList.some(e => `${e.dni} - ${e.nombre}` === responsablePacking || e.nombre === responsablePacking) && (
-                  <option value={responsablePacking}>{responsablePacking}</option>
-                )}
+                {responsablePacking &&
+                  !embaladoresList.some(
+                    (e) =>
+                      `${e.dni} - ${e.nombre}` === responsablePacking ||
+                      e.nombre === responsablePacking,
+                  ) && (
+                    <option value={responsablePacking}>
+                      {responsablePacking}
+                    </option>
+                  )}
                 {embaladoresList.map((emb) => (
                   <option key={emb.id} value={`${emb.dni} - ${emb.nombre}`}>
                     {emb.dni} - {emb.nombre}
@@ -498,7 +626,7 @@ export function Paso2EmbalajePanel({
               value={observacionEmbalaje}
               onChange={(e) => setObservacionEmbalaje(e.target.value)}
               borderRadius="xl"
-              isDisabled={deliveryData.estado === 'DESPACHADA'}
+              isDisabled={deliveryData.estado === "DESPACHADA"}
             />
           </Box>
 
@@ -507,7 +635,10 @@ export function Paso2EmbalajePanel({
               leftIcon={<ArrowBackIcon />}
               variant="ghost"
               borderRadius="xl"
-              onClick={() => setTabIndex(0)}
+              onClick={() => {
+                setTabIndex(0);
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
             >
               Volver a Picking (Paso 1)
             </Button>
@@ -519,13 +650,16 @@ export function Paso2EmbalajePanel({
                   colorScheme="blue"
                   variant="outline"
                   borderRadius="xl"
-                  onClick={() => setTabIndex(2)}
+                  onClick={() => {
+                    setTabIndex(2);
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
                 >
                   Ir a Control Despacho (Paso 3)
                 </Button>
               )}
 
-              {deliveryData.estado !== 'DESPACHADA' && (
+              {deliveryData.estado !== "DESPACHADA" && (
                 <Button
                   leftIcon={<CheckCircleIcon />}
                   colorScheme="green"
@@ -545,7 +679,12 @@ export function Paso2EmbalajePanel({
       </Card>
 
       {/* Modal para registrar nuevo Embalador en BD */}
-      <Modal isOpen={isModalNuevoOpen} onClose={onCloseModalNuevo} isCentered size="sm">
+      <Modal
+        isOpen={isModalNuevoOpen}
+        onClose={onCloseModalNuevo}
+        isCentered
+        size="sm"
+      >
         <ModalOverlay />
         <ModalContent borderRadius="2xl">
           <ModalHeader color="gray.800" pb={1}>
@@ -561,7 +700,9 @@ export function Paso2EmbalajePanel({
                 <Input
                   placeholder="Ej: 60784772"
                   value={nuevoDni}
-                  onChange={(e) => setNuevoDni(e.target.value.replace(/\D/g, '').slice(0, 15))}
+                  onChange={(e) =>
+                    setNuevoDni(e.target.value.replace(/\D/g, "").slice(0, 15))
+                  }
                   borderRadius="xl"
                   fontWeight="bold"
                 />

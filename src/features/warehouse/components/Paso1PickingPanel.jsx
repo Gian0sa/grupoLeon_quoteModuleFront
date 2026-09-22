@@ -63,11 +63,9 @@ export function Paso1PickingPanel({
             <Table variant="simple" size="md">
               <Thead bg="gray.100">
                 <Tr>
-                  <Th>N°</Th>
-                  <Th>Código Art.</Th>
+                  <Th w="60px" textAlign="center">N°</Th>
                   <Th>Descripción de Producto</Th>
-                  <Th textAlign="center">Unidad</Th>
-                  <Th textAlign="center">Cant. Pedida</Th>
+                  <Th w="150px" textAlign="center">Cant. Pedida</Th>
                 </Tr>
               </Thead>
               <Tbody>
@@ -78,14 +76,12 @@ export function Paso1PickingPanel({
                       bg="white"
                       _hover={{ bg: 'gray.50' }}
                     >
-                      <Td fontSize="sm" color="gray.500">{index + 1}</Td>
-                      <Td fontWeight="bold" fontSize="sm" color="gray.800">{l.codigoArticulo}</Td>
-                      <Td fontSize="sm" maxW="380px">
-                        <Text fontWeight="medium" isTruncated>{l.nombreProducto}</Text>
+                      <Td textAlign="center" fontSize="sm" fontWeight="bold" color="gray.500">{index + 1}</Td>
+                      <Td fontSize="sm">
+                        <Text fontWeight="bold" color="gray.800">{l.nombreProducto}</Text>
                       </Td>
-                      <Td textAlign="center" fontSize="sm">{l.unidadMedida}</Td>
                       <Td textAlign="center" fontWeight="bold" color="blue.600" fontSize="md">
-                        {l.cantidadPedida.toFixed(2)}
+                        {Number.isInteger(l.cantidadPedida) ? l.cantidadPedida : l.cantidadPedida.toFixed(2)}
                       </Td>
                     </Tr>
                   );
@@ -172,7 +168,10 @@ export function Paso1PickingPanel({
                   variant="outline"
                   borderRadius="xl"
                   size="md"
-                  onClick={() => setTabIndex(1)}
+                  onClick={() => {
+                    setTabIndex(1);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
                 >
                   Ir a Embalaje (Paso 2)
                 </Button>

@@ -511,6 +511,7 @@ export function GuiaSalidaPage() {
           isClosable: true,
         });
         setTabIndex(1);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
       }
     } catch (err) {
       toast({
@@ -575,6 +576,7 @@ export function GuiaSalidaPage() {
           isClosable: true,
         });
         setTabIndex(2);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
       }
     } catch (err) {
       toast({
@@ -735,7 +737,10 @@ export function GuiaSalidaPage() {
               variant="soft-rounded"
               colorScheme="green"
               index={tabIndex}
-              onChange={(idx) => setTabIndex(idx)}
+              onChange={(idx) => {
+                setTabIndex(idx);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
             >
               <TabList bg="white" p={2} borderRadius="2xl" boxShadow="sm" gap={2} flexWrap="wrap">
                 <Tab

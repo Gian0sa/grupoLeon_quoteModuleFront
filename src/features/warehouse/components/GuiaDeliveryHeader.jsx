@@ -14,17 +14,24 @@ import {
   AlertIcon,
   AlertTitle,
   AlertDescription,
+  IconButton,
+  Collapse,
+  useDisclosure,
+  Button,
 } from '@chakra-ui/react';
+import { ChevronDownIcon, ChevronUpIcon } from '@chakra-ui/icons';
 
 export function GuiaDeliveryHeader({ deliveryData, getBadgeEstado }) {
+  const { isOpen, onToggle } = useDisclosure({ defaultIsOpen: false });
+
   if (!deliveryData) return null;
 
   return (
     <Card boxShadow="sm" borderRadius="2xl" borderTop="4px solid" borderColor="green.500" bg="white">
-      <CardHeader pb={2}>
+      <CardHeader pb={isOpen ? 2 : 4} cursor="pointer" onClick={onToggle} _hover={{ bg: "gray.50" }} transition="background 0.2s" borderRadius="2xl">
         <Flex justify="space-between" align="center" flexWrap="wrap" gap={3}>
-          <HStack spacing={3}>
-            <Badge colorScheme="green" fontSize="1.1em" px={3.5} py={1.5} borderRadius="lg" fontWeight="bold">
+          <HStack spacing={3} flexWrap="wrap">
+            <Badge colorScheme="green" fontSize="1.05em" px={3.5} py={1.5} borderRadius="lg" fontWeight="bold">
               Guía N° {deliveryData.numeroGuiaInterna}
             </Badge>
             <Badge colorScheme="blue" fontSize="0.95em" px={3} py={1} borderRadius="lg">
@@ -36,13 +43,28 @@ export function GuiaDeliveryHeader({ deliveryData, getBadgeEstado }) {
           </HStack>
           <HStack spacing={3}>
             {getBadgeEstado(deliveryData.estado)}
-            <Text fontSize="sm" color="gray.500" fontWeight="medium">
+            <Text fontSize="xs" color="gray.500" fontWeight="medium" display={{ base: 'none', md: 'block' }}>
               Emisión: <b>{new Date(deliveryData.fechaEmision).toLocaleDateString('es-PE')}</b>
             </Text>
+            <Button
+              size="xs"
+              variant="outline"
+              colorScheme="green"
+              borderRadius="lg"
+              rightIcon={isOpen ? <ChevronUpIcon /> : <ChevronDownIcon />}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggle();
+              }}
+            >
+              {isOpen ? 'Ocultar' : 'Ver Cliente'}
+            </Button>
           </HStack>
         </Flex>
       </CardHeader>
-      <CardBody pt={2}>
+
+      <Collapse in={isOpen} animateOpacity>
+        <CardBody pt={1}>
         <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
           <Box bg="gray.50" p={4} borderRadius="xl" border="1px solid" borderColor="gray.200">
             <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" mb={1}>
@@ -89,6 +111,7 @@ export function GuiaDeliveryHeader({ deliveryData, getBadgeEstado }) {
           </Alert>
         )}
       </CardBody>
+      </Collapse>
     </Card>
   );
 }
