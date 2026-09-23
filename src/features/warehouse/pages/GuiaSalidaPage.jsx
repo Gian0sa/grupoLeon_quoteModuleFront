@@ -141,16 +141,35 @@ export function GuiaSalidaPage() {
 
   const todayStr = format(new Date(), "EEEE, d 'de' MMMM 'del' yyyy", { locale: es });
 
-  const getCantidadEmpacada = (codigoArticulo) => {
+  // Packing (embalaje) de la guía: puede juntar varias guías del mismo cliente y dirección de entrega
+  const packing = deliveryData?.packing || null;
+  const guiasEmbalaje = packing?.guias?.length ? packing.guias : deliveryData ? [deliveryData] : [];
+  // Líneas a embalar de TODAS las guías del packing (cada una identificada por su idDetalle)
+  const lineasEmbalaje = guiasEmbalaje.flatMap((g) =>
+    (g.detalles || []).map((d) => ({
+      idDetalle: d.id,
+      docNumEntrega: g.docNumEntrega,
+      numeroGuiaInterna: g.numeroGuiaInterna || String(g.docNumEntrega),
+      codigoArticulo: d.codigoArticulo,
+      nombreProducto: d.nombreProducto,
+      unidadMedida: d.unidadMedida || 'NIU',
+      cantidadSalida: Number(d.cantidadSalida || 0),
+    }))
+  );
+  const [candidatasPacking, setCandidatasPacking] = useState([]);
+  const [agregandoGuia, setAgregandoGuia] = useState(false);
+
+  // Por línea de guía (idDetalle) y no por código: con varias guías el mismo código puede repetirse
+  const getCantidadEmpacada = (idDetalle) => {
     return cajas.reduce((total, c) => {
-      const match = c.items?.find((it) => it.codigoArticulo === codigoArticulo);
+      const match = c.items?.find((it) => it.idDetalle === idDetalle);
       return total + (match ? Number(match.cantidad || 0) : 0);
     }, 0);
   };
 
   const getCantidadPendiente = (linea) => {
     const aprobada = Number(linea.cantidadSalida || 0);
-    const empacada = getCantidadEmpacada(linea.codigoArticulo);
+    const empacada = getCantidadEmpacada(linea.idDetalle);
     return Math.max(0, aprobada - empacada);
   };
 
@@ -255,7 +274,7 @@ export function GuiaSalidaPage() {
 
     const targetCaja = { ...currentCajas[cIdx] };
     const itemIdx = targetCaja.items.findIndex(
-      (it) => it.codigoArticulo === articuloSeleccionadoEmpaque.codigoArticulo
+      (it) => it.idDetalle === articuloSeleccionadoEmpaque.idDetalle
     );
 
     if (itemIdx >= 0) {
@@ -268,6 +287,8 @@ export function GuiaSalidaPage() {
       targetCaja.items = [
         ...targetCaja.items,
         {
+          idDetalle: articuloSeleccionadoEmpaque.idDetalle,
+          docNumEntrega: articuloSeleccionadoEmpaque.docNumEntrega,
           codigoArticulo: articuloSeleccionadoEmpaque.codigoArticulo,
           nombreProducto: articuloSeleccionadoEmpaque.nombreProducto,
           unidadMedida: articuloSeleccionadoEmpaque.unidadMedida,
@@ -291,22 +312,24 @@ export function GuiaSalidaPage() {
     });
   };
 
-  const handleRemoverItemDeCaja = (cajaId, codigoArticulo) => {
+  const handleRemoverItemDeCaja = (cajaId, idDetalle) => {
     setCajas((prev) =>
       prev.map((c) => {
         if (String(c.id) !== String(cajaId)) return c;
         return {
           ...c,
-          items: c.items.filter((it) => it.codigoArticulo !== codigoArticulo),
+          items: c.items.filter((it) => it.idDetalle !== idDetalle),
         };
       })
     );
   };
 
   const handleEmpacarTodoEnUnSoloBulto = () => {
-    const todosLosItems = lineas
+    const todosLosItems = lineasEmbalaje
       .filter((l) => Number(l.cantidadSalida || 0) > 0)
       .map((l) => ({
+        idDetalle: l.idDetalle,
+        docNumEntrega: l.docNumEntrega,
         codigoArticulo: l.codigoArticulo,
         nombreProducto: l.nombreProducto,
         unidadMedida: l.unidadMedida,
@@ -346,6 +369,27 @@ export function GuiaSalidaPage() {
     });
   };
 
+  const cajaVacia = () => ({ id: 1, bultoNumero: 1, codigoCaja: 'Bulto 1', pesoKg: '', items: [] });
+
+  // Cajas de la pantalla a partir de las cajas guardadas en el packing
+  const cajasDesdePacking = (p) => {
+    if (!p?.bultos?.length) return [cajaVacia()];
+    return p.bultos.map((b, idx) => ({
+      id: b.id || idx + 1,
+      bultoNumero: b.numeroBulto || idx + 1,
+      codigoCaja: `Bulto ${b.numeroBulto || idx + 1}`,
+      pesoKg: b.pesoKg !== null && b.pesoKg !== undefined ? String(b.pesoKg) : '',
+      items: (b.items || []).map((it) => ({
+        idDetalle: it.idDetalle,
+        docNumEntrega: it.docNumEntrega,
+        codigoArticulo: it.codigoArticulo,
+        nombreProducto: it.nombreProducto,
+        unidadMedida: it.unidadMedida,
+        cantidad: Number(it.cantidad || 0),
+      })),
+    }));
+  };
+
   const sincronizarDatosFormulario = (d) => {
     setDeliveryData(d);
 
@@ -363,45 +407,34 @@ export function GuiaSalidaPage() {
     }));
     setLineas(items);
 
-    // Datos de Almacén & Embalaje
-    setBultos(d.bultosTotal || 1);
-    setPesoKg(d.pesoTotalKg !== null && d.pesoTotalKg !== undefined ? String(d.pesoTotalKg) : '');
+    // Datos de Almacén (picking)
     setResponsablePicking(d.responsablePicking || usuarioSesion);
-    setResponsablePacking(d.responsablePacking || '');
 
-    // Deserializar Cajas u Observación si existen
-    let cajasCargadas = null;
+    // Embalaje: vive en el packing (puede juntar varias guías del mismo cliente y dirección)
+    const p = d.packing || null;
+    setPesoKg(p?.pesoTotalKg !== null && p?.pesoTotalKg !== undefined ? String(p.pesoTotalKg) : '');
+    setResponsablePacking(p?.responsablePacking || '');
+    setObservacionEmbalaje(p?.observacion || '');
+    const cajasCargadas = cajasDesdePacking(p);
+    setCajas(cajasCargadas);
+    setBultos(cajasCargadas.length);
+
+    // Observación de picking (las guías antiguas guardaban aquí el JSON de cajas)
     let obsTexto = d.observacionAlmacen || d.comentariosSap || d.referenciaSap || '';
-    try {
-      if (d.observacionAlmacen && d.observacionAlmacen.trim().startsWith('{')) {
-        const parsed = JSON.parse(d.observacionAlmacen);
-        if (parsed.cajas && Array.isArray(parsed.cajas) && parsed.cajas.length > 0) {
-          cajasCargadas = parsed.cajas.map((c, idx) => ({
-            id: c.id || idx + 1,
-            bultoNumero: c.bultoNumero || idx + 1,
-            codigoCaja: c.codigoCaja || `Bulto ${idx + 1}`,
-            pesoKg: c.pesoKg !== undefined && c.pesoKg !== null ? String(c.pesoKg) : '',
-            items: c.items || [],
-          }));
-          setObservacionEmbalaje(parsed.observacionEmbalaje || '');
-          obsTexto = parsed.observacionPicking || parsed.observacionAlmacen || d.comentariosSap || d.referenciaSap || '';
-        }
+    if (obsTexto.trim().startsWith('{')) {
+      try {
+        const parsed = JSON.parse(obsTexto);
+        obsTexto = parsed.observacionPicking || parsed.observacionAlmacen || d.comentariosSap || d.referenciaSap || '';
+      } catch {
+        // No era JSON: se deja el texto tal cual
       }
-    } catch {}
-
-    setObservacionAlmacen(obsTexto);
-
-    if (cajasCargadas && cajasCargadas.length > 0) {
-      setCajas(cajasCargadas);
-      setBultos(cajasCargadas.length);
-    } else {
-      setCajas([{ id: 1, bultoNumero: 1, codigoCaja: 'Bulto 1', pesoKg: d.pesoTotalKg ? String(d.pesoTotalKg) : '', items: [] }]);
-      setObservacionEmbalaje(d.observacionEmbalaje || '');
     }
+    setObservacionAlmacen(obsTexto);
 
     // Datos de Factura y Pedido
     setCodigoFactura(d.despacho?.codigoFactura || d.codigoFactura || '');
-    setCodigoPedidoDespacho(d.despacho?.codigoPedido ? String(d.despacho.codigoPedido) : (d.codigoPedido ? String(d.codigoPedido) : ''));
+    const pedidosGuias = Array.from(new Set((p?.guias?.length ? p.guias : [d]).map((g) => g.codigoPedido).filter(Boolean)));
+    setCodigoPedidoDespacho(d.despacho?.codigoPedido ? String(d.despacho.codigoPedido) : pedidosGuias.join(', '));
 
     // Datos de Despacho
     if (d.despacho) {
@@ -417,9 +450,7 @@ export function GuiaSalidaPage() {
     }
 
     // Navegación automática a pestaña correspondiente según estado
-    if (d.estado === 'DESPACHADA') {
-      setTabIndex(2);
-    } else if (d.responsablePacking && Number(d.bultosTotal) > 0) {
+    if (d.estado === 'DESPACHADA' || p?.estado === 'DESPACHADO' || p?.estado === 'CERRADO') {
       setTabIndex(2);
     } else if (d.estado === 'VALIDADA' || d.estado === 'OBSERVADA') {
       setTabIndex(1);
@@ -678,6 +709,81 @@ export function GuiaSalidaPage() {
     }
   };
 
+  // El packing nuevo (o actualizado) reemplaza al anterior en la guía mostrada
+  const aplicarPacking = (nuevoPacking) => {
+    setDeliveryData((prev) => (prev ? { ...prev, packing: nuevoPacking, idPacking: nuevoPacking?.id ?? null } : prev));
+  };
+
+  const mensajeError = (err) => err.response?.data?.message || err.message;
+
+  // Otras guías del mismo cliente y dirección de entrega listas para embalar juntas
+  const cargarCandidatasPacking = async (docNum = deliveryData?.docNumEntrega) => {
+    if (!docNum) return;
+    try {
+      const res = await axiosInstance.get(`/warehouseModule/packings/candidatas/${docNum}`);
+      setCandidatasPacking(Array.isArray(res.data?.data) ? res.data.data : []);
+    } catch {
+      setCandidatasPacking([]);
+    }
+  };
+
+  // Devuelve el packing de la guía; si aún no tiene, lo crea
+  const asegurarPacking = async () => {
+    if (packing) return packing;
+    const res = await axiosInstance.post('/warehouseModule/packings', { docNums: [deliveryData.docNumEntrega] });
+    return res.data.data;
+  };
+
+  const handleAgregarGuiaPacking = async (valor) => {
+    const docNum = Number(String(valor ?? '').trim().replace(/^0+/, ''));
+    if (!docNum) {
+      toast({ title: 'Ingresa o escanea el N° de guía a agregar', status: 'warning', duration: 3000 });
+      return false;
+    }
+    if (guiasEmbalaje.some((g) => g.docNumEntrega === docNum)) {
+      toast({ title: `La guía ${docNum} ya está en este packing`, status: 'info', duration: 2500 });
+      return false;
+    }
+    setAgregandoGuia(true);
+    try {
+      const res = packing
+        ? await axiosInstance.post(`/warehouseModule/packings/${packing.id}/guias`, { docNum })
+        : await axiosInstance.post('/warehouseModule/packings', { docNums: [deliveryData.docNumEntrega, docNum] });
+      aplicarPacking(res.data.data);
+      cargarCandidatasPacking();
+      toast({
+        title: `📦 Guía ${docNum} agregada al packing`,
+        description: 'Sus productos ya aparecen para embalar. Confirma de nuevo el embalaje.',
+        status: 'success',
+        duration: 3500,
+        isClosable: true,
+      });
+      return true;
+    } catch (err) {
+      toast({ title: 'No se pudo agregar la guía', description: mensajeError(err), status: 'error', duration: 5000, isClosable: true });
+      return false;
+    } finally {
+      setAgregandoGuia(false);
+    }
+  };
+
+  const handleQuitarGuiaPacking = async (docNum) => {
+    if (!packing) return;
+    setAgregandoGuia(true);
+    try {
+      const res = await axiosInstance.delete(`/warehouseModule/packings/${packing.id}/guias/${docNum}`);
+      aplicarPacking(res.data.data);
+      // Sus productos salen de las cajas
+      setCajas((prev) => prev.map((c) => ({ ...c, items: c.items.filter((it) => it.docNumEntrega !== docNum) })));
+      cargarCandidatasPacking();
+      toast({ title: `Guía ${docNum} quitada del packing`, status: 'info', duration: 2500 });
+    } catch (err) {
+      toast({ title: 'No se pudo quitar la guía', description: mensajeError(err), status: 'error', duration: 4000 });
+    } finally {
+      setAgregandoGuia(false);
+    }
+  };
+
   const handleValidarEmbalaje = async () => {
     if (!deliveryData?.docNumEntrega) return;
 
@@ -705,24 +811,26 @@ export function GuiaSalidaPage() {
 
     setGuardandoEmbalaje(true);
     try {
+      const p = await asegurarPacking();
+      aplicarPacking(p);
       const payload = {
-        bultosTotal: Number(cajas.length) || Number(bultos) || 1,
+        bultos: cajas.map((c) => ({
+          pesoKg: c.pesoKg || null,
+          items: c.items.map((it) => ({ idDetalle: it.idDetalle, cantidad: Number(it.cantidad) })),
+        })),
         pesoTotalKg: pesoKg ? Number(pesoKg) : null,
         responsablePacking: responsablePacking.trim(),
-        observacionEmbalaje: observacionEmbalaje.trim(),
-        cajas: cajas,
+        observacion: observacionEmbalaje.trim(),
       };
 
-      const res = await axiosInstance.post(
-        `/warehouseModule/guias-salida/${deliveryData.docNumEntrega}/validar-embalaje`,
-        payload
-      );
+      const res = await axiosInstance.put(`/warehouseModule/packings/${p.id}/embalaje`, payload);
 
       if (res.data?.success && res.data?.data) {
-        sincronizarDatosFormulario(res.data.data);
+        aplicarPacking(res.data.data);
+        setCajas(cajasDesdePacking(res.data.data));
         toast({
           title: '📦 ¡Embalaje Registrado con Éxito!',
-          description: `Bultos: ${cajas.length} | Peso: ${pesoKg || '0'} Kg. Pasa al Control de Despacho (Paso 3).`,
+          description: `Guías: ${res.data.data.guias.length} | Bultos: ${cajas.length} | Peso: ${pesoKg || '0'} Kg. Pasa al Control de Despacho (Paso 3).`,
           status: 'success',
           duration: 4000,
           isClosable: true,
@@ -733,9 +841,9 @@ export function GuiaSalidaPage() {
     } catch (err) {
       toast({
         title: 'Error al registrar embalaje',
-        description: err.response?.data?.message || err.message,
+        description: mensajeError(err),
         status: 'error',
-        duration: 4000,
+        duration: 5000,
         isClosable: true,
       });
     } finally {
@@ -744,7 +852,7 @@ export function GuiaSalidaPage() {
   };
 
   const handleRegistrarDespacho = async () => {
-    if (!deliveryData?.docNumEntrega) return;
+    if (!deliveryData?.docNumEntrega || !packing) return;
 
     if (!vehiculoPlaca.trim() || !choferNombre.trim()) {
       toast({
@@ -761,7 +869,7 @@ export function GuiaSalidaPage() {
     try {
       const payload = {
         codigoFactura: codigoFactura.trim() || null,
-        codigoPedido: codigoPedidoDespacho.trim() ? Number(codigoPedidoDespacho) : null,
+        codigoPedido: codigoPedidoDespacho.trim() || null,
         vehiculoPlaca: vehiculoPlaca.trim().toUpperCase(),
         choferNombre: choferNombre.trim(),
         choferLicencia: choferLicencia.trim(),
@@ -770,10 +878,7 @@ export function GuiaSalidaPage() {
         observacion: observacionDespacho.trim(),
       };
 
-      const res = await axiosInstance.post(
-        `/warehouseModule/guias-salida/${deliveryData.docNumEntrega}/despachar-camion`,
-        payload
-      );
+      const res = await axiosInstance.post(`/warehouseModule/packings/${packing.id}/despachar`, payload);
 
       if (res.data?.success) {
         const refreshed = await axiosInstance.get(`/warehouseModule/guias-salida/sap/${deliveryData.docNumEntrega}`);
@@ -782,7 +887,7 @@ export function GuiaSalidaPage() {
         }
         toast({
           title: '🚛 ¡Camión Despachado con Éxito!',
-          description: 'Control de despacho completado. Mercadería registrada en tránsito.',
+          description: `Control de despacho completado: ${guiasEmbalaje.length} guía(s) en tránsito.`,
           status: 'success',
           duration: 5000,
           isClosable: true,
@@ -817,8 +922,23 @@ export function GuiaSalidaPage() {
   };
 
   const tieneVistoBuenoPicking = deliveryData && ['VALIDADA', 'OBSERVADA', 'DESPACHADA'].includes(deliveryData.estado);
-  const tieneVistoBuenoEmbalaje = tieneVistoBuenoPicking && (Boolean(deliveryData.responsablePacking) || deliveryData.estado === 'DESPACHADA');
-  const tieneVistoBuenoDespacho = deliveryData && deliveryData.estado === 'DESPACHADA';
+  const tieneVistoBuenoEmbalaje =
+    tieneVistoBuenoPicking && (['CERRADO', 'DESPACHADO'].includes(packing?.estado) || deliveryData.estado === 'DESPACHADA');
+  const tieneVistoBuenoDespacho = deliveryData && (deliveryData.estado === 'DESPACHADA' || packing?.estado === 'DESPACHADO');
+
+  const pasoMaximo = tieneVistoBuenoEmbalaje ? 2 : tieneVistoBuenoPicking ? 1 : 0;
+
+  // Si el paso actual deja de estar habilitado (p. ej. se agregó una guía y el packing se reabrió), retroceder
+  useEffect(() => {
+    if (tabIndex > pasoMaximo) setTabIndex(pasoMaximo);
+  }, [tabIndex, pasoMaximo]);
+
+  // Al entrar al Paso 2, sugerir otras guías del mismo cliente y dirección para embalar juntas
+  useEffect(() => {
+    if (tabIndex === 1 && tieneVistoBuenoPicking && packing?.estado !== 'DESPACHADO') {
+      cargarCandidatasPacking();
+    }
+  }, [tabIndex, deliveryData?.docNumEntrega, tieneVistoBuenoPicking]);
 
   return (
     <Box w="full" minH="100vh" bg="gray.50" pb="100px">
@@ -924,8 +1044,9 @@ export function GuiaSalidaPage() {
               isLazy
               variant="soft-rounded"
               colorScheme="green"
-              index={tabIndex}
+              index={Math.min(tabIndex, pasoMaximo)}
               onChange={(idx) => {
+                if (idx > pasoMaximo) return; // No se salta pasos
                 setTabIndex(idx);
                 window.scrollTo({ top: 0, behavior: 'smooth' });
               }}
@@ -949,6 +1070,9 @@ export function GuiaSalidaPage() {
                   fontWeight="bold"
                   fontSize="sm"
                   _selected={{ bg: '#126C36', color: 'white' }}
+                  isDisabled={!tieneVistoBuenoPicking}
+                  title={!tieneVistoBuenoPicking ? 'Primero da el visto bueno de Picking (Paso 1)' : undefined}
+                  _disabled={{ opacity: 0.45, cursor: 'not-allowed' }}
                 >
                   <HStack spacing={2}>
                     <Icon as={tieneVistoBuenoPicking ? MdInventory : MdLock} />
@@ -962,6 +1086,9 @@ export function GuiaSalidaPage() {
                   fontWeight="bold"
                   fontSize="sm"
                   _selected={{ bg: '#126C36', color: 'white' }}
+                  isDisabled={!tieneVistoBuenoEmbalaje}
+                  title={!tieneVistoBuenoEmbalaje ? 'Primero confirma el Embalaje (Paso 2)' : undefined}
+                  _disabled={{ opacity: 0.45, cursor: 'not-allowed' }}
                 >
                   <HStack spacing={2}>
                     <Icon as={tieneVistoBuenoEmbalaje ? MdLocalShipping : MdLock} />
@@ -994,7 +1121,13 @@ export function GuiaSalidaPage() {
                 <TabPanel p={0}>
                   <Paso2EmbalajePanel
                     deliveryData={deliveryData}
-                    lineas={lineas}
+                    lineas={lineasEmbalaje}
+                    packing={packing}
+                    guiasEmbalaje={guiasEmbalaje}
+                    candidatasPacking={candidatasPacking}
+                    agregandoGuia={agregandoGuia}
+                    handleAgregarGuiaPacking={handleAgregarGuiaPacking}
+                    handleQuitarGuiaPacking={handleQuitarGuiaPacking}
                     cajas={cajas}
                     getCantidadEmpacada={getCantidadEmpacada}
                     getCantidadPendiente={getCantidadPendiente}
@@ -1022,6 +1155,7 @@ export function GuiaSalidaPage() {
                 <TabPanel p={0}>
                   <Paso3DespachoPanel
                     deliveryData={deliveryData}
+                    guiasEmbalaje={guiasEmbalaje}
                     cajas={cajas}
                     bultos={bultos}
                     pesoKg={pesoKg}

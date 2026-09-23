@@ -51,10 +51,17 @@ import {
   MdLock,
 } from "react-icons/md";
 import { axiosInstance } from "../../../shared/lib/axiosInstance";
+import { GuiasPackingCard } from "./GuiasPackingCard";
 
 export function Paso2EmbalajePanel({
   deliveryData,
   lineas,
+  packing,
+  guiasEmbalaje,
+  candidatasPacking,
+  agregandoGuia,
+  handleAgregarGuiaPacking,
+  handleQuitarGuiaPacking,
   cajas,
   getCantidadEmpacada,
   getCantidadPendiente,
@@ -195,8 +202,21 @@ export function Paso2EmbalajePanel({
     0,
   );
 
+  const variasGuias = guiasEmbalaje.length > 1;
+
   return (
     <VStack spacing={6} align="stretch">
+      {/* 0. Guías que se embalan juntas (mismo cliente y dirección de entrega) */}
+      <GuiasPackingCard
+        deliveryData={deliveryData}
+        packing={packing}
+        guiasEmbalaje={guiasEmbalaje}
+        candidatasPacking={candidatasPacking}
+        agregandoGuia={agregandoGuia}
+        handleAgregarGuiaPacking={handleAgregarGuiaPacking}
+        handleQuitarGuiaPacking={handleQuitarGuiaPacking}
+      />
+
       {/* 1. Mercadería Verificada Lista para Embalar */}
       <Card boxShadow="sm" borderRadius="2xl" bg="white">
         <CardHeader pb={2}>
@@ -254,6 +274,7 @@ export function Paso2EmbalajePanel({
             <Table size="sm" variant="simple">
               <Thead bg="gray.50">
                 <Tr>
+                  {variasGuias && <Th w="110px">Guía</Th>}
                   <Th>Descripción de Producto (Toca la fila para empacar)</Th>
                   <Th w="120px" textAlign="center">Cant. Aprobada</Th>
                   <Th w="100px" textAlign="center">En Cajas</Th>
@@ -261,14 +282,14 @@ export function Paso2EmbalajePanel({
                 </Tr>
               </Thead>
               <Tbody>
-                {lineas.map((l, i) => {
-                  const empacado = getCantidadEmpacada(l.codigoArticulo);
+                {lineas.map((l) => {
+                  const empacado = getCantidadEmpacada(l.idDetalle);
                   const pendiente = getCantidadPendiente(l);
                   const estaCompleto = pendiente === 0;
                   const esCliqueable = deliveryData.estado !== "DESPACHADA" && pendiente > 0;
                   return (
                     <Tr
-                      key={i}
+                      key={l.idDetalle ?? `${l.docNumEntrega}-${l.codigoArticulo}`}
                       bg={estaCompleto ? "#f0fdf4" : "white"}
                       _hover={{ bg: estaCompleto ? "#dcfce7" : "blue.50" }}
                       cursor={esCliqueable ? "pointer" : "default"}
@@ -279,6 +300,13 @@ export function Paso2EmbalajePanel({
                       }}
                       transition="all 0.15s ease"
                     >
+                      {variasGuias && (
+                        <Td py={3}>
+                          <Badge colorScheme="blue" variant="subtle" borderRadius="md">
+                            {l.numeroGuiaInterna}
+                          </Badge>
+                        </Td>
+                      )}
                       <Td py={3}>
                         <Text fontWeight="bold" color="gray.800" fontSize="sm">
                           {l.nombreProducto}
@@ -456,8 +484,8 @@ export function Paso2EmbalajePanel({
                   {caja.items.length === 0 ? (
                     <Box py={6} textAlign="center">
                       <Text fontSize="xs" color="gray.400">
-                        Caja vacía. Agrega productos arriba con el botón
-                        "Empacar".
+                        Caja vacía. Toca un producto de la lista de arriba
+                        para empacarlo.
                       </Text>
                     </Box>
                   ) : (
@@ -486,6 +514,11 @@ export function Paso2EmbalajePanel({
                             >
                               {it.codigoArticulo} ({it.cantidad})
                             </Text>
+                            {variasGuias && it.docNumEntrega && (
+                              <Text fontSize="10px" color="blue.600" fontWeight="semibold">
+                                Guía {String(it.docNumEntrega).padStart(8, "0")}
+                              </Text>
+                            )}
                             <Text
                               fontSize="10px"
                               color="gray.500"
@@ -504,7 +537,7 @@ export function Paso2EmbalajePanel({
                               onClick={() =>
                                 handleRemoverItemDeCaja(
                                   caja.id,
-                                  it.codigoArticulo,
+                                  it.idDetalle,
                                 )
                               }
                             />

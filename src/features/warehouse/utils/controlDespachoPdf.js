@@ -157,11 +157,13 @@ function pieDePagina(doc, docNum) {
  * Genera el PDF de Control de Despacho y lo descarga.
  * @param {object} p
  * @param {object} p.deliveryData Guía de salida
+ * @param {string} [p.numerosGuia] Guías del packing ("00021535, 00021536"); por defecto la de deliveryData
  * @param {Array}  p.cajas        Bultos con sus ítems ({ bultoNumero, pesoKg, items: [{ codigoArticulo, cantidad }] })
  * @param {string} [p.logoDataUrl] Logo ya cargado (si no se pasa, se descarga de /assets)
  */
 export async function descargarControlDespachoPdf({
   deliveryData,
+  numerosGuia,
   cajas = [],
   pesoKg,
   responsablePacking,
@@ -237,7 +239,7 @@ export async function descargarControlDespachoPdf({
       const x3 = x2 + w2 + 4;
       const w3 = x + w - x3;
       let yc = yTop + PAD + 18;
-      campoPunteado(doc, { etiqueta: "GUIA Nº:", valor: deliveryData.numeroGuiaInterna || docNum, x, y: yc, w: w1, color: TINTA_AZUL });
+      campoPunteado(doc, { etiqueta: "GUIA Nº:", valor: numerosGuia || deliveryData.numeroGuiaInterna || docNum, x, y: yc, w: w1, color: TINTA_AZUL });
       campoPunteado(doc, { etiqueta: "FECHA:", valor: fecha, x: x2, y: yc, w: w2 });
       campoPunteado(doc, { etiqueta: "PLACA:", valor: vehiculoPlaca, x: x3, y: yc, w: w3, color: TINTA_AZUL });
       yc += 7.5;

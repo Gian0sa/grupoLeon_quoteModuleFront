@@ -37,7 +37,7 @@ export function ModalEmpaque({
   if (!articulo) return null;
 
   const pendiente = getCantidadPendiente(articulo);
-  const empacada = getCantidadEmpacada(articulo.codigoArticulo);
+  const empacada = getCantidadEmpacada(articulo.idDetalle);
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} isCentered size="md">
@@ -50,7 +50,9 @@ export function ModalEmpaque({
         <ModalBody>
           <VStack spacing={4} align="stretch">
             <Box p={3} bg="gray.50" borderRadius="xl" border="1px solid" borderColor="gray.200">
-              <Text fontSize="xs" color="gray.500">Producto Seleccionado:</Text>
+              <Text fontSize="xs" color="gray.500">
+                Producto Seleccionado{articulo.numeroGuiaInterna ? ` · Guía ${articulo.numeroGuiaInterna}` : ''}:
+              </Text>
               <Text fontWeight="bold" fontSize="sm" color="green.700">
                 {articulo.codigoArticulo} - {articulo.nombreProducto}
               </Text>

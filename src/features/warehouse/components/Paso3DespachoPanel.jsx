@@ -35,6 +35,7 @@ import { descargarControlDespachoPdf } from '../utils/controlDespachoPdf';
 
 export function Paso3DespachoPanel({
   deliveryData,
+  guiasEmbalaje = [],
   cajas,
   bultos,
   pesoKg,
@@ -88,12 +89,17 @@ export function Paso3DespachoPanel({
   }
 
   const fechaFormat = format(new Date(deliveryData.fechaEmision || new Date()), "dd / MM / yy");
+  // El despacho es del packing: todas sus guías salen juntas en el camión
+  const numerosGuia = (guiasEmbalaje.length ? guiasEmbalaje : [deliveryData])
+    .map((g) => g.numeroGuiaInterna || g.docNumEntrega)
+    .join(', ');
 
   const handleDescargarPDF = async () => {
     try {
       setDescargandoPdf(true);
       await descargarControlDespachoPdf({
         deliveryData,
+        numerosGuia,
         cajas,
         pesoKg,
         responsablePacking,
@@ -178,7 +184,7 @@ export function Paso3DespachoPanel({
             <Flex align="center">
               <Text fontWeight="bold" color="gray.600" mr={2}>GUIA Nº:</Text>
               <Text fontWeight="900" color="#0e6b38" fontSize="sm">
-                {deliveryData.numeroGuiaInterna || deliveryData.docNumEntrega}
+                {numerosGuia}
               </Text>
             </Flex>
             <Flex align="center">
