@@ -357,8 +357,9 @@ export function GuiaSalidaPage() {
     setResponsablePicking(d.responsablePicking || usuarioSesion);
     setResponsablePacking(d.responsablePacking || '');
 
-    // Deserializar Cajas si existen en observacionAlmacen
+    // Deserializar Cajas u Observación si existen
     let cajasCargadas = null;
+    let obsTexto = d.observacionAlmacen || d.comentariosSap || d.referenciaSap || '';
     try {
       if (d.observacionAlmacen && d.observacionAlmacen.trim().startsWith('{')) {
         const parsed = JSON.parse(d.observacionAlmacen);
@@ -371,16 +372,19 @@ export function GuiaSalidaPage() {
             items: c.items || [],
           }));
           setObservacionEmbalaje(parsed.observacionEmbalaje || '');
+          obsTexto = parsed.observacionPicking || parsed.observacionAlmacen || d.comentariosSap || d.referenciaSap || '';
         }
       }
     } catch {}
+
+    setObservacionAlmacen(obsTexto);
 
     if (cajasCargadas && cajasCargadas.length > 0) {
       setCajas(cajasCargadas);
       setBultos(cajasCargadas.length);
     } else {
       setCajas([{ id: 1, bultoNumero: 1, codigoCaja: 'Bulto 1', pesoKg: d.pesoTotalKg ? String(d.pesoTotalKg) : '', items: [] }]);
-      setObservacionEmbalaje(d.observacionAlmacen || '');
+      setObservacionEmbalaje(d.observacionEmbalaje || '');
     }
 
     // Datos de Factura y Pedido
@@ -422,6 +426,8 @@ export function GuiaSalidaPage() {
     setCajas([]);
     setBultos(0);
     setPesoKg('');
+    setObservacionAlmacen('');
+    setObservacionEmbalaje('');
     setTimeout(() => {
       inputBusquedaRef.current?.focus();
     }, 50);
