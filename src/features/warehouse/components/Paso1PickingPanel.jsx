@@ -49,12 +49,49 @@ export function Paso1PickingPanel({
       {/* Tabla de Artículos con Cantidades Pedidas vs Cantidades Salida */}
       <Card boxShadow="sm" borderRadius="2xl" bg="white">
         <CardHeader pb={2}>
-          <Flex justify="space-between" align="center" flexWrap="wrap" gap={2}>
+          {/* Acción principal arriba: el visto bueno es un solo clic, no debe obligar a bajar */}
+          <Flex justify="space-between" align="center" flexWrap="wrap" gap={3}>
             <HStack>
               <Icon as={MdInventory} color="green.600" w={5} h={5} />
               <Heading size="md" color="gray.800">
                 Verificación Física de Ítems ({lineas.length})
               </Heading>
+            </HStack>
+
+            <HStack spacing={3} flexWrap="wrap" w={{ base: 'full', md: 'auto' }}>
+              {tieneVistoBuenoPicking && (
+                <Button
+                  rightIcon={<Icon as={MdInventory} />}
+                  colorScheme="blue"
+                  variant="outline"
+                  borderRadius="xl"
+                  size="md"
+                  flex={{ base: 1, md: 'none' }}
+                  onClick={() => {
+                    setTabIndex(1);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                >
+                  Ir a Embalaje (Paso 2)
+                </Button>
+              )}
+
+              {deliveryData.estado !== 'DESPACHADA' && (
+                <Button
+                  leftIcon={<CheckCircleIcon />}
+                  colorScheme="green"
+                  bg="#126C36"
+                  _hover={{ bg: '#0e572b' }}
+                  borderRadius="xl"
+                  size="md"
+                  flex={{ base: 1, md: 'none' }}
+                  isLoading={guardandoPicking}
+                  loadingText="Guardando..."
+                  onClick={handleValidarPicking}
+                >
+                  Dar Visto Bueno (Validar Picking)
+                </Button>
+              )}
             </HStack>
           </Flex>
         </CardHeader>
@@ -141,7 +178,7 @@ export function Paso1PickingPanel({
             </Box>
           </SimpleGrid>
 
-          <Box mb={5}>
+          <Box>
             <Text fontSize="xs" fontWeight="bold" mb={1} color="gray.700">
               Opinión / Explicación de Almacén (Obligatorio en caso de faltantes o diferencias)
             </Text>
@@ -157,43 +194,6 @@ export function Paso1PickingPanel({
               isDisabled={deliveryData.estado === 'DESPACHADA'}
             />
           </Box>
-
-          <Flex justify="flex-end" align="center" flexWrap="wrap" gap={3}>
-
-            <HStack spacing={3}>
-              {tieneVistoBuenoPicking && (
-                <Button
-                  rightIcon={<Icon as={MdInventory} />}
-                  colorScheme="blue"
-                  variant="outline"
-                  borderRadius="xl"
-                  size="md"
-                  onClick={() => {
-                    setTabIndex(1);
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                >
-                  Ir a Embalaje (Paso 2)
-                </Button>
-              )}
-
-              {deliveryData.estado !== 'DESPACHADA' && (
-                <Button
-                  leftIcon={<CheckCircleIcon />}
-                  colorScheme="green"
-                  bg="#126C36"
-                  _hover={{ bg: "#0e572b" }}
-                  borderRadius="xl"
-                  size="md"
-                  isLoading={guardandoPicking}
-                  loadingText="Guardando..."
-                  onClick={handleValidarPicking}
-                >
-                  Dar Visto Bueno (Validar Picking)
-                </Button>
-              )}
-            </HStack>
-          </Flex>
         </CardBody>
       </Card>
     </VStack>

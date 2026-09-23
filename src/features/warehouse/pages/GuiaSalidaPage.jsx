@@ -38,15 +38,27 @@ export function GuiaSalidaPage() {
   const authUsername = useAuthStore((s) => s.username);
   const usuarioSesion = (authUsername || 'ALMACÉN').toUpperCase();
 
-  const [docNumInput, setDocNumInput] = useState('');
+  // Input de búsqueda NO controlado: el valor vive en el DOM (inputBusquedaRef) para que cada tecla
+  // no re-renderice toda la página. Solo re-renderizamos cuando pasa de vacío a con texto (o viceversa).
+  const [hasInput, setHasInput] = useState(false);
   const [loading, setLoading] = useState(false);
   const [deliveryData, setDeliveryData] = useState(null);
   const [tabIndex, setTabIndex] = useState(0); // 0: Picking, 1: Embalaje, 2: Despacho
   const toast = useToast();
   const inputBusquedaRef = useRef(null);
+  const prevInputValueRef = useRef('');
+  const getDocNumInput = () => inputBusquedaRef.current?.value || '';
+  const setDocNumInput = (val) => {
+    if (inputBusquedaRef.current) inputBusquedaRef.current.value = val;
+    prevInputValueRef.current = val;
+    setHasInput(!!val);
+  };
   const timerBusquedaRef = useRef(null);
   const lastKeyTimeRef = useRef(0);
   const resetOnNextScanRef = useRef(false);
+  const abortControllerRef = useRef(null);
+  const isScannerInputRef = useRef(false);
+  const fastKeyCountRef = useRef(0);
 
   useEffect(() => {
     const handleGlobalKeyDown = (e) => {
@@ -434,7 +446,8 @@ export function GuiaSalidaPage() {
   };
 
   const ejecutarBusqueda = async (codigoDirecto = null) => {
-    const cleanNum = (codigoDirecto !== null && codigoDirecto !== undefined ? String(codigoDirecto) : docNumInput).trim();
+    const rawVal = codigoDirecto !== null && codigoDirecto !== undefined ? String(codigoDirecto) : getDocNumInput();
+    const cleanNum = rawVal.trim().replace(/^0+/, '') || rawVal.trim();
     if (!cleanNum) {
       toast({
         title: 'Ingresa un número',
@@ -450,22 +463,33 @@ export function GuiaSalidaPage() {
       clearTimeout(timerBusquedaRef.current);
     }
 
+    // Cancelar cualquier petición en vuelo previa
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setLoading(true);
     try {
-      const res = await axiosInstance.get(`/warehouseModule/guias-salida/sap/${cleanNum}`);
+      const res = await axiosInstance.get(`/warehouseModule/guias-salida/sap/${cleanNum}`, {
+        signal: controller.signal,
+      });
       if (res.data?.success && res.data?.data) {
         const d = res.data.data;
         sincronizarDatosFormulario(d);
         resetOnNextScanRef.current = true;
+        // Dejar el código seleccionado y con foco: el siguiente escaneo lo reemplaza directamente
         setTimeout(() => {
+          inputBusquedaRef.current?.focus();
           inputBusquedaRef.current?.select();
         }, 100);
 
         toast({
-          title: res.data.origen === 'BASE_DE_DATOS_LOCAL' ? 'Guía cargada de BD' : 'Entrega consultada en SAP',
+          title: res.data.origen === 'BASE_DE_DATOS_LOCAL' ? '⚡ Guía cargada de BD (<15ms)' : '🚀 Entrega consultada en SAP',
           description: `Guía ${d.numeroGuiaInterna} con estado: ${d.estado}`,
           status: 'success',
-          duration: 3000,
+          duration: 2500,
           isClosable: true,
         });
       } else {
@@ -478,6 +502,9 @@ export function GuiaSalidaPage() {
         });
       }
     } catch (err) {
+      if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') {
+        return; // Petición previa cancelada, ignorar
+      }
       console.error(err);
       toast({
         title: 'Error de búsqueda',
@@ -492,43 +519,68 @@ export function GuiaSalidaPage() {
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter') {
+    // Enter = fin del código: lo manda la pistola automáticamente o el usuario al escribir a mano.
+    // Algunas pistolas vienen configuradas con Tab como sufijo: si venía de pistola, Tab también busca.
+    if (e.key === 'Enter' || (e.key === 'Tab' && isScannerInputRef.current)) {
       if (timerBusquedaRef.current) clearTimeout(timerBusquedaRef.current);
+      isScannerInputRef.current = false;
+      fastKeyCountRef.current = 0;
       handleBuscar(e);
       return;
     }
 
     const now = Date.now();
-    // Si ya existe una búsqueda cargada y se empieza a pistolear un nuevo código tras una pausa (>600ms),
-    // o el flag resetOnNextScanRef está activo, limpiamos el campo para que el nuevo código reemplace directamente
-    if (
-      (resetOnNextScanRef.current || (docNumInput && now - lastKeyTimeRef.current > 600)) &&
-      e.key.length === 1 &&
-      !e.ctrlKey &&
-      !e.metaKey &&
-      !e.altKey
-    ) {
+    const diff = now - lastKeyTimeRef.current;
+
+    // Detectar pistola de código de barras: caracteres entran a velocidad sobrehumana (<45ms entre teclas)
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (diff < 45) {
+        fastKeyCountRef.current += 1;
+        if (fastKeyCountRef.current >= 2) {
+          isScannerInputRef.current = true;
+        }
+      } else {
+        fastKeyCountRef.current = 0;
+        isScannerInputRef.current = false;
+      }
+    }
+
+    // Tras una búsqueda exitosa, la primera tecla del siguiente código reemplaza el anterior.
+    // (No se limpia por pausas entre teclas: eso borraba lo que el usuario escribía a mano.)
+    if (resetOnNextScanRef.current && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
       resetOnNextScanRef.current = false;
-      setDocNumInput('');
+      // Solo limpiar el DOM: la tecla que viene vuelve a llenarlo, así evitamos 2 renders por escaneo
+      if (inputBusquedaRef.current) inputBusquedaRef.current.value = '';
+      prevInputValueRef.current = '';
+      fastKeyCountRef.current = 0;
+      isScannerInputRef.current = false;
     }
     lastKeyTimeRef.current = now;
   };
 
   const handleInputChange = (e) => {
     const val = e.target.value;
-    lastKeyTimeRef.current = Date.now();
-    setDocNumInput(val);
+    const prevLength = prevInputValueRef.current.length;
+    prevInputValueRef.current = val;
+    setHasInput(!!val);
 
     if (timerBusquedaRef.current) {
       clearTimeout(timerBusquedaRef.current);
     }
 
     const clean = val.trim();
-    // Cuando el escáner de códigos de barras llena el código completo (mínimo 4 caracteres)
-    // dispara la búsqueda automáticamente tras breve pausa de 300ms
-    if (clean.length >= 4) {
+    // Detectar si fue pegado de golpe o ráfaga de pistola
+    const isBulk = val.length - prevLength >= 4;
+    const isFromScanner = isScannerInputRef.current || isBulk;
+
+    // Respaldo para pistolas SIN sufijo Enter (o texto pegado): buscar cuando dejan de llegar caracteres.
+    // Normalmente la pistola manda Enter y esto ni llega a dispararse (Enter cancela el timer).
+    // Si es escritura manual tecla por tecla: NO cortar la escritura, espera a Enter o clic en Buscar.
+    if (isFromScanner && clean.length >= 4) {
       timerBusquedaRef.current = setTimeout(() => {
-        ejecutarBusqueda(clean);
+        ejecutarBusqueda(getDocNumInput());
+        isScannerInputRef.current = false;
+        fastKeyCountRef.current = 0;
       }, 300);
     }
   };
@@ -538,7 +590,7 @@ export function GuiaSalidaPage() {
     if (timerBusquedaRef.current) {
       clearTimeout(timerBusquedaRef.current);
     }
-    ejecutarBusqueda(docNumInput);
+    ejecutarBusqueda(getDocNumInput());
   };
 
   const handleCambioCantidadSalida = (index, valor) => {
@@ -792,7 +844,7 @@ export function GuiaSalidaPage() {
                 <Input
                   ref={inputBusquedaRef}
                   placeholder="Escanea código de barras o escribe N° de Entrega (ej: 000021535)..."
-                  value={docNumInput}
+                  defaultValue=""
                   onChange={handleInputChange}
                   onKeyDown={handleKeyDown}
                   onFocus={(e) => e.target.select()}
@@ -805,7 +857,7 @@ export function GuiaSalidaPage() {
                   boxShadow="sm"
                   autoFocus
                 />
-                {docNumInput && (
+                {hasInput && (
                   <InputRightElement h="full" pr={2}>
                     <IconButton
                       size="sm"
@@ -836,7 +888,7 @@ export function GuiaSalidaPage() {
               >
                 Buscar Entrega
               </Button>
-              {(docNumInput || deliveryData) && (
+              {(hasInput || deliveryData) && (
                 <Button
                   leftIcon={<CloseIcon />}
                   variant="outline"
@@ -867,7 +919,9 @@ export function GuiaSalidaPage() {
             />
 
             {/* Stepper / Tabs */}
+            {/* isLazy: solo se renderiza el paso visible (antes se renderizaban los 3 paneles en cada cambio de estado) */}
             <Tabs
+              isLazy
               variant="soft-rounded"
               colorScheme="green"
               index={tabIndex}
