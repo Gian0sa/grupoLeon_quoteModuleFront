@@ -70,12 +70,15 @@ export const formatDeliveryForm = (form) => {
   return str;
 };
 
-export const formatTransportName = (transport, deliveryForm) => {
-  if (isPickupInStoreForm(deliveryForm)) {
-    return "No aplica (Recojo en Tienda)";
-  }
+export const formatTransportName = (transport, deliveryForm, options = {}) => {
+  const { includeAddress = false, includeCode = false } = typeof options === "boolean" ? { includeAddress: options } : options;
 
-  if (!transport) return "Sin asignar / Por coordinar";
+  if (!transport) {
+    if (isPickupInStoreForm(deliveryForm)) {
+      return "No aplica (Recojo en Tienda)";
+    }
+    return "Sin asignar / Por coordinar";
+  }
 
   let parsed = transport;
   if (typeof transport === "string") {
@@ -90,8 +93,8 @@ export const formatTransportName = (transport, deliveryForm) => {
   if (typeof parsed === "object" && parsed !== null) {
     const name = parsed.Name || parsed.label || parsed.name || parsed.TrnspName || parsed.value || "";
     const code = parsed.Code || parsed.code || parsed.TrnspCode ? String(parsed.Code || parsed.code || parsed.TrnspCode).replace(/^0+/, "") : "";
-    const codePrefix = code && !name.includes(code) ? `Cód. ${code} - ` : "";
-    const dir = parsed.U_TQC_DIREC ? ` (${parsed.U_TQC_DIREC})` : "";
+    const codePrefix = includeCode && code && !name.includes(code) && !name.toLowerCase().startsWith("cód") ? `Cód. ${code} - ` : "";
+    const dir = includeAddress && parsed.U_TQC_DIREC ? ` (${parsed.U_TQC_DIREC})` : "";
     if (name && name !== "undefined" && name !== "null") {
       return `${codePrefix}${name}${dir}`.trim();
     }
@@ -99,10 +102,15 @@ export const formatTransportName = (transport, deliveryForm) => {
   }
 
   const str = String(parsed).trim();
-  if (!str || str === "undefined" || str === "null" || str === "null - null") {
-    return "Sin asignar / Por coordinar";
+  if (str && str !== "undefined" && str !== "null" && str !== "null - null") {
+    return str;
   }
-  return str;
+
+  if (isPickupInStoreForm(deliveryForm)) {
+    return "No aplica (Recojo en Tienda)";
+  }
+
+  return "Sin asignar / Por coordinar";
 };
 
 export const formatDeliveryPoint = (point, clientAddress) => {
@@ -197,14 +205,23 @@ export const formatBankAccount = (bankAccount) => {
   const str = String(parsed).trim();
   const normalized = str.toUpperCase();
 
-  if (normalized === "BCP_SOLES" || normalized.includes("191-0104153-0-60")) {
-    return "BCP (Soles) - Cta: 191-0104153-0-60";
+  if (normalized === "BCP_SOLES" || normalized.includes("191-0104153-0-50") || normalized.includes("191-0104153-0-60")) {
+    return "BCP (Soles) - Cta: 191-0104153-0-50";
   }
-  if (normalized === "BCP_DOLARES" || normalized.includes("191-0104153-1-61")) {
-    return "BCP (Dólares) - Cta: 191-0104153-1-61";
+  if (normalized === "BCP_USD" || normalized === "BCP_DOLARES" || normalized.includes("191-0845766-1-99") || normalized.includes("191-0104153-1-61")) {
+    return "BCP (Dólares) - Cta: 191-0845766-1-99";
   }
-  if (normalized === "BBVA_SOLES" || normalized.includes("0011-0175-0100041641")) {
-    return "BBVA (Soles) - Cta: 0011-0175-0100041641";
+  if (normalized === "BBVA_SOLES" || normalized.includes("136-0100000938") || normalized.includes("0011-0175-0100041641") || normalized.includes("0011-0182-0100045231")) {
+    return "BBVA (Soles) - Cta: 136-0100000938";
+  }
+  if (normalized === "BBVA_USD" || normalized === "BBVA_DOLARES" || normalized.includes("136-0100005190") || normalized.includes("0011-0182-0100045240")) {
+    return "BBVA (Dólares) - Cta: 136-0100005190";
+  }
+  if (normalized === "SCOTIABANK" || normalized === "SCOTIABANK_USD" || normalized.includes("000-1245211")) {
+    return "Scotiabank (Dólares) - Cta: 000-1245211";
+  }
+  if (normalized === "BN_DETRACCIONES" || normalized.includes("00-019-004864") || normalized.includes("00-068-123456")) {
+    return "Banco de la Nación (Detracciones) - Cta: 00-019-004864";
   }
   if (normalized === "INTERBANK_SOLES") {
     return "Interbank (Soles)";

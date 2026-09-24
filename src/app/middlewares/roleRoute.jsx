@@ -31,6 +31,5 @@ export const RoleRoute = ({ children, requiredPermission = null, roles = [] }) =
     }
   }
 
-  // Si no cumple con los privilegios requeridos, redirige a dashboard
   return <Navigate to="/dashboard" replace />;
 };

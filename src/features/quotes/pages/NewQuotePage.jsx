@@ -15,7 +15,7 @@ export function NewQuotesPage() {
   const today = format(new Date(), "EEEE, d 'de' MMMM 'del' yyyy", { locale: es });
 
   return (
-    <Box w="full" minH="100vh" bg="gray.50" pb="100px">
+    <Box w="full" minH="100vh" bg="#f8fafc" pb={{ base: "60px", md: "100px" }}>
       <TopHeaderBanner
         title="Nueva Cotización (Oferta de Venta)"
         subtitle={`Elaboración de Propuesta Comercial SAP • ${today.charAt(0).toUpperCase() + today.slice(1)}`}
@@ -25,7 +25,7 @@ export function NewQuotesPage() {
         mb={6}
       />
 
-      <Box maxW="1200px" mx="auto" px={{ base: 3, md: 6 }} mt={-6}>
+      <Box maxW="1200px" mx="auto" px={{ base: 2, sm: 4, md: 6 }} mt={{ base: -3, md: -6 }}>
         <SapQuotationForm sellerName={activeSeller} />
       </Box>
     </Box>

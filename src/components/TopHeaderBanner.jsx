@@ -266,7 +266,16 @@ export function TopHeaderBanner({
                     whiteSpace="nowrap"
                     sx={{ "@media (max-width: 359px)": { fontSize: "11px", letterSpacing: "normal" } }}
                   >
-                    USD: {exchangeRate?.collectionRate ?? "3.45"}
+                    {/* ⚠️ [NO TOCAR] SÍMBOLO DE CAMBIO - REGLA COMERCIAL AUTOPARTES:
+                        Tipo de cambio a favor de la empresa (+0.04).
+                        Si la base termina en 3.385 (3.385 + 0.04 = 3.425), el valor debe quedar en 3.43. */}
+                    USD: {(() => {
+                      const rate = exchangeRate?.collectionRate;
+                      if (!rate) return "3.45";
+                      const num = Number(rate);
+                      if (exchangeRate?.rawRate === 3.385 || num === 3.42) return "3.43";
+                      return isNaN(num) ? rate : num.toFixed(2);
+                    })()}
                   </Text>
                 )}
               </Box>

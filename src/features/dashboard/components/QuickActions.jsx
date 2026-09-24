@@ -9,7 +9,11 @@ const MotionBox = motion(Box);
 export function QuickActions() {
   const navigate = useNavigate();
   const hasAccess = useHasAccess();
-  const canAccessQuotes = hasAccess("POST:/quotations") || hasAccess("GET:/quotations") || hasAccess("PUT:/profile/admin/:userId");
+
+  const canAccessQuotes = hasAccess("GET:/quotes") || hasAccess("POST:/quotes") || hasAccess("POST:/quotes/approval");
+  const canAccessPrices = hasAccess("GET:/priceList") || hasAccess("GET /priceList");
+  const canAccessOrders = hasAccess("GET:/reports") || hasAccess("GET /reports") || hasAccess("GET:/orders") || hasAccess("GET /orders") || hasAccess("GET:/orderswithStatus/:code/:estadopedido");
+  const canAccessReceivable = hasAccess("GET:/accountsReceivable") || hasAccess("GET /accountsReceivable") || hasAccess("GET:/receivable");
 
   const actions = [
     ...(canAccessQuotes ? [{
@@ -21,7 +25,7 @@ export function QuickActions() {
       bgGlow: "rgba(52, 211, 153, 0.25)",
       borderColor: "rgba(52, 211, 153, 0.4)",
     }] : []),
-    {
+    ...(canAccessPrices ? [{
       labelDesktop: "Lista de Precios",
       labelMobile: "Lista Precios",
       icon: Tag,
@@ -29,8 +33,8 @@ export function QuickActions() {
       color: "#4ade80",
       bgGlow: "rgba(74, 222, 128, 0.22)",
       borderColor: "rgba(74, 222, 128, 0.4)",
-    },
-    {
+    }] : []),
+    ...(canAccessOrders ? [{
       labelDesktop: "Mis Pedidos",
       labelMobile: "Mis Pedidos",
       icon: ShoppingBag,
@@ -38,8 +42,8 @@ export function QuickActions() {
       color: "#60a5fa",
       bgGlow: "rgba(96, 165, 250, 0.22)",
       borderColor: "rgba(96, 165, 250, 0.4)",
-    },
-    {
+    }] : []),
+    ...(canAccessReceivable ? [{
       labelDesktop: "Cuentas por Cobrar",
       labelMobile: "Cobranzas",
       icon: CreditCard,
@@ -47,10 +51,11 @@ export function QuickActions() {
       color: "#f87171",
       bgGlow: "rgba(248, 113, 113, 0.22)",
       borderColor: "rgba(248, 113, 113, 0.4)",
-    },
+    }] : []),
   ];
 
   const count = actions.length;
+  if (count === 0) return null;
 
   return (
     <Box w="full" maxW="1200px" mx="auto" pt={2} pb={3} px={{ base: 1, sm: 2, md: 4 }}>

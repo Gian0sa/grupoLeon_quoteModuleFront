@@ -74,12 +74,14 @@ import {
   Sparkles,
   Copy,
   Building2,
+  Code2,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useQuoteStore } from "../stores/quoteStore";
 import { RejectReasonModal } from "./RejectReasonModal";
 import { ObserveReasonModal } from "./ObserveReasonModal";
 import QuotePdfModal from "./QuotePdfModal";
+import { SapPayloadJsonModal } from "./SapPayloadJsonModal";
 import { calculateQuoteTotals } from "../../../shared/utils/quoteCalculator";
 import { useAuthStore } from "../../../features/auth/stores/useAuthStore";
 import { useGetQuoteById } from "../hooks/queries/quotesQueries";
@@ -102,15 +104,16 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
   const queryClient = useQueryClient();
   const { username: authUsername, role: authRole, salesEmployeeCode: authSalesCode } = useAuthStore();
   const isAdminHook = useIsAdmin();
-  const hasAccess = useHasAccess();
+  const isSellerUser = Boolean(authSalesCode && Number(authSalesCode) > 0 && Number(authSalesCode) !== 20);
   const isAdminUser =
-    isAdminHook ||
-    authRole === "ADMIN" ||
-    authRole === "FACTURACION" ||
-    authRole === "SUPERVISOR" ||
-    hasAccess("POST /quotes/approval") ||
-    hasAccess("POST /quotations/approve") ||
-    hasAccess("POST /quotes/sap/create");
+    !isSellerUser && (
+      isAdminHook ||
+      authRole === "ADMIN" ||
+      authRole === "FACTURACION" ||
+      authRole === "SUPERVISOR" ||
+      hasAccess("POST /quotes/approval") ||
+      hasAccess("POST /quotations/approve")
+    );
   const activeRole = isAdminUser ? "ADMIN" : "SELLER";
   const adminUsername = authUsername || "Administrador";
 
@@ -124,6 +127,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
   const [sapSyncResult, setSapSyncResult] = useState(null);
   const [isSapSuccessModalOpen, setIsSapSuccessModalOpen] = useState(false);
   const [hasCopiedDocNum, setHasCopiedDocNum] = useState(false);
+  const [isJsonModalOpen, setIsJsonModalOpen] = useState(false);
   const toast = useToast();
 
   const quoteId = quote?.docNumber || quote?.id;
@@ -498,18 +502,17 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
             ? Number((effectiveQuote.DocTotal / effectiveQuote.DocRate).toFixed(2))
             : Number(effectiveQuote.DocTotal || 0)));
 
-  const grandTotalUSD = isSapDirect
-    ? (Number(effectiveQuote.totals?.grandTotalUSD || 0) || fallbackUSD || calcRes.grandTotalUSD)
-    : (calcRes.grandTotalUSD || Number(effectiveQuote.totals?.grandTotalUSD || 0) || fallbackUSD);
-  const subtotalUSD = isSapDirect
-    ? (Number(effectiveQuote.totals?.subTotalUSD || 0) || calcRes.subtotalUSD || Number((grandTotalUSD / 1.18).toFixed(2)))
-    : (calcRes.subtotalUSD || Number(effectiveQuote.totals?.subTotalUSD || 0) || Number((grandTotalUSD / 1.18).toFixed(2)));
-  const igvUSD = isSapDirect
-    ? (Number(effectiveQuote.totals?.igvUSD || 0) || calcRes.igvUSD || Number((grandTotalUSD - subtotalUSD).toFixed(2)))
-    : (calcRes.igvUSD || Number(effectiveQuote.totals?.igvUSD || 0) || Number((grandTotalUSD - subtotalUSD).toFixed(2)));
-  const grandTotalSOL = isSapDirect
-    ? (Number(effectiveQuote.totals?.grandTotalPEN || 0) || (effectiveQuote.DocTotal && (effectiveQuote.DocCurrency === "PEN" || effectiveQuote.DocCurrency === "SOL") ? Number(effectiveQuote.DocTotal) : Number((grandTotalUSD * tcVal).toFixed(2))))
-    : (calcRes.grandTotalSOL || Number(effectiveQuote.totals?.grandTotalPEN || (grandTotalUSD * tcVal).toFixed(2)));
+  // Totales normalizados y matemáticamente exactos (Subtotal + IGV = Total)
+  const subtotalUSD = calcRes.subtotalUSD > 0
+    ? calcRes.subtotalUSD
+    : Number(effectiveQuote.totals?.subtotalUSD || effectiveQuote.totals?.subTotalUSD || 0);
+  const igvUSD = calcRes.igvUSD > 0
+    ? calcRes.igvUSD
+    : Number(effectiveQuote.totals?.igvUSD || Number((subtotalUSD * 0.18).toFixed(2)));
+  const grandTotalUSD = Number((subtotalUSD + igvUSD).toFixed(2));
+  const grandTotalSOL = isSapDirect && effectiveQuote.DocTotal && (effectiveQuote.DocCurrency === "PEN" || effectiveQuote.DocCurrency === "SOL")
+    ? Number(effectiveQuote.DocTotal)
+    : (calcRes.grandTotalSOL || Number((grandTotalUSD * tcVal).toFixed(2)));
 
   // Formateadores y cálculos de marca de tiempo en vivo
   const formatTimeStr = (isoStr) => {
@@ -1061,12 +1064,12 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         deliveryDate: effectiveQuote.deliveryDate || effectiveQuote.docDueDate,
         paymentType: effectiveQuote.paymentType || effectiveQuote.selectedPaymentType,
         paymentMethod: effectiveQuote.paymentMethod || effectiveQuote.PaymentMethod || "DEPOSITO_BANCARIO",
-        bankAccount: effectiveQuote.bankAccount || effectiveQuote.U_VS_BANCO || "BCP_SOLES",
+        bankAccount: effectiveQuote.bankAccount || effectiveQuote.U_VS_BANCO || "191-0104153-0-50",
         sunatOpType: effectiveQuote.sunatOpType || effectiveQuote.U_VS_TIPO_FACT || "0101",
         U_VS_TIPOPER: effectiveQuote.U_VS_TIPOPER || "01",
         U_VS_TIPO_FACT: effectiveQuote.sunatOpType || effectiveQuote.U_VS_TIPO_FACT || "0101",
         U_VS_AFEDET: effectiveQuote.U_VS_AFEDET || "N",
-        U_VS_BANCO: effectiveQuote.bankAccount || effectiveQuote.U_VS_BANCO || "BCP_SOLES",
+        U_VS_BANCO: effectiveQuote.bankAccount || effectiveQuote.U_VS_BANCO || "191-0104153-0-50",
         saleCondition: effectiveQuote.saleCondition || effectiveQuote.totals?.saleCondition,
         documentType: effectiveQuote.documentType || effectiveQuote.totals?.documentType,
         creditTerm: effectiveQuote.creditTerm || effectiveQuote.totals?.creditTerm,
@@ -1077,12 +1080,19 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         whsCode: effectiveQuote.whsCode || effectiveQuote.totals?.whsCode || "014",
         observations: effectiveQuote.observations || effectiveQuote.totals?.observations || null,
         products: sanitizedProducts,
-        comment: [
-          effectiveQuote.comment,
-          effectiveQuote.observations,
-          effectiveQuote.totals?.comment,
-          effectiveQuote.totals?.observations
-        ].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(" | ") || `Cotización Web ${effectiveQuote.docNumber}`,
+        comment: (() => {
+          const raw = [
+            effectiveQuote.comment,
+            effectiveQuote.observations,
+            effectiveQuote.totals?.comment,
+            effectiveQuote.totals?.observations
+          ].filter(Boolean)
+           .map(s => String(s).trim())
+           .filter(s => s && s.toLowerCase() !== "null" && s.toLowerCase() !== "undefined" && !s.toLowerCase().includes("cotización web null"))
+           .filter((v, i, a) => a.indexOf(v) === i)
+           .join(" | ");
+          return raw || "";
+        })(),
       };
 
       const res = await axiosInstance.post("/quoteModule/quotes/sap/order", quotePayload);
@@ -2138,7 +2148,9 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                currentQuote.saleCondition === "CREDITO";
 
               // 2. Comprobante & SUNAT
-              const docTypeVal = currentQuote.documentType || currentQuote.U_VS_COMPROBANTE || (String(currentQuote.clientDocument || currentQuote.clientRuc || "").length === 11 ? "FACTURA" : "BOLETA");
+              const cleanDigits = String(currentQuote.clientDocument || currentQuote.clientRuc || currentQuote.client?.FederalTaxID || currentQuote.client?.LicTradNum || "").replace(/\D/g, "");
+              const isJuridica = cleanDigits.startsWith("20") || /\b(S\.?A\.?C\.?|S\.?R\.?L\.?|E\.?I\.?R\.?L\.?|S\.?A\.?|S\.?A\.?A\.?|SOCIEDAD|CONSORCIO|EMPRESA|CORPORACION|DISTRIBUIDORA)\b/i.test(currentQuote.clientName || currentQuote.client?.CardName || "");
+              const docTypeVal = currentQuote.documentType || currentQuote.U_VS_COMPROBANTE || (isJuridica || cleanDigits.length === 11 ? "FACTURA" : "BOLETA");
               const sunatType = formatSunatOp(currentQuote.sunatOpType || currentQuote.U_VS_TIPO_FACT || currentQuote.U_VS_TIPOPER);
 
               // 3. Banco y Operación
@@ -2152,6 +2164,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
               const delivForm = formatDeliveryForm(rawDelivForm);
               const rawTransport = currentQuote.selectedTransport || currentQuote.transport || currentQuote.U_TQC_TRANSPOR;
               const transportName = formatTransportName(rawTransport, rawDelivForm);
+              const transportDir = currentQuote.transportDirection || (typeof rawTransport === "object" ? rawTransport?.U_TQC_DIREC : null);
               const rawPoint = currentQuote.selectedPoint || currentQuote.deliveryPoint;
               const delivAddress = formatDeliveryPoint(rawPoint, currentQuote.clientAddress || (currentQuote.client?.Address || currentQuote.client?.address));
 
@@ -2179,22 +2192,24 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                       </Flex>
                       <Flex justify="space-between" align="center">
                         <Text color="gray.500" fontWeight="700">Comprobante:</Text>
-                        <Badge colorScheme="blue" fontSize="10px" px={2} py={0.5} borderRadius="md" fontWeight="800">
-                          {typeof docTypeVal === "object" ? (docTypeVal?.name || docTypeVal?.label || "BOLETA") : String(docTypeVal || "BOLETA").toUpperCase()}
+                        <Badge colorScheme={docTypeVal === "FACTURA" ? "purple" : "blue"} variant="subtle" fontSize="9px" px={1.5} py={0.5} borderRadius="md">
+                          {docTypeVal}
                         </Badge>
                       </Flex>
-                      <Flex justify="space-between">
-                        <Text color="gray.500" fontWeight="700">Banco Oficial:</Text>
-                        <Text fontWeight="800" color="gray.800" textAlign="right" isTruncated maxW="190px" title={bank}>{bank}</Text>
-                      </Flex>
-                      <Flex justify="space-between" align="center">
-                        <Text color="gray.500" fontWeight="700">N° Operación:</Text>
-                        {opNumber ? (
-                          <Badge colorScheme="purple" variant="solid" fontSize="10px" px={2} borderRadius="md">{opNumber}</Badge>
-                        ) : (
-                          <Text fontSize="11px" color="gray.400" fontStyle="italic">{isCredit ? "No aplica (Crédito)" : "Sin Registrar"}</Text>
-                        )}
-                      </Flex>
+                      {Boolean(rawBank && rawBank !== "Pendiente de Selección") && (
+                        <Flex justify="space-between">
+                          <Text color="gray.500" fontWeight="700">Banco:</Text>
+                          <Text fontWeight="800" color="gray.800" textAlign="right" isTruncated maxW="190px" title={bank}>{bank}</Text>
+                        </Flex>
+                      )}
+                      {Boolean(opNumber) && (
+                        <Flex justify="space-between">
+                          <Text color="gray.500" fontWeight="700">Operación:</Text>
+                          <Text fontWeight="800" color="purple.600" fontFamily="mono" textAlign="right" isTruncated maxW="190px">
+                            {opNumber}
+                          </Text>
+                        </Flex>
+                      )}
                     </VStack>
                   </Box>
 
@@ -2233,6 +2248,12 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                         <Text color="gray.500" fontWeight="700">Transporte:</Text>
                         <Text fontWeight="800" color="gray.800" textAlign="right" isTruncated maxW="190px" title={transportName}>{transportName}</Text>
                       </Flex>
+                      {transportDir && (
+                        <Flex justify="space-between">
+                          <Text color="gray.500" fontWeight="700">Dir. Agencia:</Text>
+                          <Text fontWeight="800" color="gray.700" textAlign="right" isTruncated maxW="190px" title={transportDir}>{transportDir}</Text>
+                        </Flex>
+                      )}
                       <Flex justify="space-between">
                         <Text color="gray.500" fontWeight="700">Destino:</Text>
                         <Text fontWeight="800" color="gray.800" textAlign="right" isTruncated maxW="190px" title={delivAddress}>{delivAddress}</Text>
@@ -2395,6 +2416,46 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                       </HStack>
                       <Text fontSize="12px" color="purple.800" fontWeight="600">
                         El asesor de ventas aplicó descuentos especiales por encima de la tarifa de lista SAP. Revise los porcentajes individuales por artículo en la grilla inferior antes de emitir la aprobación en SAP.
+                      </Text>
+                    </VStack>
+                  </HStack>
+                </Box>
+              );
+            })()}
+
+            {/* CARD DE ALERTA FINANCIERA: CLIENTE CON DEUDA REGISTRADA */}
+            {(() => {
+              const targetDoc = effectiveQuote || quote;
+              const hasDebt = Boolean(targetDoc?.hasDebt || targetDoc?.hasOverdueDebt || targetDoc?.totals?.hasDebt || targetDoc?.totals?.hasOverdueDebt);
+              const debtSummary = targetDoc?.debtSummary || targetDoc?.totals?.debtSummary;
+              if (!hasDebt && !debtSummary) return null;
+
+              return (
+                <Box
+                  p={4}
+                  bg="red.50"
+                  border="2px solid"
+                  borderColor="red.300"
+                  borderRadius="2xl"
+                  boxShadow="sm"
+                  mb={3.5}
+                >
+                  <HStack spacing={3.5} align="flex-start">
+                    <Box fontSize="24px" lineHeight="1">⚠️</Box>
+                    <VStack align="stretch" spacing={1}>
+                      <HStack spacing={2} wrap="wrap">
+                        <Text fontSize="13px" fontWeight="900" color="red.900" textTransform="uppercase">
+                          Observación Financiera: Cliente con Deuda
+                        </Text>
+                        <Badge colorScheme="red" variant="solid" bg="#dc2626" color="white" fontSize="10px" px={2.5} py={0.5} borderRadius="full">
+                          {targetDoc?.hasOverdueDebt || targetDoc?.totals?.hasOverdueDebt ? "DEUDA VENCIDA" : "SALDO PENDIENTE"}
+                        </Badge>
+                      </HStack>
+                      <Text fontSize="12px" color="red.800" fontWeight="700">
+                        {debtSummary || "El cliente registra saldos pendientes o cuotas vencidas en SAP / Cobranzas."}
+                      </Text>
+                      <Text fontSize="11px" color="red.700" fontWeight="500">
+                        Verifique el estado financiero del cliente y sus acuerdos de pago antes de autorizar el pedido en SAP.
                       </Text>
                     </VStack>
                   </HStack>
@@ -2866,6 +2927,21 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                 >
                   Descargar PDF
                 </Button>
+
+                {/* Botón exclusivo para Administrador: Ver Trama JSON SAP */}
+                {isAdminUser && (
+                  <Button
+                    colorScheme="purple"
+                    variant="outline"
+                    size="sm"
+                    leftIcon={<Code2 className="w-4 h-4 text-purple-600" />}
+                    onClick={() => setIsJsonModalOpen(true)}
+                    fontWeight="800"
+                    title="Inspector Técnico: Ver Trama JSON para SAP Service Layer (Solo Administrador)"
+                  >
+                    Ver JSON SAP
+                  </Button>
+                )}
               </HStack>
               <Button size="sm" onClick={onClose} fontWeight="700">
                 Cerrar
@@ -2880,6 +2956,22 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         onClose={() => setPdfQuote(null)}
         quote={pdfQuote}
       />
+
+      {/* Modal Inspector Técnico JSON SAP (Solo Administrador) */}
+      {isAdminUser && (
+        <SapPayloadJsonModal
+          isOpen={isJsonModalOpen}
+          onClose={() => setIsJsonModalOpen(false)}
+          quote={{
+            ...effectiveQuote,
+            products: displayProducts,
+            totals: { ...effectiveQuote.totals, ...calcRes },
+            DocNum: sapSyncResult?.docNum || effectiveQuote.DocNum,
+            sapDocNum: sapSyncResult?.docNum || effectiveQuote.sapDocNum,
+            sapData: sapSyncResult || effectiveQuote.sapData
+          }}
+        />
+      )}
 
       {/* Modal Obligatorio de Motivo de Rechazo */}
       <RejectReasonModal
@@ -3249,12 +3341,12 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                   </Box>
 
                   <Box p={2.5} bg="purple.50" borderRadius="lg" border="1px solid" borderColor="purple.200">
-                    <Text fontSize="10.5px" fontWeight="700" color="purple.800" textTransform="uppercase">Comprobante / Depósito</Text>
+                    <Text fontSize="10.5px" fontWeight="700" color="purple.800" textTransform="uppercase">Condición Comercial</Text>
                     <Text fontSize="xs" fontWeight="900" color="purple.900">
-                      {effectiveQuote?.opNum ? `N° ${effectiveQuote.opNum}` : "Validado Contado"}
+                      {effectiveQuote?.saleCondition || "CONTADO"}
                     </Text>
                     <Text fontSize="10px" fontWeight="700" color="purple.700">
-                      {effectiveQuote?.bankAccount || "BCP_SOLES"}
+                      {formatPaymentTerms(effectiveQuote?.paymentType || effectiveQuote?.selectedPaymentType, effectiveQuote?.saleCondition) || "Estándar SAP B1"}
                     </Text>
                   </Box>
                 </Grid>
@@ -3272,25 +3364,39 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
           <ModalFooter bg="white" borderTop="1px solid" borderColor="gray.200" py={4} px={6}>
             <HStack spacing={3} w="full" justify="space-between">
-              <Button
-                variant="outline"
-                colorScheme="gray"
-                size="md"
-                fontWeight="700"
-                leftIcon={<ChakraIcon as={FileText} />}
-                onClick={() => {
-                  setPdfQuote({
-                    ...effectiveQuote,
-                    products: displayProducts,
-                    totals: { ...effectiveQuote.totals, ...calcRes },
-                    DocNum: sapSyncResult?.docNum || effectiveQuote.DocNum,
-                    sapDocNum: sapSyncResult?.docNum || effectiveQuote.sapDocNum,
-                    docNumber: effectiveQuote.docNumber || `COT-${sapSyncResult?.docNum}`
-                  });
-                }}
-              >
-                Ver Comprobante PDF
-              </Button>
+              <HStack spacing={2.5}>
+                <Button
+                  variant="outline"
+                  colorScheme="gray"
+                  size="md"
+                  fontWeight="700"
+                  leftIcon={<ChakraIcon as={FileText} />}
+                  onClick={() => {
+                    setPdfQuote({
+                      ...effectiveQuote,
+                      products: displayProducts,
+                      totals: { ...effectiveQuote.totals, ...calcRes },
+                      DocNum: sapSyncResult?.docNum || effectiveQuote.DocNum,
+                      sapDocNum: sapSyncResult?.docNum || effectiveQuote.sapDocNum,
+                      docNumber: effectiveQuote.docNumber || `COT-${sapSyncResult?.docNum}`
+                    });
+                  }}
+                >
+                  Ver Comprobante PDF
+                </Button>
+                {isAdminUser && (
+                  <Button
+                    variant="outline"
+                    colorScheme="purple"
+                    size="md"
+                    fontWeight="800"
+                    leftIcon={<ChakraIcon as={Code2} />}
+                    onClick={() => setIsJsonModalOpen(true)}
+                  >
+                    Ver JSON SAP
+                  </Button>
+                )}
+              </HStack>
               <Button
                 bg="linear-gradient(135deg, #059669 0%, #047857 100%)"
                 color="white"

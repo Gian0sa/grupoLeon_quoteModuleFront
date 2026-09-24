@@ -43,11 +43,11 @@ export function HistoryQuotesPage() {
   const localRole = (localStorage.getItem("role") || "").toUpperCase();
   const hasAccess = useHasAccess();
   const isAdmin = useIsAdmin();
-  const isAdminUser = isAdmin || authRole === "ADMIN" || localRole === "ADMIN" || hasAccess("POST /quotes/approval") || hasAccess("POST /quotations/approve");
-  const canManagePromotions = isAdminUser || hasAccess("POST /promotions") || hasAccess("POST:/promotions") || hasAccess("GET /promotions") || hasAccess("GET:/promotions");
+  const canManagePromotions = isAdmin || hasAccess("POST /promotions") || hasAccess("POST:/promotions") || hasAccess("GET /promotions") || hasAccess("GET:/promotions");
+  const canCreateQuote = isAdmin || hasAccess("POST /quotes") || hasAccess("POST:/quotes");
 
   const [isPromoModalOpen, setIsPromoModalOpen] = useState(false);
-  const { promotions } = useGetPromotions();
+  const { promotions, activeCount = 0 } = useGetPromotions();
 
   const activeSeller = username || localStorage.getItem("username") || "Vendedor Autorizado";
   const today = format(new Date(), "EEEE, d 'de' MMMM 'del' yyyy", { locale: es });
@@ -186,29 +186,31 @@ export function HistoryQuotesPage() {
                   borderRadius="xl"
                   whiteSpace="nowrap"
                 >
-                  Ofertas del Mes ({promotions.length})
+                  Ofertas del Mes{activeCount > 0 ? ` (${activeCount})` : ""}
                 </Button>
               )}
 
-              <Button
-                bg="#126C36"
-                color="white"
-                _hover={{ bg: "#0e572b", transform: "translateY(-1px)", boxShadow: "0 6px 18px rgba(18, 108, 54, 0.35)" }}
-                _active={{ bg: "#0a3f1f" }}
-                size="md"
-                w={{ base: "full", sm: "auto" }}
-                whiteSpace="nowrap"
-                leftIcon={<Plus className="w-4 h-4 stroke-[3]" />}
-                onClick={() => {
-                  useQuoteStore.getState().clear();
-                  navigate("/newquotes");
-                }}
-                boxShadow="0 4px 14px rgba(18, 108, 54, 0.3)"
-                fontWeight="800"
-                borderRadius="xl"
-              >
-                Crear Nueva Cotización
-              </Button>
+              {canCreateQuote && (
+                <Button
+                  bg="#126C36"
+                  color="white"
+                  _hover={{ bg: "#0e572b", transform: "translateY(-1px)", boxShadow: "0 6px 18px rgba(18, 108, 54, 0.35)" }}
+                  _active={{ bg: "#0a3f1f" }}
+                  size="md"
+                  w={{ base: "full", sm: "auto" }}
+                  whiteSpace="nowrap"
+                  leftIcon={<Plus className="w-4 h-4 stroke-[3]" />}
+                  onClick={() => {
+                    useQuoteStore.getState().clear();
+                    navigate("/newquotes");
+                  }}
+                  boxShadow="0 4px 14px rgba(18, 108, 54, 0.3)"
+                  fontWeight="800"
+                  borderRadius="xl"
+                >
+                  Crear Nueva Cotización
+                </Button>
+              )}
             </Flex>
           </Flex>
 

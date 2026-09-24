@@ -107,8 +107,25 @@ export const useGetPromotions = () => {
         staleTime: 60000,
         refetchOnWindowFocus: true,
     });
+
+    const list = data?.list || [];
+    const activePromotions = data?.activeList || list.filter(p => {
+        if (p.isExpired) return false;
+        if (!p.validUntil) return true;
+        const end = new Date(p.validUntil);
+        if (isNaN(end.getTime())) return true;
+        const endOfDay = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999);
+        return endOfDay.getTime() >= Date.now();
+    });
+
+    const expiredPromotions = data?.expiredList || list.filter(p => !activePromotions.includes(p));
+
     return {
-        promotions: data?.list || [],
+        promotions: list,
+        activePromotions,
+        expiredPromotions,
+        activeCount: activePromotions.length,
+        expiredCount: expiredPromotions.length,
         promotionsMap: data?.map || {},
         isLoading,
         isFetching,

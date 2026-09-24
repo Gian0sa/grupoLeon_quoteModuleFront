@@ -173,16 +173,25 @@ export const QuotePdfDocument = React.forwardRef(({ quote, isPrintMode = false }
   const products = extractProducts(quote);
   const tcVal = Number(quote.totals?.tc) || 3.76;
 
+  // Cliente y Despacho
+  const clientCardCode = client.CardCode || quote.clientDocument || quote.clientRuc || "CL000000";
+  const clientName = client.CardName || client.name || quote.clientName || "CLIENTE NO REGISTRADO";
+  const clientDocDigits = String(client.LicTradNum || client.FederalTaxID || quote.clientRuc || quote.clientDocument || clientCardCode || "").replace(/\D/g, "");
+  const isJuridicaClient = clientDocDigits.startsWith("20") || /\b(E\.?I\.?R\.?L\.?|S\.?A\.?C\.?|S\.?R\.?L\.?|S\.?A\.?|S\.?C\.?R\.?L\.?)\b/i.test(clientName);
+  const clientRuc = clientDocDigits || (client.LicTradNum || client.FederalTaxID || quote.clientRuc || quote.clientDocument || "-").replace(/^CL/i, '');
+  const clientAddress = client.Address || client.address || quote.clientAddress || "-";
+
   // Condiciones Comerciales Normalizadas
-  const docType = String(quote.documentType || quote.tipoComprobante || quote.docTypeVenta || "FACTURA").toUpperCase();
+  const rawDocType = String(quote.documentType || quote.tipoComprobante || quote.docTypeVenta || "").toUpperCase().trim();
+  const docType = rawDocType || (isJuridicaClient ? "FACTURA" : "BOLETA");
   const saleCond = String(quote.saleCondition || quote.condicionVenta || quote.condicionPago || "CONTADO").toUpperCase();
   const isLetraDoc = Boolean(quote.isLetra || quote.hasLetra || quote.letra);
   const creditTermDoc = quote.creditTerm || quote.plazo || "";
 
   const isContado = saleCond === "CONTADO";
   const isCredito = saleCond === "CREDITO";
-  const isBoleta = docType === "BOLETA";
-  const isFactura = docType === "FACTURA";
+  const isBoleta = docType === "BOLETA" && !isJuridicaClient;
+  const isFactura = docType === "FACTURA" || isJuridicaClient;
 
   // Fecha
   const dateObj = quote.docDate ? new Date(quote.docDate) : new Date();
@@ -192,24 +201,18 @@ export const QuotePdfDocument = React.forwardRef(({ quote, isPrintMode = false }
   const fullYear = !isNaN(dateObj.getFullYear()) ? String(dateObj.getFullYear()) : String(new Date().getFullYear());
   const shortYear = fullYear.slice(-2);
 
-  // Cliente y Despacho
-  const clientCardCode = client.CardCode || quote.clientDocument || quote.clientRuc || "CL000000";
-  const clientName = client.CardName || client.name || quote.clientName || "CLIENTE NO REGISTRADO";
-  const clientRuc = client.LicTradNum || client.FederalTaxID || quote.clientRuc || quote.clientDocument || "-";
-  const clientAddress = client.Address || client.address || quote.clientAddress || "-";
-
   // Parseo y formateo inteligente de Transporte y Forma de Entrega
-  const rawDelivForm = quote.selectedDeliveryForm || quote.deliveryForm;
-  const rawTransport = quote.selectedTransport || quote.transport;
-  const transportName = formatTransportName(rawTransport, rawDelivForm);
+  const rawDelivForm = quote.selectedDeliveryForm || quote.deliveryForm || quote.totals?.deliveryForm || quote.totals?.selectedDeliveryForm;
+  const rawTransport = quote.selectedTransport || quote.transport || quote.U_TQC_TRANSPOR || quote.totals?.transport || quote.totals?.selectedTransport;
+  const transportName = formatTransportName(rawTransport, rawDelivForm, { includeAddress: false });
 
   let parsedTransport = rawTransport;
   if (typeof parsedTransport === "string" && parsedTransport.trim().startsWith("{")) {
     try { parsedTransport = JSON.parse(parsedTransport); } catch (e) {}
   }
   const transportAddress = typeof parsedTransport === "object" && parsedTransport !== null
-    ? (parsedTransport.U_TQC_DIREC || parsedTransport.address || quote.transportDirection || "-")
-    : (quote.transportDirection || "-");
+    ? (parsedTransport.U_TQC_DIREC || parsedTransport.address || quote.transportDirection || quote.totals?.transportDirection || "-")
+    : (quote.transportDirection || quote.totals?.transportDirection || "-");
 
   // Punto de Llegada
   const rawPoint = quote.selectedPoint || quote.deliveryPoint;

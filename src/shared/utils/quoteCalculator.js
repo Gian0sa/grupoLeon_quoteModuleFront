@@ -96,25 +96,33 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.76, options
     };
   });
   
-  const igvUSD = netSubtotalUSD * 0.18;
-  const grandTotalUSD = netSubtotalUSD + igvUSD;
+  // 1. Total General con IGV: suma matemática de las líneas (lineTotal) redondeadas a 2 decimales
+  const sumOfLineTotals = normalizedProducts.reduce((acc, it) => acc + (it.lineTotal || 0), 0);
+  const grandTotalUSD = Number((sumOfLineTotals > 0 ? sumOfLineTotals : netSubtotalUSD).toFixed(2));
 
-  const subtotalSOL = netSubtotalUSD * tc;
-  const igvSOL = igvUSD * tc;
-  const grandTotalSOL = grandTotalUSD * tc;
+  // 2. Base imponible neta (desagregando el 18% de IGV): Total / 1.18
+  const subtotalUSD = Number((grandTotalUSD / 1.18).toFixed(2));
+
+  // 3. IGV 18% desagregado exacto: Total - Base Imponible (garantiza coincidencia exacta al centavo)
+  const igvUSD = Number((grandTotalUSD - subtotalUSD).toFixed(2));
+
+  // 4. Valores equivalentes en Soles (PEN) con coherencia matemática exacta
+  const grandTotalSOL = Number((grandTotalUSD * tc).toFixed(2));
+  const subtotalSOL = Number((grandTotalSOL / 1.18).toFixed(2));
+  const igvSOL = Number((grandTotalSOL - subtotalSOL).toFixed(2));
   const discPct = grossSubtotalUSD > 0 ? (totalDiscountUSD / grossSubtotalUSD) * 100 : 0;
 
   return {
     normalizedProducts,
     grossSubtotalUSD: Number(grossSubtotalUSD.toFixed(2)),
     totalDiscountUSD: Number(totalDiscountUSD.toFixed(2)),
-    subtotalUSD: Number(netSubtotalUSD.toFixed(2)), // Subtotal neto afectado
-    netBaseUSD: Number(netSubtotalUSD.toFixed(2)),
-    igvUSD: Number(igvUSD.toFixed(2)),               // IGV 18% exacto sobre la base neta
-    grandTotalUSD: Number(grandTotalUSD.toFixed(2)), // Total general exacto (Subtotal + IGV)
-    subtotalSOL: Number(subtotalSOL.toFixed(2)),
-    igvSOL: Number(igvSOL.toFixed(2)),
-    grandTotalSOL: Number(grandTotalSOL.toFixed(2)),
+    subtotalUSD, // Subtotal neto afectado
+    netBaseUSD: subtotalUSD,
+    igvUSD,      // IGV 18% exacto sobre la base neta
+    grandTotalUSD, // Total general exacto (Subtotal + IGV)
+    subtotalSOL,
+    igvSOL,
+    grandTotalSOL,
     discPct: Number(discPct.toFixed(2)),
     tc,
     hasAdditionalDiscount,

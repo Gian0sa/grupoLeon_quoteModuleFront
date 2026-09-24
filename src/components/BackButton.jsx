@@ -1,15 +1,16 @@
 import { IconButton } from "@chakra-ui/react";
 import { ArrowBackIcon } from "@chakra-ui/icons";
 import { useNavigate } from "react-router-dom";
-
-export function BackButton({ color = "white", to = "/dashboard", onClick, ...props }) {
+export function BackButton({ color = "white", to, onClick, ...props }) {
     const navigate = useNavigate();
+    const defaultTo = "/dashboard";
+    const targetTo = to || defaultTo;
 
     const handleClick = (e) => {
         if (onClick) {
             onClick(e);
         } else {
-            navigate(to || "/dashboard");
+            navigate(targetTo);
         }
     };
 

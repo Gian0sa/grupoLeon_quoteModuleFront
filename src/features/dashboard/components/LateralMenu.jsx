@@ -46,18 +46,17 @@ import { HEADER_MAIN_BG } from '../../../components/TopHeaderBanner';
 
 // Opciones estáticas fuera del componente para evitar recreación de memoria en cada render
 const APPLICATION_OPTIONS = [
-  { label: 'Gestión de Cotizaciones', icon: MdRequestQuote, path: '/historyquotes', access: 'POST:/quotations' },
+  { label: 'Gestión de Cotizaciones', icon: MdRequestQuote, path: '/historyquotes', access: 'GET:/quotes' },
   { label: 'Pedidos', icon: MdLocalShipping, path: '/reports', access: 'GET:/reports' },
-  { label: 'Cuentas por cobrar', icon: MdAccountBalanceWallet, path: '/receivable', access: 'GET:/receivable' },
+  { label: 'Cuentas por cobrar', icon: MdAccountBalanceWallet, path: '/receivable', access: 'GET:/accountsReceivable' },
   { label: 'Lista de precios', icon: MdPriceChange, path: '/productsPriceList', access: 'GET:/priceList' },
   { label: 'Catálogo de productos', icon: MdInventory2, path: '/catalog', access: 'GET:/catalogProducts' },
   { label: 'Importaciones', icon: MdFileUpload, path: '/importaciones', access: 'GET:/purchaseOrdersImportacion' },
-  { label: 'Guía de Salida (Almacén)', icon: MdLocalShipping, path: '/guiaSalida', access: 'GET:/guiaSalida' },
   { label: 'Registro de visitas', icon: MdLocationOn, path: '/visitLog', access: 'POST:/visit-logs' },
   { label: 'Mapa de visitas', icon: MdMap, path: '/visitMap', access: 'GET:/visit-logs' },
   { label: 'Mis visitas', icon: MdMap, path: '/myVisits', access: 'POST:/visit-logs' },
   { label: 'Clientes nuevos', icon: MdPersonAdd, path: '/newClients', access: 'POST:/visit-logs' },
-  { label: 'Control de asistencia', icon: MdAccessTime, path: '/entrada', access: 'POST:/visit-logs' }
+  { label: 'Control de asistencia', icon: MdAccessTime, path: '/entrada', access: 'POST:/attendance' }
 ];
 
 const ACCOUNT_OPTIONS = [
@@ -179,6 +178,20 @@ export function LateralMenu() {
 
   const hasAccess = useHasAccess();
   const hasAdminAccess = hasAccess("PUT:/profile/admin/:userId");
+
+  // Etiqueta dinámica de rol para evitar catalogar falsamente como Administrador
+  const userRoleLabel = useMemo(() => {
+    if (hasAccess("PUT:/profile/admin/:userId") || hasAccess("GET:/adminUsers")) {
+      return "Administrador";
+    }
+    if (hasAccess("GET:/AdminQuotesSellers/:slpCode/:month") || (hasAccess("GET:/sellers") && hasAccess("GET:/visit-logs"))) {
+      return "Supervisor Comercial";
+    }
+    if (hasAccess("POST:/quotes/approval") || hasAccess("POST /quotes/approval") || hasAccess("POST:/quotes/sap/:id/copy-to-invoice")) {
+      return "Facturación y Créditos";
+    }
+    return "Asesor de Ventas";
+  }, [hasAccess]);
 
   const handleLogout = useCallback(() => {
     logout.mutate();
@@ -375,7 +388,7 @@ export function LateralMenu() {
                     letterSpacing="wider"
                     textTransform="uppercase"
                   >
-                    {hasAdminAccess ? 'Administrador' : 'Asesor de Ventas'}
+                    {userRoleLabel}
                   </Badge>
                 </VStack>
               </HStack>

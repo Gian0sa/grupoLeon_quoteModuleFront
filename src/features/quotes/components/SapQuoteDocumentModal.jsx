@@ -19,8 +19,11 @@ import {
   Grid,
   Image
 } from "@chakra-ui/react";
-import { Printer, Download, Eye, CheckCircle2, FileText, Share2, Edit3, Check, ZoomIn, ZoomOut } from "lucide-react";
+import { Printer, Download, Eye, CheckCircle2, FileText, Share2, Edit3, Check, ZoomIn, ZoomOut, Code2 } from "lucide-react";
 import { calculateQuoteTotals } from "../../../shared/utils/quoteCalculator";
+import { SapPayloadJsonModal } from "./SapPayloadJsonModal";
+import { useIsAdmin } from "../../../shared/utils/permissions";
+import { useAuthStore } from "../../auth/stores/useAuthStore";
 
 const money = (val) => {
   const num = Number(val || 0);
@@ -182,6 +185,10 @@ const resolveSellerCode = (q) => {
 export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) {
   const printRef = useRef(null);
   const [zoomLevel, setZoomLevel] = useState(1);
+  const [isJsonModalOpen, setIsJsonModalOpen] = useState(false);
+  const isAdminHook = useIsAdmin();
+  const { role } = useAuthStore();
+  const isAdmin = isAdminHook || String(role || "").toUpperCase() === "ADMIN";
 
   const handleAutoFit = () => {
     const availableW = window.innerWidth - 32;
@@ -420,21 +427,43 @@ export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) 
               </Button>
             </HStack>
 
-            {/* Botón de Impresión / PDF Directo */}
-            <Button
-              size="xs"
-              colorScheme="green"
-              bg="#10b981"
-              _hover={{ bg: "#059669" }}
-              color="white"
-              fontWeight="800"
-              px={3}
-              h="26px"
-              leftIcon={<Printer className="w-3.5 h-3.5" />}
-              onClick={handlePrint}
-            >
-              Imprimir / PDF
-            </Button>
+            <HStack spacing={2}>
+              {isAdmin && (
+                <Button
+                  size="xs"
+                  variant="outline"
+                  colorScheme="purple"
+                  color="purple.200"
+                  borderColor="purple.400"
+                  px={2.5}
+                  h="26px"
+                  fontSize="11px"
+                  fontWeight="850"
+                  _hover={{ bg: "purple.900", borderColor: "purple.300" }}
+                  leftIcon={<Code2 className="w-3.5 h-3.5 text-purple-300" />}
+                  onClick={() => setIsJsonModalOpen(true)}
+                  title="Inspector Técnico: Ver Trama JSON para SAP Service Layer (Solo Administrador)"
+                >
+                  Ver JSON SAP
+                </Button>
+              )}
+
+              {/* Botón de Impresión / PDF Directo */}
+              <Button
+                size="xs"
+                colorScheme="green"
+                bg="#10b981"
+                _hover={{ bg: "#059669" }}
+                color="white"
+                fontWeight="800"
+                px={3}
+                h="26px"
+                leftIcon={<Printer className="w-3.5 h-3.5" />}
+                onClick={handlePrint}
+              >
+                Imprimir / PDF
+              </Button>
+            </HStack>
           </Flex>
         </Box>
 
@@ -983,6 +1012,18 @@ export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) 
           </HStack>
 
           <HStack spacing={3}>
+            {isAdmin && (
+              <Button
+                variant="outline"
+                colorScheme="purple"
+                size="sm"
+                leftIcon={<Code2 className="w-4 h-4 text-purple-600" />}
+                onClick={() => setIsJsonModalOpen(true)}
+                fontWeight="800"
+              >
+                Ver JSON SAP (Admin)
+              </Button>
+            )}
             <Button
               colorScheme="teal"
               size="sm"
@@ -997,6 +1038,15 @@ export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) 
           </HStack>
         </ModalFooter>
       </ModalContent>
+
+      {/* Modal Inspector Técnico JSON SAP (Solo Administrador) */}
+      {isAdmin && (
+        <SapPayloadJsonModal
+          isOpen={isJsonModalOpen}
+          onClose={() => setIsJsonModalOpen(false)}
+          quote={quote}
+        />
+      )}
     </Modal>
   );
 }

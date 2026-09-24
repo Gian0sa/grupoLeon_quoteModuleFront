@@ -136,15 +136,16 @@ export default function ClientAutocomplete({ client, setClient }) {
     return (
       <Box
         p={{ base: 3, md: 4 }}
-        bg="emerald.50"
+        bg="white"
         borderRadius="xl"
-        border="2px solid"
-        borderColor="emerald.400"
-        boxShadow="0 4px 15px rgba(16, 185, 129, 0.12)"
+        border="1px solid"
+        borderColor="gray.200"
+        borderLeft="4px solid #166534"
+        boxShadow="sm"
         w="full"
       >
         <Flex justify="space-between" align="center" wrap="wrap" gap={2} mb={2}>
-          <Badge bg="emerald.700" color="white" px={2.5} py={0.5} borderRadius="full" fontSize="10px" fontWeight="700">
+          <Badge bg="#166534" color="white" px={2.5} py={0.5} borderRadius="full" fontSize="10px" fontWeight="700">
             Cliente SAP Seleccionado
           </Badge>
           <Button
@@ -160,19 +161,25 @@ export default function ClientAutocomplete({ client, setClient }) {
           </Button>
         </Flex>
 
-        <Text fontWeight="800" fontSize={{ base: "sm", md: "md" }} color="emerald.950" mb={1} wordBreak="break-word">
+        <Text fontWeight="800" fontSize={{ base: "sm", md: "md" }} color="gray.900" mb={1} wordBreak="break-word">
           {normalizedClient.CardName || "Cliente seleccionado"}
         </Text>
 
         {(normalizedClient.CardCode || normalizedClient.LicTradNum) && (
-          <Text fontSize="xs" color="gray.700" mb={0.5} wordBreak="break-word">
-            <strong>Código SAP:</strong> {cardCode} <strong>• RUC / Doc:</strong> {documentNumber}
+          <Text fontSize="xs" color="gray.600" mb={0.5} wordBreak="break-word">
+            <strong style={{ color: "#334155" }}>Código SAP:</strong> {cardCode} <strong style={{ color: "#334155" }}>• RUC / Doc:</strong> {documentNumber}
           </Text>
         )}
 
         {normalizedClient.Address && (
-          <Text fontSize="xs" color="gray.700" wordBreak="break-word" title={normalizedClient.Address}>
-            <strong>Dirección:</strong> {normalizedClient.Address}
+          <Text fontSize="xs" color="gray.500" wordBreak="break-word" title={normalizedClient.Address}>
+            <strong style={{ color: "#334155" }}>Dirección:</strong> {normalizedClient.Address}
+          </Text>
+        )}
+
+        {Number(normalizedClient.CurrentAccountBalance ?? normalizedClient.raw?.CurrentAccountBalance ?? 0) > 0 && (
+          <Text fontSize="xs" color="red.600" fontWeight="700" mt={1}>
+            ⚠️ Saldo deudor en SAP: ${Number(normalizedClient.CurrentAccountBalance ?? normalizedClient.raw?.CurrentAccountBalance).toFixed(2)} USD
           </Text>
         )}
       </Box>
@@ -187,10 +194,13 @@ export default function ClientAutocomplete({ client, setClient }) {
   // 2. BUSCADOR ÚNICO INTELIGENTE SAP (Diseño Compacto y Elegante)
   return (
     <Box w="full">
-      <Box p={{ base: 2, md: 2.5 }} bg="#f0fdf4" borderRadius="lg" border="1.5px dashed #86efac">
-        <Box fontSize="11px" fontWeight="900" color="#166534" mb={1.5} letterSpacing="wider" textTransform="uppercase">
-          🔍 Búsqueda Inteligente de Cliente SAP
-        </Box>
+      <Box p={{ base: 2.5, md: 3 }} bg="white" borderRadius="xl" border="1px solid" borderColor="gray.200" boxShadow="xs">
+        <Flex align="center" gap={1.5} mb={2}>
+          <FiSearch className="text-emerald-700" size={13} />
+          <Text fontSize="11px" fontWeight="800" color="#166534" letterSpacing="wider" textTransform="uppercase">
+            Búsqueda Inteligente de Cliente SAP
+          </Text>
+        </Flex>
         <Flex gap={2} align="center">
           <Input
             flex="1"
@@ -202,16 +212,16 @@ export default function ClientAutocomplete({ client, setClient }) {
             onChange={(e) => setSearchInput(e.target.value.toUpperCase())}
             onKeyPress={handleKeyPress}
             bg="white"
-            borderColor="#cbd5e1"
+            borderColor="gray.300"
             fontSize="xs"
             fontWeight="600"
-            _focus={{ borderColor: "#16a34a", boxShadow: "0 0 0 1px #16a34a" }}
+            _focus={{ borderColor: "#166534", boxShadow: "0 0 0 1px #166534" }}
           />
           <Button
             size="sm"
-            bg="#0d6334"
+            bg="#166534"
             color="white"
-            _hover={{ bg: "#166534" }}
+            _hover={{ bg: "#0f5132" }}
             _active={{ bg: "#14532d" }}
             px={3.5}
             onClick={triggerSearch}
@@ -228,8 +238,8 @@ export default function ClientAutocomplete({ client, setClient }) {
 
       {/* INDICADOR DE BÚSQUEDA EN CURSO */}
       {isSearching && (
-        <Flex align="center" gap={2} mt={1.5} px={2.5} py={1.5} bg="emerald.50" borderRadius="md" border="1px solid" borderColor="emerald.200">
-          <Spinner color="#16a34a" size="xs" speed="0.6s" flexShrink={0} />
+        <Flex align="center" gap={2} mt={1.5} px={2.5} py={1.5} bg="#f8fafc" borderRadius="md" border="1px solid" borderColor="gray.200">
+          <Spinner color="#166534" size="xs" speed="0.6s" flexShrink={0} />
           <Text fontSize="11px" color="#166534" fontWeight="700" isTruncated>
             Consultando "{searchTerm || searchInput.trim()}" en SAP Business One...
           </Text>
@@ -238,7 +248,7 @@ export default function ClientAutocomplete({ client, setClient }) {
 
       {/* MENSAJE SIN RESULTADOS */}
       {is404OrEmpty && (
-        <Box p={3} bg="amber.50" borderRadius="md" border="1px solid" borderColor="amber.300" mt={2}>
+        <Box p={3} bg="amber.50" borderRadius="md" border="1px solid" borderColor="amber.200" mt={2}>
           <Text color="amber.900" fontSize="xs" fontWeight="700">
             Socio de negocio no encontrado en SAP
           </Text>
@@ -253,25 +263,27 @@ export default function ClientAutocomplete({ client, setClient }) {
         <Box
           mt={2}
           p={3}
-          bg="emerald.50"
-          borderRadius="md"
+          bg="white"
+          borderRadius="lg"
           border="1px solid"
-          borderColor="emerald.300"
+          borderColor="gray.200"
+          borderLeft="3px solid #166534"
           cursor="pointer"
           onClick={() => handleSelectClient(dataByCode)}
-          _hover={{ bg: "emerald.100" }}
+          _hover={{ bg: "#f8fafc", borderColor: "#166534" }}
           shadow="sm"
+          transition="all 0.15s ease"
         >
           <Flex justify="space-between" align={{ base: "flex-start", sm: "center" }} wrap="wrap" gap={1.5} mb={1}>
-            <Text fontWeight="800" fontSize="xs" color="emerald.900" flex="1" minW="140px" wordBreak="break-word">
+            <Text fontWeight="800" fontSize="xs" color="gray.900" flex="1" minW="140px" wordBreak="break-word">
               {dataByCode.CardName || dataByCode.firstName}
             </Text>
-            <Badge colorScheme="emerald" fontSize="0.65rem" flexShrink={0}>SAP</Badge>
+            <Badge colorScheme="green" bg="#dcfce7" color="#166534" fontSize="0.65rem" flexShrink={0}>SAP</Badge>
           </Flex>
           <Text fontSize="0.75rem" color="gray.600" fontWeight="700">
             Código: {dataByCode.CardCode || dataByCode.id}
           </Text>
-          <Text fontSize="0.7rem" color="gray.600" wordBreak="break-word">
+          <Text fontSize="0.7rem" color="gray.500" wordBreak="break-word">
             {dataByCode.Address || dataByCode.address || "Sin dirección registrada"}
           </Text>
         </Box>
@@ -279,7 +291,7 @@ export default function ClientAutocomplete({ client, setClient }) {
 
       {/* LISTA DE RESULTADOS POR NOMBRE / RAZÓN SOCIAL */}
       {!isSearching && !isSearchingByCode && activeNameList.length > 0 && !client && (
-        <VStack spacing={1.5} maxH="240px" overflowY="auto" mt={2} p={1} bg="white" borderRadius="md" shadow="lg" border="1px solid" borderColor="gray.200" align="stretch">
+        <VStack spacing={1.5} maxH="240px" overflowY="auto" mt={2} p={1} bg="white" borderRadius="lg" shadow="lg" border="1px solid" borderColor="gray.200" align="stretch">
           {activeNameList.map((clientData, idx) => {
             const adapted = adaptClientFromApi(clientData);
             const cardCode = adapted.id || clientData.CardCode || clientData.cardCode;
@@ -291,17 +303,17 @@ export default function ClientAutocomplete({ client, setClient }) {
                 key={cardCode || idx}
                 w="100%"
                 p={2.5}
-                bg="gray.50"
+                bg="#f8fafc"
                 borderRadius="md"
                 border="1px solid"
                 borderColor="gray.200"
                 cursor="pointer"
                 onClick={() => handleSelectClient(clientData)}
-                _hover={{ bg: "emerald.50", borderColor: "emerald.300" }}
+                _hover={{ bg: "white", borderColor: "#166534", shadow: "xs" }}
                 transition="all 0.15s ease"
               >
                 <Flex justify="space-between" align={{ base: "flex-start", sm: "center" }} wrap="wrap" gap={1.5} mb={0.5}>
-                  <Text fontWeight="700" fontSize="xs" color="emerald.900" flex="1" minW="150px" wordBreak="break-word">
+                  <Text fontWeight="700" fontSize="xs" color="gray.900" flex="1" minW="150px" wordBreak="break-word">
                     {cardName}
                   </Text>
                   <Flex gap={1} align="center" flexShrink={0} wrap="wrap">
@@ -310,7 +322,7 @@ export default function ClientAutocomplete({ client, setClient }) {
                         {clientData.FederalTaxID}
                       </Badge>
                     )}
-                    <Badge colorScheme="emerald" fontSize="0.65rem" px={1.5} py={0.5} borderRadius="sm">
+                    <Badge colorScheme="green" bg="#dcfce7" color="#166534" fontSize="0.65rem" px={1.5} py={0.5} borderRadius="sm">
                       {cardCode}
                     </Badge>
                   </Flex>

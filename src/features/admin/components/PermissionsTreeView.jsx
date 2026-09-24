@@ -27,9 +27,21 @@ import {
   CheckSquare,
   Square,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Sparkles,
+  UserCheck,
+  PackageCheck,
+  Receipt,
+  Award,
+  ShieldCheck,
+  RotateCcw
 } from "lucide-react";
-import { buildPermissionTree, getSelectionState } from "../utils/permissionTreeHelper";
+import {
+  buildPermissionTree,
+  getSelectionState,
+  ROLE_PRESETS,
+  getPresetServiceIds
+} from "../utils/permissionTreeHelper";
 
 /**
  * Checkbox visual personalizado de alta fidelidad memoizado
@@ -196,11 +208,211 @@ const PermissionsTreeView = memo(function PermissionsTreeView({
     onChange([]);
   };
 
+  // Calcular dinámicamente la cantidad de servicios de cada plantilla según el catálogo cargado
+  const presetCounts = useMemo(() => {
+    if (!services || services.length === 0) {
+      return { vendedor: 0, facturacion: 0, supervisor: 0, admin: 0 };
+    }
+    return {
+      vendedor: getPresetServiceIds("vendedor", services).length,
+      facturacion: getPresetServiceIds("facturacion", services).length,
+      supervisor: getPresetServiceIds("supervisor", services).length,
+      admin: services.length,
+    };
+  }, [services]);
+
+  // Determinar si la selección actual coincide con alguna plantilla exacta
+  const activePresetKey = useMemo(() => {
+    if (!services || services.length === 0) return null;
+    const currentCount = (permittedServices || []).length;
+    if (currentCount === 0) return "limpiar";
+    if (currentCount === services.length) return "admin";
+
+    const currentSet = new Set((permittedServices || []).map((id) => Number(id)));
+
+    for (const key of ["vendedor", "facturacion", "supervisor"]) {
+      const presetIds = getPresetServiceIds(key, services);
+      if (presetIds.length === currentCount && presetIds.every((id) => currentSet.has(id))) {
+        return key;
+      }
+    }
+    return null;
+  }, [services, permittedServices]);
+
+  // Aplicar plantilla de rol con un solo clic
+  const handleApplyPreset = (presetKey) => {
+    const presetIds = getPresetServiceIds(presetKey, services);
+    onChange(presetIds);
+  };
+
   // Normalizar búsqueda
   const normalizedQuery = searchQuery.trim().toLowerCase();
 
   return (
     <Box w="full">
+      {/* ─── BARRA DE PLANTILLAS RÁPIDAS DE ROL (1 SOLO CLIC) ─── */}
+      <Box
+        mb={3.5}
+        p={3}
+        bg="linear-gradient(to right, #f8fafc, #f1f5f9)"
+        borderRadius="xl"
+        border="1.5px solid"
+        borderColor="gray.200"
+        boxShadow="xs"
+      >
+        <Flex
+          direction={{ base: "column", sm: "row" }}
+          justify="space-between"
+          align={{ base: "flex-start", sm: "center" }}
+          gap={1.5}
+          mb={2.5}
+        >
+          <HStack spacing={2}>
+            <Sparkles className="w-4 h-4 text-amber-500 fill-amber-400" />
+            <Text fontSize="xs" fontWeight="900" color="gray.800" textTransform="uppercase" letterSpacing="wider">
+              Plantillas Rápidas de Rol
+            </Text>
+            <Badge
+              bg="#dbeafe"
+              color="#1e40af"
+              border="1px solid #bfdbfe"
+              fontSize="9.5px"
+              fontWeight="800"
+              px={2}
+              py={0.2}
+              borderRadius="full"
+            >
+              1 Clic
+            </Badge>
+          </HStack>
+          <Text fontSize="11px" color="gray.500" fontWeight="500">
+            Aplica automáticamente los permisos recomendados sin marcar casilla por casilla
+          </Text>
+        </Flex>
+
+        <Flex wrap="wrap" gap={2}>
+          {/* 🟢 VENDEDOR */}
+          <Button
+            size="xs"
+            variant="outline"
+            bg={activePresetKey === "vendedor" ? "#dcfce7" : "white"}
+            borderColor={activePresetKey === "vendedor" ? "#16a34a" : "#bbf7d0"}
+            color="#15803d"
+            _hover={{ bg: "#dcfce7", borderColor: "#16a34a", transform: "translateY(-1px)" }}
+            _active={{ transform: "translateY(0)" }}
+            boxShadow={activePresetKey === "vendedor" ? "0 0 0 2px rgba(22, 163, 74, 0.3)" : "none"}
+            transition="all 0.15s ease"
+            leftIcon={<UserCheck className="w-3.5 h-3.5 stroke-[2.5]" />}
+            onClick={() => handleApplyPreset("vendedor")}
+            fontWeight="800"
+            borderRadius="lg"
+            h="32px"
+            px={3}
+            title={ROLE_PRESETS.vendedor?.description}
+          >
+            Vendedor (Comercial)
+            <Badge ml={1.5} bg="#bbf7d0" color="#166534" fontSize="9px" px={1.5} borderRadius="full">
+              {presetCounts.vendedor}
+            </Badge>
+          </Button>
+
+          {/* 🔵 FACTURACIÓN */}
+          <Button
+            size="xs"
+            variant="outline"
+            bg={activePresetKey === "facturacion" ? "#e0f2fe" : "white"}
+            borderColor={activePresetKey === "facturacion" ? "#0284c7" : "#bae6fd"}
+            color="#0369a1"
+            _hover={{ bg: "#e0f2fe", borderColor: "#0284c7", transform: "translateY(-1px)" }}
+            _active={{ transform: "translateY(0)" }}
+            boxShadow={activePresetKey === "facturacion" ? "0 0 0 2px rgba(2, 132, 199, 0.3)" : "none"}
+            transition="all 0.15s ease"
+            leftIcon={<Receipt className="w-3.5 h-3.5 stroke-[2.5]" />}
+            onClick={() => handleApplyPreset("facturacion")}
+            fontWeight="800"
+            borderRadius="lg"
+            h="32px"
+            px={3}
+            title={ROLE_PRESETS.facturacion?.description}
+          >
+            Facturación / Créditos
+            <Badge ml={1.5} bg="#bae6fd" color="#075985" fontSize="9px" px={1.5} borderRadius="full">
+              {presetCounts.facturacion}
+            </Badge>
+          </Button>
+
+          {/* 🟣 SUPERVISOR */}
+          <Button
+            size="xs"
+            variant="outline"
+            bg={activePresetKey === "supervisor" ? "#f3e8ff" : "white"}
+            borderColor={activePresetKey === "supervisor" ? "#9333ea" : "#e9d5ff"}
+            color="#7e22ce"
+            _hover={{ bg: "#f3e8ff", borderColor: "#9333ea", transform: "translateY(-1px)" }}
+            _active={{ transform: "translateY(0)" }}
+            boxShadow={activePresetKey === "supervisor" ? "0 0 0 2px rgba(147, 51, 234, 0.3)" : "none"}
+            transition="all 0.15s ease"
+            leftIcon={<Award className="w-3.5 h-3.5 stroke-[2.5]" />}
+            onClick={() => handleApplyPreset("supervisor")}
+            fontWeight="800"
+            borderRadius="lg"
+            h="32px"
+            px={3}
+            title={ROLE_PRESETS.supervisor?.description}
+          >
+            Supervisor Comercial
+            <Badge ml={1.5} bg="#e9d5ff" color="#6b21a8" fontSize="9px" px={1.5} borderRadius="full">
+              {presetCounts.supervisor}
+            </Badge>
+          </Button>
+
+          {/* 🛡️ ADMIN TOTAL */}
+          <Button
+            size="xs"
+            variant="outline"
+            bg={activePresetKey === "admin" ? "#fee2e2" : "white"}
+            borderColor={activePresetKey === "admin" ? "#dc2626" : "#fecaca"}
+            color="#b91c1c"
+            _hover={{ bg: "#fee2e2", borderColor: "#dc2626", transform: "translateY(-1px)" }}
+            _active={{ transform: "translateY(0)" }}
+            boxShadow={activePresetKey === "admin" ? "0 0 0 2px rgba(220, 38, 38, 0.3)" : "none"}
+            transition="all 0.15s ease"
+            leftIcon={<ShieldCheck className="w-3.5 h-3.5 stroke-[2.5]" />}
+            onClick={() => handleApplyPreset("admin")}
+            fontWeight="800"
+            borderRadius="lg"
+            h="32px"
+            px={3}
+            title={ROLE_PRESETS.admin?.description}
+          >
+            Admin Total
+            <Badge ml={1.5} bg="#fecaca" color="#991b1b" fontSize="9px" px={1.5} borderRadius="full">
+              Todos
+            </Badge>
+          </Button>
+
+          {/* ⚪ LIMPIAR */}
+          <Button
+            size="xs"
+            variant="outline"
+            bg={activePresetKey === "limpiar" ? "#f1f5f9" : "white"}
+            borderColor={activePresetKey === "limpiar" ? "#94a3b8" : "#e2e8f0"}
+            color="gray.600"
+            _hover={{ bg: "#f1f5f9", borderColor: "#cbd5e1" }}
+            transition="all 0.15s ease"
+            leftIcon={<RotateCcw className="w-3.5 h-3.5 text-gray-500" />}
+            onClick={() => handleApplyPreset("limpiar")}
+            fontWeight="700"
+            borderRadius="lg"
+            h="32px"
+            px={3}
+            title="Desmarcar todos los permisos"
+          >
+            Limpiar Selección
+          </Button>
+        </Flex>
+      </Box>
+
       {/* ─── BARRA SUPERIOR DE ACCIONES RÁPIDAS ─── */}
       <Flex
         direction={{ base: "column", md: "row" }}
