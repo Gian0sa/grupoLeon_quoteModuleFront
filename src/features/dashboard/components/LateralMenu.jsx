@@ -52,7 +52,6 @@ const APPLICATION_OPTIONS = [
   { label: 'Lista de precios', icon: MdPriceChange, path: '/productsPriceList', access: 'GET:/priceList' },
   { label: 'Catálogo de productos', icon: MdInventory2, path: '/catalog', access: 'GET:/catalogProducts' },
   { label: 'Importaciones', icon: MdFileUpload, path: '/importaciones', access: 'GET:/purchaseOrdersImportacion' },
-  { label: 'Guía de Salida (Almacén)', icon: MdLocalShipping, path: '/guiaSalida', access: 'GET:/guiaSalida' },
   { label: 'Registro de visitas', icon: MdLocationOn, path: '/visitLog', access: 'POST:/visit-logs' },
   { label: 'Mapa de visitas', icon: MdMap, path: '/visitMap', access: 'GET:/visit-logs' },
   { label: 'Mis visitas', icon: MdMap, path: '/myVisits', access: 'POST:/visit-logs' },

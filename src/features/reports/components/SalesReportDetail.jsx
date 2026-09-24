@@ -23,6 +23,7 @@ import {
   useGetCompareOrderAndDeliveryNote,
   useGetDeliveryNoteByCode,
   useGetInvoiceByCode,
+  useGetSeguimientoAlmacen,
 } from "../hooks/queries/reportQueries";
 import {
   getOrderByCode,
@@ -35,6 +36,19 @@ import {
   downloadInvoicePDF,
   downloadInvoicePDFdirectly,
 } from "../utils/pdfGenerators";
+
+// Etapas de la entrega dentro de almacén (las devuelve el módulo de almacén)
+const ETAPAS_ALMACEN = {
+  SIN_INICIAR: { color: "gray", texto: "Almacén aún no la inicia" },
+  EN_PROCESO: { color: "orange", texto: "En proceso (no liberada)" },
+  ANULADA: { color: "red", texto: "Anulada" },
+  PENDIENTE_PICKING: { color: "yellow", texto: "Pendiente de picking" },
+  PICKING_VALIDADO: { color: "teal", texto: "Picking validado" },
+  EN_EMBALAJE: { color: "blue", texto: "En embalaje" },
+  LISTA_DESPACHO: { color: "purple", texto: "Embalada · lista para salir" },
+  DESPACHADA: { color: "green", texto: "Despachada en camión" },
+  ENTREGADA_TIENDA: { color: "green", texto: "Entregada en tienda" },
+};
 
 export default function TrackingPage({ orden, data }) {
   const [loadingOrden, setLoadingOrden] = useState(false);
@@ -143,6 +157,12 @@ export default function TrackingPage({ orden, data }) {
 
   const { data: facturaDetalle } =
     useGetInvoiceByCode(facturaId, Boolean(facturaId));
+
+  // Paso 4: salida física desde almacén (SAP no la registra; la registra el WMS)
+  const { data: almacen, isLoading: cargandoAlmacen } =
+    useGetSeguimientoAlmacen(entregaId, Boolean(entregaId));
+  const etapa = ETAPAS_ALMACEN[almacen?.etapa] || null;
+  const salioAlmacen = almacen?.etapa === "DESPACHADA" || almacen?.etapa === "ENTREGADA_TIENDA";
 
   // Mapear productos comparados
   const productosComparados = (comparisonData || []).map((item) => ({
@@ -322,7 +342,7 @@ export default function TrackingPage({ orden, data }) {
 
           <Box flex={1} minW={0} bg={bgSection} p={{ base: 2.5, sm: 3, md: 4 }} borderRadius="xl" border="1px solid" borderColor={borderColor}>
             <Text fontWeight="800" fontSize="13px" mb={2} color="green.700" textTransform="uppercase" letterSpacing="wide">
-              Picking / Entrega
+              Entrega SAP (documento)
             </Text>
             <Box bg="white" p={3} borderRadius="lg" border="1px solid" borderColor="gray.100">
               {entregas.length > 0 ? (
@@ -335,7 +355,7 @@ export default function TrackingPage({ orden, data }) {
                       </Badge>
                     </Flex>
                     <Flex justify="space-between" align="center">
-                      <Text fontSize="13px" color="gray.600">Fecha de entrega:</Text>
+                      <Text fontSize="13px" color="gray.600">Fecha del documento:</Text>
                       <Text fontSize="13px" fontWeight="700" color="gray.800">{e.fecha}</Text>
                     </Flex>
                     {(entregaDetalle?.totalUsd !== undefined || entregaDetalle?.total !== undefined) && (
@@ -374,6 +394,7 @@ export default function TrackingPage({ orden, data }) {
             >
               {facturas.length > 0 ? <Check size={12} /> : <Circle size="6px" bg="white" />}
             </Circle>
+            <Box w="2px" flex={1} bg={salioAlmacen ? "green.500" : "gray.300"} my={1} />
           </Flex>
 
           <Box flex={1} minW={0} bg={bgSection} p={{ base: 2.5, sm: 3, md: 4 }} borderRadius="xl" border="1px solid" borderColor={borderColor}>
@@ -427,6 +448,83 @@ export default function TrackingPage({ orden, data }) {
                 <Text fontSize="12.5px" color="gray.400" textAlign="center">
                   No se ha emitido factura
                 </Text>
+              )}
+            </Box>
+          </Box>
+        </Flex>
+
+        {/* Step 4: Despacho Almacén (salida física) */}
+        <Flex gap={{ base: 2, sm: 3, md: 4 }} align="stretch" w="full">
+          <Flex direction="column" align="center" minW={{ base: "20px", sm: "28px", md: "40px" }} pt={1}>
+            <Circle
+              size={{ base: "20px", sm: "24px", md: "32px" }}
+              bg={salioAlmacen ? "green.500" : etapa?.color === "red" ? "red.400" : "gray.300"}
+              color="white"
+              flexShrink={0}
+            >
+              {salioAlmacen ? <Check size={12} /> : <Circle size="6px" bg="white" />}
+            </Circle>
+          </Flex>
+
+          <Box flex={1} minW={0} bg={bgSection} p={{ base: 2.5, sm: 3, md: 4 }} borderRadius="xl" border="1px solid" borderColor={borderColor}>
+            <Text fontWeight="800" fontSize="13px" mb={2} color="green.700" textTransform="uppercase" letterSpacing="wide">
+              Despacho Almacén
+            </Text>
+            <Box bg="white" p={3} borderRadius="lg" border="1px solid" borderColor="gray.100">
+              {!entregaId ? (
+                <Text fontSize="12.5px" color="gray.400" textAlign="center">
+                  Aún no hay entrega para almacén
+                </Text>
+              ) : cargandoAlmacen ? (
+                <Flex justify="center" py={1}><Spinner size="sm" color="green.500" /></Flex>
+              ) : !etapa ? (
+                <Text fontSize="12.5px" color="gray.400" textAlign="center">
+                  No se pudo consultar almacén
+                </Text>
+              ) : (
+                <VStack align="stretch" spacing={2}>
+                  <Flex justify="space-between" align="center" gap={2}>
+                    <Text fontSize="13px" color="gray.600">Estado:</Text>
+                    <Badge colorScheme={etapa.color} fontSize="11.5px" px={2.5} py={0.5} borderRadius="md" fontWeight="800">
+                      {etapa.texto}
+                    </Badge>
+                  </Flex>
+                  {almacen.bultos ? (
+                    <Flex justify="space-between" align="center">
+                      <Text fontSize="13px" color="gray.600">Bultos:</Text>
+                      <Text fontSize="13px" fontWeight="700" color="gray.800">
+                        {almacen.bultos}{almacen.pesoKg ? ` · ${almacen.pesoKg} Kg` : ""}
+                      </Text>
+                    </Flex>
+                  ) : null}
+                  {salioAlmacen && almacen.salida && (
+                    <>
+                      <Flex justify="space-between" align="center">
+                        <Text fontSize="13px" color="gray.600">
+                          {almacen.etapa === "ENTREGADA_TIENDA" ? "Fecha de recojo:" : "Fecha de salida:"}
+                        </Text>
+                        <Text fontSize="13px" fontWeight="700" color="gray.800">
+                          {almacen.salida.fecha ? new Date(almacen.salida.fecha).toLocaleString("es-PE") : "--"}
+                        </Text>
+                      </Flex>
+                      <Flex justify="space-between" align="center" gap={2}>
+                        <Text fontSize="13px" color="gray.600">
+                          {almacen.etapa === "ENTREGADA_TIENDA" ? "Recogió:" : "Vehículo / chofer:"}
+                        </Text>
+                        <Text fontSize="13px" fontWeight="700" color="gray.800" textAlign="right">
+                          {almacen.etapa === "ENTREGADA_TIENDA"
+                            ? `${almacen.salida.recibidoPorNombre || "--"}${almacen.salida.recibidoPorDni ? ` (DNI ${almacen.salida.recibidoPorDni})` : ""}`
+                            : `${almacen.salida.vehiculoPlaca || "--"} · ${almacen.salida.choferNombre || "--"}`}
+                        </Text>
+                      </Flex>
+                    </>
+                  )}
+                  {almacen.guiasJuntas?.length > 0 && (
+                    <Text fontSize="11.5px" color="gray.500">
+                      Sale junto con la(s) guía(s): {almacen.guiasJuntas.join(", ")}
+                    </Text>
+                  )}
+                </VStack>
               )}
             </Box>
           </Box>
