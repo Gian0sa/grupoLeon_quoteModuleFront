@@ -1,6 +1,7 @@
 // Calculadora matemática unificada de totales de cotización/pedido para Grupo León / SAP B1
-export const STANDARD_DISCOUNT_CEILING = 50.0; // Tope comercial estándar ordinario (50.0%)
-export const MAX_DISCOUNT_CEILING = 56.0;      // Tope máximo absoluto para volumen / mayoreo (56.0%)
+export const APPROVAL_DISCOUNT_THRESHOLD = 50.0; // Umbral a partir del cual requiere aprobación comercial (50.0%)
+export const STANDARD_DISCOUNT_CEILING = 55.0;   // Tope comercial estándar ordinario (55.0%)
+export const MAX_DISCOUNT_CEILING = 65.0;        // Tope máximo absoluto para volumen / mayoreo (65.0%)
 
 export function calculateQuoteTotals(products = [], exchangeRate = 3.76, options = {}) {
   const tc = Number(exchangeRate) || 3.76;
@@ -10,7 +11,8 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.76, options
   let totalDiscountUSD = 0;  // Suma de montos descontados
   let netSubtotalUSD = 0;    // Base imponible neta (Suma de líneas con descuento)
   let hasAdditionalDiscount = false;
-  let hasVolumeDiscount = false; // Descuentos mayores a 50% hasta 56% por volumen
+  let hasVolumeDiscount = false; // Descuentos mayores a 55% hasta 65% por volumen (>100 uds)
+  let hasDiscountAboveThreshold = false; // Descuentos mayores o iguales a 50%
   let hasExceededDiscountCeiling = false;
 
   const normalizedProducts = (products || []).map((p) => {
@@ -21,12 +23,10 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.76, options
     const sapDisc = Math.max(0, Math.min(100, Number(p.sapDiscount ?? p.discount ?? 0)));
     // Descuento por Promoción / Oferta del Mes (%)
     const promoDisc = Math.max(0, Math.min(100, Number(p.promoDiscount ?? p.PromoDiscount ?? 0)));
-    // Descuento adicional de línea (%)
-    const addDisc = Math.max(0, Math.min(100, Number(p.lineDiscount ?? p.LineDiscount ?? 0)));
-
-    if (addDisc > 0) {
-      hasAdditionalDiscount = true;
-    }
+    // Descuento adicional o ajuste de margen (%)
+    // NOTA: addDisc puede ser negativo cuando se vende más caro (menor descuento / mayor margen)
+    let addDisc = Number(p.lineDiscount ?? p.LineDiscount ?? 0);
+    if (isNaN(addDisc)) addDisc = 0;
 
     const grossLine = qty * listPrice;
     
@@ -36,6 +36,10 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.76, options
     let totalDisc;
     if (isLineFromSap && p.discountPercent !== undefined && p.discountPercent !== null) {
       totalDisc = Math.max(0, Math.min(100, Number(p.discountPercent)));
+      // Si en SAP el descuento total difiere del descuento base y no había addDisc registrado
+      if (addDisc === 0 && (sapDisc + promoDisc) > 0 && Math.abs(totalDisc - (sapDisc + promoDisc)) > 0.01) {
+        addDisc = Number((totalDisc - (sapDisc + promoDisc)).toFixed(2));
+      }
     } else {
       const rawTotalDisc = sapDisc + promoDisc + addDisc;
       const applicableCeiling = qty > 100 ? MAX_DISCOUNT_CEILING : STANDARD_DISCOUNT_CEILING;
@@ -43,6 +47,10 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.76, options
       if (rawTotalDisc > applicableCeiling + 0.01) {
         hasExceededDiscountCeiling = true;
       }
+    }
+
+    if (addDisc > 0) {
+      hasAdditionalDiscount = true;
     }
 
     const discountedUnitPrice = isLineFromSap && p.finalPrice
@@ -57,10 +65,15 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.76, options
     if (isVolumeLine) {
       hasVolumeDiscount = true;
     }
+    if (totalDisc > APPROVAL_DISCOUNT_THRESHOLD + 0.009) {
+      hasDiscountAboveThreshold = true;
+    }
 
     grossSubtotalUSD += grossLine;
     totalDiscountUSD += discAmount;
     netSubtotalUSD += netLine;
+
+    const requiresApproval = totalDisc > APPROVAL_DISCOUNT_THRESHOLD + 0.009 || isVolumeLine;
 
     return {
       ...p,
@@ -76,39 +89,50 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.76, options
       discountAmount: Number(discAmount.toFixed(2)),
       discountedUnitPrice: Number(discountedUnitPrice.toFixed(4)),
       lineTotal: Number(netLine.toFixed(2)),
-      requiresApproval: addDisc > 0 || isVolumeLine,
+      requiresApproval,
+      isHigherMargin: addDisc < 0,
       isVolumeDiscount: isVolumeLine,
       isExceedingCeiling: !isLineFromSap && (sapDisc + promoDisc + addDisc > (qty > 100 ? MAX_DISCOUNT_CEILING : STANDARD_DISCOUNT_CEILING) + 0.01),
     };
   });
   
-  const igvUSD = netSubtotalUSD * 0.18;
-  const grandTotalUSD = netSubtotalUSD + igvUSD;
+  // 1. Total General con IGV: suma matemática de las líneas (lineTotal) redondeadas a 2 decimales
+  const sumOfLineTotals = normalizedProducts.reduce((acc, it) => acc + (it.lineTotal || 0), 0);
+  const grandTotalUSD = Number((sumOfLineTotals > 0 ? sumOfLineTotals : netSubtotalUSD).toFixed(2));
 
-  const subtotalSOL = netSubtotalUSD * tc;
-  const igvSOL = igvUSD * tc;
-  const grandTotalSOL = grandTotalUSD * tc;
+  // 2. Base imponible neta (desagregando el 18% de IGV): Total / 1.18
+  const subtotalUSD = Number((grandTotalUSD / 1.18).toFixed(2));
+
+  // 3. IGV 18% desagregado exacto: Total - Base Imponible (garantiza coincidencia exacta al centavo)
+  const igvUSD = Number((grandTotalUSD - subtotalUSD).toFixed(2));
+
+  // 4. Valores equivalentes en Soles (PEN) con coherencia matemática exacta
+  const grandTotalSOL = Number((grandTotalUSD * tc).toFixed(2));
+  const subtotalSOL = Number((grandTotalSOL / 1.18).toFixed(2));
+  const igvSOL = Number((grandTotalSOL - subtotalSOL).toFixed(2));
   const discPct = grossSubtotalUSD > 0 ? (totalDiscountUSD / grossSubtotalUSD) * 100 : 0;
 
   return {
     normalizedProducts,
     grossSubtotalUSD: Number(grossSubtotalUSD.toFixed(2)),
     totalDiscountUSD: Number(totalDiscountUSD.toFixed(2)),
-    subtotalUSD: Number(netSubtotalUSD.toFixed(2)), // Subtotal neto afectado
-    netBaseUSD: Number(netSubtotalUSD.toFixed(2)),
-    igvUSD: Number(igvUSD.toFixed(2)),               // IGV 18% exacto sobre la base neta
-    grandTotalUSD: Number(grandTotalUSD.toFixed(2)), // Total general exacto (Subtotal + IGV)
-    subtotalSOL: Number(subtotalSOL.toFixed(2)),
-    igvSOL: Number(igvSOL.toFixed(2)),
-    grandTotalSOL: Number(grandTotalSOL.toFixed(2)),
+    subtotalUSD, // Subtotal neto afectado
+    netBaseUSD: subtotalUSD,
+    igvUSD,      // IGV 18% exacto sobre la base neta
+    grandTotalUSD, // Total general exacto (Subtotal + IGV)
+    subtotalSOL,
+    igvSOL,
+    grandTotalSOL,
     discPct: Number(discPct.toFixed(2)),
     tc,
     hasAdditionalDiscount,
     hasVolumeDiscount,
+    hasDiscountAboveThreshold,
     hasExceededDiscountCeiling,
-    requiresDiscountApproval: hasAdditionalDiscount || hasVolumeDiscount,
+    requiresDiscountApproval: hasVolumeDiscount || hasDiscountAboveThreshold,
     standardDiscountCeiling: STANDARD_DISCOUNT_CEILING,
     maxDiscountCeiling: MAX_DISCOUNT_CEILING,
+    approvalDiscountThreshold: APPROVAL_DISCOUNT_THRESHOLD,
   };
 }
 

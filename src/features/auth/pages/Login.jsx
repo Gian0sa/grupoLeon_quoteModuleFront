@@ -36,14 +36,8 @@ export function Login() {
 
   const [showPassword, setShowPassword] = useState(false);
   const [captchaToken, setCaptchaToken] = useState(null);
-  // Guarda el texto del error (o null). Antes era un booleano y siempre decía
-  // "verifica que no eres un robot", incluso cuando la causa era de red.
   const [captchaError, setCaptchaError] = useState(null);
-  // En local la clave está restringida al dominio de producción: Cloudflare
-  // devuelve 600010 y el widget queda en "Verificando..." reintentando sin fin.
-  // Con esto se oculta el recuadro roto en vez de dejarlo girando.
-  const [captchaUnavailable, setCaptchaUnavailable] = useState(false);
-  const [captchaKey, setCaptchaKey] = useState(0); // ✅ fix: key separada
+  const [captchaKey, setCaptchaKey] = useState(0);
 
   const toast = useToast();
   const siteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY;
@@ -164,10 +158,17 @@ export function Login() {
     });
   };
 
+  const resolveTargetRoute = () => {
+    const savedRoute = localStorage.getItem("lastRoute");
+    if (savedRoute && savedRoute !== "/" && savedRoute !== "/register") {
+      return savedRoute;
+    }
+    return "/dashboard";
+  };
+
   useEffect(() => {
     if (isAuthenticated) {
-      const savedRoute = localStorage.getItem("lastRoute");
-      const target = savedRoute && savedRoute !== "/" && savedRoute !== "/register" ? savedRoute : "/dashboard";
+      const target = resolveTargetRoute();
       navigate(target, { replace: true });
     }
   }, [isAuthenticated, navigate]);
@@ -181,7 +182,6 @@ export function Login() {
   }
 
   const resetCaptcha = () => {
-    if (import.meta.env.DEV && captchaUnavailable) return;
     setCaptchaKey((prev) => prev + 1);
     setCaptchaToken(null);
   };
@@ -195,9 +195,10 @@ export function Login() {
     login.mutate(
       { ...data, captchaToken },
       {
-        onSuccess: () => {
-          const savedRoute = localStorage.getItem("lastRoute");
-          const target = savedRoute && savedRoute !== "/" && savedRoute !== "/register" ? savedRoute : "/dashboard";
+        onSuccess: (res) => {
+          const endpoints = res?.endpoints || useAuthStore.getState().endpoints;
+          const username = res?.username || useAuthStore.getState().username;
+          const target = resolveTargetRoute(endpoints, username);
           navigate(target, { replace: true });
         },
         onError: (error) => {
@@ -341,27 +342,25 @@ export function Login() {
               </Link>
             </Flex>
 
-            <Center w="full" overflow="hidden" display={captchaUnavailable ? "none" : "flex"}>
+            {/* ========================================================================= */}
+            {/* ⚠️ CRÍTICO - NO TOCAR NI DESACTIVAR NUNCA: WIDGET DE CLOUDFLARE TURNSTILE */}
+            {/* Este componente DEBE PERMANECER SIEMPRE VISIBLE en pantalla.              */}
+            {/* NUNCA ponerle display="none", ni ocultarlo, ni desactivarlo bajo ninguna   */}
+            {/* circunstancia. Es el mecanismo de seguridad principal de la aplicación.   */}
+            {/* ========================================================================= */}
+            <Center w="full" overflow="hidden">
               <Turnstile
                 key={captchaKey}
                 siteKey={siteKey}
-                // Evita bucle infinito en navegadores con Prevención de Seguimiento (Edge / Brave / Safari)
                 options={{ retry: "never", refreshExpired: "auto" }}
                 onSuccess={(token) => {
                   setCaptchaToken(token);
                   setCaptchaError(null);
-                  setCaptchaUnavailable(false);
                 }}
                 onError={() => {
-                  if (import.meta.env.DEV) {
-                    setCaptchaToken("local-dev");
-                    setCaptchaError(null);
-                    setCaptchaUnavailable(true);
-                    return;
-                  }
                   setCaptchaToken(null);
                   setCaptchaError(
-                    "Tu navegador bloqueó el almacenamiento de seguridad (Prevención de seguimiento de Edge). Haz clic en el candado 🔒 o escudo 🛡️ en la barra de direcciones y desactiva la prevención de seguimiento o permite cookies para este sitio."
+                    "No se pudo completar la verificación de seguridad (Error de Cloudflare Turnstile). Si usas Edge, permite el almacenamiento o cookies para este sitio y reintenta."
                   );
                 }}
                 onExpire={() => {

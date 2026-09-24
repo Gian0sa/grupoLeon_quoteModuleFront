@@ -231,7 +231,7 @@ export function QuoteApprovalPage() {
   const activeCurrentUserId = authUserId || localStorage.getItem("userId");
 
   const { data: serverQuotes, isLoading: isServerLoading, refetch: refetchServerQuotes } = useGetQuotes({
-    limit: isAdminUser ? 30 : 10
+    limit: 50
   });
 
   const handleLoadQuote = (q) => {
@@ -1598,7 +1598,7 @@ export function QuoteApprovalPage() {
 
       // Filtro por pestaña operativa:
       if (selectedTab === "ALL") {
-        if (isDraft || isCancelled || isEmitted) return false;
+        if (isDraft || isCancelled) return false;
       } else if (selectedTab === "GENERADO") {
         if (!isDraft) return false;
       } else if (selectedTab === "ENVIADO") {
@@ -1699,7 +1699,7 @@ export function QuoteApprovalPage() {
         res.ANULADO++;
         res.RECHAZADO++;
       } else {
-        if (!isEmitted) res.ALL++;
+        res.ALL++;
         if (["ENVIADO", "EN_PROCESO", "PENDIENTE_APROBACION"].includes(st)) res.ENVIADO++;
         else if (["APROBADO_COMERCIAL", "APROBADO_CREDITOS"].includes(st)) res.APROBADO_COMERCIAL++;
         else if (["PENDIENTE_FACTURACION", "EN_FACTURACION"].includes(st)) res.PENDIENTE_FACTURACION++;
@@ -1815,7 +1815,7 @@ export function QuoteApprovalPage() {
         const s = Number(p.discount || p.sapDiscount || 0);
         const pr = Number(p.promoDiscount || 0);
         const a = Number(p.lineDiscount || 0);
-        return qty > 100 && (s + pr + a) > 50.01;
+        return qty > 100 && (s + pr + a) > 55.01;
       }))
     );
 
@@ -1837,7 +1837,7 @@ export function QuoteApprovalPage() {
           letterSpacing="wider"
           boxShadow="xs"
         >
-          🔥 Mayoreo (&gt;50% a 56%)
+          🔥 Mayoreo (&gt;55% a 65%)
         </Badge>
       </VStack>
     );
@@ -2454,6 +2454,24 @@ export function QuoteApprovalPage() {
                                 ⚡ DESCUENTO ADICIONAL APLICADO
                               </Badge>
                             )}
+
+                            {(q.hasDebt || q.hasOverdueDebt || q.totals?.hasDebt || q.totals?.hasOverdueDebt) && (
+                              <Badge
+                                colorScheme="red"
+                                variant="solid"
+                                bg="#dc2626"
+                                color="white"
+                                fontSize="9px"
+                                px={2}
+                                py={0.5}
+                                borderRadius="md"
+                                fontWeight="900"
+                                boxShadow="xs"
+                                title={q.debtSummary || q.totals?.debtSummary || "Cliente con deuda registrada"}
+                              >
+                                ⚠️ CLIENTE CON DEUDA {q.hasOverdueDebt || q.totals?.hasOverdueDebt ? "VENCIDA" : ""}
+                              </Badge>
+                            )}
                           </HStack>
                           <Text
                             fontWeight="900"
@@ -2594,6 +2612,23 @@ export function QuoteApprovalPage() {
                       {hasAdditionalDiscount && (
                         <Badge colorScheme="purple" variant="solid" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="900" boxShadow="xs">
                           ⚡ DESCUENTO ADICIONAL
+                        </Badge>
+                      )}
+                      {(q.hasDebt || q.hasOverdueDebt || q.totals?.hasDebt || q.totals?.hasOverdueDebt) && (
+                        <Badge
+                          colorScheme="red"
+                          variant="solid"
+                          bg="#dc2626"
+                          color="white"
+                          fontSize="9px"
+                          px={2}
+                          py={0.5}
+                          borderRadius="md"
+                          fontWeight="900"
+                          boxShadow="xs"
+                          title={q.debtSummary || q.totals?.debtSummary || "Cliente con deuda registrada"}
+                        >
+                          ⚠️ CLIENTE CON DEUDA {q.hasOverdueDebt || q.totals?.hasOverdueDebt ? "VENCIDA" : ""}
                         </Badge>
                       )}
                       {q.items?.some(i => i.stock === 0) && (

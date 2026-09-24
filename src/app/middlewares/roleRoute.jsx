@@ -1,20 +1,35 @@
 import { Navigate } from "react-router-dom";
 import { useAuthStore } from "../../features/auth/stores/useAuthStore";
-import { checkIsAdmin } from "../../shared/utils/permissions";
+import { useIsAdmin, useHasAccess } from "../../shared/utils/permissions";
 
-export const RoleRoute = ({ children, roles = [] }) => {
-  const { isAuthenticated, username, endpoints = [], role } = useAuthStore();
+export const RoleRoute = ({ children, requiredPermission = null, roles = [] }) => {
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const role = useAuthStore((state) => state.role);
+  const isAdmin = useIsAdmin();
+  const hasAccess = useHasAccess();
 
-  if (!isAuthenticated) return <Navigate to="/" />;
+  if (!isAuthenticated) {
+    return <Navigate to="/" replace />;
+  }
 
-  const roleUpper = String(role || "").toUpperCase();
-  const isAdmin =
-    roleUpper === "ADMIN" ||
-    roleUpper === "FACTURACION" ||
-    roleUpper === "SUPERVISOR" ||
-    checkIsAdmin(endpoints, username);
+  // Los administradores maestros tienen acceso total
+  if (isAdmin) {
+    return children;
+  }
 
-  if (isAdmin) return children;
+  // Si se especificó un permiso puntual (ej. "POST:/register")
+  if (requiredPermission && hasAccess(requiredPermission)) {
+    return children;
+  }
 
-  return children;
+  // Si se especificaron roles permitidos
+  if (roles.length > 0) {
+    const roleUpper = String(role || "").toUpperCase();
+    const hasRole = roles.map((r) => r.toUpperCase()).includes(roleUpper);
+    if (hasRole) {
+      return children;
+    }
+  }
+
+  return <Navigate to="/dashboard" replace />;
 };

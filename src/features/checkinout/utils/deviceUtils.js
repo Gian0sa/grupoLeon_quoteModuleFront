@@ -1,4 +1,4 @@
-export const compressImage = (file, maxSizeMB = 1) => {
+export const compressImage = (file, maxSizeMB = 0.35) => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.readAsDataURL(file);
@@ -10,9 +10,9 @@ export const compressImage = (file, maxSizeMB = 1) => {
                 let width = img.width;
                 let height = img.height;
 
-                // Reducir dimensiones si es muy grande
-                const MAX_WIDTH = 1920;
-                const MAX_HEIGHT = 1920;
+                // Dimensiones optimizadas para pantallas móviles y auditoría nítida (ultra liviano en RAM y KB)
+                const MAX_WIDTH = 1200;
+                const MAX_HEIGHT = 1200;
 
                 if (width > height) {
                     if (width > MAX_WIDTH) {
@@ -25,23 +25,21 @@ export const compressImage = (file, maxSizeMB = 1) => {
                         height = MAX_HEIGHT;
                     }
                 }
-                canvas.width = width;
-                canvas.height = height;
+                canvas.width = Math.round(width);
+                canvas.height = Math.round(height);
 
                 const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, width, height);
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-                // Comprimir con calidad variable hasta lograr el tamaño deseado
-                let quality = 0.8;
+                // Comprimir progresivamente con calidad balanceada (150KB - 300KB)
+                let quality = 0.75;
                 const compress = () => {
                     canvas.toBlob((blob) => {
                         if (blob) {
-                            const sizeMB = blob.size / 1024 / 1024;
-                            console.log(`Imagen comprimida: ${
-                                sizeMB.toFixed(2)
-                            }MB con calidad ${quality}`);
+                            const sizeKB = Math.round(blob.size / 1024);
+                            console.log(`🖼️ Imagen comprimida: ${sizeKB} KB (calidad ${quality.toFixed(2)})`);
 
-                            if (sizeMB > maxSizeMB && quality > 0.1) {
+                            if (sizeKB > (maxSizeMB * 1024) && quality > 0.3) {
                                 quality -= 0.1;
                                 compress();
                             } else {

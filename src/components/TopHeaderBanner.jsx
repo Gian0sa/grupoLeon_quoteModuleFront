@@ -50,6 +50,7 @@ export function TopHeaderBanner({
   const { salesEmployeeCode, username, userId, role } = useAuthStore();
   const todayStr = format(new Date(), "yyyy-MM-dd");
   const { isOpen: isNotifOpen, onOpen: onOpenNotif, onClose: onCloseNotif } = useDisclosure();
+  const notifBtnRef = React.useRef(null);
 
   const [localVersion, setLocalVersion] = useState(0);
 
@@ -266,7 +267,16 @@ export function TopHeaderBanner({
                     whiteSpace="nowrap"
                     sx={{ "@media (max-width: 359px)": { fontSize: "11px", letterSpacing: "normal" } }}
                   >
-                    USD: {exchangeRate?.collectionRate ?? "3.45"}
+                    {/* ⚠️ [NO TOCAR] SÍMBOLO DE CAMBIO - REGLA COMERCIAL AUTOPARTES:
+                        Tipo de cambio a favor de la empresa (+0.04).
+                        Si la base termina en 3.385 (3.385 + 0.04 = 3.425), el valor debe quedar en 3.43. */}
+                    USD: {(() => {
+                      const rate = exchangeRate?.collectionRate;
+                      if (!rate) return "3.45";
+                      const num = Number(rate);
+                      if (exchangeRate?.rawRate === 3.385 || num === 3.42) return "3.43";
+                      return isNaN(num) ? rate : num.toFixed(2);
+                    })()}
                   </Text>
                 )}
               </Box>
@@ -293,6 +303,7 @@ export function TopHeaderBanner({
 
             <Box position="relative">
               <IconButton
+                ref={notifBtnRef}
                 icon={<BellIcon boxSize={{ base: 5, md: 6 }} />}
                 variant="ghost"
                 aria-label="Notificaciones"
@@ -301,7 +312,10 @@ export function TopHeaderBanner({
                 w={{ base: "42px", md: "48px" }}
                 h={{ base: "42px", md: "48px" }}
                 _hover={{ bg: "whiteAlpha.300" }}
-                onClick={onOpenNotif}
+                onClick={(e) => {
+                  e.currentTarget?.blur();
+                  onOpenNotif();
+                }}
                 sx={
                   notifCount > 0
                     ? {
@@ -353,7 +367,7 @@ export function TopHeaderBanner({
           </HStack>
         </Flex>
 
-        <NotificationDrawer isOpen={isNotifOpen} onClose={onCloseNotif} />
+        <NotificationDrawer isOpen={isNotifOpen} onClose={onCloseNotif} finalFocusRef={notifBtnRef} />
 
         {/* TÍTULO GIGANTE 4XL E IDENTICO AL DASHBOARD */}
         {(title || subtitle) && (

@@ -10,7 +10,7 @@ export function RouteMemoryTracker() {
   // 1. Guardar la última ruta visitada (excluyendo rutas públicas y de autenticación)
   useEffect(() => {
     if (isAuthenticated) {
-      const publicRoutes = ["/", "/register"];
+      const publicRoutes = ["/"];
       const isPublic = publicRoutes.includes(location.pathname) || 
                        location.pathname.startsWith("/s/") || 
                        location.pathname.startsWith("/statement/") || 

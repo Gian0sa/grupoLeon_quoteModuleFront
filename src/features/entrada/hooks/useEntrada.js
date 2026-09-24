@@ -36,8 +36,8 @@ export const useEntrada = () => {
 
     setIsProcessingImage(true);
     try {
-      // Comprimir la imagen a máximo 1MB
-      const compressedFile = await compressImage(file, 1);
+      // Comprimir la imagen a máximo ~350KB (rango KBs liviano)
+      const compressedFile = await compressImage(file, 0.35);
       setImage(compressedFile);
 
       const reader = new FileReader();

@@ -33,7 +33,7 @@ export const normalizeQuoteItem = (item) => {
   const price = rawPrice > 0 ? rawPrice : 25.0;
   const discount = Number(item.discount ?? item.Discount ?? item.sapDiscount ?? 0);
   const lineDiscount = Number(item.lineDiscount ?? item.LineDiscount ?? 0);
-  const totalDisc = Math.min(55, Number((discount + lineDiscount).toFixed(2)));
+  const totalDisc = Math.max(0, Math.min(56, Number((discount + lineDiscount).toFixed(2))));
   const discountedUnitPrice = Number((price * (1 - totalDisc / 100)).toFixed(4));
 
   // Permitir temporalmente string vacío al tipear para que el usuario pueda borrar y cambiar la cantidad libremente
@@ -184,7 +184,7 @@ const initialQuoteState = {
   salesPersonCode: null,
   salesEmployeeCode: null,
   paymentMethod: "DEPOSITO_BANCARIO",
-  bankAccount: "BCP_SOLES",
+  bankAccount: "191-0104153-0-50",
   sunatOpType: "0101",
   historyLog: [],
 };
@@ -436,13 +436,18 @@ export const useQuoteStore = create((set, get) => {
         quoteData.condicionPago
       ) || (quoteData.paymentType?.isCredit ? "CREDITO" : "");
 
+      const isClientJuridica = Boolean(
+        client?.documentNumber?.startsWith("20") ||
+        /\b(S\.?A\.?C\.?|S\.?R\.?L\.?|E\.?I\.?R\.?L\.?|S\.?A\.?|S\.?A\.?A\.?|SOCIEDAD|CONSORCIO|EMPRESA|CORPORACION|DISTRIBUIDORA)\b/i.test(client?.cardName || "")
+      );
+
       const documentTypeVal = firstMeaningfulValue(
         quoteData.documentType,
         quoteData.totals?.documentType,
         quoteData.U_VS_COMPROBANTE,
         quoteData.tipoComprobante,
         quoteData.docTypeVenta
-      ) || "";
+      ) || (isClientJuridica || client?.documentNumber?.length === 11 ? "FACTURA" : "BOLETA");
 
       const isLetraVal = Boolean(quoteData.isLetra || quoteData.totals?.isLetra || quoteData.hasLetra || quoteData.letra || quoteData.U_VS_LETRA === "S");
       const creditTermVal = firstMeaningfulValue(
@@ -458,10 +463,11 @@ export const useQuoteStore = create((set, get) => {
         try { deliveryFormVal = JSON.parse(deliveryFormVal); } catch (e) {}
       }
 
-      let transportVal = quoteData.selectedTransport || quoteData.transport || quoteData.TransportationCode || quoteData.totals?.selectedTransport || quoteData.totals?.transport || "";
+      let transportVal = quoteData.selectedTransport || quoteData.transport || quoteData.U_TQC_TRANSPOR || quoteData.totals?.selectedTransport || quoteData.totals?.transport || "";
       if (typeof transportVal === "string" && transportVal.trim().startsWith("{")) {
         try { transportVal = JSON.parse(transportVal); } catch (e) {}
       }
+      const transportDirectionVal = quoteData.transportDirection || quoteData.totals?.transportDirection || (typeof transportVal === "object" ? transportVal?.U_TQC_DIREC : null) || null;
 
       let pointVal = quoteData.selectedPoint || quoteData.deliveryPoint || quoteData.ShipToCode || quoteData.totals?.selectedPoint || quoteData.totals?.deliveryPoint || null;
       if (typeof pointVal === "string" && pointVal.trim().startsWith("{")) {
@@ -488,6 +494,7 @@ export const useQuoteStore = create((set, get) => {
         opNum: quoteData.opNum || quoteData.U_VS_OPNUM || quoteData.totals?.opNum || quoteData.totals?.U_VS_OPNUM || null,
         selectedPoint: pointVal,
         selectedTransport: transportVal,
+        transportDirection: transportDirectionVal,
         selectedDeliveryForm: deliveryFormVal,
         selectedPaymentType: paymentTypeVal,
         paymentImg: quoteData.paymentImg || null,

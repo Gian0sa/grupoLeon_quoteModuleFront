@@ -10,23 +10,25 @@ import {
   Flex,
   Text,
   Button,
+  IconButton,
   Grid,
+  GridItem,
   Input,
   Badge,
   VStack,
   HStack,
-  Alert,
-  AlertIcon,
 } from "@chakra-ui/react";
-import { Sparkles, ShieldAlert, AlertTriangle, Check, Flame } from "lucide-react";
+import { Sparkles, ShieldAlert, AlertTriangle, Check, Flame, Plus, Minus } from "lucide-react";
 
-export const STANDARD_DISCOUNT_CEILING = 50.0; // Tope estándar ordinario (50.0%)
-export const MAX_DISCOUNT_CEILING = 56.0;      // Tope máximo absoluto por volumen / mayoreo (56.0%)
-export const VOLUME_MIN_QUANTITY = 100;        // Cantidad mínima estricta para mayoreo (>100 uds)
+export const APPROVAL_DISCOUNT_THRESHOLD = 50.0; // Umbral de activación de aprobación comercial (50.0%)
+export const STANDARD_DISCOUNT_CEILING = 55.0;   // Tope comercial estándar ordinario (55.0%)
+export const MAX_DISCOUNT_CEILING = 65.0;        // Tope máximo absoluto por volumen / mayoreo (65.0%)
+export const VOLUME_MIN_QUANTITY = 100;          // Cantidad mínima estricta para mayoreo (>100 uds)
 
 export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount }) {
   const [currentDisc, setCurrentDisc] = useState(0);
   const [priceInputStr, setPriceInputStr] = useState("0.00");
+  const [selectedQuickOption, setSelectedQuickOption] = useState(null); // null | "normal" | "bajar" | "mayoreo"
 
   const basePrice = Number(item?.price || item?.unitPrice || 0);
   const sapDisc = Number(item?.discount || item?.sapDiscount || 0);
@@ -35,42 +37,80 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
   const qty = Number(item?.quantity || item?.Quantity || 1);
 
   // REGLA ESTRICTA DE NEGOCIO:
-  // El modo mayoreo (>50% a 56%) SOLO está disponible si la cantidad de productos es MAYOR a 100 (>100 uds)
+  // El modo mayoreo (>55% hasta 65%) SOLO está disponible si la cantidad de productos es MAYOR a 100 (>100 uds)
   const isEligibleForVolume = qty > VOLUME_MIN_QUANTITY;
   const applicableCeiling = isEligibleForVolume ? MAX_DISCOUNT_CEILING : STANDARD_DISCOUNT_CEILING;
 
   // Precio estándar con descuento base (SAP + Promo)
   const priceWithBase = Number((basePrice * (1 - baseFixedDisc / 100)).toFixed(2));
 
-  // Precios límite
-  const priceAtStandard50 = Number((basePrice * (1 - STANDARD_DISCOUNT_CEILING / 100)).toFixed(2));
-  const priceAtVolume56 = Number((basePrice * (1 - MAX_DISCOUNT_CEILING / 100)).toFixed(2));
-  const priceFloor = isEligibleForVolume ? priceAtVolume56 : priceAtStandard50;
+  // Precios límite oficiales
+  // Tope Superior: Precio de Lista Oficial de SAP (0% descuento / Máximo margen de venta)
+  const priceCeiling = basePrice;
+  // Tope Inferior: 55% comercial ordinario o 65% mayoreo (>100 uds)
+  const priceAtStandard55 = Number((basePrice * (1 - STANDARD_DISCOUNT_CEILING / 100)).toFixed(2));
+  const priceAtVolume65 = Number((basePrice * (1 - MAX_DISCOUNT_CEILING / 100)).toFixed(2));
+  const priceFloor = isEligibleForVolume ? priceAtVolume65 : priceAtStandard55;
 
-  // Descuento adicional máximo permitido según si califica a mayoreo (>100 uds) o no
+  // Límites de ajuste de descuento:
+  // Máximo descuento adicional hacia abajo (piso de precio)
   const maxAllowedAddDisc = Math.max(0, Number((applicableCeiling - baseFixedDisc).toFixed(2)));
+  const minAllowedAddDisc = Number((-baseFixedDisc).toFixed(2));
   const standardAddDisc = Math.max(0, Number((STANDARD_DISCOUNT_CEILING - baseFixedDisc).toFixed(2)));
+  const priceAtPlus5 = Number((basePrice * (1 - Math.min(applicableCeiling, baseFixedDisc + 5) / 100)).toFixed(2));
 
   useEffect(() => {
     if (item && isOpen) {
-      const existingAddDisc = Math.min(maxAllowedAddDisc, Math.max(0, Number(item.lineDiscount || 0)));
+      const existingAddDisc = Math.min(maxAllowedAddDisc, Math.max(minAllowedAddDisc, Number(item.lineDiscount || 0)));
       setCurrentDisc(existingAddDisc);
       const effectivePrice = basePrice * (1 - (baseFixedDisc + existingAddDisc) / 100);
       setPriceInputStr(effectivePrice.toFixed(2));
+      setSelectedQuickOption(null); // Al entrar, ninguno marcado por defecto
     }
-  }, [item, isOpen, basePrice, baseFixedDisc, maxAllowedAddDisc]);
+  }, [item, isOpen, basePrice, baseFixedDisc, maxAllowedAddDisc, minAllowedAddDisc]);
 
   if (!item) return null;
 
   // Cálculos en tiempo real
   const rawTotalDisc = baseFixedDisc + currentDisc;
-  const effectiveTotalDiscPct = Number(rawTotalDisc.toFixed(2));
-  const finalUnitPrice = basePrice * (1 - rawTotalDisc / 100);
+  const effectiveTotalDiscPct = Number(Math.max(0, Math.min(applicableCeiling, rawTotalDisc)).toFixed(2));
+  const finalUnitPrice = basePrice * (1 - effectiveTotalDiscPct / 100);
   const finalLineTotal = finalUnitPrice * qty;
 
-  const isExceedingCeiling = effectiveTotalDiscPct > applicableCeiling + 0.01;
+  const isExceedingCeiling = rawTotalDisc > applicableCeiling + 0.01;
   const isVolumeDiscount = isEligibleForVolume && effectiveTotalDiscPct > STANDARD_DISCOUNT_CEILING + 0.01;
-  const requiresApproval = currentDisc > 0 || isVolumeDiscount;
+  const isDiscountAboveThreshold = effectiveTotalDiscPct > APPROVAL_DISCOUNT_THRESHOLD + 0.009;
+  const isPriceDiscounted = finalUnitPrice < priceWithBase - 0.009;
+  const isPriceHigher = finalUnitPrice > priceWithBase + 0.009;
+  const isHigherMargin = isPriceHigher;
+  // Solo requiere aprobación si supera estrictamente el 50% de descuento o si es mayoreo (>55% a 65%)
+  const requiresApproval = isDiscountAboveThreshold || isVolumeDiscount;
+
+  // Visibilidad interactiva de botones según modo seleccionado:
+  // 1. Al entrar (ninguno marcado): NO salen los botones para evitar confusión
+  // 2. Si toca "Normal": sale el botón de SUBIR [+] a la derecha
+  // 3. Si toca "Bajar": ya resta (-5%) y sale el botón de BAJAR [-] a la izquierda
+  const showMinusButton =
+    selectedQuickOption === null
+      ? false
+      : selectedQuickOption === "normal"
+      ? finalUnitPrice > priceWithBase + 0.009
+      : selectedQuickOption === "bajar"
+      ? true
+      : selectedQuickOption === "mayoreo"
+      ? finalUnitPrice > priceFloor + 0.009
+      : false;
+
+  const showPlusButton =
+    selectedQuickOption === null
+      ? false
+      : selectedQuickOption === "normal"
+      ? true
+      : selectedQuickOption === "bajar"
+      ? finalUnitPrice < priceWithBase - 0.009
+      : selectedQuickOption === "mayoreo"
+      ? true
+      : false;
 
   // Al escribir en el input de precio final deseado
   const handlePriceInputChange = (e) => {
@@ -87,15 +127,16 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
     const valNum = parseFloat(valStr);
     if (isNaN(valNum)) return;
 
-    if (valNum >= priceWithBase) {
-      setCurrentDisc(0);
+    // Si supera el precio de lista de SAP (tope superior de precio)
+    if (valNum >= priceCeiling) {
+      setCurrentDisc(minAllowedAddDisc);
       return;
     }
 
     if (basePrice > 0) {
       const calculatedTotalDisc = ((basePrice - valNum) / basePrice) * 100;
       const rawAddDisc = calculatedTotalDisc - baseFixedDisc;
-      const clampedAddDisc = Math.max(0, Math.min(maxAllowedAddDisc, Number(rawAddDisc.toFixed(2))));
+      const clampedAddDisc = Math.max(minAllowedAddDisc, Math.min(maxAllowedAddDisc, Number(rawAddDisc.toFixed(2))));
       setCurrentDisc(clampedAddDisc);
     }
   };
@@ -123,29 +164,81 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
       return;
     }
 
-    // Si es mayor al precio estándar con base
-    if (valNum > priceWithBase) {
-      valNum = priceWithBase;
-      setCurrentDisc(0);
-      setPriceInputStr(priceWithBase.toFixed(2));
+    // Si supera el precio de lista oficial de SAP (tope superior)
+    if (valNum > priceCeiling) {
+      valNum = priceCeiling;
+      setCurrentDisc(minAllowedAddDisc);
+      setPriceInputStr(priceCeiling.toFixed(2));
       return;
     }
 
     setPriceInputStr(valNum.toFixed(2));
+    if (valNum > priceWithBase + 0.009) {
+      setSelectedQuickOption("normal");
+    } else if (valNum < priceWithBase - 0.009) {
+      setSelectedQuickOption("bajar");
+    }
+
     if (basePrice > 0) {
       const calculatedTotalDisc = ((basePrice - valNum) / basePrice) * 100;
       const rawAddDisc = calculatedTotalDisc - baseFixedDisc;
-      const clampedAddDisc = Math.max(0, Math.min(maxAllowedAddDisc, Number(rawAddDisc.toFixed(2))));
+      const clampedAddDisc = Math.max(minAllowedAddDisc, Math.min(maxAllowedAddDisc, Number(rawAddDisc.toFixed(2))));
       setCurrentDisc(clampedAddDisc);
     }
   };
 
   // Botones de ajuste rápido
-  const handleQuickSelect = (addDiscVal) => {
-    const valid = Math.max(0, Math.min(maxAllowedAddDisc, Number(addDiscVal || 0)));
-    setCurrentDisc(valid);
-    const targetPrice = basePrice * (1 - (baseFixedDisc + valid) / 100);
-    setPriceInputStr(targetPrice.toFixed(2));
+  const handleQuickSelect = (type) => {
+    if (type === "normal") {
+      setSelectedQuickOption("normal");
+      setCurrentDisc(0);
+      setPriceInputStr(priceWithBase.toFixed(2));
+    } else if (type === "bajar") {
+      setSelectedQuickOption("bajar");
+      // No bajamos automáticamente al 5%, abrimos la casilla de bajar para que ellos mismos bajen con [-]
+      if (parseFloat(priceInputStr) > priceWithBase) {
+        setCurrentDisc(0);
+        setPriceInputStr(priceWithBase.toFixed(2));
+      }
+    } else if (type === "mayoreo") {
+      setSelectedQuickOption("mayoreo");
+      setCurrentDisc(maxAllowedAddDisc);
+      const targetPrice = basePrice * (1 - (baseFixedDisc + maxAllowedAddDisc) / 100);
+      setPriceInputStr(targetPrice.toFixed(2));
+    }
+  };
+
+  // Ajuste interactivo con botones [-] Bajar y [+] Subir ($0.05 por toque)
+  const handleStepDown = () => {
+    const currentVal = parseFloat(priceInputStr) || priceWithBase;
+    const minFloor = selectedQuickOption === "normal" ? priceWithBase : priceFloor;
+    const nextVal = Math.max(minFloor, Number((currentVal - 0.05).toFixed(2)));
+    setPriceInputStr(nextVal.toFixed(2));
+    if (selectedQuickOption === null) {
+      setSelectedQuickOption("bajar");
+    }
+    if (basePrice > 0) {
+      const calculatedTotalDisc = ((basePrice - nextVal) / basePrice) * 100;
+      const rawAddDisc = calculatedTotalDisc - baseFixedDisc;
+      const clampedAddDisc = Math.max(minAllowedAddDisc, Math.min(maxAllowedAddDisc, Number(rawAddDisc.toFixed(2))));
+      setCurrentDisc(clampedAddDisc);
+    }
+  };
+
+  const handleStepUp = () => {
+    const currentVal = parseFloat(priceInputStr) || priceWithBase;
+    const maxCeiling = selectedQuickOption === "bajar" ? priceWithBase : priceCeiling;
+    const nextVal = Math.min(maxCeiling, Number((currentVal + 0.05).toFixed(2)));
+    setPriceInputStr(nextVal.toFixed(2));
+    if (selectedQuickOption === null) {
+      setSelectedQuickOption("normal");
+    }
+    if (basePrice > 0) {
+      const calculatedTotalDisc = ((basePrice - nextVal) / basePrice) * 100;
+      const rawAddDisc = calculatedTotalDisc - baseFixedDisc;
+      const clampedAddDisc = Math.max(minAllowedAddDisc, Math.min(maxAllowedAddDisc, Number(rawAddDisc.toFixed(2))));
+      setCurrentDisc(clampedAddDisc);
+    }
   };
 
   const handleConfirm = () => {
@@ -157,377 +250,575 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} isCentered size={{ base: "full", sm: "md" }} motionPreset="slideInBottom">
-      <ModalOverlay bg="blackAlpha.600" />
-      <ModalContent borderRadius={{ base: "2xl", sm: "2xl" }} mx={{ base: 2, sm: 4 }} overflow="hidden" border="1px solid" borderColor="gray.200">
-        <ModalHeader bg="#0f2e22" color="white" py={3.5} px={4}>
+    <Modal isOpen={isOpen} onClose={onClose} isCentered motionPreset="slideInBottom">
+      <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(3px)" />
+      <ModalContent
+        borderRadius="2xl"
+        mx={{ base: 3, sm: "auto" }}
+        maxW={{ base: "calc(100vw - 24px)", sm: "440px" }}
+        my="auto"
+        overflow="hidden"
+        border="1px solid"
+        borderColor="slate.200"
+        boxShadow="2xl"
+        bg="white"
+      >
+        <ModalHeader bg="#126C36" color="white" py={3.5} px={4}>
           <Flex align="center" justify="space-between">
             <HStack spacing={2.5}>
-              <Flex w="32px" h="32px" borderRadius="xl" bg={isVolumeDiscount ? "orange.500" : "emerald.500"} align="center" justify="center" color="white">
-                {isVolumeDiscount ? <Flame className="w-4 h-4 text-white" /> : <Sparkles className="w-4 h-4" />}
+              <Flex
+                w="32px"
+                h="32px"
+                borderRadius="lg"
+                bg="whiteAlpha.200"
+                border="1px solid"
+                borderColor="whiteAlpha.300"
+                align="center"
+                justify="center"
+                color={isVolumeDiscount ? "orange.300" : "emerald.200"}
+              >
+                {isVolumeDiscount ? <Flame size={16} /> : <Sparkles size={16} />}
               </Flex>
               <Box>
-                <Text fontSize="sm" fontWeight="900" lineHeight="1.2">
-                  Ajuste de Precio Final ({isVolumeDiscount ? "Mayoreo hasta 56%" : "Estándar 50%"})
+                <Text fontSize="sm" fontWeight="800" lineHeight="1.2" color="white">
+                  Ajuste de Precio {isVolumeDiscount ? "• Mayoreo" : ""}
                 </Text>
-                <Text fontSize="10px" color="emerald.300" fontWeight="600" noOfLines={1}>
+                <Text fontSize="10.5px" color="emerald.100" fontWeight="500" noOfLines={1} opacity={0.9}>
                   {item.code || item.productCode || item.itemCode} {item.name || item.description}
                 </Text>
               </Box>
             </HStack>
-            <ModalCloseButton color="white" position="static" />
+            <ModalCloseButton
+              color="whiteAlpha.800"
+              _hover={{ bg: "whiteAlpha.200", color: "white" }}
+              position="static"
+              borderRadius="lg"
+            />
           </Flex>
         </ModalHeader>
 
-        <ModalBody p={4} bg="slate.50">
-          <VStack align="stretch" spacing={3.5}>
-            {/* Tarjeta de Información de Precios y Descuentos */}
-            <Box bg="white" p={3} borderRadius="xl" border="1px solid" borderColor="gray.200" boxShadow="xs">
-              <Grid templateColumns={promoDisc > 0 ? "repeat(5, 1fr)" : "repeat(4, 1fr)"} gap={1} textAlign="center" fontSize="xs">
-                <Box>
-                  <Text fontSize="9px" fontWeight="700" color="gray.500" textTransform="uppercase">P. Lista</Text>
-                  <Text fontWeight="800" color="gray.800">${basePrice.toFixed(2)}</Text>
-                </Box>
-                <Box borderLeft="1px solid" borderColor="gray.200">
-                  <Text fontSize="9px" fontWeight="700" color="gray.500" textTransform="uppercase">Desc. SAP</Text>
-                  <Badge colorScheme="green" fontSize="10px" px={1.5}>{sapDisc}%</Badge>
-                </Box>
-                {promoDisc > 0 && (
-                  <Box borderLeft="1px solid" borderColor="gray.200">
-                    <Text fontSize="9px" fontWeight="700" color="gray.500" textTransform="uppercase">Promo Mes</Text>
-                    <Badge colorScheme="yellow" bg="amber.100" color="amber.900" fontSize="10px" px={1.5}>
-                      +{promoDisc}%
+        <ModalBody p={4} bg="#f8fafc">
+          <VStack align="stretch" spacing={3}>
+            {/* Tarjeta Ejecutiva Unificada de Precios */}
+            <Box bg="white" p={3.5} borderRadius="xl" border="1px solid" borderColor="#e2e8f0" boxShadow="xs">
+              <Flex justify="space-between" align="center">
+                <VStack align="flex-start" spacing={0.5}>
+                  <HStack spacing={1.5} wrap="wrap">
+                    <Text fontSize="10px" fontWeight="700" color="slate.400" textTransform="uppercase" letterSpacing="wider">
+                      Precio Normal Sugerido
+                    </Text>
+                    <Badge colorScheme="emerald" bg="#ecfdf5" color="#047857" border="1px solid" borderColor="#a7f3d0" fontSize="10px" fontWeight="700" px={1.5} py={0.2} borderRadius="md">
+                      {baseFixedDisc}% Descuento
                     </Badge>
-                  </Box>
+                  </HStack>
+                  <HStack spacing={1.5} align="baseline">
+                    <Text fontSize="2xl" fontWeight="900" color="#064e3b" fontFamily="mono" lineHeight="1.1">
+                      ${priceWithBase.toFixed(2)}
+                    </Text>
+                    <Text fontSize="xs" fontWeight="700" color="slate.400">
+                      USD
+                    </Text>
+                  </HStack>
+                </VStack>
+
+                <VStack align="flex-end" spacing={0.5} borderLeft="1px solid" borderColor="#f1f5f9" pl={3.5}>
+                  <Text fontSize="10px" fontWeight="700" color="slate.400" textTransform="uppercase" letterSpacing="wider">
+                    P. Catálogo
+                  </Text>
+                  <Text fontSize="sm" fontWeight="800" color="slate.600" fontFamily="mono">
+                    ${basePrice.toFixed(2)} USD
+                  </Text>
+                </VStack>
+              </Flex>
+            </Box>
+
+            {/* Precios Rápidos: Botones Elegantes */}
+            <Box>
+              <Flex justify="space-between" align="center" mb={1.5}>
+                <Text fontSize="10.5px" fontWeight="700" color="slate.500" textTransform="uppercase" letterSpacing="wider">
+                  Precios Rápidos
+                </Text>
+                <Text fontSize="10.5px" color="slate.400" fontWeight="600">
+                  Tope: <strong>{applicableCeiling}%</strong>
+                </Text>
+              </Flex>
+
+              <Grid templateColumns={isEligibleForVolume ? "repeat(3, 1fr)" : "repeat(2, 1fr)"} gap={2}>
+                <Button
+                  size="sm"
+                  h="42px"
+                  variant="unstyled"
+                  display="flex"
+                  alignItems="center"
+                  justifyContent="space-between"
+                  px={3}
+                  borderRadius="xl"
+                  border="1.5px solid"
+                  borderColor={selectedQuickOption === "normal" ? "#059669" : "#e2e8f0"}
+                  bg={selectedQuickOption === "normal" ? "#ecfdf5" : "white"}
+                  color={selectedQuickOption === "normal" ? "#064e3b" : "slate.700"}
+                  _hover={{
+                    borderColor: selectedQuickOption === "normal" ? "#059669" : "#cbd5e1",
+                    bg: selectedQuickOption === "normal" ? "#d1fae5" : "#f8fafc",
+                  }}
+                  _active={{ transform: "scale(0.98)" }}
+                  onClick={() => handleQuickSelect("normal")}
+                  transition="all 0.15s ease"
+                >
+                  <Text fontSize="xs" fontWeight="700">
+                    Normal
+                  </Text>
+                  <Badge
+                    fontSize="11px"
+                    fontWeight="800"
+                    px={1.5}
+                    py={0.5}
+                    borderRadius="md"
+                    bg={selectedQuickOption === "normal" ? "#d1fae5" : "#f1f5f9"}
+                    color={selectedQuickOption === "normal" ? "#047857" : "slate.600"}
+                  >
+                    ${priceWithBase.toFixed(2)}
+                  </Badge>
+                </Button>
+
+                <Button
+                  size="sm"
+                  h="42px"
+                  variant="unstyled"
+                  display="flex"
+                  alignItems="center"
+                  justifyContent="space-between"
+                  px={3}
+                  borderRadius="xl"
+                  border="1.5px solid"
+                  borderColor={selectedQuickOption === "bajar" ? "#f43f5e" : "#e2e8f0"}
+                  bg={selectedQuickOption === "bajar" ? "#fff1f2" : "white"}
+                  color={selectedQuickOption === "bajar" ? "#9f1239" : "slate.700"}
+                  _hover={{
+                    borderColor: selectedQuickOption === "bajar" ? "#f43f5e" : "#fca5a5",
+                    bg: selectedQuickOption === "bajar" ? "#ffe4e6" : "#fff1f2",
+                  }}
+                  _active={{ transform: "scale(0.98)" }}
+                  onClick={() => handleQuickSelect("bajar")}
+                  transition="all 0.15s ease"
+                >
+                  <Text fontSize="xs" fontWeight="700">
+                    Bajar
+                  </Text>
+                  <Badge
+                    fontSize="11px"
+                    fontWeight="800"
+                    px={1.5}
+                    py={0.5}
+                    borderRadius="md"
+                    bg={selectedQuickOption === "bajar" ? "#ffe4e6" : "#f1f5f9"}
+                    color={selectedQuickOption === "bajar" ? "#be123c" : "slate.600"}
+                  >
+                    {isPriceDiscounted ? `$${finalUnitPrice.toFixed(2)}` : `Mín. $${priceFloor.toFixed(2)}`}
+                  </Badge>
+                </Button>
+
+                {isEligibleForVolume && (
+                  <Button
+                    size="sm"
+                    h="42px"
+                    variant="unstyled"
+                    display="flex"
+                    alignItems="center"
+                    justifyContent="space-between"
+                    px={3}
+                    borderRadius="xl"
+                    border="1.5px solid"
+                    borderColor={selectedQuickOption === "mayoreo" ? "#d97706" : "#e2e8f0"}
+                    bg={selectedQuickOption === "mayoreo" ? "#fffbeb" : "white"}
+                    color={selectedQuickOption === "mayoreo" ? "#92400e" : "slate.700"}
+                    _hover={{ borderColor: "#d97706", bg: "#fef3c7" }}
+                    _active={{ transform: "scale(0.98)" }}
+                    onClick={() => handleQuickSelect("mayoreo")}
+                    transition="all 0.15s ease"
+                  >
+                    <Text fontSize="xs" fontWeight="700">
+                      Mayoreo
+                    </Text>
+                    <Badge
+                      fontSize="11px"
+                      fontWeight="800"
+                      px={1.5}
+                      py={0.5}
+                      borderRadius="md"
+                      bg={selectedQuickOption === "mayoreo" ? "#fde68a" : "#f1f5f9"}
+                      color={selectedQuickOption === "mayoreo" ? "#78350f" : "slate.600"}
+                    >
+                      ${priceAtVolume65.toFixed(2)}
+                    </Badge>
+                  </Button>
                 )}
-                <Box borderLeft="1px solid" borderColor="gray.200">
-                  <Text fontSize="9px" fontWeight="700" color="gray.500" textTransform="uppercase">Desc. Adic.</Text>
-                  <Badge colorScheme={currentDisc > 0 ? "purple" : "gray"} fontSize="10px" px={1.5}>
-                    +{currentDisc}%
-                  </Badge>
-                </Box>
-                <Box borderLeft="1px solid" borderColor="gray.200">
-                  <Text fontSize="9px" fontWeight="700" color="gray.500" textTransform="uppercase">Desc. Total</Text>
-                  <Badge colorScheme={isVolumeDiscount ? "orange" : "blue"} fontSize="10px" px={1.5} fontWeight="900">
-                    {effectiveTotalDiscPct}%
-                  </Badge>
-                </Box>
               </Grid>
             </Box>
 
-            {/* Accesos Rápidos Estratégicos */}
-            <Box>
-              <Flex justify="space-between" align="center" mb={2} wrap="wrap" gap={1.5}>
-                <Text fontSize="10.5px" fontWeight="800" color="gray.700" textTransform="uppercase" letterSpacing="wide">
-                  ⚡ Ajuste Rápido de Precio:
+            {/* Control Sofisticado de Subir y Bajar Precio (Sin desbordamientos) */}
+            <Box bg="white" p={3.5} borderRadius="xl" border="1px solid" borderColor="#e2e8f0" boxShadow="xs">
+              <VStack align="stretch" spacing={2.5}>
+                <Flex justify="space-between" align="center">
+                  <Text fontSize="11px" fontWeight="700" color="slate.500" textTransform="uppercase" letterSpacing="wider">
+                    Ajustar Precio a Medida
+                  </Text>
+                  <Text fontSize="11px" color="slate.500" fontWeight="600">
+                    Mínimo: <strong style={{ color: "#0f172a" }}>${priceFloor.toFixed(2)} USD</strong>
+                  </Text>
+                </Flex>
+
+                {/* Barra de Control Integrada en Blanco Limpio */}
+                <Flex
+                  align="center"
+                  justify="space-between"
+                  h="52px"
+                  bg="white"
+                  borderRadius="xl"
+                  p={1}
+                  border="1.5px solid"
+                  borderColor={isExceedingCeiling ? "#fca5a5" : "#e2e8f0"}
+                >
+                  {showMinusButton ? (
+                    <IconButton
+                      icon={<Minus size={18} strokeWidth={2.5} />}
+                      aria-label="Bajar precio"
+                      onClick={handleStepDown}
+                      isDisabled={finalUnitPrice <= priceFloor || (selectedQuickOption === "normal" && finalUnitPrice <= priceWithBase + 0.009)}
+                      w="44px"
+                      h="44px"
+                      minW="44px"
+                      borderRadius="lg"
+                      bg="#f8fafc"
+                      color="slate.700"
+                      boxShadow="xs"
+                      border="1px solid"
+                      borderColor="#e2e8f0"
+                      _hover={{ bg: "#f1f5f9", borderColor: "#cbd5e1", color: "slate.900" }}
+                      _active={{ transform: "scale(0.95)" }}
+                      transition="all 0.15s ease"
+                    />
+                  ) : (
+                    <Box w="44px" h="44px" />
+                  )}
+
+                  <HStack spacing={1} justify="center" flex={1} px={2}>
+                    <Text fontSize="lg" fontWeight="700" color="slate.400" userSelect="none">
+                      $
+                    </Text>
+                    <Input
+                      maxW="110px"
+                      h="40px"
+                      border="none"
+                      p={0}
+                      type="text"
+                      inputMode="decimal"
+                      value={priceInputStr}
+                      onChange={handlePriceInputChange}
+                      onBlur={handlePriceBlur}
+                      onFocus={(e) => e.target.select()}
+                      textAlign="center"
+                      fontWeight="800"
+                      fontSize="2xl"
+                      bg="transparent"
+                      _focus={{ boxShadow: "none" }}
+                      color="slate.900"
+                      fontFamily="mono"
+                    />
+                    <Text fontSize="xs" fontWeight="700" color="slate.400" userSelect="none">
+                      USD
+                    </Text>
+                  </HStack>
+
+                  {showPlusButton ? (
+                    <IconButton
+                      icon={<Plus size={18} strokeWidth={2.5} />}
+                      aria-label="Subir precio"
+                      onClick={handleStepUp}
+                      isDisabled={finalUnitPrice >= priceCeiling || (selectedQuickOption === "bajar" && finalUnitPrice >= priceWithBase - 0.009)}
+                      w="44px"
+                      h="44px"
+                      minW="44px"
+                      borderRadius="lg"
+                      bg="#f8fafc"
+                      color="slate.700"
+                      boxShadow="xs"
+                      border="1px solid"
+                      borderColor="#e2e8f0"
+                      _hover={{ bg: "#f1f5f9", borderColor: "#cbd5e1", color: "slate.900" }}
+                      _active={{ transform: "scale(0.95)" }}
+                      transition="all 0.15s ease"
+                    />
+                  ) : (
+                    <Box w="44px" h="44px" />
+                  )}
+                </Flex>
+
+                {/* Resumen de Estado Discreto */}
+                <Flex justify="space-between" align="center" px={1} fontSize="11px">
+                  <Text color="slate.400" fontWeight="600">
+                    Normal: ${priceWithBase.toFixed(2)} USD
+                  </Text>
+                  {isVolumeDiscount ? (
+                    <Badge bg="#fffbeb" color="#92400e" border="1px solid" borderColor="#fde68a" fontSize="10.5px" px={2} py={0.5} borderRadius="md" fontWeight="700">
+                      Mayoreo {effectiveTotalDiscPct}% • Aprobación Gerencial
+                    </Badge>
+                  ) : isDiscountAboveThreshold ? (
+                    <Badge bg="#fff1f2" color="#be123c" border="1px solid" borderColor="#fecdd3" fontSize="10.5px" px={2} py={0.5} borderRadius="md" fontWeight="700">
+                      Desc. {effectiveTotalDiscPct}% (&gt;50%) • Con Aprobación
+                    </Badge>
+                  ) : isPriceDiscounted ? (
+                    <Badge bg="#ecfdf5" color="#047857" border="1px solid" borderColor="#a7f3d0" fontSize="10.5px" px={2} py={0.5} borderRadius="md" fontWeight="700">
+                      Rebaja (-${(priceWithBase - finalUnitPrice).toFixed(2)} USD) • Directo
+                    </Badge>
+                  ) : isPriceHigher ? (
+                    <Badge bg="#ecfdf5" color="#047857" border="1px solid" borderColor="#a7f3d0" fontSize="10.5px" px={2} py={0.5} borderRadius="md" fontWeight="700">
+                      Aumento (+${(finalUnitPrice - priceWithBase).toFixed(2)} USD) • Directo
+                    </Badge>
+                  ) : (
+                    <Text color="slate.400" fontWeight="600">
+                      Sin modificaciones
+                    </Text>
+                  )}
+                </Flex>
+              </VStack>
+            </Box>
+
+            {/* Resumen Compacto y Elegante */}
+            <Flex
+              justify="space-between"
+              align="center"
+              p={3}
+              borderRadius="xl"
+              bg="white"
+              border="1px solid"
+              borderColor="#e2e8f0"
+              fontSize="xs"
+            >
+              <VStack align="flex-start" spacing={0}>
+                <Text color="slate.600" fontSize="11px" fontWeight="600">
+                  Total Línea ({qty} {qty === 1 ? "unidad" : "unidades"}):
                 </Text>
-                {isEligibleForVolume ? (
-                  <Badge colorScheme="orange" bg="orange.50" color="orange.800" border="1px solid" borderColor="orange.300" fontSize="10px" px={2.5} py={0.5} borderRadius="full" fontWeight="800">
-                    📦 Mayoreo Desbloqueado ({qty} uds &gt; 100)
-                  </Badge>
-                ) : (
-                  <Badge colorScheme="green" bg="emerald.50" color="emerald.800" border="1px solid" borderColor="emerald.200" fontSize="10px" px={2.5} py={0.5} borderRadius="full" fontWeight="700">
-                    Tope Estándar (50%)
-                  </Badge>
-                )}
-              </Flex>
-
-              {/* Si la cantidad NO es mayor a 100: EXACTAMENTE 3 botones estándar en 3 columnas amplias */}
-              {!isEligibleForVolume ? (
-                <Grid templateColumns="repeat(3, 1fr)" gap={2}>
-                  <Button
-                    size="sm"
-                    h="36px"
-                    variant={currentDisc === 0 ? "solid" : "outline"}
-                    colorScheme={currentDisc === 0 ? "green" : "gray"}
-                    bg={currentDisc === 0 ? "#126C36" : "white"}
-                    color={currentDisc === 0 ? "white" : "gray.700"}
-                    onClick={() => handleQuickSelect(0)}
-                    borderRadius="lg"
-                    fontWeight="800"
-                    fontSize="xs"
-                  >
-                    0% Base
-                  </Button>
-                  <Button
-                    size="sm"
-                    h="36px"
-                    variant={Math.abs(currentDisc - 5) < 0.2 ? "solid" : "outline"}
-                    colorScheme={Math.abs(currentDisc - 5) < 0.2 ? "purple" : "gray"}
-                    bg={Math.abs(currentDisc - 5) < 0.2 ? "purple.600" : "white"}
-                    color={Math.abs(currentDisc - 5) < 0.2 ? "white" : "gray.700"}
-                    onClick={() => handleQuickSelect(5)}
-                    borderRadius="lg"
-                    fontWeight="800"
-                    fontSize="xs"
-                  >
-                    +5% Adic.
-                  </Button>
-                  <Button
-                    size="sm"
-                    h="36px"
-                    variant={Math.abs(currentDisc - standardAddDisc) < 0.1 ? "solid" : "outline"}
-                    colorScheme="blue"
-                    bg={Math.abs(currentDisc - standardAddDisc) < 0.1 ? "blue.600" : "white"}
-                    color={Math.abs(currentDisc - standardAddDisc) < 0.1 ? "white" : "blue.800"}
-                    borderColor="blue.300"
-                    onClick={() => handleQuickSelect(standardAddDisc)}
-                    borderRadius="lg"
-                    fontWeight="900"
-                    fontSize="xs"
-                    whiteSpace="nowrap"
-                    title={`Aplica el precio para alcanzar el 50% estándar ($${priceAtStandard50.toFixed(2)})`}
-                  >
-                    🎯 Tope 50% (${priceAtStandard50.toFixed(2)})
-                  </Button>
-                </Grid>
-              ) : (
-                /* Si la cantidad ES mayor a 100: Grilla ordenada 2x2 para que NUNCA colisionen ni se superpongan */
-                <Grid templateColumns="repeat(2, 1fr)" gap={2}>
-                  <Button
-                    size="sm"
-                    h="36px"
-                    variant={currentDisc === 0 ? "solid" : "outline"}
-                    colorScheme={currentDisc === 0 ? "green" : "gray"}
-                    bg={currentDisc === 0 ? "#126C36" : "white"}
-                    color={currentDisc === 0 ? "white" : "gray.700"}
-                    onClick={() => handleQuickSelect(0)}
-                    borderRadius="lg"
-                    fontWeight="800"
-                    fontSize="xs"
-                  >
-                    0% Base (${priceWithBase.toFixed(2)})
-                  </Button>
-                  <Button
-                    size="sm"
-                    h="36px"
-                    variant={Math.abs(currentDisc - 5) < 0.2 ? "solid" : "outline"}
-                    colorScheme={Math.abs(currentDisc - 5) < 0.2 ? "purple" : "gray"}
-                    bg={Math.abs(currentDisc - 5) < 0.2 ? "purple.600" : "white"}
-                    color={Math.abs(currentDisc - 5) < 0.2 ? "white" : "gray.700"}
-                    onClick={() => handleQuickSelect(5)}
-                    borderRadius="lg"
-                    fontWeight="800"
-                    fontSize="xs"
-                  >
-                    +5% Adic. (${(basePrice * (1 - (baseFixedDisc + 5) / 100)).toFixed(2)})
-                  </Button>
-                  <Button
-                    size="sm"
-                    h="36px"
-                    variant={Math.abs(currentDisc - standardAddDisc) < 0.1 ? "solid" : "outline"}
-                    colorScheme="blue"
-                    bg={Math.abs(currentDisc - standardAddDisc) < 0.1 ? "blue.600" : "white"}
-                    color={Math.abs(currentDisc - standardAddDisc) < 0.1 ? "white" : "blue.800"}
-                    borderColor="blue.300"
-                    onClick={() => handleQuickSelect(standardAddDisc)}
-                    borderRadius="lg"
-                    fontWeight="900"
-                    fontSize="xs"
-                    title={`Aplica el precio para alcanzar el 50% estándar ($${priceAtStandard50.toFixed(2)})`}
-                  >
-                    🎯 Tope 50% (${priceAtStandard50.toFixed(2)})
-                  </Button>
-                  <Button
-                    size="sm"
-                    h="36px"
-                    variant={Math.abs(currentDisc - maxAllowedAddDisc) < 0.1 ? "solid" : "outline"}
-                    colorScheme="orange"
-                    bg={Math.abs(currentDisc - maxAllowedAddDisc) < 0.1 ? "orange.600" : "white"}
-                    color={Math.abs(currentDisc - maxAllowedAddDisc) < 0.1 ? "white" : "orange.800"}
-                    borderColor="orange.400"
-                    onClick={() => handleQuickSelect(maxAllowedAddDisc)}
-                    borderRadius="lg"
-                    fontWeight="900"
-                    fontSize="xs"
-                    title={`Aplica el precio mínimo para alcanzar el tope máximo de mayoreo del 56% ($${priceAtVolume56.toFixed(2)})`}
-                  >
-                    🔥 Mayoreo 56% (${priceAtVolume56.toFixed(2)})
-                  </Button>
-                </Grid>
-              )}
-            </Box>
-
-            {/* Input Único de Monto: Precio Final Unitario Deseado */}
-            <Box bg="white" p={3.5} borderRadius="xl" border="1px solid" borderColor="gray.200" boxShadow="xs">
-              <VStack align="stretch" spacing={2}>
-                <Flex justify="space-between" align="center" fontSize="11px" fontWeight="700" color="gray.600">
-                  <Text textTransform="uppercase" letterSpacing="wide">💵 Precio Final Deseado ($ USD):</Text>
-                  <Text color="gray.500">
-                    {isEligibleForVolume ? (
-                      <>Tope 50%: <strong style={{ color: "#2563eb" }}>${priceAtStandard50.toFixed(2)}</strong> | Mín 56%: <strong style={{ color: "#c2410c" }}>${priceAtVolume56.toFixed(2)}</strong></>
-                    ) : (
-                      <>Tope 50%: <strong style={{ color: "#2563eb" }}>${priceAtStandard50.toFixed(2)}</strong></>
-                    )}
-                  </Text>
-                </Flex>
-
-                <HStack spacing={2}>
-                  <Flex
-                    align="center"
-                    justify="center"
-                    px={3}
-                    h="46px"
-                    bg="gray.100"
-                    borderRadius="xl"
-                    border="1px solid"
-                    borderColor="gray.300"
-                    fontSize="lg"
-                    fontWeight="900"
-                    color="gray.700"
-                  >
-                    $
-                  </Flex>
-                  <Input
-                    size="lg"
-                    h="46px"
-                    type="text"
-                    inputMode="decimal"
-                    value={priceInputStr}
-                    onChange={handlePriceInputChange}
-                    onBlur={handlePriceBlur}
-                    onFocus={(e) => e.target.select()}
-                    textAlign="center"
-                    fontWeight="900"
-                    fontSize="2xl"
-                    borderRadius="xl"
-                    bg={isExceedingCeiling ? "red.50" : isVolumeDiscount ? "orange.50" : "emerald.50"}
-                    borderColor={isExceedingCeiling ? "red.400" : isVolumeDiscount ? "orange.400" : "emerald.400"}
-                    focusBorderColor={isVolumeDiscount ? "orange.600" : "emerald.600"}
-                    placeholder={priceFloor.toFixed(2)}
-                  />
-                  <Flex
-                    align="center"
-                    justify="center"
-                    px={3}
-                    h="46px"
-                    bg="gray.100"
-                    borderRadius="xl"
-                    border="1px solid"
-                    borderColor="gray.300"
-                    fontSize="xs"
-                    fontWeight="800"
-                    color="gray.600"
-                  >
-                    USD
-                  </Flex>
-                </HStack>
-
-                {/* Resumen dinámico del cálculo automático */}
-                <Flex justify="space-between" align="center" px={1} pt={0.5} fontSize="11px">
-                  <Text color="gray.500" fontWeight="600">
-                    Precio base: <strong>${priceWithBase.toFixed(2)}</strong>
-                  </Text>
-                  <Badge
-                    colorScheme={isVolumeDiscount ? "orange" : currentDisc > 0 ? "purple" : "gray"}
-                    fontSize="11px"
-                    px={2}
-                    py={0.5}
-                    borderRadius="md"
-                    fontWeight="800"
-                  >
-                    Desc. Adic. Requerido: +{currentDisc}%
-                  </Badge>
-                </Flex>
+                <Text fontSize="10px" color="#047857" fontWeight="600">
+                  Descuento Total: {effectiveTotalDiscPct}%
+                </Text>
               </VStack>
-            </Box>
+              <Text fontFamily="mono" fontWeight="800" fontSize="lg" color="slate.900">
+                ${finalLineTotal.toFixed(2)} <Text as="span" fontSize="xs" fontWeight="700" color="slate.400">USD</Text>
+              </Text>
+            </Flex>
 
-            {/* Simulación en Tiempo Real */}
-            <Box bg="#0f2e22" color="white" p={3} borderRadius="xl" boxShadow="sm">
-              <VStack align="stretch" spacing={1.5} fontSize="xs">
-                <Flex justify="space-between" align="center">
-                  <Text color="emerald.200" fontWeight="600">Precio final por unidad:</Text>
-                  <Text fontFamily="mono" fontWeight="900" fontSize="sm" color="#6ee7b7">
-                    ${finalUnitPrice.toFixed(2)} USD
-                  </Text>
-                </Flex>
-                <Flex justify="space-between" align="center">
-                  <Text color="emerald.200" fontWeight="600">Total Fila ({qty} uds):</Text>
-                  <Text fontFamily="mono" fontWeight="900" fontSize="sm" color="#facc15">
-                    ${finalLineTotal.toFixed(2)} USD
-                  </Text>
-                </Flex>
-                <Flex justify="space-between" align="center" pt={1} borderTop="1px dashed" borderColor="whiteAlpha.300">
-                  <Text color="emerald.200" fontSize="10px">Descuento Total Acumulado:</Text>
-                  <Text fontFamily="mono" fontWeight="900" fontSize="11px" color={isExceedingCeiling ? "#fca5a5" : isVolumeDiscount ? "#fdba74" : "#a7f3d0"}>
-                    {effectiveTotalDiscPct}% ({isEligibleForVolume ? `Tope Estándar: ${STANDARD_DISCOUNT_CEILING}% • Tope Volumen: ${MAX_DISCOUNT_CEILING}%` : `Tope Estándar: ${STANDARD_DISCOUNT_CEILING}%`})
-                  </Text>
-                </Flex>
-              </VStack>
-            </Box>
-
-            {/* Semáforo de Validación y Aprobación Comercial */}
+            {/* Avisos Comerciales Relevantes (Solo si aplica) */}
             {isExceedingCeiling ? (
-              <Alert status="error" borderRadius="xl" py={2.5} px={3} bg="red.50" border="1.5px solid" borderColor="red.400">
-                <AlertIcon as={ShieldAlert} color="red.600" />
+              <Flex
+                align="flex-start"
+                gap={2.5}
+                p={3}
+                borderRadius="xl"
+                bg="#fff1f2"
+                border="1px solid"
+                borderColor="#fecdd3"
+              >
+                <Flex
+                  align="center"
+                  justify="center"
+                  w="26px"
+                  h="26px"
+                  borderRadius="md"
+                  flexShrink={0}
+                  bg="#ffe4e6"
+                  color="#be123c"
+                  mt={0.5}
+                >
+                  <ShieldAlert size={16} />
+                </Flex>
                 <Box fontSize="11px">
-                  <Text fontWeight="900" color="red.900">
-                    ⛔ BLOQUEADO: Supera el Límite Permitido ({applicableCeiling}%)
+                  <Text fontWeight="800" color="#9f1239">
+                    Supera el Límite Permitido ({applicableCeiling}%)
                   </Text>
-                  <Text color="red.800" fontWeight="600">
-                    El precio (${Number(priceInputStr || 0).toFixed(2)}) genera un descuento total de {effectiveTotalDiscPct}%. El precio mínimo permitido para esta línea es ${priceFloor.toFixed(2)}.
-                    {!isEligibleForVolume && ` Recuerda que los descuentos mayores al 50% requieren más de 100 unidades (actual: ${qty} uds).`}
+                  <Text color="#be123c" fontWeight="500" mt={0.5}>
+                    El precio mínimo permitido para esta línea es ${priceFloor.toFixed(2)} USD.
+                    {!isEligibleForVolume && ` Para descuentos mayores al 55% se requieren más de 100 unidades (actual: ${qty} uds).`}
                   </Text>
                 </Box>
-              </Alert>
+              </Flex>
             ) : isVolumeDiscount ? (
-              <Alert status="warning" borderRadius="xl" py={2.5} px={3} bg="#fff7ed" border="1.5px solid" borderColor="#fdba74">
-                <AlertIcon as={Flame} color="#ea580c" />
+              <Flex
+                align="flex-start"
+                gap={2.5}
+                p={3}
+                borderRadius="xl"
+                bg="#fffbeb"
+                border="1px solid"
+                borderColor="#fde68a"
+              >
+                <Flex
+                  align="center"
+                  justify="center"
+                  w="26px"
+                  h="26px"
+                  borderRadius="md"
+                  flexShrink={0}
+                  bg="#fef3c7"
+                  color="#b45309"
+                  mt={0.5}
+                >
+                  <Flame size={16} />
+                </Flex>
                 <Box fontSize="11px">
-                  <Text fontWeight="900" color="#9a3412">
-                    🔥 ALERTA: Descuento Especial por Volumen ({effectiveTotalDiscPct}%) Habilitado ({qty} uds &gt; 100)
+                  <Text fontWeight="800" color="#78350f">
+                    Descuento por Volumen ({effectiveTotalDiscPct}%) Habilitado
                   </Text>
-                  <Text color="#c2410c" fontWeight="700">
-                    Este descuento supera el tope estándar del {STANDARD_DISCOUNT_CEILING}% hasta un {effectiveTotalDiscPct}% (Tope Máx: {MAX_DISCOUNT_CEILING}%). Se notificará como Mayoreo y requerirá aprobación administrativa explícita.
+                  <Text color="#92400e" fontWeight="500" mt={0.5}>
+                    Supera el tope comercial del {STANDARD_DISCOUNT_CEILING}% por volumen ({qty} uds). Requerirá aprobación gerencial.
                   </Text>
                 </Box>
-              </Alert>
-            ) : requiresApproval ? (
-              <Alert status="warning" borderRadius="xl" py={2.5} px={3} bg="orange.50" border="1.5px solid" borderColor="orange.300">
-                <AlertIcon as={AlertTriangle} color="orange.600" />
+              </Flex>
+            ) : isDiscountAboveThreshold ? (
+              <Flex
+                align="flex-start"
+                gap={2.5}
+                p={3}
+                borderRadius="xl"
+                bg="#fffbeb"
+                border="1px solid"
+                borderColor="#fde68a"
+              >
+                <Flex
+                  align="center"
+                  justify="center"
+                  w="26px"
+                  h="26px"
+                  borderRadius="md"
+                  flexShrink={0}
+                  bg="#fef3c7"
+                  color="#b45309"
+                  mt={0.5}
+                >
+                  <AlertTriangle size={15} />
+                </Flex>
                 <Box fontSize="11px">
-                  <Text fontWeight="900" color="orange.900">
-                    ⚠️ Requiere Aprobación Comercial Ordinaria
+                  <Text fontWeight="800" color="#78350f">
+                    Descuento del {effectiveTotalDiscPct}% (Supera el {APPROVAL_DISCOUNT_THRESHOLD}%)
                   </Text>
-                  <Text color="orange.800" fontWeight="600">
-                    El precio otorgado requiere un descuento adicional (+{currentDisc}%) que pasará a revisión y aprobación por Facturación / Administración.
+                  <Text color="#92400e" fontWeight="500" mt={0.5}>
+                    Aplica descuento comercial superior al 50%. Esta cotización requerirá aprobación comercial antes de emitirse a SAP.
                   </Text>
                 </Box>
-              </Alert>
-            ) : (
-              <Alert status="success" borderRadius="xl" py={2.5} px={3} bg="emerald.50" border="1.5px solid" borderColor="emerald.300">
-                <AlertIcon as={Check} color="emerald.700" />
+              </Flex>
+            ) : isPriceDiscounted ? (
+              <Flex
+                align="flex-start"
+                gap={2.5}
+                p={3}
+                borderRadius="xl"
+                bg="#ecfdf5"
+                border="1px solid"
+                borderColor="#a7f3d0"
+              >
+                <Flex
+                  align="center"
+                  justify="center"
+                  w="26px"
+                  h="26px"
+                  borderRadius="md"
+                  flexShrink={0}
+                  bg="#d1fae5"
+                  color="#047857"
+                  mt={0.5}
+                >
+                  <Check size={15} />
+                </Flex>
                 <Box fontSize="11px">
-                  <Text fontWeight="900" color="emerald.900">
-                    🟢 Descuento Estándar ({baseFixedDisc}%)
+                  <Text fontWeight="800" color="#064e3b">
+                    Rebaja dentro del margen permitido (-${(priceWithBase - finalUnitPrice).toFixed(2)} USD)
                   </Text>
-                  <Text color="emerald.800" fontWeight="600">
-                    Precio estándar con descuento base (${priceWithBase.toFixed(2)} USD).
+                  <Text color="#047857" fontWeight="500" mt={0.5}>
+                    Descuento total {effectiveTotalDiscPct}% (hasta 50%). Aprobación inmediata / pase directo a SAP.
                   </Text>
                 </Box>
-              </Alert>
-            )}
+              </Flex>
+            ) : isHigherMargin ? (
+              <Flex
+                align="flex-start"
+                gap={2.5}
+                p={3}
+                borderRadius="xl"
+                bg="#ecfdf5"
+                border="1px solid"
+                borderColor="#a7f3d0"
+              >
+                <Flex
+                  align="center"
+                  justify="center"
+                  w="26px"
+                  h="26px"
+                  borderRadius="md"
+                  flexShrink={0}
+                  bg="#d1fae5"
+                  color="#047857"
+                  mt={0.5}
+                >
+                  <Sparkles size={15} />
+                </Flex>
+                <Box fontSize="11px">
+                  <Text fontWeight="800" color="#064e3b">
+                    Mayor margen de ganancia (+${(finalUnitPrice - priceWithBase).toFixed(2)} USD)
+                  </Text>
+                  <Text color="#047857" fontWeight="500" mt={0.5}>
+                    Aumenta el margen comercial. Aprobación inmediata.
+                  </Text>
+                </Box>
+              </Flex>
+            ) : null}
           </VStack>
         </ModalBody>
 
-        <Flex justify="flex-end" gap={2} p={4} bg="white" borderTop="1px solid" borderColor="gray.200">
-          <Button variant="ghost" size="sm" onClick={onClose} fontWeight="700">
+        <Flex justify="flex-end" gap={2} p={3.5} bg="white" borderTop="1px solid" borderColor="#e2e8f0">
+          <Button variant="ghost" size="sm" onClick={onClose} fontWeight="700" color="slate.600" _hover={{ bg: "#f1f5f9" }}>
             Cancelar
           </Button>
           <Button
             size="sm"
-            bg={isVolumeDiscount ? "#ea580c" : "#126C36"}
+            h="40px"
+            bg={
+              isExceedingCeiling
+                ? "slate.400"
+                : isVolumeDiscount
+                ? "#d97706"
+                : isDiscountAboveThreshold
+                ? "#be123c"
+                : "#126C36"
+            }
             color="white"
-            _hover={{ bg: isVolumeDiscount ? "#c2410c" : "#0e572b" }}
+            _hover={{
+              bg:
+                isExceedingCeiling
+                  ? "slate.400"
+                  : isVolumeDiscount
+                  ? "#b45309"
+                  : isDiscountAboveThreshold
+                  ? "#9f1239"
+                  : "#0e572b",
+            }}
+            _active={{ transform: "scale(0.98)" }}
             onClick={handleConfirm}
             isDisabled={isExceedingCeiling}
-            fontWeight="900"
-            px={5}
-            borderRadius="lg"
+            fontWeight="700"
+            px={4}
+            borderRadius="xl"
             boxShadow="sm"
-            leftIcon={isVolumeDiscount ? <Flame className="w-4 h-4 text-white" /> : undefined}
+            transition="all 0.15s ease"
           >
-            {isVolumeDiscount ? `Aplicar Mayoreo (${effectiveTotalDiscPct}%)` : `Confirmar Precio ($${finalUnitPrice.toFixed(2)})`}
+            {isVolumeDiscount
+              ? `Aplicar Mayoreo ($${finalUnitPrice.toFixed(2)})`
+              : isDiscountAboveThreshold
+              ? `Aplicar con Aprobación ($${finalUnitPrice.toFixed(2)})`
+              : isPriceDiscounted
+              ? `Aplicar Rebajado ($${finalUnitPrice.toFixed(2)})`
+              : isPriceHigher
+              ? `Aplicar Aumentado ($${finalUnitPrice.toFixed(2)})`
+              : `Confirmar Precio ($${finalUnitPrice.toFixed(2)})`}
           </Button>
         </Flex>
       </ModalContent>

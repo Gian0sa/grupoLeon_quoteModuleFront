@@ -18,8 +18,7 @@ import {
 import CreatableSelect from "react-select/creatable";
 import { adaptBusinessPartner } from "../adapters/quotesAdapter";
 import { useQuoteMutations } from "../hooks/mutations/quotesMutations";
-import Tesseract from "tesseract.js";
-import { Truck, CreditCard, Paperclip, FileCheck, Upload, Shield, Receipt } from "lucide-react";
+import { Truck, CreditCard, Shield } from "lucide-react";
 import { SAP_TRANSPORTS_CATALOG } from "../constants/sapTransportsCatalog";
 import { DatePickerField } from "../../../components/DatePickerField";
 
@@ -126,13 +125,18 @@ export const getCustomSelectStyles = (isLocked) => ({
     padding: "9px 12px",
     backgroundColor: state.isSelected ? "#10b981" : state.isFocused ? "#ecfdf5" : "white",
     color: state.isSelected ? "white" : "#1e293b",
+    cursor: "pointer",
+  }),
+  menuPortal: (base) => ({
+    ...base,
+    zIndex: 999999,
   }),
   menu: (base) => ({
     ...base,
-    zIndex: 40,
+    zIndex: 999999,
     borderRadius: "10px",
     overflow: "hidden",
-    boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08)",
+    boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.18), 0 8px 10px -6px rgba(0, 0, 0, 0.12)",
   }),
 });
 
@@ -180,32 +184,8 @@ export function NewSellTerms({
   isFinanceLocked = false,
 }) {
   const { uploadImageMutation, deleteImageMutation } = useQuoteMutations();
-  const [ocrText, setOcrText] = useState("");
   const [attachments, setAttachments] = useState([]);
-  const clientDocDigits = String(client?.FederalTaxID || client?.clientDocument || client?.documentNumber || client?.LicTradNum || client?.CardCode || "").replace(/\D/g, "");
-  const isLikelyRuc = clientDocDigits.length === 11;
-  const isLikelyDni = clientDocDigits.length === 8;
   const isCommercialLocked = Boolean(isDeliveryLocked && isFinanceLocked);
-
-  const extractOperationNumber = async (imageFile, setOpNum) => {
-    try {
-      const { data } = await Tesseract.recognize(imageFile, "spa", {
-        logger: (m) => console.log(m),
-      });
-      setOcrText(data.text);
-      const text = data.text;
-      const match = text.match(
-        /(?:n[úu]m(?:ero)?|nmr|no\.?|n°|ope\.?|op\.?|operaci[oó]n)[^\d]{0,10}(\d[\d\s\.]{4,})/i
-      );
-      if (match) {
-        setOpNum(match[1]);
-      } else {
-        console.warn("No se detectó el número de operación.");
-      }
-    } catch (err) {
-      console.error("Error usando OCR:", err);
-    }
-  };
 
   const clientAdapted = client ? adaptBusinessPartner(client) : null;
 
@@ -214,26 +194,6 @@ export function NewSellTerms({
   const allDeliveryForms = deliveryForms || [];
   const allDeliveryPoints = deliveryPoints || [];
   const allTransports = transports || [];
-
-  // Cuentas bancarias de banco propio oficiales desde SAP B1
-  const bankAccountOptions = (houseBankAccounts || []).map((acc) => {
-    const bank = acc.BankCode || acc.bankCode || "";
-    const name = acc.AccountName || acc.accountName || "";
-    const num = acc.Account || acc.account || acc.AccountNo || "";
-    const iban = acc.IBAN || acc.iban || "";
-    const labelParts = [];
-    if (bank) labelParts.push(bank);
-    if (name && name !== bank) labelParts.push(name);
-    if (num) labelParts.push(`Cta: ${num}`);
-    if (iban) labelParts.push(`CCI: ${iban}`);
-    const label = labelParts.join(" - ") || "Cuenta Bancaria SAP";
-    const val = num || name || String(acc.AbsoluteEntry || bank || "");
-    return {
-      value: val,
-      label: label,
-      raw: acc,
-    };
-  });
 
   // Opciones para CreatableSelect
   const paymentTypesOptions = allPaymentTypes.map((type) => {
@@ -250,10 +210,16 @@ export function NewSellTerms({
     label: form.TrnspName || form.label || String(form.TrnspCode),
   }));
 
-  const deliveryOptions = allDeliveryPoints.map((point) => ({
-    value: point.AddressName || point.value || point.Street,
-    label: `${point.AddressName || 'Punto'} - ${point.Street || point.Address || ''}`,
-  }));
+  const deliveryOptions = allDeliveryPoints.map((point) => {
+    const name = point.AddressName || point.name || point.Code || 'Dirección';
+    const street = point.Street || point.Address || point.address || '';
+    const label = point.label || (street ? `${name} - ${street}` : name);
+    return {
+      value: name,
+      label,
+      raw: point,
+    };
+  });
 
   const transportOptions = allTransports.map((transport) => {
     const rawCode = transport.Code || transport.TrnspCode ? String(transport.Code || transport.TrnspCode).replace(/^0+/, "") : "";
@@ -315,14 +281,29 @@ export function NewSellTerms({
     if (typeof val === "object" && val !== null) {
       const name = val.AddressName ?? val.label ?? val.name ?? val.value ?? "";
       const street = val.Street ?? val.address ?? "";
-      if (!name && !street) return null;
+      const label = val.label || (street ? `${name ? name + ' - ' : ''}${street}` : name);
+      if (!name && !street && !label) return null;
       return {
-        value: name || street,
-        label: street ? `${name ? name + ' - ' : ''}${street}` : name,
+        value: name || street || label,
+        label: label || name || street,
       };
     }
     const strVal = String(val);
     if (!strVal || strVal === "undefined" || strVal === "null") return null;
+    const found = allDeliveryPoints.find(
+      (p) =>
+        (p.AddressName || "").toLowerCase() === strVal.toLowerCase() ||
+        (p.Street || p.Address || "").toLowerCase() === strVal.toLowerCase() ||
+        (p.label || "").toLowerCase() === strVal.toLowerCase()
+    );
+    if (found) {
+      const name = found.AddressName || 'Dirección';
+      const street = found.Street || found.Address || '';
+      return {
+        value: name,
+        label: found.label || (street ? `${name} - ${street}` : name),
+      };
+    }
     return { value: strVal, label: strVal };
   };
 
@@ -459,10 +440,16 @@ export function NewSellTerms({
       setSelectedPoint(null);
       return;
     }
+    if (selected.raw) {
+      setSelectedPoint(selected.raw);
+      return;
+    }
     const found = allDeliveryPoints.find(
-      (p) => p.AddressName === selected.value
+      (p) =>
+        (p.AddressName || "").toLowerCase() === String(selected.value || "").toLowerCase() ||
+        (p.Street || p.Address || "").toLowerCase() === String(selected.value || "").toLowerCase()
     );
-    setSelectedPoint(found || { AddressName: selected.value, Street: selected.label });
+    setSelectedPoint(found || { AddressName: selected.value, Street: selected.label || selected.value, label: selected.label });
   };
 
   const handleTransportChange = (selected) => {
@@ -549,8 +536,13 @@ export function NewSellTerms({
               value={normalizeDeliveryFormValue(selectedDeliveryForm)}
               onChange={handleDeliveryFormChange}
               placeholder="Selecciona o escribe una forma de entrega..."
+              noOptionsMessage={({ inputValue }) =>
+                inputValue ? `Presiona Enter para seleccionar: "${inputValue}"` : "Sin formas de entrega registradas"
+              }
               formatCreateLabel={(inputValue) => `Escribir: "${inputValue}"`}
               styles={getCustomSelectStyles(isDeliveryLocked)}
+              menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+              menuPosition="fixed"
             />
           </Box>
 
@@ -566,8 +558,15 @@ export function NewSellTerms({
                 value={normalizeDeliveryPointValue(selectedPoint)}
                 onChange={handleDeliveryPointChange}
                 placeholder="Selecciona o escribe un destino (Ej: ENVÍO A PROVINCIA - SAN VICENTE)..."
+                noOptionsMessage={({ inputValue }) =>
+                  inputValue
+                    ? `Presiona Enter para usar: "${inputValue}" como destino`
+                    : (client ? "Escribe la dirección o ciudad de destino..." : "Selecciona un cliente o escribe un destino libre...")
+                }
                 formatCreateLabel={(inputValue) => `Escribir destino libre: "${inputValue}"`}
                 styles={getCustomSelectStyles(isDeliveryLocked)}
+                menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                menuPosition="fixed"
               />
             </Box>
           )}
@@ -584,8 +583,13 @@ export function NewSellTerms({
                 value={normalizeTransportValue(selectedTransport)}
                 onChange={handleTransportChange}
                 placeholder="Selecciona o escribe una agencia (Ej: Cód. 103 - ETTUSA, SHALOM)..."
+                noOptionsMessage={({ inputValue }) =>
+                  inputValue ? `Presiona Enter para usar: "${inputValue}" como agencia` : "Escribe el nombre de la agencia..."
+                }
                 formatCreateLabel={(inputValue) => `Escribir agencia libre: "${inputValue}"`}
                 styles={getCustomSelectStyles(isDeliveryLocked)}
+                menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                menuPosition="fixed"
               />
             </Box>
           )}
@@ -596,190 +600,6 @@ export function NewSellTerms({
               selectedDate={deliveryDate}
               setSelectedDate={setDeliveryDate}
               isDisabled={isDeliveryLocked}
-            />
-          </Box>
-
-          {/* ── CUADRO DE CONDICIONES COMERCIALES (TALONARIO / SOLICITUD DE PEDIDO) ── */}
-          <Box
-            p={{ base: 2.5, sm: 3.5, md: 4 }}
-            bg="#f8fafc"
-            borderRadius="xl"
-            border="1.5px solid"
-            borderColor="#cbd5e1"
-            boxShadow="xs"
-          >
-            <Flex
-              direction={{ base: "column", sm: "row" }}
-              justify="space-between"
-              align={{ base: "flex-start", sm: "center" }}
-              gap={2}
-              mb={3}
-            >
-              <HStack spacing={2} minW={0}>
-                <Receipt className="w-4 h-4 text-emerald-800 flex-shrink-0" />
-                <Text fontSize={{ base: "xs", md: "xs" }} fontWeight="900" color="gray.800" textTransform="uppercase" letterSpacing="wide">
-                  Condiciones Comerciales de la Solicitud {isCommercialLocked && "🔒"}
-                </Text>
-              </HStack>
-              <Flex wrap="wrap" gap={1.5} align="center">
-                <Badge colorScheme={saleCondition && documentType ? "green" : "purple"} fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="800">
-                  {saleCondition && documentType ? "✓ CONDICIONES LISTAS" : "✏️ SELECCIÓN REQUERIDA"}
-                </Badge>
-                <Badge colorScheme="teal" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="800">
-                  TALONARIO DE PEDIDO
-                </Badge>
-              </Flex>
-            </Flex>
-
-            <Grid templateColumns={{ base: "1fr", md: "1fr 1fr 1.4fr" }} gap={{ base: 2.5, md: 3.5 }}>
-              {/* Casilla 1: Modalidad (CONTADO / CRÉDITO) - Seleccionable por usuario y auto-sincronizada desde SAP OCTG */}
-              <Box p={{ base: 2.5, md: 3 }} bg="white" borderRadius="xl" border="1.5px solid" borderColor={saleCondition ? "emerald.300" : "gray.200"} boxShadow={saleCondition ? "xs" : "none"}>
-                <Flex justify="space-between" align="center" mb={2}>
-                  <Text fontSize="10px" fontWeight="900" color={saleCondition ? "emerald.800" : "gray.500"} textTransform="uppercase">
-                    Condición de Venta
-                  </Text>
-                  <Badge colorScheme={saleCondition ? "green" : "orange"} fontSize="8px" px={1.5} py={0.2} borderRadius="sm" fontWeight="800">
-                    {saleCondition ? "✓ ELEGIDO" : "✏️ SELECCIONAR"}
-                  </Badge>
-                </Flex>
-                <HStack spacing={{ base: 4, sm: 6 }}>
-                  <Checkbox
-                    isChecked={saleCondition === "CONTADO"}
-                    onChange={() => {
-                      if (!isCommercialLocked && setSaleCondition) {
-                        setSaleCondition("CONTADO");
-                        if (setIsLetra) setIsLetra(false);
-                        if (setCreditTerm) setCreditTerm("ANTICIPADO");
-                      }
-                    }}
-                    isDisabled={isCommercialLocked}
-                    colorScheme="green"
-                    size="sm"
-                    fontWeight="800"
-                    fontSize="xs"
-                    cursor={isCommercialLocked ? "not-allowed" : "pointer"}
-                  >
-                    CONTADO
-                  </Checkbox>
-                  <Checkbox
-                    isChecked={saleCondition === "CREDITO"}
-                    onChange={() => {
-                      if (!isCommercialLocked && setSaleCondition) {
-                        setSaleCondition("CREDITO");
-                        if (!creditTerm && setCreditTerm) setCreditTerm("30 días");
-                      }
-                    }}
-                    isDisabled={isCommercialLocked}
-                    colorScheme="green"
-                    size="sm"
-                    fontWeight="800"
-                    fontSize="xs"
-                    cursor={isCommercialLocked ? "not-allowed" : "pointer"}
-                  >
-                    CRÉDITO
-                  </Checkbox>
-                </HStack>
-              </Box>
-
-              {/* Casilla 2: Tipo de Comprobante (BOLETA / FACTURA) - 100% editable, sin pre-selección automática */}
-              <Box p={{ base: 2.5, md: 3 }} bg="white" borderRadius="xl" border="1.5px solid" borderColor={documentType ? "emerald.300" : "gray.200"} boxShadow={documentType ? "xs" : "none"}>
-                <Flex justify="space-between" align="center" mb={2}>
-                  <Text fontSize="10px" fontWeight="900" color={documentType ? "emerald.800" : "gray.500"} textTransform="uppercase">
-                    Tipo de Comprobante
-                  </Text>
-                  <Badge colorScheme={documentType ? "green" : "orange"} fontSize="8px" px={1.5} py={0.2} borderRadius="sm" fontWeight="800">
-                    {documentType ? `✓ ${documentType}` : "✏️ SELECCIONAR"}
-                  </Badge>
-                </Flex>
-                <HStack spacing={{ base: 3, sm: 6 }} wrap="wrap">
-                  <Checkbox
-                    isChecked={documentType === "FACTURA"}
-                    onChange={() => {
-                      if (!isCommercialLocked && setDocumentType) {
-                        setDocumentType(documentType === "FACTURA" ? "" : "FACTURA");
-                      }
-                    }}
-                    isDisabled={isCommercialLocked}
-                    colorScheme="green"
-                    size="sm"
-                    fontWeight="800"
-                    fontSize="xs"
-                    cursor={isCommercialLocked ? "not-allowed" : "pointer"}
-                  >
-                    FACTURA {isLikelyRuc && <Text as="span" fontSize="9px" color="blue.500" fontWeight="700">(RUC)</Text>}
-                  </Checkbox>
-                  <Checkbox
-                    isChecked={documentType === "BOLETA"}
-                    onChange={() => {
-                      if (!isCommercialLocked && setDocumentType) {
-                        setDocumentType(documentType === "BOLETA" ? "" : "BOLETA");
-                      }
-                    }}
-                    isDisabled={isCommercialLocked}
-                    colorScheme="green"
-                    size="sm"
-                    fontWeight="800"
-                    fontSize="xs"
-                    cursor={isCommercialLocked ? "not-allowed" : "pointer"}
-                  >
-                    BOLETA {isLikelyDni && <Text as="span" fontSize="9px" color="blue.500" fontWeight="700">(DNI)</Text>}
-                  </Checkbox>
-                </HStack>
-              </Box>
-
-              {/* Casilla 3: Instrumento y Plazo (LETRA / PLAZO AUTO) */}
-              <Box p={{ base: 2.5, md: 3 }} bg="white" borderRadius="xl" border="1px solid" borderColor="gray.200">
-                <Flex justify="space-between" align="center" mb={2}>
-                  <Checkbox
-                    isChecked={Boolean(isLetra)}
-                    isReadOnly
-                    isDisabled
-                    colorScheme="green"
-                    size="sm"
-                    fontWeight="800"
-                    fontSize="xs"
-                    _disabled={{ opacity: 0.9, cursor: "default" }}
-                  >
-                    LETRA
-                  </Checkbox>
-                  <Badge colorScheme="gray" fontSize="8px" px={1.5} py={0.2} borderRadius="sm" fontWeight="800">
-                    PLAZO / TÉRMINO 🔒
-                  </Badge>
-                </Flex>
-
-                {/* Visualizador de Plazo Detectado desde SAP (Solo Lectura) */}
-                <Box
-                  py={2}
-                  px={3}
-                  borderRadius="lg"
-                  bg={creditTerm ? "emerald.50" : "gray.50"}
-                  border="1.5px solid"
-                  borderColor={creditTerm ? "emerald.300" : "gray.200"}
-                  textAlign="center"
-                  boxShadow="xs"
-                >
-                  <Text fontWeight="900" fontSize="xs" color={creditTerm ? "emerald.900" : "gray.400"} letterSpacing="wider">
-                    {creditTerm || "(Auto según condición de pago SAP)"}
-                  </Text>
-                </Box>
-              </Box>
-            </Grid>
-          </Box>
-
-          <Box>
-            <FormLabel fontSize="xs" fontWeight="800" color="gray.700">
-              Comentarios u Observaciones del Pedido (`Comments`) {isCommercialLocked && "🔒"}
-            </FormLabel>
-            <Textarea
-              size="sm"
-              borderRadius="md"
-              rows={2}
-              placeholder="Ingrese especificaciones comerciales, notas de entrega o acuerdos con el cliente..."
-              value={comment || ""}
-              onChange={(e) => setComment && setComment(e.target.value)}
-              isReadOnly={isCommercialLocked}
-              bg={isCommercialLocked ? "gray.100" : "white"}
-              cursor={isCommercialLocked ? "not-allowed" : "text"}
             />
           </Box>
         </VStack>
@@ -802,7 +622,7 @@ export function NewSellTerms({
         </Box>
       )}
 
-      {/* TARJETA 2: 💳 CONDICIÓN DE PAGO Y COMPROBANTE (VOUCHER OCR) - EXCLUSIVO ADMINISTRADOR */}
+      {/* TARJETA 2: 💳 CONDICIÓN DE PAGO Y FACTURACIÓN (SAP B1) - EXCLUSIVO ADMINISTRADOR */}
       {isAdmin && (
         <Box bg="white" p={{ base: 3, sm: 4, md: 5 }} borderRadius="2xl" border="1.5px solid" borderColor="#e2e8f0" boxShadow="xs">
           <Flex
@@ -818,18 +638,20 @@ export function NewSellTerms({
             <HStack spacing={2.5}>
               <CreditCard className="w-5 h-5 text-emerald-700 stroke-[2.5] flex-shrink-0" />
               <Text fontSize={{ base: "xs", sm: "sm" }} fontWeight="950" color="emerald.900" textTransform="uppercase" letterSpacing="wide">
-                2. Condición de Pago y Abono Bancario (Voucher)
+                2. Condición de Pago y Facturación (SAP B1)
               </Text>
             </HStack>
-            {isFinanceLocked ? (
-              <Badge colorScheme="green" fontSize="10px" px={2} py={0.5} borderRadius="md">
-                🔒 Concluido (Aprobado)
-              </Badge>
-            ) : (
-              <Badge colorScheme="purple" fontSize="10px" px={2} py={0.5} borderRadius="md">
-                ✏️ Editable por Administrador / Mostrador
-              </Badge>
-            )}
+            <HStack spacing={2}>
+              {isFinanceLocked ? (
+                <Badge colorScheme="green" fontSize="10px" px={2} py={0.5} borderRadius="md">
+                  🔒 Concluido (Aprobado)
+                </Badge>
+              ) : (
+                <Badge colorScheme="purple" fontSize="10px" px={2} py={0.5} borderRadius="md">
+                  ✏️ Editable por Administrador / Mostrador
+                </Badge>
+              )}
+            </HStack>
           </Flex>
 
           {(() => {
@@ -849,13 +671,23 @@ export function NewSellTerms({
                                       currentPymntLabel.includes("letra") || 
                                       saleCondition === "CREDITO";
 
+            const clientDocDigits = String(client?.FederalTaxID || client?.clientDocument || client?.documentNumber || client?.LicTradNum || client?.CardCode || "").replace(/\D/g, "");
+            const isLikelyRuc = clientDocDigits.length === 11;
+            const isLikelyDni = clientDocDigits.length === 8;
+            const effectiveDocType = documentType || (isLikelyRuc ? "FACTURA" : "BOLETA");
+
             return (
               <VStack align="stretch" spacing={4}>
-                <Grid templateColumns={{ base: "1fr", md: isCreditCondition ? "1fr 1fr" : "1fr 1fr" }} gap={3}>
+                <Grid templateColumns={{ base: "1fr", md: "1.4fr 1fr" }} gap={3.5}>
                   <FormControl>
-                    <FormLabel fontSize="xs" fontWeight="800" color="gray.700">
-                      Tipo de Pago / Condición Comercial {isFinanceLocked && "🔒"}
-                    </FormLabel>
+                    <Flex justify="space-between" align="center" mb={1.5}>
+                      <FormLabel fontSize="xs" fontWeight="800" color="gray.700" mb={0}>
+                        Tipo de Pago / Condición Comercial (Tabla OCTG - SAP B1) {isFinanceLocked && "🔒"}
+                      </FormLabel>
+                      <Badge colorScheme={isCreditCondition ? "purple" : "green"} fontSize="9px" px={1.5} py={0.2} borderRadius="sm" fontWeight="800">
+                        {isCreditCondition ? "CRÉDITO" : "CONTADO"}
+                      </Badge>
+                    </Flex>
                     <CreatableSelect
                       isDisabled={isFinanceLocked}
                       isClearable={!isFinanceLocked}
@@ -865,13 +697,63 @@ export function NewSellTerms({
                       placeholder="Selecciona condición de pago..."
                       formatCreateLabel={(inputValue) => `Escribir: "${inputValue}"`}
                       styles={getCustomSelectStyles(isFinanceLocked)}
+                      menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                      menuPosition="fixed"
                     />
                   </FormControl>
 
-                  {/* Si es CRÉDITO: Mostrar Plazo y Letra */}
-                  {isCreditCondition ? (
+                  {/* Selector de Comprobante Fiscal (FACTURA / BOLETA) */}
+                  <FormControl>
+                    <Flex justify="space-between" align="center" mb={1.5}>
+                      <FormLabel fontSize="xs" fontWeight="800" color="gray.700" mb={0}>
+                        Tipo de Comprobante Fiscal {isFinanceLocked && "🔒"}
+                      </FormLabel>
+                      <Badge colorScheme={effectiveDocType === "FACTURA" ? "blue" : "teal"} fontSize="9px" px={1.5} py={0.2} borderRadius="sm" fontWeight="800">
+                        {isLikelyRuc ? "RUC DETECTADO" : isLikelyDni ? "DNI DETECTADO" : "AUTO"}
+                      </Badge>
+                    </Flex>
+                    <HStack spacing={2}>
+                      <Button
+                        size="sm"
+                        variant={effectiveDocType === "FACTURA" ? "solid" : "outline"}
+                        colorScheme="blue"
+                        onClick={() => {
+                          if (!isFinanceLocked && setDocumentType) setDocumentType("FACTURA");
+                        }}
+                        isDisabled={isFinanceLocked}
+                        fontSize="xs"
+                        fontWeight="800"
+                        borderRadius="lg"
+                        h="40px"
+                        flex="1"
+                      >
+                        📄 FACTURA {isLikelyRuc && "(RUC)"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={effectiveDocType === "BOLETA" ? "solid" : "outline"}
+                        colorScheme="teal"
+                        onClick={() => {
+                          if (!isFinanceLocked && setDocumentType) setDocumentType("BOLETA");
+                        }}
+                        isDisabled={isFinanceLocked}
+                        fontSize="xs"
+                        fontWeight="800"
+                        borderRadius="lg"
+                        h="40px"
+                        flex="1"
+                      >
+                        🧾 BOLETA {isLikelyDni && "(DNI)"}
+                      </Button>
+                    </HStack>
+                  </FormControl>
+                </Grid>
+
+                {/* Si es CRÉDITO: Plazo Pactado y Letra de Cambio */}
+                {isCreditCondition && (
+                  <Grid templateColumns={{ base: "1fr", md: "1.4fr 1fr" }} gap={3.5} p={3.5} bg="purple.50" borderRadius="xl" border="1.5px solid" borderColor="purple.200">
                     <FormControl>
-                      <FormLabel fontSize="xs" fontWeight="800" color="gray.700">
+                      <FormLabel fontSize="xs" fontWeight="800" color="purple.900">
                         Plazo de Crédito Pactado {isFinanceLocked && "🔒"}
                       </FormLabel>
                       <Input
@@ -885,226 +767,57 @@ export function NewSellTerms({
                         fontWeight="700"
                       />
                     </FormControl>
-                  ) : (
-                    /* Si es CONTADO: Mostrar Medio de Pago */
-                    <FormControl>
-                      <FormLabel fontSize="xs" fontWeight="800" color="gray.700">
-                        Medio de Pago (`PaymentMethod` / SUNAT) {isFinanceLocked && "🔒"}
+                    <FormControl display="flex" flexDirection="column" justifyContent="center">
+                      <FormLabel fontSize="xs" fontWeight="800" color="purple.900" mb={1.5}>
+                        Instrumento Financiero
                       </FormLabel>
-                      <ChakraSelect
-                        size="sm"
-                        bg={isFinanceLocked ? "gray.100" : "white"}
+                      <Checkbox
+                        isChecked={isLetra}
+                        onChange={(e) => setIsLetra && setIsLetra(e.target.checked)}
                         isDisabled={isFinanceLocked}
-                        borderRadius="md"
-                        value={paymentMethod}
-                        onChange={(e) => setPaymentMethod(e.target.value)}
-                        fontWeight="600"
+                        colorScheme="purple"
+                        fontSize="xs"
+                        fontWeight="800"
                       >
-                        <option value="DEPOSITO_BANCARIO">001 - Depósito en Cuenta Bancaria</option>
-                        <option value="TRANSFERENCIA">003 - Transferencia de Fondos Directa</option>
-                        <option value="YAPE_PLIN">008 - Yape / Plin / Pago Móvil</option>
-                        <option value="EFECTIVO">009 - Efectivo / Pago Contra Entrega</option>
-                        <option value="CHEQUE">002 - Cheque / Abono Diferido</option>
-                      </ChakraSelect>
+                        ¿Aplica Letra de Cambio? (`U_VS_LETRA`)
+                      </Checkbox>
                     </FormControl>
-                  )}
-                </Grid>
+                  </Grid>
+                )}
 
-                {/* BANNER Y DETALLES CONDICIONALES PARA CRÉDITO */}
+                {/* RESUMEN COMERCIAL INFORMATIVO SEGÚN MODALIDAD */}
                 {isCreditCondition ? (
-                  <Box p={4} bg="purple.50" borderRadius="xl" border="1.5px solid" borderColor="purple.200">
-                    <HStack spacing={3} align="flex-start">
-                      <Text fontSize="22px" lineHeight="1">💳</Text>
-                      <VStack align="stretch" spacing={2} flex="1">
-                        <HStack justify="space-between" flexWrap="wrap">
-                          <Text fontSize="xs" fontWeight="900" color="purple.900" textTransform="uppercase">
-                            Condición de Venta a Crédito / Plazos ({creditTerm || "Plazo Comercial"})
-                          </Text>
-                          <Checkbox
-                            isChecked={isLetra}
-                            onChange={(e) => setIsLetra && setIsLetra(e.target.checked)}
-                            isDisabled={isFinanceLocked}
-                            colorScheme="purple"
-                            fontSize="xs"
-                            fontWeight="800"
-                          >
-                            ¿Aplica Letra de Cambio? (`U_VS_LETRA`)
-                          </Checkbox>
-                        </HStack>
-                        <Text fontSize="xs" color="purple.800" fontWeight="600">
-                          ⚠️ <b>No requiere váucher bancario inmediato al cotizar</b>. Al ser venta a crédito, el pago se liquidará al vencimiento. Por favor asegúrese de adjuntar la <b>Orden de Compra (OC)</b> oficial o contrato en la <b>Sección 3 (Anexos de Resguardo)</b> para el respaldo de cobranzas.
+                  <Box p={3} bg="purple.50/60" borderRadius="xl" border="1px dashed" borderColor="purple.300">
+                    <HStack spacing={3} align="center">
+                      <Text fontSize="20px" lineHeight="1">💳</Text>
+                      <VStack align="stretch" spacing={0.5} flex="1">
+                        <Text fontSize="xs" fontWeight="900" color="purple.900">
+                          VENTA A CRÉDITO COMERCIAL PACTADO ({creditTerm || "Plazo Oficial"})
+                        </Text>
+                        <Text fontSize="11px" color="purple.800" fontWeight="600">
+                          ℹ️ La venta se registrará en SAP B1 con condición "{selectedPaymentType?.PymntGroup || selectedPaymentType?.label || 'Crédito'}", comprobante <b>{effectiveDocType}</b> {isLetra ? "y Letra de Cambio mercantil." : "sin letra."}
                         </Text>
                       </VStack>
                     </HStack>
                   </Box>
                 ) : (
-                  /* CAMPOS CONDICIONALES PARA CONTADO (BANCO, VÁUCHER Y OCR) */
-                  paymentMethod === "EFECTIVO" ? (
-                    <Box p={3.5} bg="blue.50" borderRadius="xl" border="1.5px solid" borderColor="blue.200">
-                      <HStack spacing={2.5} align="flex-start">
-                        <Text fontSize="xl" lineHeight="1">💵</Text>
-                        <VStack align="stretch" spacing={0.5} flex="1">
-                          <Text fontSize="xs" fontWeight="900" color="blue.900" textTransform="uppercase">
-                            Pago en Efectivo / Contra Entrega
-                          </Text>
-                          <Text fontSize="xs" color="blue.800" fontWeight="600">
-                            No requiere número de operación bancaria ni selección de cuenta. El cobro se realiza directamente al momento de la entrega o recojo del pedido.
-                          </Text>
-                        </VStack>
-                      </HStack>
-                    </Box>
-                  ) : paymentMethod === "CHEQUE" ? (
-                    <VStack align="stretch" spacing={3}>
-                      <FormControl>
-                        <FormLabel fontSize="xs" fontWeight="800" color="gray.700" m={0} mb={1}>
-                          Banco Emisor del Cheque (Banco del Cliente) {isFinanceLocked && "🔒"}
-                        </FormLabel>
-                        <Input
-                          size="sm"
-                          bg={isFinanceLocked ? "gray.100" : "white"}
-                          isDisabled={isFinanceLocked}
-                          borderRadius="md"
-                          placeholder="Ej: BCP, BBVA, Interbank, Scotiabank..."
-                          value={bankAccount || ""}
-                          onChange={(e) => setBankAccount && setBankAccount(e.target.value)}
-                          fontWeight="700"
-                        />
-                      </FormControl>
-                      <Box p={3.5} bg="purple.50" borderRadius="xl" border="1.5px solid" borderColor="purple.200">
-                        <FormLabel fontSize="xs" fontWeight="900" color="purple.900" mb={1.5}>
-                          🧾 Número de Cheque / Referencia {isFinanceLocked && "🔒"}
-                        </FormLabel>
-                        <Input
-                          type="text"
-                          size="md"
-                          bg={isFinanceLocked ? "gray.100" : "white"}
-                          isReadOnly={isFinanceLocked}
-                          borderRadius="md"
-                          borderColor="purple.300"
-                          fontWeight="700"
-                          placeholder="Ej: CHQ-00984725"
-                          value={opNum ?? ""}
-                          onChange={(e) => setOpNum(e.target.value)}
-                        />
-                        <Text fontSize="11px" color="purple.700" mt={1.5} fontWeight="600">
-                          * El cheque ingresará a custodia para compensación y canje bancario en SAP B1.
+                  <Box p={3} bg="emerald.50/80" borderRadius="xl" border="1px dashed" borderColor="emerald.300">
+                    <HStack spacing={3} align="center">
+                      <Text fontSize="20px" lineHeight="1">💵</Text>
+                      <VStack align="stretch" spacing={0.5} flex="1">
+                        <Text fontSize="xs" fontWeight="900" color="emerald.900">
+                          VENTA AL CONTADO / ENTREGA INMEDIATA
                         </Text>
-                      </Box>
-                    </VStack>
-                  ) : (
-                    <>
-                      <FormControl>
-                        <Flex justify="space-between" align="center" mb={1}>
-                          <FormLabel fontSize="xs" fontWeight="800" color="gray.700" m={0}>
-                            Cuenta Bancaria de Abono (Grupo León) {isFinanceLocked && "🔒"}
-                          </FormLabel>
-                          <Badge colorScheme="emerald" fontSize="9px" px={1.5} borderRadius="sm">
-                            * Requerido para Depósito / Transferencia
-                          </Badge>
-                        </Flex>
-                        <ChakraSelect
-                          size="sm"
-                          bg={isFinanceLocked ? "gray.100" : "white"}
-                          isDisabled={isFinanceLocked}
-                          borderRadius="md"
-                          value={bankAccount || ""}
-                          onChange={(e) => setBankAccount && setBankAccount(e.target.value)}
-                          placeholder="-- Seleccione Cuenta de Recaudo Oficial --"
-                          fontWeight="600"
-                        >
-                          <option value="BCP_SOLES">BCP (Soles) - Cta: 191-0104153-0-60 (CCI: 002-191-000104153060-52)</option>
-                          <option value="BCP_USD">BCP (Dólares) - Cta: 191-0104154-1-71 (CCI: 002-191-000104154171-55)</option>
-                          <option value="BBVA_SOLES">BBVA Continental (Soles) - Cta: 0011-0182-0100045231</option>
-                          <option value="BBVA_USD">BBVA Continental (Dólares) - Cta: 0011-0182-0100045240</option>
-                          <option value="INTERBANK_SOLES">Interbank (Soles) - Cta: 200-3001245781</option>
-                          <option value="BN_DETRACCIONES">Banco de la Nación (Detracciones) - Cta: 00-068-123456</option>
-                          {bankAccount && !["BCP_SOLES", "BCP_USD", "BBVA_SOLES", "BBVA_USD", "INTERBANK_SOLES", "BN_DETRACCIONES"].includes(bankAccount) && (
-                            <option value={bankAccount}>
-                              {`Cuenta: ${bankAccount}`}
-                            </option>
-                          )}
-                        </ChakraSelect>
-                      </FormControl>
-
-                      <Box p={3.5} bg="emerald.50/50" borderRadius="xl" border="1.5px solid" borderColor="emerald.200">
-                        <FormLabel fontSize="xs" fontWeight="900" color="emerald.900" mb={1.5}>
-                          💳 Número de Operación Bancaria / Váucher {isFinanceLocked && "🔒"}
-                        </FormLabel>
-                        <Input
-                          type="text"
-                          size="md"
-                          bg={isFinanceLocked ? "gray.100" : "white"}
-                          isReadOnly={isFinanceLocked}
-                          borderRadius="md"
-                          borderColor="emerald.300"
-                          fontWeight="700"
-                          placeholder="Ej: 0169944 / 61956167 (Número de operación de depósito o transferencia)"
-                          value={opNum ?? ""}
-                          onChange={(e) => setOpNum(e.target.value)}
-                        />
-                        <Text fontSize="11px" color="gray.500" mt={1.5} fontWeight="600">
-                          * Ingrese el número de operación bancaria para conciliación en SAP B1 (`Numero deposito`).
+                        <Text fontSize="11px" color="emerald.800" fontWeight="600">
+                          ℹ️ La venta se registrará en SAP B1 con condición "{selectedPaymentType?.PymntGroup || selectedPaymentType?.label || 'Contado / Entrega'}" y comprobante <b>{effectiveDocType}</b> (sin días de financiamiento).
                         </Text>
-                      </Box>
-                    </>
-                  )
+                      </VStack>
+                    </HStack>
+                  </Box>
                 )}
               </VStack>
             );
           })()}
-        </Box>
-      )}
-
-      {/* TARJETA 3: 📋 PARÁMETROS SUNAT - EXCLUSIVO ADMINISTRADOR */}
-      {isAdmin && (
-        <Box bg="white" p={{ base: 3, sm: 4, md: 5 }} borderRadius="2xl" border="1.5px solid" borderColor="#e2e8f0" boxShadow="xs">
-          <Flex
-            direction={{ base: "column", sm: "row" }}
-            align={{ base: "flex-start", sm: "center" }}
-            justify="space-between"
-            gap={2}
-            mb={3.5}
-            pb={2.5}
-            borderBottom="1.5px solid"
-            borderColor="emerald.100"
-          >
-            <HStack spacing={2.5}>
-              <Paperclip className="w-5 h-5 text-emerald-700 stroke-[2.5] flex-shrink-0" />
-              <Text fontSize={{ base: "xs", sm: "sm" }} fontWeight="950" color="emerald.900" textTransform="uppercase" letterSpacing="wide">
-                3. Parámetros SUNAT
-              </Text>
-            </HStack>
-            {isFinanceLocked ? (
-              <Badge colorScheme="green" fontSize="10px" px={2} py={0.5} borderRadius="md">
-                🔒 Concluido (Aprobado)
-              </Badge>
-            ) : (
-              <Badge colorScheme="purple" fontSize="10px" px={2} py={0.5} borderRadius="md">
-                ✏️ Editable por Administrador / Mostrador
-              </Badge>
-            )}
-          </Flex>
-
-          <VStack align="stretch" spacing={4}>
-            <FormControl>
-              <FormLabel fontSize="xs" fontWeight="800" color="gray.700">
-                Tipo de Operación SUNAT (`U_VS_TIPOPER` / `TIPO_FACT`) {isFinanceLocked && "🔒"}
-              </FormLabel>
-              <ChakraSelect
-                size="sm"
-                bg={isFinanceLocked ? "gray.100" : "white"}
-                isDisabled={isFinanceLocked}
-                borderRadius="md"
-                value={sunatOpType}
-                onChange={(e) => setSunatOpType(e.target.value)}
-                fontWeight="600"
-              >
-                <option value="0101">0101 - Venta Interna (General / Operación Onerosa)</option>
-                <option value="0102">0102 - Exportación de Bienes</option>
-                <option value="0103">0103 - Venta Inafecta / Exonerada</option>
-              </ChakraSelect>
-            </FormControl>
-          </VStack>
         </Box>
       )}
     </VStack>

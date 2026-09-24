@@ -7,10 +7,10 @@ import { axiosInstance } from "../../../shared/lib/axiosInstance";
 export const getAllRules = async () => {
   try {
     const response = await axiosInstance.get("/reportModule/rules");
-    return response.data;
+    return Array.isArray(response.data) ? response.data : [];
   } catch (error) {
     console.error("Error al obtener las reglas:", error);
-    return null;
+    return [];
   }
 };
 

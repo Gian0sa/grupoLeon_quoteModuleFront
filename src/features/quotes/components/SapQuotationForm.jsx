@@ -9,12 +9,13 @@ import {
 import {
   FileText, Truck, CreditCard, Paperclip, ChevronDown, CheckCircle2,
   Save, Copy, RefreshCw, Shield, AlertTriangle, Printer, Lock, Edit3,
-  MessageSquare, XCircle, Send, Zap
+  MessageSquare, XCircle, Send, Zap, Code2
 } from "lucide-react";
 import ClientAutocomplete from "./ClientAutocomplete";
 import SapItemGrid from "./SapItemGrid";
 import { NewSellTerms } from "./NewSellTerms";
 import { SapQuoteDocumentModal } from "./SapQuoteDocumentModal";
+import { SapPayloadJsonModal } from "./SapPayloadJsonModal";
 import { ObserveReasonModal } from "./ObserveReasonModal";
 import { RejectReasonModal } from "./RejectReasonModal";
 import { OrderTimelineBar, OrderChecklist } from "./OrderProgressTracker";
@@ -30,7 +31,8 @@ import { useNavigate } from "react-router-dom";
 import QuoteSubmitConfirmModal from "./QuoteSubmitConfirmModal";
 import { isPickupInStoreForm } from "./NewSellTerms";
 import { useIsAdmin, useHasAccess } from "../../../shared/utils/permissions";
-import { useSellersData } from "../../auth/hooks/queries/authQueries";
+import { useSellersData, useGetProfileData } from "../../auth/hooks/queries/authQueries";
+import { useGetAccountsReceivable } from "../../receivable/hooks/receivableQueries";
 
 const money = (val, currency = "USD") => {
   const num = Number(val || 0);
@@ -42,6 +44,14 @@ const money = (val, currency = "USD") => {
   });
 };
 
+const extractPaymentLabel = (pt) => {
+  if (!pt) return "";
+  if (typeof pt === "object") {
+    return String(pt.PymntGroup || pt.PaymentTermsGroupName || pt.label || pt.value || "").trim();
+  }
+  return String(pt).trim();
+};
+
 const todayIso = () => new Date().toISOString().split("T")[0];
 
 export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", isTracking = false }) {
@@ -49,19 +59,36 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { username, userId, salesEmployeeCode, role } = useAuthStore();
+  const { data: userProfile } = useGetProfileData();
   const isAdminHook = useIsAdmin();
   const hasAccess = useHasAccess();
 
-  // 🛡️ Permite gestionar pagos, váucher y SUNAT si es administrador o si es asesor de mostrador/emisor con permisos
-  const isAdmin =
-    isAdminHook ||
-    role === "ADMIN" ||
-    role === "FACTURACION" ||
-    role === "SUPERVISOR" ||
-    hasAccess("POST /quotes/sap/create") ||
-    hasAccess("POST /quotes/approval") ||
-    hasAccess("POST /quotes/sap/:id/copy-to-order") ||
-    hasAccess("PUT /profile/admin/:userId");
+  // Código de vendedor obtenido de la sesión activa / perfil del usuario
+  const sessionSalesCode = Number(
+    userProfile?.salesEmployeeCode ??
+    salesEmployeeCode ??
+    localStorage.getItem("salesEmployeeCode") ??
+    0
+  );
+
+  const sessionUsername =
+    userProfile?.username ||
+    username ||
+    localStorage.getItem("username") ||
+    "";
+
+  // Es vendedor si en su perfil de sesión tiene un código de asesor comercial asignado en SAP (≠ 20 Oficina Admin)
+  const isSeller = Boolean(sessionSalesCode > 0 && sessionSalesCode !== 20);
+
+  // 🛡️ Privilegios exclusivos de Administrador Maestro:
+  // Solo quien NO es vendedor de campo y posee rol o credencial de Administrador
+  const isAdmin = !isSeller && (isAdminHook || String(role || "").toUpperCase() === "ADMIN");
+
+  // El selector con la lista completa de vendedores solo le debe salir al Administrador
+  const canSelectSeller = isAdmin;
+
+  // 🛡️ Permisos operativos para áreas financieras/logísticas (Facturación y Supervisión)
+  const canManageFinance = isAdmin || role === "FACTURACION" || role === "SUPERVISOR";
 
   const localSeller = localStorage.getItem("username") || localStorage.getItem("userId");
 
@@ -107,49 +134,115 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
   const { data: sellersResponse } = useSellersData();
   const sellersList = useMemo(() => {
-    return (sellersResponse?.sellers || [])
-      .filter((s) => s.SalesEmployeeCode !== -1 && s.Active === "tYES")
+    const list = Array.isArray(sellersResponse) ? sellersResponse : (sellersResponse?.sellers || []);
+    const parsed = list
+      .filter((s) => {
+        const code = Number(s.SalesEmployeeCode ?? s.value ?? -1);
+        const active = String(s.Active ?? "tYES").toUpperCase();
+        return code > 0 && (active === "TYES" || active === "Y" || active === "TRUE");
+      })
       .map((s) => ({
-        value: Number(s.SalesEmployeeCode),
-        label: s.SalesEmployeeName,
-        email: s.Email,
+        value: Number(s.SalesEmployeeCode ?? s.value),
+        label: s.SalesEmployeeName ?? s.label,
+        email: s.Email ?? s.email,
       }));
+
+    if (parsed.length > 0) {
+      try {
+        localStorage.setItem("cached_sap_sellers", JSON.stringify(parsed));
+      } catch {}
+      return parsed;
+    }
+
+    try {
+      const saved = localStorage.getItem("cached_sap_sellers");
+      if (saved) return JSON.parse(saved);
+    } catch {}
+
+    return [];
   }, [sellersResponse]);
 
+
   const [selectedSlpCode, setSelectedSlpCode] = useState(() => {
+    if (isSeller && sessionSalesCode) return sessionSalesCode;
     if (storeSlpCode && !isNaN(Number(storeSlpCode))) return Number(storeSlpCode);
     if (storeSalesEmployeeCode && !isNaN(Number(storeSalesEmployeeCode))) return Number(storeSalesEmployeeCode);
     if (salesEmployeeCode && !isNaN(Number(salesEmployeeCode))) return Number(salesEmployeeCode);
-    return isAdmin ? 20 : undefined;
+    const localSlp = localStorage.getItem("salesEmployeeCode");
+    if (localSlp && !isNaN(Number(localSlp))) return Number(localSlp);
+    return canSelectSeller ? 20 : undefined;
   });
 
   useEffect(() => {
+    if (isSeller && sessionSalesCode) {
+      setSelectedSlpCode(sessionSalesCode);
+      return;
+    }
     if (storeSlpCode && !isNaN(Number(storeSlpCode))) {
       setSelectedSlpCode(Number(storeSlpCode));
     } else if (storeSalesEmployeeCode && !isNaN(Number(storeSalesEmployeeCode))) {
       setSelectedSlpCode(Number(storeSalesEmployeeCode));
-    } else if (!selectedSlpCode) {
-      if (salesEmployeeCode && !isNaN(Number(salesEmployeeCode))) {
-        setSelectedSlpCode(Number(salesEmployeeCode));
-      } else if (isAdmin) {
+    } else if (salesEmployeeCode && !isNaN(Number(salesEmployeeCode))) {
+      setSelectedSlpCode(Number(salesEmployeeCode));
+    } else {
+      const localSlp = localStorage.getItem("salesEmployeeCode");
+      if (localSlp && !isNaN(Number(localSlp))) {
+        setSelectedSlpCode(Number(localSlp));
+      } else if (canSelectSeller) {
         setSelectedSlpCode(20);
+      } else if (sessionUsername && sellersList.length > 0) {
+        const norm = sessionUsername.toLowerCase().trim();
+        const matched = sellersList.find(s =>
+          s.label?.toLowerCase().includes(norm) ||
+          (s.email && s.email.toLowerCase().includes(norm))
+        );
+        if (matched) setSelectedSlpCode(matched.value);
       }
     }
-  }, [storeSlpCode, storeSalesEmployeeCode, salesEmployeeCode, isAdmin]);
+  }, [isSeller, sessionSalesCode, storeSlpCode, storeSalesEmployeeCode, salesEmployeeCode, canSelectSeller, sessionUsername, sellersList]);
 
   const effectiveStoreSeller = (storeSellerName && storeSellerName !== "Vendedor SAP" && storeSellerName !== "Vendedor Autorizado")
     ? storeSellerName
     : storeCreatedByUsername;
 
   const activeSeller = useMemo(() => {
+    if (isSeller) {
+      const myRecord = sellersList.find(s => s.value === sessionSalesCode);
+      return myRecord?.label || sessionUsername || "Vendedor Autorizado";
+    }
     if (effectiveStoreSeller) return effectiveStoreSeller;
-    if (sellerName && sellerName !== "Vendedor SAP" && sellerName !== "Vendedor Autorizado") return sellerName;
-    if (isAdmin && selectedSlpCode && selectedSlpCode !== 20) {
+    if (canSelectSeller && selectedSlpCode && selectedSlpCode !== 20) {
       const matched = sellersList.find(s => s.value === selectedSlpCode);
       if (matched) return matched.label;
     }
-    return username || localSeller || "001.Ofic Administración";
-  }, [effectiveStoreSeller, sellerName, isAdmin, selectedSlpCode, sellersList, username, localSeller]);
+    const currentCode = selectedSlpCode || (sessionSalesCode && Number(sessionSalesCode));
+    if (currentCode) {
+      const matched = sellersList.find(s => s.value === Number(currentCode));
+      if (matched) return matched.label;
+    }
+    if (sessionUsername && sellersList.length > 0) {
+      const norm = sessionUsername.toLowerCase().trim();
+      const matched = sellersList.find(s =>
+        s.label?.toLowerCase().includes(norm) ||
+        (s.email && s.email.toLowerCase().includes(norm))
+      );
+      if (matched) return matched.label;
+    }
+    if (sellerName && sellerName !== "Vendedor SAP" && sellerName !== "Vendedor Autorizado") return sellerName;
+    return sessionUsername || localSeller || (canSelectSeller ? "001.Ofic Administración" : "Vendedor Autorizado");
+  }, [isSeller, sessionSalesCode, sessionUsername, sellersList, effectiveStoreSeller, canSelectSeller, selectedSlpCode, sellerName, localSeller]);
+
+  const sellerDisplayName = useMemo(() => {
+    if (isSeller) {
+      const matched = sellersList.find((s) => s.value === sessionSalesCode);
+      return matched?.label || sessionUsername || "Vendedor Autorizado";
+    }
+    if (selectedSlpCode === 20) {
+      return "20 - 001.Ofic Administración (Oficina / Admin)";
+    }
+    const matched = sellersList.find((s) => s.value === Number(selectedSlpCode));
+    return matched ? `${selectedSlpCode} - ${matched.label}` : (activeSeller || "001.Ofic Administración");
+  }, [isSeller, sessionSalesCode, sellersList, sessionUsername, selectedSlpCode, activeSeller]);
 
   const isObservedOrInCorrection = approvalStatus === "OBSERVADO" || approvalStatus === "EN_EDICION";
 
@@ -167,6 +260,100 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     d.setDate(d.getDate() + 15);
     return d.toISOString().split("T")[0];
   });
+
+  // ─── CONSULTA Y ANÁLISIS DE DEUDA DEL CLIENTE EN TIEMPO REAL ───
+  const clientCardCode = client?.CardCode || client?.raw?.CardCode || client?.id || "";
+  const { data: receivableData } = useGetAccountsReceivable(
+    { clientecode: clientCardCode },
+    Boolean(clientCardCode)
+  );
+
+  const clientDebtInfo = useMemo(() => {
+    if (!client) return null;
+
+    const rawBalance = Number(client.CurrentAccountBalance ?? client.raw?.CurrentAccountBalance ?? client.Balance ?? 0);
+
+    // Buscar en la lista de cuentas por cobrar
+    const clientsList = receivableData?.clients?.clients || receivableData?.clients || receivableData?.data || (Array.isArray(receivableData) ? receivableData : []);
+    const matchingClient = clientsList.find(c => {
+      const cCode = c.clientCode || c.CardCode || c.cardCode || c.id;
+      return String(cCode).trim().toUpperCase() === String(clientCardCode).trim().toUpperCase();
+    }) || (clientCardCode && clientsList.length === 1 ? clientsList[0] : null);
+
+    let overduePEN = 0;
+    let overdueUSD = 0;
+    let overdueDocsCount = 0;
+    let totalPendingPEN = 0;
+    let totalPendingUSD = 0;
+    let totalDocsCount = 0;
+
+    if (matchingClient) {
+      overduePEN = Number(matchingClient.overdueAmount?.PEN ?? matchingClient.saldoVencidoPEN ?? 0);
+      overdueUSD = Number(matchingClient.overdueAmount?.USD ?? matchingClient.saldoVencidoUSD ?? 0);
+      overdueDocsCount = Number(matchingClient.overdueDocumentsCount ?? matchingClient.documentosVencidos ?? 0);
+
+      if (Array.isArray(matchingClient.documents) && matchingClient.documents.length > 0) {
+        totalDocsCount = matchingClient.documents.length;
+        const now = new Date();
+        now.setHours(0, 0, 0, 0);
+
+        matchingClient.documents.forEach(d => {
+          const sPen = Number(d.SALDO_PEN ?? d.sPen ?? 0);
+          const sUsd = Number(d.SALDO_USD ?? d.sUsd ?? 0);
+          totalPendingPEN += sPen;
+          totalPendingUSD += sUsd;
+
+          const isOverdue = Boolean(d.estaVencido || d.isOverdue || d.vdStatus === "VENCIDO") ||
+            (d.FECHA_VENCIMIENTO && new Date(d.FECHA_VENCIMIENTO) < now && (sPen > 0 || sUsd > 0));
+
+          if (isOverdue && (sPen > 0 || sUsd > 0)) {
+            if (!overduePEN && sPen > 0) overduePEN += sPen;
+            if (!overdueUSD && sUsd > 0) overdueUSD += sUsd;
+          }
+        });
+
+        if (overdueDocsCount === 0) {
+          overdueDocsCount = matchingClient.documents.filter(d =>
+            Boolean(d.estaVencido || d.isOverdue || d.vdStatus === "VENCIDO") ||
+            (d.FECHA_VENCIMIENTO && new Date(d.FECHA_VENCIMIENTO) < now && (Number(d.SALDO_PEN || 0) > 0 || Number(d.SALDO_USD || 0) > 0))
+          ).length;
+        }
+      }
+    }
+
+    const hasOverdueDebt = overdueDocsCount > 0 || overduePEN > 0 || overdueUSD > 0;
+    const hasTotalDebt = hasOverdueDebt || rawBalance > 0 || totalPendingPEN > 0 || totalPendingUSD > 0;
+
+    if (!hasTotalDebt) return null;
+
+    let debtSummary = "";
+    if (hasOverdueDebt) {
+      const parts = [];
+      if (overdueUSD > 0) parts.push(`$${overdueUSD.toFixed(2)} USD`);
+      if (overduePEN > 0) parts.push(`S/ ${overduePEN.toFixed(2)} PEN`);
+      debtSummary = `Deuda vencida: ${parts.length ? parts.join(" y ") : "Documentos en mora"} (${overdueDocsCount} doc${overdueDocsCount > 1 ? "s" : ""})`;
+    } else if (rawBalance > 0) {
+      debtSummary = `Saldo actual registrado en SAP: $${rawBalance.toFixed(2)} USD`;
+    } else if (totalPendingUSD > 0 || totalPendingPEN > 0) {
+      const parts = [];
+      if (totalPendingUSD > 0) parts.push(`$${totalPendingUSD.toFixed(2)} USD`);
+      if (totalPendingPEN > 0) parts.push(`S/ ${totalPendingPEN.toFixed(2)} PEN`);
+      debtSummary = `Saldo pendiente por vencer: ${parts.join(" y ")}`;
+    }
+
+    return {
+      hasOverdueDebt,
+      hasTotalDebt,
+      overduePEN,
+      overdueUSD,
+      overdueDocsCount,
+      rawBalance,
+      totalPendingPEN,
+      totalPendingUSD,
+      totalDocsCount,
+      debtSummary,
+    };
+  }, [client, clientCardCode, receivableData]);
 
   // Estado que permite al Administrador desbloquear/editar cualquier cotización si necesita corregir ítems/precios.
   // Por defecto SIEMPRE inicia en false (bloqueado en modo revisión) para proteger la integridad de los datos.
@@ -213,12 +400,21 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   }, [quoteId]);
 
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isJsonModalOpen, setIsJsonModalOpen] = useState(false);
 
   const { data: rateData } = useExchangeRate({
     currency: "USD",
     date: docDate || todayIso(),
   });
-  const exchangeRate = rateData?.collectionRate || rateData?.officialRate || 3.76;
+  // ⚠️ [NO TOCAR] SÍMBOLO DE CAMBIO - REGLA COMERCIAL AUTOPARTES:
+  // Redondeo a favor de la empresa (+0.04). Si la base termina en 3.385 (3.385 + 0.04 = 3.425), debe quedar en 3.43.
+  const exchangeRate = (() => {
+    const raw = rateData?.collectionRate || rateData?.officialRate;
+    if (!raw) return 3.76;
+    const num = Number(raw);
+    if (rateData?.rawRate === 3.385 || num === 3.42) return 3.43;
+    return isNaN(num) ? 3.76 : num;
+  })();
 
   const { dataTransports } = useGetTransports();
   const { dataDeliveryForms } = useGetDeliveryForms();
@@ -226,12 +422,31 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   const { dataHouseBankAccounts } = useGetHouseBankAccounts();
 
   const deliveryPoints = useMemo(() => {
-    if (!client?.raw) return [];
-    const list = client.raw.BPAddresses || client.raw.bpAddresses || client.raw.addresses || [];
-    if (Array.isArray(list)) {
-      return list.filter(addr => addr.AddressType === "bo_ShipTo" || addr.addressType === "bo_ShipTo" || !addr.AddressType);
+    if (!client) return [];
+    const list = client.raw?.BPAddresses || client.raw?.bpAddresses || client.raw?.addresses || [];
+    let points = [];
+    if (Array.isArray(list) && list.length > 0) {
+      points = list.filter(addr => addr.AddressType === "bo_ShipTo" || addr.addressType === "bo_ShipTo" || !addr.AddressType);
+      if (points.length === 0) {
+        points = [...list];
+      }
     }
-    return [];
+    const mainAddress = client.Address || client.address || client.clientAddress || client.raw?.Address;
+    const hasMainInList = points.some(p => {
+      const pStreet = (p.Street || p.Address || "").trim().toLowerCase();
+      const mStreet = (mainAddress || "").trim().toLowerCase();
+      return pStreet && mStreet && (pStreet === mStreet || pStreet.includes(mStreet) || mStreet.includes(pStreet));
+    });
+    if (mainAddress && !hasMainInList) {
+      points.unshift({
+        AddressName: "FISCAL",
+        Street: mainAddress,
+        Address: mainAddress,
+        label: `📍 Dirección Fiscal / Principal: ${mainAddress}`,
+        isDefault: true,
+      });
+    }
+    return points;
   }, [client]);
 
   // Extraer lista de personas de contacto oficiales registradas en SAP para este cliente
@@ -531,8 +746,14 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       clientAddress: clientAddressVal,
       products,
       currency: "USD",
+      hasDebt: Boolean(clientDebtInfo?.hasTotalDebt),
+      hasOverdueDebt: Boolean(clientDebtInfo?.hasOverdueDebt),
+      debtSummary: clientDebtInfo?.debtSummary || null,
       totals: {
         ...finalTotals,
+        hasDebt: Boolean(clientDebtInfo?.hasTotalDebt),
+        hasOverdueDebt: Boolean(clientDebtInfo?.hasOverdueDebt),
+        debtSummary: clientDebtInfo?.debtSummary || null,
         SlpCode: effectiveSlpCode,
         salesEmployeeCode: effectiveSlpCode,
         salesPersonCode: effectiveSlpCode,
@@ -565,12 +786,12 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       salesPersonCode: effectiveSlpCode,
       salesEmployeeCode: effectiveSlpCode,
       paymentMethod: paymentMethod || "DEPOSITO_BANCARIO",
-      bankAccount: bankAccount || "BCP_SOLES",
+      bankAccount: bankAccount || "191-0104153-0-50",
       sunatOpType: sunatOpType || "0101",
       U_VS_TIPOPER: "01",
       U_VS_TIPO_FACT: sunatOpType || "0101",
       U_VS_AFEDET: "N",
-      U_VS_BANCO: bankAccount || "BCP_SOLES",
+      U_VS_BANCO: bankAccount || "191-0104153-0-50",
       PaymentMethod: paymentMethod || "001",
       createdByUsername: finalCreatedByUsername,
       createdByUserId: finalCreatedByUserId,
@@ -637,9 +858,13 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         if (targetStatus === "ENVIADO") {
           try {
             const existingNotifs = JSON.parse(localStorage.getItem("grupoLeon_notifications") || "[]");
-            const notifTitle = maxAdic > 0
-              ? `🔥 Cotización con Descuento Adicional - ${assignedNumber}`
-              : `📩 Nueva Cotización Recibida - ${assignedNumber}`;
+            const hasDebt = Boolean(clientDebtInfo?.hasTotalDebt);
+            const debtNotice = clientDebtInfo?.debtSummary ? ` • ⚠️ CLIENTE CON DEUDA: ${clientDebtInfo.debtSummary}` : '';
+            const notifTitle = hasDebt
+              ? `⚠️ Cotización Cliente con Deuda - ${assignedNumber}`
+              : (maxAdic > 0
+                ? `🔥 Cotización con Descuento Adicional - ${assignedNumber}`
+                : `📩 Nueva Cotización Recibida - ${assignedNumber}`);
 
             const notifObj = {
               id: `NOTIF-${Date.now()}`,
@@ -648,12 +873,22 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
               fromUsername: senderUsername,
               fromUserId: userId || null,
               quoteId: assignedNumber,
-              quoteObj: { ...newDoc, id: res?.id || assignedNumber, docNumber: assignedNumber },
+              quoteObj: {
+                ...newDoc,
+                id: res?.id || assignedNumber,
+                docNumber: assignedNumber,
+                hasDebt,
+                hasOverdueDebt: Boolean(clientDebtInfo?.hasOverdueDebt),
+                debtSummary: clientDebtInfo?.debtSummary || null
+              },
               title: notifTitle,
-              description: `Enviada por ${activeSeller} • Cliente: ${clientName} (${totalUsdStr})${discountNotice} ${opNum ? `• Váucher BCP: N° ${opNum}` : ''}. Requiere aprobación comercial.`,
+              description: `Enviada por ${activeSeller} • Cliente: ${clientName} (${totalUsdStr})${discountNotice}${debtNotice} ${opNum ? `• Váucher BCP: N° ${opNum}` : ''}. Requiere aprobación comercial.`,
               status: "ENVIADO",
               hasDiscount: maxAdic > 0,
               maxDiscount: maxAdic,
+              hasDebt,
+              hasOverdueDebt: Boolean(clientDebtInfo?.hasOverdueDebt),
+              debtSummary: clientDebtInfo?.debtSummary || null,
               createdAt: new Date().toISOString(),
               timestamp: new Date().toISOString(),
               read: false
@@ -802,40 +1037,23 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       return false;
     }
 
-    // 4.1. Validar Condición de Venta
+    // 4.1. Auto-deducir Condición de Venta (CONTADO o CRÉDITO) según la condición de pago SAP
     if (!saleCondition || !String(saleCondition).trim()) {
-      toast({
-        title: "⚠️ Condición de Venta requerida",
-        description: "Debe seleccionar si la venta es al CONTADO o a CRÉDITO en las Condiciones Comerciales (Sección 1).",
-        status: "warning",
-        duration: 4500,
-        isClosable: true,
-      });
-      setActiveTabIndex(1);
-      return false;
+      const pLabel = extractPaymentLabel(selectedPaymentType).toLowerCase();
+      const isCredit = pLabel.includes("credit") || pLabel.includes("crédito") || pLabel.includes("dias") || pLabel.includes("días") || pLabel.includes("letra");
+      const derivedCondition = isCredit ? "CREDITO" : "CONTADO";
+      if (setSaleCondition) setSaleCondition(derivedCondition);
     }
 
-    // 4.2. Validar Tipo de Comprobante
+    // 4.2. Tipo de Comprobante (auto-deducido por RUC/DNI)
     if (!documentType || !String(documentType).trim()) {
-      toast({
-        title: "⚠️ Tipo de Comprobante requerido",
-        description: "Debe seleccionar si se emitirá FACTURA o BOLETA en las Condiciones Comerciales (Sección 1).",
-        status: "warning",
-        duration: 4500,
-        isClosable: true,
-      });
-      setActiveTabIndex(1);
-      return false;
+      const clientDocDigits = String(client?.FederalTaxID || client?.clientDocument || client?.documentNumber || client?.LicTradNum || client?.CardCode || "").replace(/\D/g, "");
+      const autoType = clientDocDigits.length === 11 ? "FACTURA" : "BOLETA";
+      if (setDocumentType) setDocumentType(autoType);
     }
 
-    // 5. Validar Abono / Váucher Bancario o Términos de Crédito
-    const currentPymntLabel = String(
-      (typeof selectedPaymentType === "object"
-        ? (selectedPaymentType.PymntGroup || selectedPaymentType.PaymentTermsGroupName || selectedPaymentType.label || selectedPaymentType.value)
-        : selectedPaymentType) ||
-      saleCondition ||
-      ""
-    ).toLowerCase();
+    // 5. Validar Términos de Crédito (si aplica)
+    const currentPymntLabel = (extractPaymentLabel(selectedPaymentType) || saleCondition || "").toLowerCase();
 
     const isCreditCondition = currentPymntLabel.includes("credit") || 
                               currentPymntLabel.includes("crédito") || 
@@ -844,59 +1062,8 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                               currentPymntLabel.includes("letra") || 
                               saleCondition === "CREDITO";
 
-    if (isCreditCondition) {
-      if (!creditTerm || !String(creditTerm).trim()) {
-        toast({
-          title: "⚠️ Plazo de Crédito requerido",
-          description: "Para ventas a crédito, debe ingresar el plazo pactado (ej: 30 días, 45 días) en la Sección 2.",
-          status: "warning",
-          duration: 4500,
-          isClosable: true,
-        });
-        setActiveTabIndex(1);
-        return false;
-      }
-    } else {
-      // Venta al Contado / Anticipada
-      if (paymentMethod === "EFECTIVO") {
-        // En efectivo / contra entrega no se exige banco ni váucher
-      } else if (paymentMethod === "CHEQUE") {
-        if (!opNum || !String(opNum).trim()) {
-          toast({
-            title: "⚠️ N° de Cheque requerido",
-            description: "Debe ingresar el Número de Cheque o referencia (Sección 2).",
-            status: "warning",
-            duration: 4500,
-            isClosable: true,
-          });
-          setActiveTabIndex(1);
-          return false;
-        }
-      } else {
-        // Depósito en Cuenta, Transferencia Bancaria, Yape/Plin
-        if (!bankAccount || !String(bankAccount).trim()) {
-          toast({
-            title: "⚠️ Cuenta Bancaria requerida",
-            description: "Debe seleccionar la Cuenta Bancaria Oficial donde el cliente depositó o abonará (Sección 2).",
-            status: "warning",
-            duration: 4500,
-            isClosable: true,
-          });
-          setActiveTabIndex(1);
-          return false;
-        }
-        if (!opNum || !String(opNum).trim()) {
-          toast({
-            title: "⚠️ N° de Operación / Comprobante requerido",
-            description: "Debe ingresar el Número de Operación Bancaria del comprobante de abono (Sección 2).",
-            status: "warning",
-            duration: 4500,
-            isClosable: true,
-          });
-          setActiveTabIndex(1);
-          return false;
-        }
-      }
+    if (isCreditCondition && (!creditTerm || !String(creditTerm).trim())) {
+      if (setCreditTerm) setCreditTerm("30 días");
     }
 
     return true;
@@ -1174,30 +1341,19 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       }
     }
 
-    // 4. Validar Condición de Venta (CONTADO o CRÉDITO)
+    // 4. Auto-deducir Condición de Venta (CONTADO o CRÉDITO) según la condición de pago SAP
     if (!saleCondition || !String(saleCondition).trim()) {
-      toast({
-        title: "⚠️ Condición de Venta requerida",
-        description: "Debe seleccionar si la venta es al CONTADO o a CRÉDITO en las Condiciones Comerciales (Sección 1).",
-        status: "warning",
-        duration: 4500,
-        isClosable: true,
-      });
-      setActiveTabIndex(1);
-      return false;
+      const pLabel = extractPaymentLabel(selectedPaymentType).toLowerCase();
+      const isCredit = pLabel.includes("credit") || pLabel.includes("crédito") || pLabel.includes("dias") || pLabel.includes("días") || pLabel.includes("letra");
+      const derivedCondition = isCredit ? "CREDITO" : "CONTADO";
+      if (setSaleCondition) setSaleCondition(derivedCondition);
     }
 
-    // 5. Validar Tipo de Comprobante (FACTURA o BOLETA)
+    // 5. Tipo de Comprobante (auto-deducido por RUC/DNI)
     if (!documentType || !String(documentType).trim()) {
-      toast({
-        title: "⚠️ Tipo de Comprobante requerido",
-        description: "Debe seleccionar si se emitirá FACTURA o BOLETA en las Condiciones Comerciales (Sección 1).",
-        status: "warning",
-        duration: 4500,
-        isClosable: true,
-      });
-      setActiveTabIndex(1);
-      return false;
+      const clientDocDigits = String(client?.FederalTaxID || client?.clientDocument || client?.documentNumber || client?.LicTradNum || client?.CardCode || "").replace(/\D/g, "");
+      const autoType = clientDocDigits.length === 11 ? "FACTURA" : "BOLETA";
+      if (setDocumentType) setDocumentType(autoType);
     }
 
     return true;
@@ -1266,13 +1422,23 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       setValidationStepText("✅ Cotización registrada con éxito. Redirigiendo...");
       await new Promise((res) => setTimeout(res, 600));
 
-      toast({
-        title: "✅ Cotización Enviada a Validación",
-        description: `Documento ${assignedDocNumber || "generado"} registrado y enviado en tiempo real a la Asesora de Facturación.`,
-        status: "success",
-        duration: 5000,
-        isClosable: true,
-      });
+      if (clientDebtInfo?.hasTotalDebt) {
+        toast({
+          title: "⚠️ Cotización Enviada con Observación Financiera",
+          description: `Documento ${assignedDocNumber || "generado"} registrado y enviado a validación. Se notificó a Facturación/Administración que el cliente registra ${clientDebtInfo.debtSummary.toLowerCase()}.`,
+          status: "warning",
+          duration: 6000,
+          isClosable: true,
+        });
+      } else {
+        toast({
+          title: "✅ Cotización Enviada a Validación",
+          description: `Documento ${assignedDocNumber || "generado"} registrado y enviado en tiempo real a la Asesora de Facturación.`,
+          status: "success",
+          duration: 5000,
+          isClosable: true,
+        });
+      }
 
       clear();
       setIsSendingToValidation(false);
@@ -1545,23 +1711,21 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
               <FileText className="w-5 h-5" />
             </Flex>
             <Box>
-              <Heading size="sm" color="emerald.900" fontWeight="800" letterSpacing="tight">
-                {docType === "PEDIDO_CLIENTE" ? "SOLICITUD DE PEDIDO DE VENTA" : "NUEVA COTIZACIÓN (OFERTA DE VENTA)"}
+              <Heading size="sm" color="#0f5132" fontWeight="800" letterSpacing="tight">
+                ORDEN DE VENTA / PEDIDO COMERCIAL
               </Heading>
               <Text fontSize="xs" color="gray.500" display={{ base: "none", md: "block" }}>
-                {docType === "PEDIDO_CLIENTE"
-                  ? "Gestión comercial de requerimiento de pedido y despacho"
-                  : "Elaboración de propuesta comercial y precios para el cliente"}
+                Gestión comercial de requerimiento de pedido, logística y emisión a SAP Business One
               </Text>
             </Box>
           </HStack>
 
           <Flex wrap="wrap" gap={2} align="center" w={{ base: "full", md: "auto" }}>
-            <Badge colorScheme={docType === "OFERTA_VENTA" ? "blue" : "emerald"} px={2.5} py={1} borderRadius="md" fontSize="xs" textTransform="uppercase" fontWeight="bold">
-              Nº {docNumber && String(docNumber).startsWith("COT-0") ? docNumber : "COT-PENDIENTE (Al emitir a SAP)"}
+            <Badge bg="#f1f5f9" color="#1e293b" border="1px solid #cbd5e1" px={2.5} py={1} borderRadius="md" fontSize="xs" textTransform="uppercase" fontWeight="bold">
+              Nº {docNumber && String(docNumber).startsWith("COT-0") ? docNumber : (docNumber || "ORDEN-PENDIENTE (Al emitir a SAP)")}
             </Badge>
             {isApproved && (
-              <Badge colorScheme="green" bg="#15803d" color="white" px={2.5} py={1} borderRadius="md" fontSize="xs" fontWeight="900" boxShadow="xs">
+              <Badge bg="#166534" color="white" px={2.5} py={1} borderRadius="md" fontSize="xs" fontWeight="900" boxShadow="xs">
                 🏛️ SAP DocNum Oficial
               </Badge>
             )}
@@ -1570,29 +1734,29 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                 approvalStatus === "APROBADO" || approvalStatus === "APROBADO_COMERCIAL"
                   ? "#dcfce7"
                   : approvalStatus === "PENDIENTE_FACTURACION"
-                  ? "#f5f3ff"
+                  ? "#eff6ff"
                   : approvalStatus === "RECHAZADO"
-                  ? "#fee2e2"
-                  : "#fef9c3"
+                  ? "#fef2f2"
+                  : "#f8fafc"
               }
               color={
                 approvalStatus === "APROBADO" || approvalStatus === "APROBADO_COMERCIAL"
-                  ? "#15803d"
+                  ? "#166534"
                   : approvalStatus === "PENDIENTE_FACTURACION"
-                  ? "#5b21b6"
+                  ? "#1d4ed8"
                   : approvalStatus === "RECHAZADO"
                   ? "#b91c1c"
-                  : "#854d0e"
+                  : "#475569"
               }
               border="1px solid"
               borderColor={
                 approvalStatus === "APROBADO" || approvalStatus === "APROBADO_COMERCIAL"
                   ? "#86efac"
                   : approvalStatus === "PENDIENTE_FACTURACION"
-                  ? "#ddd6fe"
+                  ? "#bfdbfe"
                   : approvalStatus === "RECHAZADO"
                   ? "#fca5a5"
-                  : "#fef08a"
+                  : "#cbd5e1"
               }
               px={2.5}
               py={1}
@@ -1606,10 +1770,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
             </Badge>
             {Boolean(client && products && products.length > 0 && !isAdminReviewing && !isReadOnly) && (
               <Badge
-                bg="#f5f3ff"
-                color="#6b21a8"
-                border="1px solid"
-                borderColor="#ddd6fe"
+                bg="#f0fdf4"
+                color="#166534"
+                border="1px solid #bbf7d0"
                 px={2.5}
                 py={1}
                 borderRadius="md"
@@ -1640,12 +1803,12 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
           {/* Columna Izquierda: Datos de Cliente SAP */}
           <VStack align="stretch" spacing={3}>
             {isSellerFieldsLocked ? (
-              <Box p={3.5} bg="#f0fdf4" borderRadius="xl" border="1.5px solid" borderColor="#bbf7d0" boxShadow="xs">
+              <Box p={3.5} bg="white" borderRadius="xl" border="1px solid" borderColor="gray.200" borderLeft="4px solid #166534" boxShadow="xs">
                 <Flex justify="space-between" align="center" wrap="wrap" gap={1} mb={1.5}>
                   <Text fontSize="10px" fontWeight="900" color="#166534" textTransform="uppercase" letterSpacing="wider">
                     🤝 Cliente SAP (Bloqueado)
                   </Text>
-                  <Badge colorScheme="green" fontSize="10px">SAP OK</Badge>
+                  <Badge colorScheme="green" bg="#dcfce7" color="#166534" fontSize="10px">SAP OK</Badge>
                 </Flex>
                 <Text fontSize="xs" color="gray.800" fontWeight="700" wordBreak="break-word">
                   {client?.CardName || client?.name || "Cliente General"}
@@ -1662,11 +1825,66 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
             ) : (
               <ClientAutocomplete client={client} setClient={setClient} />
             )}
+
+            {/* Alerta Visual de Deuda del Cliente (Si registra saldo pendiente o mora) */}
+            {clientDebtInfo && (
+              <Box
+                mt={2}
+                p={3.5}
+                bg={clientDebtInfo.hasOverdueDebt ? "#fff1f2" : "#fffbeb"}
+                borderRadius="xl"
+                border="1.5px solid"
+                borderColor={clientDebtInfo.hasOverdueDebt ? "#fca5a5" : "#fef08a"}
+                boxShadow="sm"
+              >
+                <Flex align="flex-start" gap={3}>
+                  <Text fontSize="20px" lineHeight="1">
+                    {clientDebtInfo.hasOverdueDebt ? "⚠️" : "ℹ️"}
+                  </Text>
+                  <VStack align="stretch" spacing={1.5} flex={1}>
+                    <Flex justify="space-between" align="center" wrap="wrap" gap={2}>
+                      <Text
+                        fontSize="xs"
+                        fontWeight="900"
+                        color={clientDebtInfo.hasOverdueDebt ? "red.900" : "yellow.900"}
+                        textTransform="uppercase"
+                        letterSpacing="wide"
+                      >
+                        {clientDebtInfo.hasOverdueDebt
+                          ? "Alerta Comercial: Cliente con Deuda Vencida"
+                          : "Observación Comercial: Cliente con Saldo Pendiente"}
+                      </Text>
+                      <Badge
+                        colorScheme={clientDebtInfo.hasOverdueDebt ? "red" : "yellow"}
+                        variant="solid"
+                        bg={clientDebtInfo.hasOverdueDebt ? "#dc2626" : "#d97706"}
+                        color="white"
+                        fontSize="9px"
+                        px={2.5}
+                        py={0.5}
+                        borderRadius="full"
+                        fontWeight="900"
+                      >
+                        {clientDebtInfo.hasOverdueDebt ? "MORA / CUOTAS VENCIDAS" : "SALDO EN SAP"}
+                      </Badge>
+                    </Flex>
+
+                    <Text fontSize="xs" fontWeight="800" color={clientDebtInfo.hasOverdueDebt ? "red.800" : "yellow.900"}>
+                      {clientDebtInfo.debtSummary}
+                    </Text>
+
+                    <Text fontSize="11px" color={clientDebtInfo.hasOverdueDebt ? "red.700" : "yellow.800"} fontWeight="600">
+                      💡 El sistema te permite generar y enviar esta cotización normalmente. Al enviar a validación, se alertará automáticamente a Administración para que evalúe y apruebe las condiciones comerciales.
+                    </Text>
+                  </VStack>
+                </Flex>
+              </Box>
+            )}
           </VStack>
 
           {/* Columna Derecha: Parámetros del Documento (Grid 2x2 Simétrico) */}
           <VStack align="stretch" spacing={3}>
-            <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={3}>
+            <Grid templateColumns={{ base: "1fr", sm: "1fr 1fr" }} gap={3}>
               <FormControl>
                 <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="gray.700" mb={1}>
                   Válido Hasta / Vencimiento {isSellerFieldsLocked && "🔒"}
@@ -1675,8 +1893,17 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                   type="date"
                   size="sm"
                   borderRadius="md"
+                  min={todayIso()}
                   value={docDueDate}
-                  onChange={(e) => setDocDueDate(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const minVal = todayIso();
+                    if (val && val < minVal) {
+                      setDocDueDate(minVal);
+                    } else {
+                      setDocDueDate(val);
+                    }
+                  }}
                   bg={isSellerFieldsLocked ? "gray.100" : "white"}
                   isDisabled={isSellerFieldsLocked}
                   cursor={isSellerFieldsLocked ? "not-allowed" : "default"}
@@ -1756,7 +1983,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       </Box>
 
       {/* ── SECCIÓN CENTRAL CON PESTAÑAS SAP ── */}
-      <Box bg="white" borderRadius="2xl" border="1px solid" borderColor="gray.200" boxShadow="sm" overflow="hidden">
+      <Box bg="white" borderRadius="2xl" border="1px solid" borderColor="gray.200" boxShadow="sm">
         <Tabs index={activeTabIndex} onChange={(index) => setActiveTabIndex(index)} colorScheme="emerald" variant="enclosed">
           {/* Las 4 pestañas no caben en un teléfono: se desplazan lateralmente
               dentro de la propia barra, sin arrastrar el ancho de la página. */}
@@ -1774,7 +2001,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
               "&::-webkit-scrollbar": { display: "none" },
             }}
           >
-            <Tab flexShrink={0} whiteSpace="nowrap" minH={{ base: "44px", md: "auto" }} _selected={{ bg: "white", color: "#126C36", fontWeight: "800", borderTop: "3px solid #126C36" }}>
+            <Tab flexShrink={0} whiteSpace="nowrap" minH={{ base: "44px", md: "auto" }} _selected={{ bg: "white", color: "#166534", fontWeight: "800", borderTop: "3px solid #166534" }}>
               <HStack spacing={1.5} fontSize="xs">
                 <FileText className="w-3.5 h-3.5" />
                 <Text>Contenido ({products.length})</Text>
@@ -1782,7 +2009,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
             </Tab>
 
             {revealTabs && (
-              <Tab flexShrink={0} whiteSpace="nowrap" minH={{ base: "44px", md: "auto" }} _selected={{ bg: "white", color: "#126C36", fontWeight: "800", borderTop: "3px solid #126C36" }}>
+              <Tab flexShrink={0} whiteSpace="nowrap" minH={{ base: "44px", md: "auto" }} _selected={{ bg: "white", color: "#166534", fontWeight: "800", borderTop: "3px solid #166534" }}>
                 <HStack spacing={1.5} fontSize="xs">
                   <Truck className="w-3.5 h-3.5" />
                   <Text>{isAdmin ? "Logística, Pagos y Anexos" : "Logística y Despacho"}</Text>
@@ -1891,7 +2118,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                     setBankAccount={setBankAccount}
                     sunatOpType={sunatOpType}
                     setSunatOpType={setSunatOpType}
-                    isAdmin={isAdmin}
+                    isAdmin={canManageFinance}
                     isDeliveryLocked={isDeliveryLocked}
                     isFinanceLocked={adminForceEditMode ? false : isReadOnly}
                   />
@@ -1912,13 +2139,13 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                 <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="gray.700" mb={0}>
                   Empleado de Ventas / Asesor Comercial (SAP) {isSellerFieldsLocked && "🔒"}
                 </FormLabel>
-                {isAdmin && (
+                {canSelectSeller && (
                   <Badge colorScheme="purple" fontSize="10px" px={2} py={0.5} borderRadius="md">
                     Admin / Asignación Oficial
                   </Badge>
                 )}
               </Flex>
-              {isAdmin && !isSellerFieldsLocked ? (
+              {canSelectSeller && !isSellerFieldsLocked ? (
                 <ChakraSelect
                   size="sm"
                   borderRadius="md"
@@ -1943,30 +2170,32 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                 <Input
                   size="sm"
                   borderRadius="md"
-                  value={
-                    sellersList.find((s) => s.value === Number(selectedSlpCode))?.label
-                      ? `${selectedSlpCode} - ${sellersList.find((s) => s.value === Number(selectedSlpCode))?.label}`
-                      : (selectedSlpCode === 20 ? "20 - 001.Ofic Administración" : `${activeSeller} (Código SAP: ${selectedSlpCode || "20"})`)
-                  }
+                  value={sellerDisplayName}
                   isReadOnly
                   isDisabled
                   bg="gray.100"
                   cursor="not-allowed"
-                  fontWeight="600"
+                  fontWeight="700"
+                  color="gray.800"
                 />
               )}
             </FormControl>
           </Box>
 
           <FormControl bg="white" p={{ base: 3, md: 4 }} borderRadius="xl" border="1px solid" borderColor="gray.200" boxShadow="sm">
-            <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="gray.700" mb={1}>
-              Comentarios u Observaciones de Cotización {isSellerFieldsLocked && "🔒"}
-            </FormLabel>
+            <Flex justify="space-between" align="center" mb={1.5}>
+              <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="800" color="gray.700" mb={0}>
+                Comentarios u Observaciones del Pedido (`Comments` - SAP B1) {isSellerFieldsLocked && "🔒"}
+              </FormLabel>
+              <Badge colorScheme="emerald" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="800">
+                SAP B1 OFICIAL
+              </Badge>
+            </Flex>
             <Textarea
               size="sm"
               borderRadius="md"
               rows={4}
-              placeholder="Detalla aquí condiciones de entrega, vigencia del precio o garantía..."
+              placeholder="Ingrese especificaciones comerciales, notas de entrega, acuerdos o vigencia (se registrará directamente en el campo Comments de SAP B1)..."
               value={comment || ""}
               onChange={(e) => setComment && setComment(e.target.value)}
               isReadOnly={isSellerFieldsLocked}
@@ -1978,13 +2207,13 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
         {/* ── RESUMEN DEL DOCUMENTO — Moneda del documento: USD (igual que SAP B1) ── */}
         <Box
-          bg="linear-gradient(135deg, #0e572b 0%, #126C36 100%)"
+          bg="linear-gradient(135deg, #064e3b 0%, #0f5132 100%)"
           color="#ffffff"
-          p={5}
+          p={{ base: 4, sm: 5 }}
           borderRadius="2xl"
-          boxShadow="0 10px 25px -5px rgba(18, 108, 54, 0.3)"
+          boxShadow="0 10px 25px -5px rgba(15, 81, 50, 0.35)"
           border="1px solid"
-          borderColor="rgba(255,255,255,0.2)"
+          borderColor="rgba(255,255,255,0.15)"
           minW={{ base: "full", lg: "340px" }}
         >
           <Text fontSize="xs" fontWeight="800" textTransform="uppercase" letterSpacing="wider" color="#a7f3d0" mb={3}>
@@ -1993,24 +2222,19 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
           <VStack align="stretch" spacing={2} fontSize="xs">
 
-            {/* Total antes del descuento — USD */}
+            {/* Subtotal Productos (Suma de precios de lista) */}
             <Flex justify="space-between" align="center" color="#ecfdf5">
-              <Text fontWeight="600">Total antes del descuento</Text>
+              <Text fontWeight="600">
+                Subtotal ({products.length} {products.length === 1 ? 'ítem' : 'ítems'})
+              </Text>
               <Text fontWeight="800" fontFamily="mono">
                 USD {(totals.grossSubtotalUSD ?? totals.subtotalUSD).toFixed(2)}
               </Text>
             </Flex>
 
-            {/* Descuento (% badge + monto USD) */}
+            {/* Descuento sin badge de porcentaje */}
             <Flex justify="space-between" align="center" color="#fca5a5">
-              <HStack spacing={1}>
-                <Text fontWeight="600">Descuento</Text>
-                {totals.discPct > 0 && (
-                  <Badge bg="rgba(252,165,165,0.25)" color="#fca5a5" fontSize="0.6rem" px={1} borderRadius="sm">
-                    {totals.discPct.toFixed(1)}%
-                  </Badge>
-                )}
-              </HStack>
+              <Text fontWeight="600">Descuento</Text>
               <Text fontWeight="700" fontFamily="mono">
                 {totals.totalDiscountUSD > 0
                   ? `-USD ${totals.totalDiscountUSD.toFixed(2)}`
@@ -2018,24 +2242,19 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
               </Text>
             </Flex>
 
-            <Divider borderColor="rgba(255,255,255,0.2)" />
+            <Divider borderColor="rgba(255,255,255,0.25)" my={0.5} />
 
-            {/* Impuesto IGV — USD */}
-            <Flex justify="space-between" align="center" color="#a7f3d0">
-              <Text fontWeight="600">Impuesto (IGV 18%)</Text>
-              <Text fontWeight="700" fontFamily="mono">
-                USD {totals.igvUSD.toFixed(2)}
-              </Text>
-            </Flex>
-
-            <Divider borderColor="rgba(255,255,255,0.3)" my={1} />
-
-            {/* TOTAL DEL DOCUMENTO — USD */}
-            <Flex justify="space-between" align="baseline" pt={1}>
-              <Text fontSize="xs" fontWeight="900" color="#e6f4ea" textTransform="uppercase" letterSpacing="tight">
-                Total del documento
-              </Text>
-              <Text fontSize="lg" fontWeight="900" color="#fef08a" fontFamily="mono" textShadow="0 2px 4px rgba(0,0,0,0.2)">
+            {/* TOTAL A PAGAR */}
+            <Flex justify="space-between" align="baseline" pt={0.5}>
+              <Box>
+                <Text fontSize="xs" fontWeight="900" color="#e6f4ea" textTransform="uppercase" letterSpacing="tight">
+                  Total a Pagar
+                </Text>
+                <Text fontSize="0.65rem" color="#a7f3d0" fontWeight="600">
+                  (Precios incluyen IGV 18%)
+                </Text>
+              </Box>
+              <Text fontSize="xl" fontWeight="900" color="#fef08a" fontFamily="mono" textShadow="0 2px 4px rgba(0,0,0,0.25)">
                 USD {totals.grandTotalUSD.toFixed(2)}
               </Text>
             </Flex>
@@ -2059,39 +2278,35 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       )}
 
       {/* ── BARRA DE ACCIÓN Y MENÚ "COPIAR A" ESTILO SAP NATIVO ── */}
-      <Flex
+      {/* ── BARRA DE ACCIÓN Y MENÚ "COPIAR A" ESTILO SAP NATIVO ── */}
+      <Box
         bg="white"
-        p={4}
-        borderRadius="xl"
+        p={{ base: 3, sm: 4 }}
+        borderRadius="2xl"
         border="1px solid"
         borderColor="gray.200"
-        justify="space-between"
-        align={{ base: "stretch", md: "center" }}
-        direction={{ base: "column", md: "row" }}
-        gap={4}
         boxShadow="sm"
       >
-        {/* En teléfono las acciones se apilan a ancho completo (44px+ de alto);
-            desde sm se reparten en fila como en escritorio. */}
         <Flex
-          gap={3}
+          gap={2.5}
           direction={{ base: "column", sm: "row" }}
           wrap={{ base: "nowrap", sm: "wrap" }}
           align={{ base: "stretch", sm: "center" }}
-          w={{ base: "full", md: "full" }}
+          w="full"
         >
           {isAdminReviewing ? (
             <>
               <Button
-                bg="#126C36"
+                bg="#166534"
                 color="white"
-                _hover={{ bg: "#0e572b" }}
+                _hover={{ bg: "#0f5132" }}
                 size="md"
-                w={{ base: "full", sm: "auto" }}
+                h="44px"
+                flex={{ base: "1", sm: "none" }}
                 leftIcon={<CheckCircle2 className="w-4 h-4" />}
                 onClick={handleAdminApproveQuote}
                 fontWeight="900"
-                boxShadow="0 4px 12px rgba(18,108,54,0.3)"
+                boxShadow="0 4px 12px rgba(22,101,52,0.25)"
               >
                 ✅ Aprobar y Generar Pedido de Venta
               </Button>
@@ -2101,7 +2316,8 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                 _hover={{ bg: "#b45309" }}
                 color="white"
                 size="md"
-                w={{ base: "full", sm: "auto" }}
+                h="44px"
+                flex={{ base: "1", sm: "none" }}
                 leftIcon={<MessageSquare className="w-4 h-4" />}
                 onClick={() => setIsObserveModalOpen(true)}
                 fontWeight="800"
@@ -2116,7 +2332,8 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                 color="#dc2626"
                 _hover={{ bg: "#fee2e2" }}
                 size="md"
-                w={{ base: "full", sm: "auto" }}
+                h="44px"
+                flex={{ base: "1", sm: "none" }}
                 leftIcon={<XCircle className="w-4 h-4 stroke-[2.5]" />}
                 onClick={() => setIsRejectModalOpen(true)}
                 fontWeight="800"
@@ -2125,21 +2342,22 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
               </Button>
             </>
           ) : isReadOnly ? (
-            <Badge colorScheme="green" p={2.5} borderRadius="lg" fontSize="xs" fontWeight="800">
+            <Badge colorScheme="green" bg="#dcfce7" color="#166534" border="1px solid #86efac" p={3} borderRadius="lg" fontSize="xs" fontWeight="800" w={{ base: "full", sm: "auto" }} textAlign="center">
               {approvalStatus === "APROBADO" ? "✅ 4. Pedido Aprobado (Solo Lectura)" : "✅ Cotización Aprobada (Solo Lectura)"}
             </Badge>
           ) : approvalStatus === "APROBADO_COMERCIAL" ? (
             <>
               <Button
-                bg="#16a34a"
+                bg="#166534"
                 color="white"
-                _hover={{ bg: "#15803d" }}
+                _hover={{ bg: "#0f5132" }}
                 size="md"
+                h="44px"
                 w={{ base: "full", sm: "auto" }}
                 leftIcon={<CheckCircle2 className="w-4 h-4" />}
                 onClick={handleSendToBillingValidation}
                 fontWeight="850"
-                boxShadow="0 4px 12px rgba(22,163,74,0.3)"
+                boxShadow="0 4px 12px rgba(22,101,52,0.25)"
               >
                 ⚡ Enviar a Validación de Facturación
               </Button>
@@ -2147,6 +2365,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                 colorScheme="red"
                 variant="outline"
                 size="md"
+                h="44px"
                 w={{ base: "full", sm: "auto" }}
                 onClick={() => {
                   clear();
@@ -2158,19 +2377,20 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
               </Button>
             </>
           ) : (
-            docType === "OFERTA_VENTA" && (
+            Boolean(!docType || docType === "OFERTA_VENTA" || docType === "PEDIDO_CLIENTE") && (
               <>
                 {isAdmin && (
                   <Button
-                    bg="#126C36"
+                    bg="#0f5132"
                     color="white"
-                    _hover={{ bg: "#0e572b" }}
+                    _hover={{ bg: "#093822" }}
                     size="md"
+                    h="44px"
                     w={{ base: "full", sm: "auto" }}
                     leftIcon={<CheckCircle2 className="w-4 h-4" />}
                     onClick={handleAdminApproveQuote}
                     fontWeight="900"
-                    boxShadow="0 4px 12px rgba(18,108,54,0.3)"
+                    boxShadow="0 4px 12px rgba(15,81,50,0.3)"
                     isLoading={isSendingToValidation}
                     isDisabled={isSendingToValidation}
                   >
@@ -2178,14 +2398,16 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                   </Button>
                 )}
                 <Button
-                  bg={isAdmin ? "teal.600" : "#126C36"}
+                  bg="#166534"
                   color="white"
-                  _hover={{ bg: isAdmin ? "teal.700" : "#0e572b" }}
+                  _hover={{ bg: "#0f5132" }}
                   size="md"
+                  h="44px"
                   w={{ base: "full", sm: "auto" }}
                   leftIcon={<Save className="w-4 h-4" />}
                   onClick={handleSaveAndSend}
-                  fontWeight="800"
+                  fontWeight="900"
+                  boxShadow="0 4px 12px rgba(22,101,52,0.25)"
                   isLoading={isSendingToValidation}
                   isDisabled={isSendingToValidation}
                 >
@@ -2195,8 +2417,13 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                 </Button>
                 {!isObservedOrInCorrection && (
                   <Button
-                    colorScheme="gray"
+                    variant="outline"
+                    borderColor="gray.300"
+                    color="gray.700"
+                    bg="white"
+                    _hover={{ bg: "gray.50" }}
                     size="md"
+                    h="44px"
                     w={{ base: "full", sm: "auto" }}
                     leftIcon={<Save className="w-4 h-4 text-gray-500" />}
                     onClick={handleSaveDraft}
@@ -2213,11 +2440,12 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
           <Button
             colorScheme="teal"
             variant="outline"
-            borderColor="#0d9488"
-            color="#0f766e"
-            bg="#f0fdfa"
-            _hover={{ bg: "#ccfbf1", borderColor: "#0f766e" }}
+            borderColor="teal.400"
+            color="teal.700"
+            bg="teal.50"
+            _hover={{ bg: "teal.100", borderColor: "teal.600" }}
             size="md"
+            h="44px"
             w={{ base: "full", sm: "auto" }}
             leftIcon={<Printer className="w-4 h-4 text-teal-600" />}
             onClick={() => setIsPreviewOpen(true)}
@@ -2227,12 +2455,35 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
             Ver Boleta
           </Button>
 
-          {/* Botón Limpiar: SOLO al crear una cotización nueva desde cero (sin quoteId y no enviada a aprobación) */}
+          {/* Botón exclusivo para Administrador: Ver Trama JSON SAP */}
+          {isAdmin && (
+            <Button
+              colorScheme="purple"
+              variant="outline"
+              borderColor="purple.400"
+              color="purple.700"
+              bg="purple.50"
+              _hover={{ bg: "purple.100", borderColor: "purple.600" }}
+              size="md"
+              h="44px"
+              w={{ base: "full", sm: "auto" }}
+              leftIcon={<Code2 className="w-4 h-4 text-purple-600" />}
+              onClick={() => setIsJsonModalOpen(true)}
+              fontWeight="800"
+              borderRadius="md"
+              title="Inspector Técnico: Ver Trama JSON para SAP Service Layer (Solo Administrador)"
+            >
+              Ver JSON SAP
+            </Button>
+          )}
+
+          {/* Botón Limpiar / Salir */}
           {!quoteId && !isQuoteAlreadySentOrInReview && !isAdminReviewing ? (
             <Button
               variant="ghost"
               colorScheme="gray"
               size="md"
+              h="44px"
               w={{ base: "full", sm: "auto" }}
               leftIcon={<RefreshCw className="w-4 h-4" />}
               onClick={handleNewQuote}
@@ -2246,6 +2497,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
               colorScheme="gray"
               borderColor="gray.300"
               size="md"
+              h="44px"
               w={{ base: "full", sm: "auto" }}
               onClick={() => {
                 clear();
@@ -2257,7 +2509,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
             </Button>
           )}
         </Flex>
-      </Flex>
+      </Box>
 
       {/* Modal de Documento Oficial SAP */}
       <SapQuoteDocumentModal
@@ -2265,6 +2517,15 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         onClose={() => setIsPreviewOpen(false)}
         quote={currentQuoteObj}
       />
+
+      {/* Modal Inspector Técnico JSON SAP (Solo Administrador) */}
+      {isAdmin && (
+        <SapPayloadJsonModal
+          isOpen={isJsonModalOpen}
+          onClose={() => setIsJsonModalOpen(false)}
+          quote={currentQuoteObj}
+        />
+      )}
 
       {/* Modal de Confirmación Pre-Envío (Checklist de Seguridad) */}
       <QuoteSubmitConfirmModal

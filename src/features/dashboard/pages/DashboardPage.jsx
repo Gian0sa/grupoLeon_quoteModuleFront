@@ -1,4 +1,5 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { 
   Box, 
   Text, 
@@ -25,7 +26,7 @@ import { es } from "date-fns/locale";
 import { Calendar, RotateCcw, UserCheck } from "lucide-react";
 
 import { useAuthStore } from "../../../features/auth/stores/useAuthStore";
-import { useHasAccess } from "../../../shared/utils/permissions";
+import { useHasAccess, useIsAdmin } from "../../../shared/utils/permissions";
 import { useIsFetching } from "@tanstack/react-query";
 import {
   useQuotesSellers,
@@ -62,21 +63,30 @@ function getLastNMonths(n = 3) {
 }
 
 export function DashboardPage() {
+  const navigate = useNavigate();
+
   const { salesEmployeeCode, username } = useAuthStore();
   const carouselRef = useRef(null);
   const [activeCardIndex, setActiveCardIndex] = useState(0);
 
   const hasAccess = useHasAccess();
+  const isAdmin = useIsAdmin();
+
   // Roles y Permisos Granulares
   const isVendedor = !!(salesEmployeeCode && Number(salesEmployeeCode) > 0);
-  const isAdmin = !salesEmployeeCode || salesEmployeeCode === 0 || salesEmployeeCode === "0" || salesEmployeeCode === "null";
+
+  // Acceso al panel comercial global (Supervisor / Admin)
   const canFilterSellers =
     isAdmin ||
-    hasAccess("GET /sellers") ||
+    (hasAccess("GET /sellers") && (hasAccess("GET /AdminQuotesSellers/:slpCode/:month") || hasAccess("GET:/AdminQuotesSellers/:slpCode/:month"))) ||
+    (hasAccess("GET:/sellers") && (hasAccess("GET /AdminQuotesSellers/:slpCode/:month") || hasAccess("GET:/AdminQuotesSellers/:slpCode/:month")));
+
+  // Ver período comercial: Admin, Supervisor (global), o Vendedor con permiso explícito de ver sus cuotas
+  const canViewCommercialPeriod =
+    canFilterSellers ||
     hasAccess("GET /AdminQuotesSellers/:slpCode/:month") ||
-    hasAccess("GET:/sellers") ||
-    hasAccess("GET:/AdminQuotesSellers/:slpCode/:month");
-  const canViewCommercialPeriod = isAdmin || hasAccess("GET /AdminQuotesSellers/:slpCode/:month") || canFilterSellers;
+    hasAccess("GET:/AdminQuotesSellers/:slpCode/:month") ||
+    (isVendedor && (hasAccess("GET /quotesSellers/:slpCode/:month") || hasAccess("GET:/quotesSellers/:slpCode/:month")));
 
   // 🗓️ Años dinámicos que CONTIENEN datos reales en SAP (2024 excluido por no tener registros)
   const currentRealYear = new Date().getFullYear();
@@ -180,7 +190,7 @@ export function DashboardPage() {
       monthFrom, 
       monthTo 
     }, 
-    { enabled: !canFilterSellers }
+    { enabled: canViewCommercialPeriod && !canFilterSellers }
   );
 
   const { 
@@ -194,7 +204,7 @@ export function DashboardPage() {
       monthFrom, 
       monthTo 
     }, 
-    { enabled: canFilterSellers }
+    { enabled: canViewCommercialPeriod && canFilterSellers }
   );
 
   const isLoading = canFilterSellers ? adminLoading : vendedorLoading;
@@ -528,7 +538,7 @@ export function DashboardPage() {
         )}
 
         {/* Durante la carga directa de datos del usuario, mostrar Skeletons limpios */}
-        {isLoading && (
+        {canViewCommercialPeriod && isLoading && (
           <SimpleGrid columns={{ base: 1, md: 3 }} spacing={6} w="full">
             <Skeleton h="240px" borderRadius="3xl" startColor="gray.100" endColor="gray.200" />
             <Skeleton h="240px" borderRadius="3xl" startColor="gray.100" endColor="gray.200" />
@@ -536,13 +546,13 @@ export function DashboardPage() {
           </SimpleGrid>
         )}
 
-        {error && !isLoading && (
+        {canViewCommercialPeriod && error && !isLoading && (
           <Box textAlign="center" py={8}>
             <Text color="red.500">Error al consultar datos: {error.message}</Text>
           </Box>
         )}
 
-        {!isLoading && !error && !resumenData && (
+        {canViewCommercialPeriod && !isLoading && !error && !resumenData && (
           <Box textAlign="center" py={8}>
             <Text color="orange.500">No hay datos disponibles para este usuario</Text>
           </Box>

@@ -8,6 +8,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import InvoicesModal from "../components/InvoicesModal";
 import ClientInvoiceHistoryModal from "../components/ClientInvoiceHistoryModal";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
+import { useHasAccess, useIsAdmin } from "../../../shared/utils/permissions";
 import { QUERY_KEYS } from "../../../shared/utils/queryKeys";
 import { History } from "lucide-react";
 
@@ -29,16 +30,37 @@ export function ReceivablePage() {
 
   const username = useAuthStore((state) => state.username);
   const sellerCode = useAuthStore((state) => state.salesEmployeeCode);
-  const isSellerProfile = !!sellerCode;
+  const hasAccess = useHasAccess();
+  const isAdmin = useIsAdmin();
+
+  // Puede ver todas las cuentas por cobrar si es admin, supervisor o facturación / créditos
+  const canViewAllReceivables =
+    isAdmin ||
+    hasAccess("POST:/quotes/approval") ||
+    hasAccess("POST /quotes/approval") ||
+    hasAccess("GET:/historyClientAdmin") ||
+    hasAccess("GET /historyClientAdmin") ||
+    hasAccess("GET:/sellers") ||
+    hasAccess("GET /sellers") ||
+    !sellerCode;
+
+  // Un vendedor regular puro (sin facturación ni admin) solo ve su propia cartera
+  const isPureSeller = !canViewAllReceivables && !!sellerCode;
 
   useEffect(() => {
-    if (isSellerProfile) {
+    if (isPureSeller) {
       setSelectedSeller({
         value: sellerCode,
         label: `${sellerCode}. ${username}`,
       });
+    } else if (canViewAllReceivables) {
+      // Inicia por defecto en "Todos los vendedores" para Facturación / Supervisor / Admin
+      setSelectedSeller({
+        value: "",
+        label: "Todos los vendedores",
+      });
     }
-  }, [isSellerProfile, sellerCode, username]);
+  }, [isPureSeller, canViewAllReceivables, sellerCode, username]);
 
   const handleClientSearch = (value) => {
     const trimmedValue = (value || "").trim();
@@ -94,7 +116,7 @@ export function ReceivablePage() {
     setIsHistoryModalOpen(true);
   };
 
-  const vendedorNombre = isSellerProfile
+  const vendedorNombre = isPureSeller
     ? username
     : (cliente || clientecode)
       ? "" // Si busca un cliente específico, buscar en toda la cartera
@@ -280,8 +302,8 @@ export function ReceivablePage() {
         refreshQueries={refreshQueries}
       />
 
-      {/* Selector de vendedor para perfil Administrador */}
-      {!isSellerProfile && (
+      {/* Selector de vendedor para perfil Facturación, Supervisor y Administrador */}
+      {canViewAllReceivables && (
         <Box maxW="1200px" mx="auto" px={4} pt={2} pb={1}>
           <SellerSelectReceivable
             selectedSeller={selectedSeller}

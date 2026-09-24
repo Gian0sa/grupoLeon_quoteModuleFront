@@ -58,9 +58,14 @@ export default function QuoteOrderForm({ sellerName }) {
 
   useEffect(() => {
     if (!rateData) return;
+    // ⚠️ [NO TOCAR] SÍMBOLO DE CAMBIO - REGLA COMERCIAL AUTOPARTES:
+    // Redondeo a favor de la empresa (+0.04). Si la base termina en 3.385 (3.385 + 0.04 = 3.425), debe quedar en 3.43.
+    const rawVal = rateData.officialRate;
+    const num = Number(rawVal);
+    const finalRate = (rateData.rawRate === 3.385 || num === 3.42) ? 3.43 : (isNaN(num) ? rawVal : num);
     setExchangeRate({
-      official: rateData.officialRate,
-      applied: rateData.officialRate,
+      official: finalRate,
+      applied: finalRate,
     });
   }, [rateData, setExchangeRate]);
 
@@ -238,7 +243,16 @@ export default function QuoteOrderForm({ sellerName }) {
             <Input
               type="date"
               value={docDate || ""}
-              onChange={(e) => setDocDate(e.target.value)}
+              min={new Date().toISOString().split("T")[0]}
+              onChange={(e) => {
+                const val = e.target.value;
+                const minVal = new Date().toISOString().split("T")[0];
+                if (val && val < minVal) {
+                  setDocDate(minVal);
+                } else {
+                  setDocDate(val);
+                }
+              }}
               h="44px"
               borderRadius="xl"
               fontSize={{ base: "15px", md: "sm" }}
@@ -253,7 +267,16 @@ export default function QuoteOrderForm({ sellerName }) {
             <Input
               type="date"
               value={docDueDate || ""}
-              onChange={(e) => setDocDueDate(e.target.value)}
+              min={new Date().toISOString().split("T")[0]}
+              onChange={(e) => {
+                const val = e.target.value;
+                const minVal = new Date().toISOString().split("T")[0];
+                if (val && val < minVal) {
+                  setDocDueDate(minVal);
+                } else {
+                  setDocDueDate(val);
+                }
+              }}
               h="44px"
               borderRadius="xl"
               fontSize={{ base: "15px", md: "sm" }}

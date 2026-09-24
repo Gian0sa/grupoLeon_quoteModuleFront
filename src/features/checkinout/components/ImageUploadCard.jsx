@@ -87,6 +87,8 @@ export function ImageUploadCard({
                         <img
                             src={existingImageData.imageUrl}
                             alt="Foto anterior"
+                            loading="lazy"
+                            decoding="async"
                             style={{ width: "100%", height: "180px", objectFit: "cover" }}
                         />
                         {/* Ícono de expansión */}
@@ -121,6 +123,7 @@ export function ImageUploadCard({
                     <img
                         src={imagePreview}
                         alt="Preview"
+                        decoding="async"
                         style={{ width: "100%", height: "200px", objectFit: "cover" }}
                     />
                 </Box>
@@ -187,6 +190,7 @@ export function ImageUploadCard({
                             <img
                                 src={existingImageData.imageUrl}
                                 alt="Foto ampliada"
+                                decoding="async"
                                 style={{ width: "100%", borderRadius: "16px", maxHeight: "80vh", objectFit: "contain" }}
                             />
                         </Box>

@@ -25,7 +25,7 @@ export function useImageUpload() {
         }, 30000);
 
         try {
-            const compressedFile = await compressImage(file, 1);
+            const compressedFile = await compressImage(file, 0.35);
             setImage(compressedFile);
 
             const reader = new FileReader();

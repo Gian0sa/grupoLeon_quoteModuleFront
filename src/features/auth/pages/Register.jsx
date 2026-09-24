@@ -37,11 +37,43 @@ import SellerSelect from "../../../components/SellerSelect";
 import PermissionsTreeView from "../../admin/components/PermissionsTreeView";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+import { useAuthStore } from "../stores/useAuthStore";
+import { useIsAdmin, useHasAccess } from "../../../shared/utils/permissions";
 
 export function Register() {
   const navigate = useNavigate();
   const toast = useToast();
   const today = format(new Date(), "EEEE, d 'de' MMMM 'del' yyyy", { locale: es });
+
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const isAdmin = useIsAdmin();
+  const hasAccess = useHasAccess();
+  const canRegister = isAuthenticated && (isAdmin || hasAccess("POST:/register"));
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      navigate("/", { replace: true });
+      return;
+    }
+    if (!canRegister) {
+      toast({
+        title: "Acceso denegado",
+        description: "Solo los administradores pueden registrar nuevos usuarios.",
+        status: "error",
+        duration: 4000,
+        isClosable: true,
+      });
+      navigate("/dashboard", { replace: true });
+    }
+  }, [isAuthenticated, canRegister, navigate, toast]);
+
+  if (!canRegister) {
+    return (
+      <Center height="80vh">
+        <Spinner size="xl" color="green.600" />
+      </Center>
+    );
+  }
 
   const {
     handleSubmit,
