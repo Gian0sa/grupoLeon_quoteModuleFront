@@ -75,18 +75,26 @@ export function DashboardPage() {
   // Roles y Permisos Granulares
   const isVendedor = !!(salesEmployeeCode && Number(salesEmployeeCode) > 0);
 
-  // Acceso al panel comercial global (Supervisor / Admin)
+  // Acceso al panel comercial global (Supervisor / Admin) - Exclusivo para cuentas administrativas
   const canFilterSellers =
     isAdmin ||
-    (hasAccess("GET /sellers") && (hasAccess("GET /AdminQuotesSellers/:slpCode/:month") || hasAccess("GET:/AdminQuotesSellers/:slpCode/:month"))) ||
-    (hasAccess("GET:/sellers") && (hasAccess("GET /AdminQuotesSellers/:slpCode/:month") || hasAccess("GET:/AdminQuotesSellers/:slpCode/:month")));
+    (!isVendedor && (
+      (hasAccess("GET /sellers") && (hasAccess("GET /AdminQuotesSellers/:slpCode/:month") || hasAccess("GET:/AdminQuotesSellers/:slpCode/:month"))) ||
+      (hasAccess("GET:/sellers") && (hasAccess("GET /AdminQuotesSellers/:slpCode/:month") || hasAccess("GET:/AdminQuotesSellers/:slpCode/:month")))
+    ));
 
-  // Ver período comercial: Admin, Supervisor (global), o Vendedor con permiso explícito de ver sus cuotas
-  const canViewCommercialPeriod =
+  // Permiso para ver métricas / metas comerciales (propias o globales)
+  const canViewMetrics =
+    isAdmin ||
     canFilterSellers ||
+    hasAccess("GET /quotesSellers/:slpCode/:month") ||
+    hasAccess("GET:/quotesSellers/:slpCode/:month") ||
     hasAccess("GET /AdminQuotesSellers/:slpCode/:month") ||
     hasAccess("GET:/AdminQuotesSellers/:slpCode/:month") ||
-    (isVendedor && (hasAccess("GET /quotesSellers/:slpCode/:month") || hasAccess("GET:/quotesSellers/:slpCode/:month")));
+    isVendedor;
+
+  // Ver barra de selección de período comercial: ESTRICTAMENTE SOLO ADMINISTRADORES (Nunca vendedores)
+  const canViewCommercialPeriod = isAdmin && !isVendedor;
 
   // 🗓️ Años dinámicos que CONTIENEN datos reales en SAP (2024 excluido por no tener registros)
   const currentRealYear = new Date().getFullYear();
@@ -190,7 +198,7 @@ export function DashboardPage() {
       monthFrom, 
       monthTo 
     }, 
-    { enabled: canViewCommercialPeriod && !canFilterSellers }
+    { enabled: canViewMetrics && !canFilterSellers }
   );
 
   const { 
@@ -204,7 +212,7 @@ export function DashboardPage() {
       monthFrom, 
       monthTo 
     }, 
-    { enabled: canViewCommercialPeriod && canFilterSellers }
+    { enabled: canViewMetrics && canFilterSellers }
   );
 
   const isLoading = canFilterSellers ? adminLoading : vendedorLoading;
@@ -538,7 +546,7 @@ export function DashboardPage() {
         )}
 
         {/* Durante la carga directa de datos del usuario, mostrar Skeletons limpios */}
-        {canViewCommercialPeriod && isLoading && (
+        {canViewMetrics && isLoading && (
           <SimpleGrid columns={{ base: 1, md: 3 }} spacing={6} w="full">
             <Skeleton h="240px" borderRadius="3xl" startColor="gray.100" endColor="gray.200" />
             <Skeleton h="240px" borderRadius="3xl" startColor="gray.100" endColor="gray.200" />
@@ -546,13 +554,13 @@ export function DashboardPage() {
           </SimpleGrid>
         )}
 
-        {canViewCommercialPeriod && error && !isLoading && (
+        {canViewMetrics && error && !isLoading && (
           <Box textAlign="center" py={8}>
             <Text color="red.500">Error al consultar datos: {error.message}</Text>
           </Box>
         )}
 
-        {canViewCommercialPeriod && !isLoading && !error && !resumenData && (
+        {canViewMetrics && !isLoading && !error && !resumenData && (
           <Box textAlign="center" py={8}>
             <Text color="orange.500">No hay datos disponibles para este usuario</Text>
           </Box>
