@@ -10,6 +10,18 @@ export const getOrderByCode = async (code) => {
     }
 }
 
+// Etapa de la entrega dentro de almacén (salida física). SAP no la registra: la registra el WMS,
+// y reportModule la lee de su BD (el WMS corre en un servidor local, fuera del gateway)
+export const getSeguimientoAlmacen = async (docEntryEntrega) => {
+    try {
+        const response = await axiosInstance.get(`/reportModule/deliveryNote/${docEntryEntrega}/almacen`);
+        return response.data?.data ?? null;
+    } catch (error) {
+        console.error("Error al obtener el seguimiento de almacén:", error);
+        return null;
+    }
+}
+
 export const getDeliveryNoteByCode = async (code) => {
     try {
         const response = await axiosInstance.get(`/reportModule/deliveryNote/${code}`);

@@ -2,6 +2,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   getDeliveryNoteByCode,
+  getSeguimientoAlmacen,
   getOrderByCode,
   getInvoiceByCode,
   getPdfByCode,
@@ -29,6 +30,15 @@ export const useGetOrderByCode = (code, enabled = true) => {
     queryKey: ["orderByCode", code],
     queryFn: () => getOrderByCode(code),
     enabled: Boolean(code) && Boolean(enabled),
+  });
+};
+
+export const useGetSeguimientoAlmacen = (docEntryEntrega, enabled = true) => {
+  return useQuery({
+    queryKey: ["seguimientoAlmacen", docEntryEntrega],
+    queryFn: () => getSeguimientoAlmacen(docEntryEntrega),
+    enabled: Boolean(docEntryEntrega) && Boolean(enabled),
+    staleTime: 30_000,
   });
 };
 
