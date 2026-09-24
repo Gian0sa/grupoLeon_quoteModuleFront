@@ -35,7 +35,7 @@ export function Login() {
   } = useForm();
 
   const [showPassword, setShowPassword] = useState(false);
-  const [captchaToken, setCaptchaToken] = useState(import.meta.env.DEV ? "local-dev" : null);
+  const [captchaToken, setCaptchaToken] = useState(null);
   const [captchaError, setCaptchaError] = useState(null);
   const [captchaKey, setCaptchaKey] = useState(0);
 
@@ -182,23 +182,18 @@ export function Login() {
   }
 
   const resetCaptcha = () => {
-    if (import.meta.env.DEV) {
-      setCaptchaToken("local-dev");
-      return;
-    }
     setCaptchaKey((prev) => prev + 1);
     setCaptchaToken(null);
   };
 
   const onSubmit = (data) => {
-    const effectiveToken = captchaToken || (import.meta.env.DEV ? "local-dev" : null);
-    if (!effectiveToken) {
+    if (!captchaToken) {
       setCaptchaError("Completa la verificación de seguridad para continuar.");
       return;
     }
 
     login.mutate(
-      { ...data, captchaToken: effectiveToken },
+      { ...data, captchaToken },
       {
         onSuccess: (res) => {
           const endpoints = res?.endpoints || useAuthStore.getState().endpoints;
@@ -363,14 +358,9 @@ export function Login() {
                   setCaptchaError(null);
                 }}
                 onError={() => {
-                  if (import.meta.env.DEV) {
-                    setCaptchaToken("local-dev");
-                    setCaptchaError(null);
-                    return;
-                  }
                   setCaptchaToken(null);
                   setCaptchaError(
-                    "Tu navegador bloqueó el almacenamiento de seguridad (Prevención de seguimiento de Edge). Haz clic en el candado 🔒 o escudo 🛡️ en la barra de direcciones y desactiva la prevención de seguimiento o permite cookies para este sitio."
+                    "No se pudo completar la verificación de seguridad (Error de Cloudflare Turnstile). Si usas Edge, permite el almacenamiento o cookies para este sitio y reintenta."
                   );
                 }}
                 onExpire={() => {

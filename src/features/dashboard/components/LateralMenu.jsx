@@ -231,7 +231,10 @@ export function LateralMenu() {
         h={{ base: "42px", md: "48px" }}
         _hover={{ bg: "whiteAlpha.300" }}
         _active={{ bg: "whiteAlpha.400" }}
-        onClick={onOpen}
+        onClick={(e) => {
+          e.currentTarget?.blur();
+          onOpen();
+        }}
         aria-label="Abrir menú"
         sx={{
           WebkitTapHighlightColor: "transparent",
@@ -243,9 +246,7 @@ export function LateralMenu() {
         isOpen={isOpen}
         placement="right"
         onClose={onClose}
-        autoFocus={false}
-        returnFocusOnClose={false}
-        trapFocus={false}
+        finalFocusRef={btnRef}
         blockScrollOnMount={false}
         preserveScrollBarGap={false}
       >

@@ -25,7 +25,7 @@ import { useNotifications } from "../features/quotes/hooks/queries/quotesQueries
 import { markNotificationAsRead, deleteNotification, clearNotifications, updateQuote, getQuoteById } from "../features/quotes/services/quoteService";
 import { useIsAdmin } from "../shared/utils/permissions";
 
-export function NotificationDrawer({ isOpen, onClose }) {
+export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
   const { username, userId, role } = useAuthStore();
   const queryClient = useQueryClient();
   const [selectedQuoteForDrawer, setSelectedQuoteForDrawer] = useState(null);
@@ -332,11 +332,10 @@ export function NotificationDrawer({ isOpen, onClose }) {
         isOpen={isOpen}
         placement="right"
         onClose={onClose}
+        finalFocusRef={finalFocusRef}
         size={{ base: "full", md: "md" }}
         blockScrollOnMount={true}
         preserveScrollBarGap={false}
-        autoFocus={false}
-        returnFocusOnClose={false}
       >
         <DrawerOverlay bg="blackAlpha.700" transition="opacity 0.15s ease-out" />
         <DrawerContent
