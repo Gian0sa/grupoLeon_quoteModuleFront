@@ -42,6 +42,45 @@ export const isPickupInStoreForm = (form) => {
   );
 };
 
+export const isOwnDeliveryForm = (form) => {
+  if (!form) return false;
+  let parsed = form;
+  if (typeof form === "string") {
+    const trimmed = form.trim();
+    if (trimmed.startsWith("{")) {
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch (e) {}
+    }
+  }
+  if (typeof parsed === "object" && parsed !== null) {
+    const code = String(parsed.TrnspCode ?? parsed.code ?? parsed.value ?? "");
+    const name = String(parsed.TrnspName ?? parsed.name ?? parsed.label ?? "");
+    const combined = `${code} ${name}`.toLowerCase();
+    return (
+      combined.includes("reparto propio") ||
+      combined.includes("propio") ||
+      combined.includes("movilidad propia") ||
+      combined.includes("movilidad interna") ||
+      code === "2" ||
+      code === "02" ||
+      code === "5" ||
+      code === "05"
+    );
+  }
+  const str = String(parsed).toLowerCase();
+  return (
+    str.includes("reparto propio") ||
+    str.includes("propio") ||
+    str.includes("movilidad propia") ||
+    str.includes("movilidad interna") ||
+    str === "2" ||
+    str === "02" ||
+    str === "5" ||
+    str === "05"
+  );
+};
+
 export const formatDeliveryForm = (form) => {
   if (!form) return "Despacho Regular";
   let parsed = form;
@@ -55,6 +94,9 @@ export const formatDeliveryForm = (form) => {
   }
   if (typeof parsed === "object" && parsed !== null) {
     const name = parsed.TrnspName || parsed.label || parsed.name || "";
+    if (name && /cotizaci[oó]n|oferta|pedido|boleta|factura/i.test(name.trim())) {
+      return "Despacho Regular";
+    }
     if (name && name !== "undefined" && name !== "null") return name;
     const code = parsed.TrnspCode || parsed.code || parsed.value;
     if (code === 1 || code === "1") return "Recojo en Almacén / Tienda";
@@ -63,6 +105,9 @@ export const formatDeliveryForm = (form) => {
     if (code) return `Forma #${code}`;
   }
   const str = String(parsed).trim();
+  if (/cotizaci[oó]n|oferta|pedido|boleta|factura/i.test(str)) {
+    return "Despacho Regular";
+  }
   if (str === "1") return "Recojo en Almacén / Tienda";
   if (str === "2") return "Envío a Domicilio / Agencia Lima";
   if (str === "3") return "Despacho a Provincia (Agencia)";
@@ -72,13 +117,6 @@ export const formatDeliveryForm = (form) => {
 
 export const formatTransportName = (transport, deliveryForm, options = {}) => {
   const { includeAddress = false, includeCode = false } = typeof options === "boolean" ? { includeAddress: options } : options;
-
-  if (!transport) {
-    if (isPickupInStoreForm(deliveryForm)) {
-      return "No aplica (Recojo en Tienda)";
-    }
-    return "Sin asignar / Por coordinar";
-  }
 
   let parsed = transport;
   if (typeof transport === "string") {
@@ -95,22 +133,77 @@ export const formatTransportName = (transport, deliveryForm, options = {}) => {
     const code = parsed.Code || parsed.code || parsed.TrnspCode ? String(parsed.Code || parsed.code || parsed.TrnspCode).replace(/^0+/, "") : "";
     const codePrefix = includeCode && code && !name.includes(code) && !name.toLowerCase().startsWith("cód") ? `Cód. ${code} - ` : "";
     const dir = includeAddress && parsed.U_TQC_DIREC ? ` (${parsed.U_TQC_DIREC})` : "";
-    if (name && name !== "undefined" && name !== "null") {
+    if (name && name !== "undefined" && name !== "null" && !name.toLowerCase().includes("no aplica")) {
+      if (name.toUpperCase().includes("AUTOPARTES")) {
+        return "AUTOPARTES S.A. (Reparto Propio)";
+      }
       return `${codePrefix}${name}${dir}`.trim();
     }
     if (code) return `Transporte Cód. ${code}`;
   }
 
-  const str = String(parsed).trim();
-  if (str && str !== "undefined" && str !== "null" && str !== "null - null") {
+  const str = String(parsed || "").trim();
+  if (str && str !== "undefined" && str !== "null" && str !== "null - null" && !str.toLowerCase().includes("no aplica")) {
+    if (str.toUpperCase().includes("AUTOPARTES")) {
+      return "AUTOPARTES S.A. (Reparto Propio)";
+    }
     return str;
   }
 
-  if (isPickupInStoreForm(deliveryForm)) {
-    return "No aplica (Recojo en Tienda)";
+  if (isOwnDeliveryForm(deliveryForm) || str.toLowerCase().includes("reparto propio") || str.toLowerCase().includes("propio")) {
+    return "AUTOPARTES S.A. (Reparto Propio)";
+  }
+  if (isPickupInStoreForm(deliveryForm) || str.toLowerCase().includes("recojo") || str.toLowerCase().includes("tienda")) {
+    return "CLIENTE (Recojo en Tienda)";
   }
 
   return "Sin asignar / Por coordinar";
+};
+
+export const formatTransportAddress = (transport, deliveryForm, fallbackAddress = "-") => {
+  // En Reparto Propio o Recojo en Tienda NO existe agencia de transporte externa en Lima a donde enviar la carga.
+  if (isOwnDeliveryForm(deliveryForm) || isPickupInStoreForm(deliveryForm)) {
+    return "-";
+  }
+
+  let parsed = transport;
+  if (typeof transport === "string") {
+    const trimmed = transport.trim();
+    if (trimmed.startsWith("{")) {
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch (e) {}
+    }
+  }
+
+  if (typeof parsed === "object" && parsed !== null) {
+    const code = String(parsed.Code || parsed.code || parsed.TrnspCode || "").replace(/^0+/, "");
+    const name = String(parsed.Name || parsed.name || parsed.label || "").toUpperCase();
+    // Si el transportista es Autopartes S.A. o Cliente, la dirección de agencia no aplica (-)
+    if (code === "53" || name.includes("AUTOPARTES") || name.includes("REPARTO PROPIO") || name.includes("RECOJO")) {
+      return "-";
+    }
+    if (parsed.U_TQC_DIREC && parsed.U_TQC_DIREC !== "undefined" && parsed.U_TQC_DIREC !== "null" && parsed.U_TQC_DIREC !== "-") {
+      return parsed.U_TQC_DIREC;
+    }
+    if (parsed.address && parsed.address !== "undefined" && parsed.address !== "null" && parsed.address !== "-") {
+      return parsed.address;
+    }
+  }
+
+  const str = String(parsed || "").toLowerCase();
+  if (str.includes("reparto propio") || str.includes("propio") || str.includes("autopartes") || str.includes("recojo") || str.includes("tienda")) {
+    return "-";
+  }
+
+  if (fallbackAddress && fallbackAddress !== "undefined" && fallbackAddress !== "null" && fallbackAddress !== "-") {
+    const fbLower = String(fallbackAddress).toLowerCase();
+    if (fbLower.includes("aurora") || fbLower.includes("las torres") || fbLower.includes("autopartes")) {
+      return "-";
+    }
+    return fallbackAddress;
+  }
+  return "-";
 };
 
 export const formatDeliveryPoint = (point, clientAddress) => {
@@ -246,4 +339,37 @@ export const cleanClientName = (q) => {
     return "Cliente General / Mostrador";
   }
   return name;
+};
+
+/**
+ * Formateador seguro para Banco del Cheque (BCQ).
+ * En una Orden de Venta o Cotización física, esta casilla corresponde exclusivamente
+ * al banco emisor de un Cheque bancario. Las cuentas corrientes de recaudo de la empresa
+ * corresponden a la cobranza / facturación posterior y NUNCA deben mostrarse aquí.
+ */
+export const formatCheckBank = (val) => {
+  if (!val) return "—";
+  if (typeof val !== "string") return "—";
+  const clean = val.trim();
+  if (
+    !clean ||
+    clean === "—" ||
+    clean === "-" ||
+    clean === "null" ||
+    clean === "undefined" ||
+    clean === "[object Object]"
+  ) {
+    return "—";
+  }
+  // Filtrar cuentas corrientes bancarias (ej. 191-0104153-0-50), códigos de medio o valores estáticos
+  if (
+    /\d{3,}-\d+/.test(clean) ||
+    /\d{6,}/.test(clean) ||
+    clean.includes("0104153") ||
+    /^(BCP|BBVA|SCOTIA|INTERBANK)_(SOLES|USD|DOLARES)/i.test(clean) ||
+    /^\d+$/.test(clean)
+  ) {
+    return "—";
+  }
+  return clean;
 };

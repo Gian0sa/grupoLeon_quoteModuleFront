@@ -124,6 +124,17 @@ export const checkHasAdditionalDiscount = (q) => {
   });
 };
 
+const cleanDeliveryForm = (df) => {
+  if (!df) return null;
+  const str = typeof df === "object"
+    ? String(df.TrnspName || df.label || df.name || df.TrnspCode || "")
+    : String(df);
+  if (/cotizaci[oó]n|oferta|pedido|boleta|factura/i.test(str.trim())) {
+    return null;
+  }
+  return df;
+};
+
 const isDraftOwnedByCurrentUser = (q, currentUsername, currentUserId) => {
   if (!q) return false;
   const st = q.approvalStatus || q.state || q.status;
@@ -599,8 +610,8 @@ export function QuoteApprovalPage() {
               client: sq.client || matchedLocal.client,
               clientName: sq.clientName || matchedLocal.clientName,
               totals: (sq.totals && sq.totals.grandTotalUSD) ? sq.totals : matchedLocal.totals,
-              deliveryForm: sq.deliveryForm || matchedLocal.deliveryForm || sq.selectedDeliveryForm || matchedLocal.selectedDeliveryForm || null,
-              selectedDeliveryForm: sq.selectedDeliveryForm || matchedLocal.selectedDeliveryForm || sq.deliveryForm || matchedLocal.deliveryForm || null,
+              deliveryForm: cleanDeliveryForm(sq.deliveryForm || matchedLocal.deliveryForm || sq.selectedDeliveryForm || matchedLocal.selectedDeliveryForm || null),
+              selectedDeliveryForm: cleanDeliveryForm(sq.selectedDeliveryForm || matchedLocal.selectedDeliveryForm || sq.deliveryForm || matchedLocal.deliveryForm || null),
               transport: sq.transport || matchedLocal.transport || sq.selectedTransport || matchedLocal.selectedTransport || null,
               selectedTransport: sq.selectedTransport || matchedLocal.selectedTransport || sq.transport || matchedLocal.transport || null,
               transportDirection: sq.transportDirection || matchedLocal.transportDirection || null,
@@ -702,8 +713,8 @@ export function QuoteApprovalPage() {
                 client: sq.client || localMatch.client,
                 clientName: sq.clientName || localMatch.clientName,
                 totals: (sq.totals && sq.totals.grandTotalUSD) ? sq.totals : localMatch.totals,
-                deliveryForm: sq.deliveryForm || localMatch.deliveryForm || sq.selectedDeliveryForm || localMatch.selectedDeliveryForm || null,
-                selectedDeliveryForm: sq.selectedDeliveryForm || localMatch.selectedDeliveryForm || sq.deliveryForm || localMatch.deliveryForm || null,
+                deliveryForm: cleanDeliveryForm(sq.deliveryForm || localMatch.deliveryForm || sq.selectedDeliveryForm || localMatch.selectedDeliveryForm || null),
+                selectedDeliveryForm: cleanDeliveryForm(sq.selectedDeliveryForm || localMatch.selectedDeliveryForm || sq.deliveryForm || localMatch.deliveryForm || null),
                 transport: sq.transport || localMatch.transport || sq.selectedTransport || localMatch.selectedTransport || null,
                 selectedTransport: sq.selectedTransport || localMatch.selectedTransport || sq.transport || localMatch.transport || null,
                 transportDirection: sq.transportDirection || localMatch.transportDirection || null,

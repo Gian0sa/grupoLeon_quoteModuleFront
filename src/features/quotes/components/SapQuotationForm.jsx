@@ -32,7 +32,9 @@ import { isPickupInStoreForm } from "./NewSellTerms";
 import { useIsAdmin, useHasAccess } from "../../../shared/utils/permissions";
 import { useSellersData, useGetProfileData } from "../../auth/hooks/queries/authQueries";
 import { useGetAccountsReceivable } from "../../receivable/hooks/receivableQueries";
+import { useClientPointsDelivery } from "../../clients/hooks/queries/clientQueries";
 import InvoicesModal from "../../receivable/components/InvoicesModal";
+import { axiosInstance } from "../../../shared/lib/axiosInstance";
 
 const money = (val, currency = "USD") => {
   const num = Number(val || 0);
@@ -275,12 +277,13 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     return isNaN(num) ? 3.76 : num;
   })();
 
-  // ─── CONSULTA Y ANÁLISIS DE DEUDA DEL CLIENTE EN TIEMPO REAL ───
-  const clientCardCode = client?.CardCode || client?.raw?.CardCode || client?.id || "";
+  // ─── CONSULTA Y ANÁLISIS DE DEUDA Y LOGÍSTICA DEL CLIENTE EN TIEMPO REAL (SAP B1) ───
+  const clientCardCode = client?.CardCode || client?.cardCode || client?.raw?.CardCode || (client?.LicTradNum ? `CL${client.LicTradNum}` : "") || (client?.clientDocument ? `CL${client.clientDocument}` : "") || client?.id || "";
   const { data: receivableData } = useGetAccountsReceivable(
     { clientecode: clientCardCode },
     Boolean(clientCardCode)
   );
+  const { dataDeliveryPoints, isLoadingDeliveryPoints } = useClientPointsDelivery(clientCardCode);
 
   const clientDebtInfo = useMemo(() => {
     if (!client) return null;
@@ -433,22 +436,58 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
   const deliveryPoints = useMemo(() => {
     if (!client) return [];
-    const list = client.raw?.BPAddresses || client.raw?.bpAddresses || client.raw?.addresses || [];
+
+    // 1. Puntos traídos en vivo desde SAP Business One (Service Layer)
+    const sapApiList = Array.isArray(dataDeliveryPoints) ? dataDeliveryPoints : (dataDeliveryPoints?.value || []);
+
+    // 2. Puntos adjuntos en el objeto raw del cliente (si existen)
+    const rawList = client.raw?.BPAddresses || client.raw?.bpAddresses || client.raw?.addresses || [];
+
+    // 3. Combinar listas
+    const combined = [...sapApiList, ...rawList];
+
     let points = [];
-    if (Array.isArray(list) && list.length > 0) {
-      points = list.filter(addr => addr.AddressType === "bo_ShipTo" || addr.addressType === "bo_ShipTo" || !addr.AddressType);
+    if (combined.length > 0) {
+      points = combined.filter(addr =>
+        addr.AddressType === "bo_ShipTo" ||
+        addr.addressType === "bo_ShipTo" ||
+        !addr.AddressType ||
+        addr.AddressName?.toUpperCase().includes("ALMACEN") ||
+        addr.AddressName?.toUpperCase().includes("ENTREGA")
+      );
       if (points.length === 0) {
-        points = [...list];
+        points = [...combined];
       }
     }
+
+    // Deduplicar por AddressName y Dirección/Street
+    const uniquePoints = [];
+    const seen = new Set();
+    points.forEach(p => {
+      const name = (p.AddressName || p.name || "").trim();
+      const street = (p.Street || p.Address || p.address || "").trim();
+      const key = `${name}_${street}`.toLowerCase();
+      if ((name || street) && !seen.has(key)) {
+        seen.add(key);
+        uniquePoints.push({
+          ...p,
+          AddressName: name || "SUCURSAL",
+          Street: street,
+          Address: street,
+          label: street ? (name ? `${name} - ${street}` : street) : name,
+        });
+      }
+    });
+
     const mainAddress = client.Address || client.address || client.clientAddress || client.raw?.Address;
-    const hasMainInList = points.some(p => {
+    const hasMainInList = uniquePoints.some(p => {
       const pStreet = (p.Street || p.Address || "").trim().toLowerCase();
       const mStreet = (mainAddress || "").trim().toLowerCase();
       return pStreet && mStreet && (pStreet === mStreet || pStreet.includes(mStreet) || mStreet.includes(pStreet));
     });
+
     if (mainAddress && !hasMainInList) {
-      points.unshift({
+      uniquePoints.unshift({
         AddressName: "FISCAL",
         Street: mainAddress,
         Address: mainAddress,
@@ -456,8 +495,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         isDefault: true,
       });
     }
-    return points;
-  }, [client]);
+
+    return uniquePoints;
+  }, [client, dataDeliveryPoints]);
 
   // Extraer lista de personas de contacto oficiales registradas en SAP para este cliente
   const contactList = useMemo(() => {
@@ -2195,6 +2235,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                     client={client}
                     transports={dataTransports || []}
                     deliveryPoints={deliveryPoints}
+                    isLoadingDeliveryPoints={isLoadingDeliveryPoints}
                     deliveryForms={dataDeliveryForms || []}
                     paymentTypes={dataPaymentTypes || []}
                     selectedPoint={selectedPoint}

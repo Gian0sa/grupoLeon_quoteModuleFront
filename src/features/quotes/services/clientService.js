@@ -81,10 +81,13 @@ export function useClientService(quoteId) {
       if (data.deliveryForm || data.selectedDeliveryForm) {
         const dVal = data.selectedDeliveryForm || data.deliveryForm;
         const dName = typeof dVal === "object" ? (dVal?.TrnspName ?? dVal?.TrnspCode) : dVal;
-        deliveryForm =
-          dataDeliveryForms?.find(
-            (form) => form.TrnspName === dName || String(form.TrnspCode) === String(dName)
-          ) || (typeof dVal === "object" ? dVal : { TrnspCode: dVal, TrnspName: String(dVal) });
+        const dStr = String(dName || "").trim();
+        if (!/cotizaci[oó]n|oferta|pedido|boleta|factura/i.test(dStr)) {
+          deliveryForm =
+            dataDeliveryForms?.find(
+              (form) => form.TrnspName === dName || String(form.TrnspCode) === String(dName)
+            ) || (typeof dVal === "object" ? dVal : { TrnspCode: dVal, TrnspName: String(dVal) });
+        }
       }
 
       setSelectedPoint(data.selectedPoint ?? data.deliveryPoint ?? null);

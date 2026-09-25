@@ -3,9 +3,11 @@ import { calculateQuoteTotals } from "../../../shared/utils/quoteCalculator";
 import {
   formatDeliveryForm,
   formatTransportName,
+  formatTransportAddress,
   formatDeliveryPoint,
   formatPaymentTerms,
-  isPickupInStoreForm
+  isPickupInStoreForm,
+  formatCheckBank
 } from "../../../shared/utils/quoteLogisticsFormatters";
 
 const money = (val) => {
@@ -204,21 +206,16 @@ export const QuotePdfDocument = React.forwardRef(({ quote, isPrintMode = false }
   const rawDelivForm = quote.selectedDeliveryForm || quote.deliveryForm || quote.totals?.deliveryForm || quote.totals?.selectedDeliveryForm;
   const rawTransport = quote.selectedTransport || quote.transport || quote.U_TQC_TRANSPOR || quote.totals?.transport || quote.totals?.selectedTransport;
   const transportName = formatTransportName(rawTransport, rawDelivForm, { includeAddress: false });
-
-  let parsedTransport = rawTransport;
-  if (typeof parsedTransport === "string" && parsedTransport.trim().startsWith("{")) {
-    try { parsedTransport = JSON.parse(parsedTransport); } catch (e) {}
-  }
-  const transportAddress = typeof parsedTransport === "object" && parsedTransport !== null
-    ? (parsedTransport.U_TQC_DIREC || parsedTransport.address || quote.transportDirection || quote.totals?.transportDirection || "-")
-    : (quote.transportDirection || quote.totals?.transportDirection || "-");
+  const rawTransportDir = quote.transportDirection || quote.totals?.transportDirection;
+  const transportAddress = formatTransportAddress(rawTransport, rawDelivForm, rawTransportDir);
 
   // Punto de Llegada
   const rawPoint = quote.selectedPoint || quote.deliveryPoint;
   const pointOfArrival = formatDeliveryPoint(rawPoint, clientAddress);
 
   const opNumberVal = quote.opNum || quote.operationNumber || "";
-  const bcqVal = quote.bankAccount || quote.totals?.bankAccount || quote.paymentMethod || quote.totals?.paymentMethod || "—";
+  // BCQ: Banco del Cheque (aplica únicamente si se paga con cheque; las cuentas de recaudo van en facturación/SAP posterior)
+  const bcqVal = formatCheckBank(quote.checkBank || quote.bancoCheque);
   const sellerDisplayName = quote.sellerName || quote.salesPersonName || "Asesor Comercial";
 
   // Moneda del Documento (Soles o Dólares)

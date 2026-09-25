@@ -14,7 +14,9 @@ import {
   Select as ChakraSelect,
   Checkbox,
   Flex,
+  Spinner,
 } from "@chakra-ui/react";
+import Select from "react-select";
 import CreatableSelect from "react-select/creatable";
 import { adaptBusinessPartner } from "../adapters/quotesAdapter";
 import { useQuoteMutations } from "../hooks/mutations/quotesMutations";
@@ -76,10 +78,10 @@ export const isOwnPickupInStoreForm = (form) => {
     const code = String(parsed.TrnspCode ?? parsed.code ?? parsed.value ?? "");
     const name = String(parsed.TrnspName ?? parsed.name ?? parsed.label ?? "");
     const combined = `${code} ${name}`.toLowerCase();
-    return combined.includes("reparto propio") || combined.includes("motorizado propio") || combined.includes("propio") || code === "2" || code === "02";
+    return combined.includes("reparto propio") || combined.includes("motorizado propio") || combined.includes("propio") || code === "2" || code === "02" || code === "5" || code === "05";
   }
   const str = String(parsed).toLowerCase();
-  return str.includes("reparto propio") || str.includes("motorizado propio") || str.includes("propio") || str === "2" || str === "02";
+  return str.includes("reparto propio") || str.includes("motorizado propio") || str.includes("propio") || str === "2" || str === "02" || str === "5" || str === "05";
 };
 
 export const getCustomSelectStyles = (isLocked) => ({
@@ -144,6 +146,7 @@ export function NewSellTerms({
   client,
   transports = [],
   deliveryPoints = [],
+  isLoadingDeliveryPoints = false,
   deliveryForms = [],
   paymentTypes = [],
   selectedPoint,
@@ -205,8 +208,9 @@ export function NewSellTerms({
   });
 
   const deliveryFormsOptions = allDeliveryForms.map((form) => ({
-    value: String(form.TrnspCode || form.value || form.TrnspName),
-    label: form.TrnspName || form.label || String(form.TrnspCode),
+    value: String(form.TrnspCode || form.Code || form.value || form.TrnspName),
+    label: form.TrnspName || form.Name || form.label || String(form.TrnspCode),
+    raw: form,
   }));
 
   const deliveryOptions = allDeliveryPoints.map((point) => {
@@ -246,26 +250,48 @@ export function NewSellTerms({
       }
     }
     if (typeof val === "object" && val !== null) {
-      const code = val.TrnspCode ?? val.value ?? val.code ?? "";
-      const name = val.TrnspName ?? val.label ?? val.name ?? (code ? String(code) : "");
+      const code = val.TrnspCode ?? val.Code ?? val.value ?? val.code ?? "";
+      const name = val.TrnspName ?? val.Name ?? val.label ?? val.name ?? (code ? String(code) : "");
       if (!name || name === "undefined" || name === "null") return null;
+      if (/cotizaci[oó]n|oferta|pedido|boleta|factura/i.test(String(name).trim()) || /cotizaci[oó]n|oferta|pedido|boleta|factura/i.test(String(code).trim())) {
+        return null;
+      }
+      const foundInList = allDeliveryForms.find(
+        (f) => String(f.TrnspCode || f.Code) === String(code) || f.TrnspName === name || f.Name === name
+      );
+      if (foundInList) {
+        return {
+          value: String(foundInList.TrnspCode || foundInList.Code),
+          label: foundInList.TrnspName || foundInList.Name,
+          raw: foundInList,
+        };
+      }
       return {
         value: String(code || name),
         label: name,
+        raw: val,
       };
     }
-    const strVal = String(val);
+    const strVal = String(val).trim();
     if (!strVal || strVal === "undefined" || strVal === "null") return null;
+    if (/cotizaci[oó]n|oferta|pedido|boleta|factura/i.test(strVal)) {
+      return null;
+    }
     const found = allDeliveryForms.find(
-      (f) => String(f.TrnspCode) === strVal || f.TrnspName === strVal
+      (f) => String(f.TrnspCode || f.Code) === strVal || f.TrnspName === strVal || f.Name === strVal
     );
     if (found) {
       return {
-        value: String(found.TrnspCode || found.TrnspName),
-        label: found.TrnspName || String(found.TrnspCode),
+        value: String(found.TrnspCode || found.Code),
+        label: found.TrnspName || found.Name,
+        raw: found,
       };
     }
-    return { value: strVal, label: strVal };
+    const numericCode = Number(strVal);
+    if (!isNaN(numericCode) && numericCode > 0) {
+      return { value: strVal, label: `Transporte Cód. ${strVal}` };
+    }
+    return null;
   };
 
   const normalizeDeliveryPointValue = (val) => {
@@ -370,6 +396,39 @@ export function NewSellTerms({
   const isPickupInStore = isPickupInStoreForm(selectedDeliveryForm);
   const isOwnPickupInStore = isOwnPickupInStoreForm(selectedDeliveryForm);
 
+  // Sincronización automática de transporte propio / recojo para evitar vacíos o "No aplica"
+  useEffect(() => {
+    if (isOwnPickupInStore) {
+      const currentName = String(selectedTransport?.Name || selectedTransport?.name || selectedTransport || "").toLowerCase();
+      if (!selectedTransport || currentName.includes("no aplica") || currentName === "null" || currentName === "undefined") {
+        setSelectedTransport({
+          Code: "00053",
+          code: "00053",
+          Name: "AUTOPARTES S.A.",
+          name: "AUTOPARTES S.A.",
+          label: "AUTOPARTES S.A.",
+          value: "00053",
+          U_TQC_DIREC: "",
+          address: "",
+        });
+      }
+    } else if (isPickupInStore) {
+      const currentName = String(selectedTransport?.Name || selectedTransport?.name || selectedTransport || "").toLowerCase();
+      if (!selectedTransport || currentName.includes("no aplica") || currentName === "null" || currentName === "undefined") {
+        setSelectedTransport({
+          Code: "CLIENTE",
+          code: "CLIENTE",
+          Name: "CLIENTE (Recojo en Tienda)",
+          name: "CLIENTE (Recojo en Tienda)",
+          label: "CLIENTE (Recojo en Tienda)",
+          value: "CLIENTE",
+          U_TQC_DIREC: "",
+          address: "",
+        });
+      }
+    }
+  }, [selectedDeliveryForm]);
+
   const handleDeliveryFormChange = (selected) => {
     if (!selected) {
       setSelectedDeliveryForm(null);
@@ -381,9 +440,29 @@ export function NewSellTerms({
     const selectedObj = found || { TrnspCode: selected.value, TrnspName: selected.label };
     setSelectedDeliveryForm(selectedObj);
 
-    if (isPickupInStoreForm(selectedObj)) {
+    if (isOwnPickupInStoreForm(selectedObj)) {
+      setSelectedTransport({
+        Code: "00053",
+        code: "00053",
+        Name: "AUTOPARTES S.A.",
+        name: "AUTOPARTES S.A.",
+        label: "AUTOPARTES S.A.",
+        value: "00053",
+        U_TQC_DIREC: "",
+        address: "",
+      });
+    } else if (isPickupInStoreForm(selectedObj)) {
       setSelectedPoint(null);
-      setSelectedTransport(null);
+      setSelectedTransport({
+        Code: "CLIENTE",
+        code: "CLIENTE",
+        Name: "CLIENTE (Recojo en Tienda)",
+        name: "CLIENTE (Recojo en Tienda)",
+        label: "CLIENTE (Recojo en Tienda)",
+        value: "CLIENTE",
+        U_TQC_DIREC: "",
+        address: "",
+      });
     }
   };
 
@@ -478,9 +557,22 @@ export function NewSellTerms({
     }
   };
 
-  // Auto-seleccionar la condición de pago del cliente (GroupNum / PayTermsGrpCode) si aún no se ha seleccionado ninguna
+  // Auto-seleccionar la condición de pago del cliente (GroupNum / PayTermsGrpCode de SAP B1)
+  const prevClientCodeRef = useRef(null);
   useEffect(() => {
-    if (!selectedPaymentType && client && allPaymentTypes.length > 0) {
+    const currentCode = client?.CardCode || client?.cardCode || client?.id;
+    if (client && currentCode && currentCode !== prevClientCodeRef.current) {
+      prevClientCodeRef.current = currentCode;
+      const clientGroupNum = client.PayTermsGrpCode ?? client.GroupNum ?? client.raw?.PayTermsGrpCode ?? client.raw?.GroupNum;
+      if (clientGroupNum !== undefined && clientGroupNum !== null && clientGroupNum !== "" && allPaymentTypes.length > 0) {
+        const found = allPaymentTypes.find(
+          (pt) => String(pt.GroupNum ?? pt.GroupNumber ?? pt.value) === String(clientGroupNum)
+        );
+        if (found) {
+          handlePaymentTypeChange({ value: found.GroupNum ?? found.value, label: found.PymntGroup || found.label });
+        }
+      }
+    } else if (!selectedPaymentType && client && allPaymentTypes.length > 0) {
       const clientGroupNum = client.PayTermsGrpCode ?? client.GroupNum ?? client.raw?.PayTermsGrpCode ?? client.raw?.GroupNum;
       if (clientGroupNum !== undefined && clientGroupNum !== null && clientGroupNum !== "") {
         const found = allPaymentTypes.find(
@@ -543,21 +635,25 @@ export function NewSellTerms({
             <FormLabel fontSize="xs" fontWeight="800" color="gray.700">
               Forma de Entrega {isDeliveryLocked && "🔒"}
             </FormLabel>
-            <CreatableSelect
+            <Select
               isDisabled={isDeliveryLocked}
               isClearable={!isDeliveryLocked}
               options={deliveryFormsOptions}
               value={normalizeDeliveryFormValue(selectedDeliveryForm)}
               onChange={handleDeliveryFormChange}
-              placeholder="Selecciona o escribe una forma de entrega..."
+              placeholder="Selecciona una forma de entrega..."
               noOptionsMessage={({ inputValue }) =>
-                inputValue ? `Presiona Enter para seleccionar: "${inputValue}"` : "Sin formas de entrega registradas"
+                inputValue ? `No se encontró: "${inputValue}"` : "Sin formas de entrega registradas en SAP"
               }
-              formatCreateLabel={(inputValue) => `Escribir: "${inputValue}"`}
               styles={getCustomSelectStyles(isDeliveryLocked)}
               menuPortalTarget={typeof document !== "undefined" ? document.body : null}
               menuPosition="fixed"
             />
+            {deliveryFormsOptions.length > 0 && (
+              <Text fontSize="11px" color="gray.500" mt={1}>
+                📦 <b>{deliveryFormsOptions.length}</b> modalidades de despacho activas en SAP Business One.
+              </Text>
+            )}
           </Box>
 
           {selectedDeliveryForm && !isPickupInStore && (
@@ -567,21 +663,52 @@ export function NewSellTerms({
               </FormLabel>
               <CreatableSelect
                 isDisabled={isDeliveryLocked}
+                isLoading={isLoadingDeliveryPoints}
                 isClearable={!isDeliveryLocked}
                 options={deliveryOptions}
                 value={normalizeDeliveryPointValue(selectedPoint)}
                 onChange={handleDeliveryPointChange}
-                placeholder="Selecciona o escribe un destino (Ej: ENVÍO A PROVINCIA - SAN VICENTE)..."
+                placeholder={
+                  isLoadingDeliveryPoints
+                    ? "Cargando direcciones de SAP Business One..."
+                    : client
+                    ? "Selecciona o escribe un destino de entrega..."
+                    : "Selecciona un cliente o escribe un destino libre..."
+                }
                 noOptionsMessage={({ inputValue }) =>
                   inputValue
                     ? `Presiona Enter para usar: "${inputValue}" como destino`
-                    : (client ? "Escribe la dirección o ciudad de destino..." : "Selecciona un cliente o escribe un destino libre...")
+                    : isLoadingDeliveryPoints
+                    ? "Cargando direcciones de SAP Business One..."
+                    : client
+                    ? "Escribe la dirección o ciudad de destino..."
+                    : "Selecciona primero un cliente en la pestaña Cotización o escribe un destino libre..."
                 }
                 formatCreateLabel={(inputValue) => `Escribir destino libre: "${inputValue}"`}
                 styles={getCustomSelectStyles(isDeliveryLocked)}
                 menuPortalTarget={typeof document !== "undefined" ? document.body : null}
                 menuPosition="fixed"
               />
+              {!client ? (
+                <Text fontSize="11px" color="amber.800" bg="amber.50" px={2.5} py={1.5} borderRadius="md" border="1px dashed" borderColor="amber.300" mt={1.5}>
+                  💡 <b>Aviso SAP B1:</b> Selecciona primero un cliente en la <b>Pestaña 1 (Cotización)</b> para cargar automáticamente sus almacenes y sucursales registradas en SAP B1, o puedes escribir una dirección libre directamente aquí.
+                </Text>
+              ) : isLoadingDeliveryPoints ? (
+                <HStack spacing={1.5} mt={1.5} bg="blue.50" px={2.5} py={1} borderRadius="md">
+                  <Spinner size="xs" color="blue.600" />
+                  <Text fontSize="11px" color="blue.700" fontWeight="600">
+                    Consultando almacenes y sucursales en SAP Business One...
+                  </Text>
+                </HStack>
+              ) : deliveryOptions.length > 0 ? (
+                <Text fontSize="11px" color="emerald.700" fontWeight="600" mt={1}>
+                  🏢 <b>{deliveryOptions.length}</b> {deliveryOptions.length === 1 ? "dirección oficial de SAP B1 cargada" : "direcciones oficiales de SAP B1 cargadas"} para este cliente ({client.CardName || client.clientName || client.CardCode}).
+                </Text>
+              ) : (
+                <Text fontSize="11px" color="gray.600" mt={1}>
+                  ℹ️ El cliente no tiene sucursales adicionales en SAP B1. Puedes escribir una dirección libre aquí.
+                </Text>
+              )}
             </Box>
           )}
 
@@ -596,7 +723,7 @@ export function NewSellTerms({
                 options={transportOptions}
                 value={normalizeTransportValue(selectedTransport)}
                 onChange={handleTransportChange}
-                placeholder="Selecciona o escribe una agencia (Ej: Cód. 103 - ETTUSA, SHALOM)..."
+                placeholder="Selecciona o escribe una agencia de transporte..."
                 noOptionsMessage={({ inputValue }) =>
                   inputValue ? `Presiona Enter para usar: "${inputValue}" como agencia` : "Escribe el nombre de la agencia..."
                 }
@@ -605,6 +732,41 @@ export function NewSellTerms({
                 menuPortalTarget={typeof document !== "undefined" ? document.body : null}
                 menuPosition="fixed"
               />
+              <Text fontSize="11px" color="gray.500" mt={1}>
+                🚚 <b>{transportOptions.length}</b> agencias registradas en SAP Business One o escribe una agencia personalizada.
+              </Text>
+            </Box>
+          )}
+
+          {selectedDeliveryForm && isOwnPickupInStore && (
+            <Box bg="emerald.50" border="1.5px solid" borderColor="emerald.200" p={3.5} borderRadius="xl">
+              <HStack spacing={2.5} align="flex-start">
+                <Text fontSize="16px" mt={0.5}>🚚</Text>
+                <Box>
+                  <Text fontSize="xs" fontWeight="800" color="emerald.900">
+                    Transporte Asignado: AUTOPARTES S.A. (Flota / Reparto Propio)
+                  </Text>
+                  <Text fontSize="11px" color="emerald.700" mt={0.5}>
+                    Cód. SAP: <b>00053</b> | Despacho directo con flota propia a la dirección / almacén del cliente
+                  </Text>
+                </Box>
+              </HStack>
+            </Box>
+          )}
+
+          {selectedDeliveryForm && isPickupInStore && (
+            <Box bg="blue.50" border="1.5px solid" borderColor="blue.200" p={3.5} borderRadius="xl">
+              <HStack spacing={2.5} align="flex-start">
+                <Text fontSize="16px" mt={0.5}>🏬</Text>
+                <Box>
+                  <Text fontSize="xs" fontWeight="800" color="blue.900">
+                    Modalidad: Recojo en Tienda / Almacén por el Cliente
+                  </Text>
+                  <Text fontSize="11px" color="blue.700" mt={0.5}>
+                    Punto de Entrega: <b>Almacén Central / Tienda Autopartes S.A.</b>
+                  </Text>
+                </Box>
+              </HStack>
             </Box>
           )}
 
@@ -707,6 +869,11 @@ export function NewSellTerms({
                       menuPortalTarget={typeof document !== "undefined" ? document.body : null}
                       menuPosition="fixed"
                     />
+                    {paymentTypesOptions.length > 0 && (
+                      <Text fontSize="11px" color="gray.500" mt={1}>
+                        💰 <b>{paymentTypesOptions.length}</b> condiciones de pago sincronizadas de SAP Business One (Tabla OCTG).
+                      </Text>
+                    )}
                   </FormControl>
 
                   {/* Selector de Comprobante Fiscal (FACTURA / BOLETA) */}

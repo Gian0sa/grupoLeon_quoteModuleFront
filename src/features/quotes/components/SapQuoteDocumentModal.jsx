@@ -21,6 +21,16 @@ import {
 } from "@chakra-ui/react";
 import { Printer, Download, Eye, CheckCircle2, FileText, Share2, Edit3, Check, ZoomIn, ZoomOut, Code2 } from "lucide-react";
 import { calculateQuoteTotals } from "../../../shared/utils/quoteCalculator";
+import {
+  formatDeliveryForm,
+  formatTransportName,
+  formatTransportAddress,
+  formatDeliveryPoint,
+  formatPaymentTerms,
+  isPickupInStoreForm,
+  isOwnDeliveryForm,
+  formatCheckBank
+} from "../../../shared/utils/quoteLogisticsFormatters";
 import { SapPayloadJsonModal } from "./SapPayloadJsonModal";
 import { useIsAdmin } from "../../../shared/utils/permissions";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
@@ -245,38 +255,22 @@ export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) 
   const shortYear = fullYear.slice(-2);
 
   // Datos del Cliente y Despacho
-  const clientCardCode = client.CardCode || quote.clientDocument || quote.clientRuc || "CL72435405";
-  const clientName = client.CardName || client.name || quote.clientName || "CLIENTE NO REGISTRADO";
-  const clientRuc = client.LicTradNum || client.FederalTaxID || quote.clientRuc || quote.clientDocument || "10724354051";
-  const clientAddress = client.Address || client.address || quote.clientAddress || "LA VICTORIA - LIMA";
+  const clientDocDigits = String(client.LicTradNum || client.FederalTaxID || quote.clientRuc || quote.clientDocument || "").replace(/\D/g, "");
+  const clientCardCode = client.CardCode || quote.clientDocument || quote.clientRuc || "-";
+  const clientName = client.CardName || client.name || quote.clientName || "CLIENTE GENERAL";
+  const clientRuc = clientDocDigits || (client.LicTradNum || client.FederalTaxID || quote.clientRuc || quote.clientDocument || "-").replace(/^CL/i, '');
+  const clientAddress = client.Address || client.address || quote.clientAddress || "-";
 
-  // Parseo inteligente y seguro de Transporte (objeto, JSON string o texto plano)
-  let parsedTransport = quote.selectedTransport || quote.transport;
-  if (typeof parsedTransport === "string" && parsedTransport.trim().startsWith("{")) {
-    try {
-      parsedTransport = JSON.parse(parsedTransport);
-    } catch (e) {}
-  }
-
-  const transportName = typeof parsedTransport === "object" && parsedTransport !== null
-    ? (parsedTransport.Name || parsedTransport.name || parsedTransport.label || "")
-    : (parsedTransport || "Cód. 103 - ETTUSA");
-
-  const transportAddress = typeof parsedTransport === "object" && parsedTransport !== null
-    ? (parsedTransport.U_TQC_DIREC || parsedTransport.address || quote.transportDirection || "")
-    : (quote.transportDirection || "San Vicente de Cañete / Provincia");
+  // Parseo y formateo inteligente de Transporte y Forma de Entrega
+  const rawDelivForm = quote.selectedDeliveryForm || quote.deliveryForm || quote.totals?.deliveryForm || quote.totals?.selectedDeliveryForm;
+  const rawTransport = quote.selectedTransport || quote.transport || quote.U_TQC_TRANSPOR || quote.totals?.transport || quote.totals?.selectedTransport;
+  const transportName = formatTransportName(rawTransport, rawDelivForm, { includeAddress: false });
+  const rawTransportDir = quote.transportDirection || quote.totals?.transportDirection;
+  const transportAddress = formatTransportAddress(rawTransport, rawDelivForm, rawTransportDir);
 
   // Parseo inteligente de Punto de Llegada
-  let parsedPoint = quote.selectedPoint || quote.deliveryPoint;
-  if (typeof parsedPoint === "string" && parsedPoint.trim().startsWith("{")) {
-    try {
-      parsedPoint = JSON.parse(parsedPoint);
-    } catch (e) {}
-  }
-
-  const pointOfArrival = typeof parsedPoint === "object" && parsedPoint !== null
-    ? (parsedPoint.AddressName || parsedPoint.Street || parsedPoint.label || clientAddress || "")
-    : (parsedPoint || clientAddress || "LIMA - SAN VICENTE");
+  const rawPoint = quote.selectedPoint || quote.deliveryPoint;
+  const pointOfArrival = formatDeliveryPoint(rawPoint, clientAddress);
 
   const opNumberVal = quote.opNum || quote.operationNumber || "";
 
@@ -288,7 +282,8 @@ export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) 
     } catch (e) {}
   }
 
-  const bcqVal = quote.bankAccount || quote.totals?.bankAccount || quote.paymentMethod || quote.totals?.paymentMethod || "—";
+  // BCQ: Banco del Cheque (aplica únicamente si se paga con cheque; las cuentas de recaudo van en facturación/SAP posterior)
+  const bcqVal = formatCheckBank(quote.checkBank || quote.bancoCheque);
 
   // Totales y Normalización usando calculadora unificada
   const normalizedList = calcTotals.normalizedProducts && calcTotals.normalizedProducts.length > 0

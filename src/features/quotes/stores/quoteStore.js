@@ -461,6 +461,14 @@ export const useQuoteStore = create((set, get) => {
       if (typeof deliveryFormVal === "string" && deliveryFormVal.trim().startsWith("{")) {
         try { deliveryFormVal = JSON.parse(deliveryFormVal); } catch (e) {}
       }
+      if (deliveryFormVal) {
+        const checkStr = typeof deliveryFormVal === "object"
+          ? String(deliveryFormVal?.TrnspName || deliveryFormVal?.TrnspCode || deliveryFormVal?.name || deliveryFormVal?.label || "")
+          : String(deliveryFormVal);
+        if (/cotizaci[oó]n|oferta|pedido|boleta|factura/i.test(checkStr.trim())) {
+          deliveryFormVal = null;
+        }
+      }
 
       let transportVal = quoteData.selectedTransport || quoteData.transport || quoteData.U_TQC_TRANSPOR || quoteData.totals?.selectedTransport || quoteData.totals?.transport || "";
       if (typeof transportVal === "string" && transportVal.trim().startsWith("{")) {
@@ -516,7 +524,13 @@ export const useQuoteStore = create((set, get) => {
         salesPersonCode: quoteData.salesPersonCode || quoteData.salesEmployeeCode || quoteData.SlpCode || null,
         salesEmployeeCode: quoteData.salesEmployeeCode || quoteData.salesPersonCode || quoteData.SlpCode || null,
         paymentMethod: quoteData.paymentMethod || quoteData.PaymentMethod || quoteData.totals?.paymentMethod || quoteData.totals?.PaymentMethod || "",
-        bankAccount: quoteData.bankAccount || quoteData.U_VS_BANCO || quoteData.totals?.bankAccount || quoteData.totals?.U_VS_BANCO || "",
+        bankAccount: (() => {
+          const val = quoteData.bankAccount || quoteData.U_VS_BANCO || quoteData.totals?.bankAccount || quoteData.totals?.U_VS_BANCO || "";
+          if (typeof val === "string" && (val.includes("0104153") || val.includes("191-0104153") || /^(BCP|BBVA|SCOTIA|INTERBANK)_(SOLES|USD)/i.test(val))) {
+            return "";
+          }
+          return val;
+        })(),
         sunatOpType: quoteData.sunatOpType || quoteData.U_VS_TIPO_FACT || quoteData.totals?.sunatOpType || quoteData.totals?.U_VS_TIPO_FACT || "0101",
         historyLog: quoteData.historyLog || [],
       });
