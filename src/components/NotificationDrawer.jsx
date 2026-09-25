@@ -45,38 +45,51 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
 
   const isAdmin = useIsAdmin();
   const { data: serverNotifs } = useNotifications(
-    isAdmin ? "FACTURACION" : undefined,
+    isAdmin ? "FACTURACION" : "VENDEDOR",
     username
   );
 
-  // Filtra notificaciones que pertenecen al usuario en sesión o su rol
+  // Filtra notificaciones que pertenecen estrictamente al usuario en sesión o su rol
   const filterForCurrentUser = (notifs) => {
-    if (!username && !userId && !role) return [];
-    const userLower = (username || "").toLowerCase();
-    const roleUpper = (role || "").toUpperCase();
+    if (!username && !role) return [];
+    const userLower = (username || "").trim().toLowerCase();
+    const roleUpper = (role || "").trim().toUpperCase();
     const isAdminOrMaster = isAdmin || roleUpper === "ADMIN" || roleUpper === "FACTURACION" || roleUpper === "SUPERVISOR";
 
     return notifs.filter((n) => {
-      const targetUser = (n.targetUsername || "").toLowerCase();
-      const targetRoleUpper = (n.targetRole || "").toUpperCase();
+      if (!n || !n.title) return false;
+      const targetRoleUpper = (n.targetRole || "").trim().toUpperCase();
+      const targetUser = (n.targetUsername || "").trim().toLowerCase();
 
-      // 1. Coincidencia por nombre de usuario de destino
-      if (targetUser && userLower && (targetUser === userLower || userLower.includes(targetUser) || targetUser.includes(userLower))) {
+      if (isAdminOrMaster) {
+        // Facturación / Admin ONLY ve cotizaciones que requieren revisión/aprobación comercial
+        if (targetRoleUpper !== "FACTURACION" && targetRoleUpper !== "ADMIN") {
+          return false;
+        }
+        // Facturación NO ve alertas que son exclusivas del vendedor (órdenes SAP emitidas, anuladas, observadas)
+        const statusUpper = String(n.status || "").trim().toUpperCase();
+        if (statusUpper === "EMITIDO" || statusUpper === "ANULADO" || statusUpper === "CANCELADO") {
+          return false;
+        }
+        const titleLower = String(n.title || "").toLowerCase();
+        if (titleLower.includes("orden sap") || titleLower.includes("pedido emitido") || titleLower.includes("cotización enviada a validación")) {
+          return false;
+        }
+        return true;
+      } else {
+        // Vendedor: ONLY ve las notificaciones de SU usuario
+        if (targetRoleUpper !== "VENDEDOR" && targetRoleUpper !== "SELLER") {
+          return false;
+        }
+        if (targetUser) {
+          return (
+            targetUser === userLower ||
+            userLower.includes(targetUser) ||
+            targetUser.includes(userLower)
+          );
+        }
         return true;
       }
-      // 2. Coincidencia por rol de Facturación / Administración
-      if ((targetRoleUpper === "FACTURACION" || targetRoleUpper === "ADMIN") && isAdminOrMaster) {
-        return true;
-      }
-      // 3. Coincidencia por rol de Vendedor
-      if ((targetRoleUpper === "VENDEDOR" || targetRoleUpper === "SELLER") && !isAdminOrMaster) {
-        return true;
-      }
-      // 4. Coincidencia por ID de usuario
-      if (n.targetUserId && userId && String(n.targetUserId) === String(userId)) {
-        return true;
-      }
-      return false;
     });
   };
 
@@ -118,15 +131,13 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
     }
 
     const filteredByUser = filterForCurrentUser(combined).filter(
-      (n) => n.status !== "ANULADO" && 
-             !String(n.title || "").toLowerCase().includes("anulad") &&
-             !String(n.title || "").includes("- null") &&
+      (n) => !String(n.title || "").includes("- null") &&
              n.quoteId !== null &&
              n.quoteId !== "null" &&
              n.quoteId !== ""
     );
 
-    // Deduplicación inteligente por quoteId (conserva la alerta más reciente por cotización)
+    // Deduplicación inteligente por cotización (conserva 1 solo mensaje canónico por cotización)
     const uniqueMap = new Map();
     const sorted = [...filteredByUser].sort((a, b) => {
       if (!a.read && b.read) return -1;
@@ -138,9 +149,13 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
 
     for (const notif of sorted) {
       // Clave canónica inteligente para unificar alertas del mismo documento
-      const rawQ = String(notif.quoteId || notif.id || "");
-      const matchWeb = String(notif.title || "").match(/COT-WEB-(\d+)/i) || rawQ.match(/^(\d+)$/);
-      const canonicalKey = matchWeb ? `QUOTE-ID-${Number(matchWeb[1])}` : rawQ;
+      const rawQ = String(notif.quoteId || notif.id || "").trim();
+      const matchWeb = String(notif.title || "").match(/COT-WEB-(\d+)/i) || 
+                       String(notif.title || "").match(/COT-(\d+)/i) ||
+                       rawQ.match(/COT-WEB-(\d+)/i) || 
+                       rawQ.match(/COT-(\d+)/i) || 
+                       rawQ.match(/^(\d+)$/);
+      const canonicalKey = matchWeb ? `QUOTE-${Number(matchWeb[1])}` : rawQ;
 
       if (!uniqueMap.has(canonicalKey)) {
         uniqueMap.set(canonicalKey, notif);
@@ -148,7 +163,11 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
     }
 
     return Array.from(uniqueMap.values()).slice(0, 30);
-  }, [serverNotifs, username, userId, role, localVersion]);
+  }, [serverNotifs, username, userId, role, isAdmin, localVersion]);
+
+  const unreadCount = React.useMemo(() => {
+    return myNotifications.filter((n) => !n.read).length;
+  }, [myNotifications]);
 
   const handleClearAll = async () => {
     try {
@@ -366,9 +385,13 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
                   <Text fontSize={{ base: "md", md: "lg" }} fontWeight="900" color="white">
                     Centro de Notificaciones
                   </Text>
-                  {myNotifications.length > 0 && (
+                  {unreadCount > 0 ? (
                     <Badge colorScheme="red" variant="solid" borderRadius="full" px={2.5} py={0.5} fontSize="xs" fontWeight="900">
-                      {myNotifications.length} Alertas
+                      {unreadCount} {unreadCount === 1 ? "Alerta" : "Alertas"}
+                    </Badge>
+                  ) : (
+                    <Badge colorScheme="whiteAlpha" variant="subtle" borderRadius="full" px={2} py={0.5} fontSize="xs" fontWeight="700">
+                      0 Alertas
                     </Badge>
                   )}
                 </HStack>
@@ -386,7 +409,7 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
             <Flex justify="space-between" align="center" mb={3.5} wrap="wrap" gap={2}>
               <HStack spacing={2} wrap="wrap">
                 <Text fontSize={{ base: "13px", md: "xs" }} fontWeight="800" color="gray.800" textTransform="uppercase" letterSpacing="wide">
-                  Mis Alertas ({myNotifications.length})
+                  Mis Alertas ({unreadCount > 0 ? `${unreadCount} pendientes` : `${myNotifications.length} registradas`})
                 </Text>
                 <Badge colorScheme="green" variant="subtle" fontSize="9px">
                   Solo mis notificaciones

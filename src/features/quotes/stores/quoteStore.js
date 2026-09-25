@@ -27,10 +27,8 @@ export const normalizeQuoteItem = (item) => {
   const id = finalCode || String(Date.now());
   const code = finalCode;
   const name = item.name || item.productName || item.description || item.ItemName || item.ItemDescription || item.Dscription || "Artículo General";
-  const rawPrice = Number(item.price ?? item.unitPrice ?? item.Price ?? item.importe ?? 0);
-  // Auto-fallback en catálogo de pruebas si no viene precio configurado (0) -> $25.00
-  // Cuando se conecta a la ruta real de SAP (precio > 0), usará directamente el precio real de SAP
-  const price = rawPrice > 0 ? rawPrice : 25.0;
+  const rawPrice = Number(item.price ?? item.unitPrice ?? item.Price ?? item.UnitPrice ?? 0);
+  const price = rawPrice > 0 ? rawPrice : 0;
   const discount = Number(item.discount ?? item.Discount ?? item.sapDiscount ?? 0);
   const lineDiscount = Number(item.lineDiscount ?? item.LineDiscount ?? 0);
   const totalDisc = Math.max(0, Math.min(56, Number((discount + lineDiscount).toFixed(2))));
@@ -183,8 +181,8 @@ const initialQuoteState = {
   SlpCode: null,
   salesPersonCode: null,
   salesEmployeeCode: null,
-  paymentMethod: "DEPOSITO_BANCARIO",
-  bankAccount: "191-0104153-0-50",
+  paymentMethod: "",
+  bankAccount: "",
   sunatOpType: "0101",
   historyLog: [],
 };
@@ -202,6 +200,7 @@ const saveDraftToStorage = (state) => {
       state.selectedPoint ||
       state.opNum ||
       state.comment ||
+      state.deliveryDate ||
       state.saleCondition ||
       state.documentType ||
       state.creditTerm
@@ -516,8 +515,8 @@ export const useQuoteStore = create((set, get) => {
         SlpCode: quoteData.SlpCode || quoteData.slpCode || quoteData.salesPersonCode || quoteData.salesEmployeeCode || null,
         salesPersonCode: quoteData.salesPersonCode || quoteData.salesEmployeeCode || quoteData.SlpCode || null,
         salesEmployeeCode: quoteData.salesEmployeeCode || quoteData.salesPersonCode || quoteData.SlpCode || null,
-        paymentMethod: quoteData.paymentMethod || quoteData.PaymentMethod || quoteData.totals?.paymentMethod || quoteData.totals?.PaymentMethod || "001",
-        bankAccount: quoteData.bankAccount || quoteData.U_VS_BANCO || quoteData.totals?.bankAccount || quoteData.totals?.U_VS_BANCO || "BCP_SOLES",
+        paymentMethod: quoteData.paymentMethod || quoteData.PaymentMethod || quoteData.totals?.paymentMethod || quoteData.totals?.PaymentMethod || "",
+        bankAccount: quoteData.bankAccount || quoteData.U_VS_BANCO || quoteData.totals?.bankAccount || quoteData.totals?.U_VS_BANCO || "",
         sunatOpType: quoteData.sunatOpType || quoteData.U_VS_TIPO_FACT || quoteData.totals?.sunatOpType || quoteData.totals?.U_VS_TIPO_FACT || "0101",
         historyLog: quoteData.historyLog || [],
       });

@@ -898,7 +898,7 @@ export function QuoteApprovalPage() {
       });
     }
 
-    // 2.5 Limpiar notificaciones asociadas a esta cotización en almacenamiento local
+    // 2.5 Actualizar notificaciones asociadas a esta cotización en almacenamiento local
     try {
       const targetClient = (targetQuote?.clientName || "").trim().toUpperCase();
       const rawNotifs = localStorage.getItem("grupoLeon_notifications");
@@ -913,10 +913,32 @@ export function QuoteApprovalPage() {
         const isInvalidOrNull = !n.quoteId || n.quoteId === "null" || nTitle.includes("- NULL");
         return !isMatchQuote && !isMatchClient && !isInvalidOrNull;
       });
+
+      // Si es anulación, registrar la notificación para el vendedor
+      if (!isHardDelete && targetQuote) {
+        const sellerUser = targetQuote.createdByUsername || targetQuote.sellerName;
+        const displayDocNumber = targetQuote.docNumber || `COT-WEB-${String(targetQuote.id).padStart(6, "0")}`;
+        const notifSellerObj = {
+          id: `NOTIF-ANUL-${Date.now()}`,
+          targetRole: "VENDEDOR",
+          targetUsername: sellerUser,
+          fromUsername: authUsername || "Administración / Facturación",
+          fromUserId: null,
+          quoteId: String(targetQuote.docNumber || targetQuote.id),
+          title: `🚫 Cotización Anulada - ${displayDocNumber}`,
+          description: `Tu cotización ${displayDocNumber} (${targetQuote.clientName || 'Cliente'}) fue anulada por ${authUsername || 'Administración'}.`,
+          status: "ANULADO",
+          read: false,
+          createdAt: nowIso,
+          timestamp: nowIso
+        };
+        remainingNotifs.unshift(notifSellerObj);
+      }
+
       localStorage.setItem("grupoLeon_notifications", JSON.stringify(remainingNotifs));
       window.dispatchEvent(new Event("localNotificationsUpdated"));
     } catch (notifErr) {
-      console.error("Error limpiando notificaciones locales:", notifErr);
+      console.error("Error actualizando notificaciones locales:", notifErr);
     }
 
     // 3. Sincronizar en Backend

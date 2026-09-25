@@ -15,6 +15,7 @@ import {
 import { useState } from "react";
 import { format, subMonths } from "date-fns";
 import { useAuthStore } from "../../../features/auth/stores/useAuthStore";
+import { useIsAdmin } from "../../../shared/utils/permissions";
 import {
   useQuotesSellers,
   useQuotesSellersAdmin,
@@ -38,8 +39,9 @@ import FiltersBarDrawer from "../components/OrdersDashboards/FiltersBarDrawer";
 
 export default function OrdersDashboard() {
   const { salesEmployeeCode } = useAuthStore();
-  const isVendedor = !!(salesEmployeeCode && Number(salesEmployeeCode) > 0);
-  const isAdmin = !salesEmployeeCode || salesEmployeeCode === 0 || salesEmployeeCode === "0" || salesEmployeeCode === "null";
+  const isAdminUser = useIsAdmin();
+  const isVendedor = !isAdminUser && !!(salesEmployeeCode && Number(salesEmployeeCode) > 0 && Number(salesEmployeeCode) !== 20);
+  const isAdmin = isAdminUser;
 
   const { isOpen, onOpen, onClose } = useDisclosure();
   const bgColor = useColorModeValue("#0B3D2E", "#0B3D2E");

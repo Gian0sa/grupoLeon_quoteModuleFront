@@ -75,6 +75,11 @@ import {
   Copy,
   Building2,
   Code2,
+  RefreshCw,
+  ArrowRight,
+  Truck,
+  Receipt,
+  Package,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useQuoteStore } from "../stores/quoteStore";
@@ -83,6 +88,7 @@ import { ObserveReasonModal } from "./ObserveReasonModal";
 import QuotePdfModal from "./QuotePdfModal";
 import { SapPayloadJsonModal } from "./SapPayloadJsonModal";
 import { calculateQuoteTotals } from "../../../shared/utils/quoteCalculator";
+import { getSapRelationshipMap } from "../services/quoteService";
 import { useAuthStore } from "../../../features/auth/stores/useAuthStore";
 import { useGetQuoteById } from "../hooks/queries/quotesQueries";
 import { useQueryClient } from "@tanstack/react-query";
@@ -93,7 +99,6 @@ import {
   formatTransportName,
   formatDeliveryPoint,
   formatPaymentTerms,
-  formatBankAccount,
   formatSunatOp,
   cleanSellerName,
   cleanClientName
@@ -128,6 +133,8 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
   const [isSapSuccessModalOpen, setIsSapSuccessModalOpen] = useState(false);
   const [hasCopiedDocNum, setHasCopiedDocNum] = useState(false);
   const [isJsonModalOpen, setIsJsonModalOpen] = useState(false);
+  const [sapRelMap, setSapRelMap] = useState(null);
+  const [isLoadingRelMap, setIsLoadingRelMap] = useState(false);
   const toast = useToast();
 
   const quoteId = quote?.docNumber || quote?.id;
@@ -137,12 +144,37 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
   React.useEffect(() => {
     if (!isOpen) {
       setSapSyncResult(null);
+      setSapRelMap(null);
     }
   }, [isOpen]);
 
   React.useEffect(() => {
     setSapSyncResult(null);
+    setSapRelMap(null);
   }, [quoteId]);
+
+  const fetchSapRelMap = React.useCallback(async (overrideDocNum) => {
+    const rawTarget = overrideDocNum || quote?.sapDocNum || quote?.DocNum || quote?.totals?.sapDocNum || quote?.totals?.DocNum || quote?.docNumber;
+    const cleanNum = String(rawTarget || "").replace(/\D/g, "");
+    if (!cleanNum || Number(cleanNum) <= 0) return;
+    try {
+      setIsLoadingRelMap(true);
+      const data = await getSapRelationshipMap(cleanNum);
+      if (data) {
+        setSapRelMap(data);
+      }
+    } catch (e) {
+      console.warn("Aviso al consultar mapa de relaciones SAP:", e.message);
+    } finally {
+      setIsLoadingRelMap(false);
+    }
+  }, [quote?.sapDocNum, quote?.DocNum, quote?.totals?.sapDocNum, quote?.totals?.DocNum, quote?.docNumber]);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      fetchSapRelMap();
+    }
+  }, [isOpen, fetchSapRelMap]);
 
   // Lista de estados no aprobados / pendientes: NUNCA deben asociarse ni mostrar insignias de SAP
   const UNAPPROVED_STATUSES = React.useMemo(() => [
@@ -1063,13 +1095,13 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         transport: effectiveQuote.transport || effectiveQuote.selectedTransport || effectiveQuote.U_TQC_TRANSPOR,
         deliveryDate: effectiveQuote.deliveryDate || effectiveQuote.docDueDate,
         paymentType: effectiveQuote.paymentType || effectiveQuote.selectedPaymentType,
-        paymentMethod: effectiveQuote.paymentMethod || effectiveQuote.PaymentMethod || "DEPOSITO_BANCARIO",
-        bankAccount: effectiveQuote.bankAccount || effectiveQuote.U_VS_BANCO || "191-0104153-0-50",
+        paymentMethod: effectiveQuote.paymentMethod || effectiveQuote.PaymentMethod || null,
+        bankAccount: effectiveQuote.bankAccount || effectiveQuote.U_VS_BANCO || null,
         sunatOpType: effectiveQuote.sunatOpType || effectiveQuote.U_VS_TIPO_FACT || "0101",
         U_VS_TIPOPER: effectiveQuote.U_VS_TIPOPER || "01",
         U_VS_TIPO_FACT: effectiveQuote.sunatOpType || effectiveQuote.U_VS_TIPO_FACT || "0101",
         U_VS_AFEDET: effectiveQuote.U_VS_AFEDET || "N",
-        U_VS_BANCO: effectiveQuote.bankAccount || effectiveQuote.U_VS_BANCO || "191-0104153-0-50",
+        U_VS_BANCO: effectiveQuote.bankAccount || effectiveQuote.U_VS_BANCO || null,
         saleCondition: effectiveQuote.saleCondition || effectiveQuote.totals?.saleCondition,
         documentType: effectiveQuote.documentType || effectiveQuote.totals?.documentType,
         creditTerm: effectiveQuote.creditTerm || effectiveQuote.totals?.creditTerm,
@@ -2153,9 +2185,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
               const docTypeVal = currentQuote.documentType || currentQuote.U_VS_COMPROBANTE || (isJuridica || cleanDigits.length === 11 ? "FACTURA" : "BOLETA");
               const sunatType = formatSunatOp(currentQuote.sunatOpType || currentQuote.U_VS_TIPO_FACT || currentQuote.U_VS_TIPOPER);
 
-              // 3. Banco y Operación
-              const rawBank = currentQuote.bankAccount || currentQuote.U_VS_BANCO || (typeof paymentObj === "object" ? paymentObj.bankAccount : null);
-              const bank = isCredit ? "Línea de Crédito Comercial" : formatBankAccount(rawBank);
+              // 3. Váucher / Operación (Si se adjuntó comprobante prepago)
               const opNumber = currentQuote.opNum || currentQuote.U_VS_OPNUM || currentQuote.voucherNumber || null;
               const voucherImage = currentQuote.pathImg || currentQuote.paymentImg || currentQuote.voucherUrl;
 
@@ -2170,48 +2200,244 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
               const quoteAttachments = currentQuote.attachments || [];
 
+              const currentSapDocNum = sapRelMap?.order?.docNum || currentQuote.sapDocNum || (currentQuote.DocNum && Number(currentQuote.DocNum) > 0 ? Number(currentQuote.DocNum) : null);
+              const currentDelivNum = sapRelMap?.delivery?.docNum;
+              const currentInvNum = sapRelMap?.invoice?.numAtCard || (sapRelMap?.invoice?.docNum ? `F-${sapRelMap.invoice.docNum}` : null);
+              const orderStatus = sapRelMap?.order?.status || (currentSapDocNum ? "Cerrado" : null);
+              const delivStatus = sapRelMap?.delivery?.status || (currentDelivNum ? "Cerrado" : null);
+              const invStatus = sapRelMap?.invoice?.status || (currentInvNum ? "Abierto" : null);
+
               return (
-                <Grid templateColumns={{ base: "1fr", md: "repeat(3, 1fr)" }} gap={3.5} mb={3.5}>
-                  {/* CUADRILLA 1: FINANZAS Y CONDICIONES */}
-                  <Box p={3.5} bg="white" borderRadius="2xl" border="1.5px solid" borderColor="#e2e8f0" boxShadow="xs">
-                    <Flex align="center" justify="space-between" mb={2}>
-                      <HStack spacing={2}>
-                        <Text fontSize="15px">💳</Text>
-                        <Text fontSize="11px" fontWeight="900" color="gray.800" textTransform="uppercase">
-                          Condición Financiera
-                        </Text>
+                <>
+                  {/* MAPA DE RELACIONES SAP (FLUJO COMERCIAL EN TIEMPO REAL) */}
+                  <Box mb={4} p={3.5} bg="white" borderRadius="2xl" border="1.5px solid" borderColor="#e2e8f0" boxShadow="xs">
+                    <Flex justify="space-between" align="center" mb={3} wrap="wrap" gap={2}>
+                      <HStack spacing={2.5}>
+                        <Box p={1.5} bg="blue.600" color="white" borderRadius="lg" boxShadow="xs">
+                          <ChakraIcon as={Building2} w={4} h={4} />
+                        </Box>
+                        <Box>
+                          <HStack spacing={2}>
+                            <Text fontSize="12px" fontWeight="900" color="gray.800" textTransform="uppercase" letterSpacing="wide">
+                              Mapa de Relaciones SAP B1 (Flujo Comercial)
+                            </Text>
+                            <Badge colorScheme="blue" variant="solid" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="800">
+                              SBO_PCVS_BASE
+                            </Badge>
+                          </HStack>
+                          <Text fontSize="10px" color="gray.500" fontWeight="600">
+                            Trazabilidad en tiempo real de Oferta ➔ Orden ➔ Entrega ➔ Factura
+                          </Text>
+                        </Box>
                       </HStack>
-                      <Badge colorScheme={isCredit ? "purple" : "green"} variant="solid" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="900">
-                        {isCredit ? "CRÉDITO" : "CONTADO"}
-                      </Badge>
+
+                      <HStack spacing={2}>
+                        {currentSapDocNum && (
+                          <Badge colorScheme="teal" variant="subtle" fontSize="10px" px={2.5} py={0.5} borderRadius="md" fontWeight="800">
+                            🔗 Orden SAP #{currentSapDocNum}
+                          </Badge>
+                        )}
+                        <Tooltip label="Consultar estado actualizado en SAP Service Layer" fontSize="xs">
+                          <Button
+                            size="xs"
+                            colorScheme="blue"
+                            variant="outline"
+                            leftIcon={<ChakraIcon as={RefreshCw} className={isLoadingRelMap ? "animate-spin" : ""} />}
+                            onClick={() => fetchSapRelMap()}
+                            isLoading={isLoadingRelMap}
+                            loadingText="Consultando..."
+                            borderRadius="lg"
+                            fontWeight="800"
+                            fontSize="10px"
+                            h="26px"
+                          >
+                            Actualizar SAP
+                          </Button>
+                        </Tooltip>
+                      </HStack>
                     </Flex>
-                    <VStack align="stretch" spacing={1.5} fontSize="xs">
-                      <Flex justify="space-between">
-                        <Text color="gray.500" fontWeight="700">Término:</Text>
-                        <Text fontWeight="800" color="gray.800" textAlign="right" isTruncated maxW="190px" title={paymentLabel}>{paymentLabel}</Text>
-                      </Flex>
-                      <Flex justify="space-between" align="center">
-                        <Text color="gray.500" fontWeight="700">Comprobante:</Text>
-                        <Badge colorScheme={docTypeVal === "FACTURA" ? "purple" : "blue"} variant="subtle" fontSize="9px" px={1.5} py={0.5} borderRadius="md">
-                          {docTypeVal}
-                        </Badge>
-                      </Flex>
-                      {Boolean(rawBank && rawBank !== "Pendiente de Selección") && (
-                        <Flex justify="space-between">
-                          <Text color="gray.500" fontWeight="700">Banco:</Text>
-                          <Text fontWeight="800" color="gray.800" textAlign="right" isTruncated maxW="190px" title={bank}>{bank}</Text>
+
+                    {/* 4 Nodos del Mapa de Relaciones SAP */}
+                    <Grid templateColumns={{ base: "1fr", sm: "repeat(2, 1fr)", md: "repeat(4, 1fr)" }} gap={3}>
+                      {/* 1. Oferta de Venta */}
+                      <Box p={3} bg="#f0fdf4" borderRadius="xl" border="1.5px solid" borderColor="#86efac" boxShadow="xs">
+                        <Flex justify="space-between" align="center" mb={1}>
+                          <HStack spacing={1}>
+                            <Text fontSize="14px">📋</Text>
+                            <Text fontSize="10px" fontWeight="900" color="#166534" textTransform="uppercase">
+                              Oferta de Venta
+                            </Text>
+                          </HStack>
+                          <Badge colorScheme="green" variant="solid" fontSize="8px" px={1.5} py={0.2} borderRadius="sm" fontWeight="900">
+                            {currentQuote.approvalStatus === "EMITIDO" ? "EMITIDA" : "APROBADA"}
+                          </Badge>
                         </Flex>
-                      )}
-                      {Boolean(opNumber) && (
-                        <Flex justify="space-between">
-                          <Text color="gray.500" fontWeight="700">Operación:</Text>
-                          <Text fontWeight="800" color="purple.600" fontFamily="mono" textAlign="right" isTruncated maxW="190px">
-                            {opNumber}
+                        <Text fontSize="12px" fontWeight="900" color="gray.900" fontFamily="mono" isTruncated title={currentQuote.docNumber}>
+                          {currentQuote.docNumber || "COT-—"}
+                        </Text>
+                        <Flex justify="space-between" align="center" mt={2} fontSize="10px" color="gray.600">
+                          <Text fontWeight="600">{currentQuote.docDate || effectiveQuote?.docDate || "—"}</Text>
+                          <Text fontWeight="800" color="gray.900">
+                            {currentQuote.currency || effectiveQuote?.currency || "USD"} {Number(effectiveQuote?.total || currentQuote.total || 0).toFixed(2)}
                           </Text>
                         </Flex>
-                      )}
-                    </VStack>
+                      </Box>
+
+                      {/* 2. Orden de Venta */}
+                      <Box
+                        p={3}
+                        bg={currentSapDocNum ? "#eff6ff" : "white"}
+                        borderRadius="xl"
+                        border="1.5px solid"
+                        borderColor={currentSapDocNum ? (orderStatus === "Cerrado" ? "#86efac" : "#93c5fd") : "#e2e8f0"}
+                        boxShadow="xs"
+                      >
+                        <Flex justify="space-between" align="center" mb={1}>
+                          <HStack spacing={1}>
+                            <Text fontSize="14px">📦</Text>
+                            <Text fontSize="10px" fontWeight="900" color={currentSapDocNum ? "#1e40af" : "gray.400"} textTransform="uppercase">
+                              Orden de Venta
+                            </Text>
+                          </HStack>
+                          <Badge
+                            colorScheme={currentSapDocNum ? (orderStatus === "Cerrado" ? "green" : "blue") : "gray"}
+                            variant="solid"
+                            fontSize="8px"
+                            px={1.5}
+                            py={0.2}
+                            borderRadius="sm"
+                            fontWeight="900"
+                          >
+                            {currentSapDocNum ? (orderStatus || "ABIERTO") : "PENDIENTE"}
+                          </Badge>
+                        </Flex>
+                        <Text fontSize="12px" fontWeight="900" color={currentSapDocNum ? "blue.800" : "gray.400"} fontFamily="mono">
+                          {currentSapDocNum ? `Nº ${currentSapDocNum}` : "Por Emitir a SAP"}
+                        </Text>
+                        <Flex justify="space-between" align="center" mt={2} fontSize="10px" color="gray.500">
+                          <Text fontWeight="600">{sapRelMap?.order?.docDate || currentQuote.docDate || "—"}</Text>
+                          <Text fontWeight="800" color={currentSapDocNum ? "gray.900" : "gray.400"}>
+                            {sapRelMap?.order?.docTotal ? `${sapRelMap.order.docCurrency} ${sapRelMap.order.docTotal.toFixed(2)}` : (currentSapDocNum ? `${currentQuote.currency || 'USD'} ${Number(effectiveQuote?.total || 0).toFixed(2)}` : "—")}
+                          </Text>
+                        </Flex>
+                      </Box>
+
+                      {/* 3. Entrega */}
+                      <Box
+                        p={3}
+                        bg={currentDelivNum ? "#f0fdfa" : "white"}
+                        borderRadius="xl"
+                        border="1.5px solid"
+                        borderColor={currentDelivNum ? (delivStatus === "Cerrado" ? "#86efac" : "#99f6e4") : "#e2e8f0"}
+                        boxShadow="xs"
+                      >
+                        <Flex justify="space-between" align="center" mb={1}>
+                          <HStack spacing={1}>
+                            <Text fontSize="14px">🚚</Text>
+                            <Text fontSize="10px" fontWeight="900" color={currentDelivNum ? "#115e59" : "gray.400"} textTransform="uppercase">
+                              Entrega
+                            </Text>
+                          </HStack>
+                          <Badge
+                            colorScheme={currentDelivNum ? (delivStatus === "Cerrado" ? "green" : "teal") : "gray"}
+                            variant="solid"
+                            fontSize="8px"
+                            px={1.5}
+                            py={0.2}
+                            borderRadius="sm"
+                            fontWeight="900"
+                          >
+                            {currentDelivNum ? (delivStatus || "DESPACHADO") : "EN ESPERA"}
+                          </Badge>
+                        </Flex>
+                        <Text fontSize="12px" fontWeight="900" color={currentDelivNum ? "teal.800" : "gray.400"} fontFamily="mono">
+                          {currentDelivNum ? `Nº ${currentDelivNum}` : "Pendiente Almacén"}
+                        </Text>
+                        <Flex justify="space-between" align="center" mt={2} fontSize="10px" color="gray.500">
+                          <Text fontWeight="600">{sapRelMap?.delivery?.docDate || "—"}</Text>
+                          <Text fontWeight="800" color={currentDelivNum ? "gray.900" : "gray.400"}>
+                            {sapRelMap?.delivery?.docTotal ? `${sapRelMap.delivery.docCurrency} ${sapRelMap.delivery.docTotal.toFixed(2)}` : "—"}
+                          </Text>
+                        </Flex>
+                      </Box>
+
+                      {/* 4. Factura de Deudores */}
+                      <Box
+                        p={3}
+                        bg={currentInvNum ? "#faf5ff" : "white"}
+                        borderRadius="xl"
+                        border="1.5px solid"
+                        borderColor={currentInvNum ? (invStatus === "Cerrado" ? "#86efac" : "#d8b4fe") : "#e2e8f0"}
+                        boxShadow="xs"
+                      >
+                        <Flex justify="space-between" align="center" mb={1}>
+                          <HStack spacing={1}>
+                            <Text fontSize="14px">🧾</Text>
+                            <Text fontSize="10px" fontWeight="900" color={currentInvNum ? "#6b21a8" : "gray.400"} textTransform="uppercase">
+                              Factura Deudores
+                            </Text>
+                          </HStack>
+                          <Badge
+                            colorScheme={currentInvNum ? (invStatus === "Cerrado" ? "green" : "purple") : "gray"}
+                            variant="solid"
+                            fontSize="8px"
+                            px={1.5}
+                            py={0.2}
+                            borderRadius="sm"
+                            fontWeight="900"
+                          >
+                            {currentInvNum ? (invStatus === "Cerrado" ? "CANCELADA" : "EMITIDA") : "EN ESPERA"}
+                          </Badge>
+                        </Flex>
+                        <Text fontSize="12px" fontWeight="900" color={currentInvNum ? "purple.800" : "gray.400"} fontFamily="mono" isTruncated title={currentInvNum || ""}>
+                          {currentInvNum || "Pendiente Facturación"}
+                        </Text>
+                        <Flex justify="space-between" align="center" mt={2} fontSize="10px" color="gray.500">
+                          <Text fontWeight="600">{sapRelMap?.invoice?.docDate || "—"}</Text>
+                          <Text fontWeight="800" color={currentInvNum ? "gray.900" : "gray.400"}>
+                            {sapRelMap?.invoice?.docTotal ? `${sapRelMap.invoice.docCurrency} ${sapRelMap.invoice.docTotal.toFixed(2)}` : "—"}
+                          </Text>
+                        </Flex>
+                      </Box>
+                    </Grid>
                   </Box>
+
+                  <Grid templateColumns={{ base: "1fr", md: "repeat(3, 1fr)" }} gap={3.5} mb={3.5}>
+                    {/* CUADRILLA 1: FINANZAS Y CONDICIONES */}
+                    <Box p={3.5} bg="white" borderRadius="2xl" border="1.5px solid" borderColor="#e2e8f0" boxShadow="xs">
+                      <Flex align="center" justify="space-between" mb={2}>
+                        <HStack spacing={2}>
+                          <Text fontSize="15px">💳</Text>
+                          <Text fontSize="11px" fontWeight="900" color="gray.800" textTransform="uppercase">
+                            Condición Financiera
+                          </Text>
+                        </HStack>
+                        <Badge colorScheme={isCredit ? "purple" : "green"} variant="solid" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="900">
+                          {isCredit ? "CRÉDITO" : "CONTADO"}
+                        </Badge>
+                      </Flex>
+                      <VStack align="stretch" spacing={1.5} fontSize="xs">
+                        <Flex justify="space-between">
+                          <Text color="gray.500" fontWeight="700">Término:</Text>
+                          <Text fontWeight="800" color="gray.800" textAlign="right" isTruncated maxW="190px" title={paymentLabel}>{paymentLabel}</Text>
+                        </Flex>
+                        <Flex justify="space-between" align="center">
+                          <Text color="gray.500" fontWeight="700">Comprobante:</Text>
+                          <Badge colorScheme={docTypeVal === "FACTURA" ? "purple" : "blue"} variant="subtle" fontSize="9px" px={1.5} py={0.5} borderRadius="md">
+                            {docTypeVal}
+                          </Badge>
+                        </Flex>
+
+                        {Boolean(opNumber) && (
+                          <Flex justify="space-between">
+                            <Text color="gray.500" fontWeight="700">Operación:</Text>
+                            <Text fontWeight="800" color="purple.600" fontFamily="mono" textAlign="right" isTruncated maxW="190px">
+                              {opNumber}
+                            </Text>
+                          </Flex>
+                        )}
+                      </VStack>
+                    </Box>
 
                   {/* CUADRILLA 2: LOGÍSTICA Y DESPACHO */}
                   <Box p={3.5} bg={!delivForm || delivForm === "—" ? "orange.50" : "white"} borderRadius="2xl" border="1.5px solid" borderColor={!delivForm || delivForm === "—" ? "orange.300" : "#e2e8f0"} boxShadow="xs">
@@ -2336,8 +2562,9 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                     )}
                   </Box>
                 </Grid>
-              );
-            })()}
+              </>
+            );
+          })()}
 
             {/* CARD DE COMENTARIOS U OBSERVACIONES DEL PEDIDO (REFERENCIAL PARA ADMINISTRACIÓN Y SAP) */}
             {(() => {
@@ -3057,7 +3284,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                 <Textarea
                   value={resubmitNote}
                   onChange={(e) => setResubmitNote(e.target.value)}
-                  placeholder="Ej: Se adjuntó el nuevo voucher BCP N° 1234567 por el monto correcto de S/180.00. Se actualizó la cantidad del producto X de 2 a 3 unidades..."
+                  placeholder="Ej: Se adjuntó el nuevo comprobante de pago N° 1234567 por el monto correcto de S/180.00. Se actualizó la cantidad del producto X de 2 a 3 unidades..."
                   minH={{ base: "140px", md: "110px" }}
                   fontSize={{ base: "md", md: "xs" }}
                   borderColor={resubmitNote.trim().length > 0 && resubmitNote.trim().length < 10 ? "red.400" : "gray.300"}

@@ -33,6 +33,7 @@ export function DatePickerField({
   minDate,
   maxDate,
   allowPastDates = false,
+  placeholder = "dd/mm/aaaa",
 }) {
   const parsedDate = selectedDate
     ? (selectedDate instanceof Date ? selectedDate : new Date(selectedDate))
@@ -132,6 +133,9 @@ export function DatePickerField({
           return checkDate >= effectiveMinDate;
         }}
         disabled={isDisabled || isReadOnly}
+        locale={es}
+        dateFormat="dd/MM/yyyy"
+        placeholderText={placeholder}
         customInput={
           <Input
             size="sm"
@@ -140,10 +144,9 @@ export function DatePickerField({
             isReadOnly={isReadOnly}
             bg={isDisabled || isReadOnly ? "gray.100" : "white"}
             cursor={isDisabled || isReadOnly ? "not-allowed" : "default"}
+            placeholder={placeholder}
           />
         }
-        locale={es}
-        dateFormat="dd/MM/yyyy"
       />
     </Box>
   );

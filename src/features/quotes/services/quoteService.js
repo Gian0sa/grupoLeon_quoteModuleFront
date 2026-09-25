@@ -166,13 +166,6 @@ export const getTransports = async () => {
 };
 
 export const getPaymentType = async () => {
-    const DEFAULT_PAYMENT_OPTIONS = [
-        { GroupNum: -1, GroupNumber: -1, PymntGroup: "Contado", PaymentTermsGroupName: "Contado" },
-        { GroupNum: 1, GroupNumber: 1, PymntGroup: "Crédito 15 Días", PaymentTermsGroupName: "Crédito 15 Días" },
-        { GroupNum: 2, GroupNumber: 2, PymntGroup: "Crédito 30 Días", PaymentTermsGroupName: "Crédito 30 Días" },
-        { GroupNum: 3, GroupNumber: 3, PymntGroup: "Crédito 45 Días", PaymentTermsGroupName: "Crédito 45 Días" },
-        { GroupNum: 4, GroupNumber: 4, PymntGroup: "Crédito 60 Días", PaymentTermsGroupName: "Crédito 60 Días" },
-    ];
     try {
         const response = await axiosInstance.get(`/quoteModule/clients/payment-terms`);
         const list = response.data?.value || response.data || [];
@@ -180,14 +173,14 @@ export const getPaymentType = async () => {
             return list.map(item => ({
                 GroupNum: item.GroupNum ?? item.GroupNumber ?? item.value,
                 GroupNumber: item.GroupNumber ?? item.GroupNum ?? item.value,
-                PymntGroup: item.PymntGroup || item.PaymentTermsGroupName || item.label || "Contado",
-                PaymentTermsGroupName: item.PaymentTermsGroupName || item.PymntGroup || item.label || "Contado"
+                PymntGroup: item.PymntGroup || item.PaymentTermsGroupName || item.label || "",
+                PaymentTermsGroupName: item.PaymentTermsGroupName || item.PymntGroup || item.label || ""
             }));
         }
-        return DEFAULT_PAYMENT_OPTIONS;
+        return [];
     } catch (err) {
-        console.warn("⚠️ Aviso al obtener condiciones de pago de SAP (usando fallback):", err?.message);
-        return DEFAULT_PAYMENT_OPTIONS;
+        console.warn("⚠️ Aviso al obtener condiciones de pago de SAP:", err?.message);
+        return [];
     }
 };
 
@@ -196,12 +189,8 @@ export const getDeliveryForms = async () => {
         const response = await axiosInstance.get(`/quoteModule/clients/delivery-forms`);
         return response.data || [];
     } catch (err) {
-        console.warn("Uso de formas de entrega locales (fallback):", err?.message);
-        return [
-            { TrnspCode: 1, TrnspName: "Recojo en Almacén / Tienda" },
-            { TrnspCode: 2, TrnspName: "Envío a Domicilio / Agencia Lima" },
-            { TrnspCode: 3, TrnspName: "Despacho a Provincia (Agencia)" }
-        ];
+        console.warn("⚠️ Aviso al consultar formas de despacho de SAP:", err?.message);
+        return [];
     }
 };
 
@@ -211,16 +200,6 @@ export const getWarehouses = async () => {
         return response.data || [];
     } catch (err) {
         console.warn("⚠️ Aviso obteniendo almacenes de SAP:", err?.message);
-        return [];
-    }
-};
-
-export const getHouseBankAccounts = async () => {
-    try {
-        const response = await axiosInstance.get(`/quoteModule/clients/house-bank-accounts`);
-        return response.data || [];
-    } catch (err) {
-        console.warn("⚠️ Aviso obteniendo cuentas bancarias de SAP:", err?.message);
         return [];
     }
 };
@@ -259,4 +238,18 @@ export const uploadImage = async (file) => {
     });
     return response.data;
   };
+
+export const getSapRelationshipMap = async (docNum) => {
+  if (!docNum) return null;
+  const cleanNum = String(docNum).replace(/\D/g, "");
+  if (!cleanNum) return null;
+  try {
+    const response = await axiosInstance.get(`/quoteModule/quotes/sap/relationship-map/${cleanNum}`);
+    return response.data?.data || null;
+  } catch (err) {
+    console.warn("⚠️ Aviso al obtener mapa de relaciones SAP:", err.message);
+    return null;
+  }
+};
+
   

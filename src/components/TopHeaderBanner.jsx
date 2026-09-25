@@ -66,7 +66,7 @@ export function TopHeaderBanner({
 
   const isAdmin = useIsAdmin();
   const { data: serverNotifs } = useNotifications(
-    isAdmin ? "FACTURACION" : undefined,
+    isAdmin ? "FACTURACION" : "VENDEDOR",
     username
   );
 
@@ -99,24 +99,44 @@ export function TopHeaderBanner({
     }
 
     const filtered = combined.filter((n) => {
-      if (n.status === "ANULADO" || String(n.title || "").toLowerCase().includes("anulad") || String(n.title || "").includes("- null") || !n.quoteId || n.quoteId === "null" || n.read) {
-        return false;
-      }
-      if (n.targetUsername && username) {
-        return n.targetUsername.toLowerCase() === username.toLowerCase();
-      }
-      if (n.targetRole === "FACTURACION" && isAdmin) {
+      if (!n || !n.title || n.read) return false;
+      const targetRoleUpper = (n.targetRole || "").trim().toUpperCase();
+      const targetUser = (n.targetUsername || "").trim().toLowerCase();
+      const userLower = (username || "").trim().toLowerCase();
+      const roleUpper = (role || "").trim().toUpperCase();
+      const isAdminOrMaster = isAdmin || roleUpper === "ADMIN" || roleUpper === "FACTURACION" || roleUpper === "SUPERVISOR";
+
+      if (isAdminOrMaster) {
+        if (targetRoleUpper !== "FACTURACION" && targetRoleUpper !== "ADMIN") return false;
+        const statusUpper = (n.status || "").trim().toUpperCase();
+        if (statusUpper === "EMITIDO" || statusUpper === "ANULADO" || statusUpper === "CANCELADO") return false;
+        const titleLower = (n.title || "").toLowerCase();
+        if (titleLower.includes("orden sap") || titleLower.includes("pedido emitido") || titleLower.includes("cotización enviada a validación")) return false;
         return true;
+      } else {
+        if (targetRoleUpper !== "VENDEDOR" && targetRoleUpper !== "SELLER") return false;
+        if (!targetUser) return true;
+        return targetUser === userLower || userLower.includes(targetUser) || targetUser.includes(userLower);
       }
-      if (n.targetUserId && userId) {
-        return String(n.targetUserId) === String(userId);
-      }
-      return false;
     });
 
-    const uniqueQuoteKeys = new Set(filtered.map(n => String(n.quoteId || n.id)));
-    return uniqueQuoteKeys.size;
-  }, [serverNotifs, username, userId, role, localVersion]);
+    const uniqueQuoteKeys = new Set();
+    let unreadTotal = 0;
+    for (const notif of filtered) {
+      const rawQ = String(notif.quoteId || notif.id || "").trim();
+      const matchWeb = String(notif.title || "").match(/COT-WEB-(\d+)/i) || 
+                       String(notif.title || "").match(/COT-(\d+)/i) ||
+                       rawQ.match(/COT-WEB-(\d+)/i) || 
+                       rawQ.match(/COT-(\d+)/i) || 
+                       rawQ.match(/^(\d+)$/);
+      const key = matchWeb ? `QUOTE-${Number(matchWeb[1])}` : rawQ;
+      if (!uniqueQuoteKeys.has(key)) {
+        uniqueQuoteKeys.add(key);
+        unreadTotal++;
+      }
+    }
+    return unreadTotal;
+  }, [serverNotifs, username, userId, role, isAdmin, localVersion]);
 
   const { data: exchangeRate, isLoading: isLoadingExchangeRate } = useExchangeRate(
     {

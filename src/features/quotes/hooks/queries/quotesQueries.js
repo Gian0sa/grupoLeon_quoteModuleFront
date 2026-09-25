@@ -6,7 +6,6 @@ import {
     getPaymentType,
     getDeliveryForms,
     getWarehouses,
-    getHouseBankAccounts,
     getNotifications,
 } from "../../services/quoteService"
 import { useQuery } from "@tanstack/react-query"
@@ -29,9 +28,9 @@ export const useNotifications = (targetRole, targetUsername) => {
     const query = useQuery({
         queryKey: ["notifications", targetRole, targetUsername],
         queryFn: () => getNotifications(targetRole, targetUsername),
-        staleTime: 60 * 1000,
-        refetchOnMount: false,
-        refetchOnWindowFocus: false,
+        staleTime: 5 * 1000,
+        refetchOnMount: true,
+        refetchOnWindowFocus: true,
     })
     return { ...query, data: query.data || [], isLoading: query.isLoading, isFetching: query.isFetching, error: query.error }
 }
@@ -86,13 +85,6 @@ export const useGetWarehouses = () => {
     return { warehouses: data || [], isLoading, error };
 };
 
-export const useGetHouseBankAccounts = () => {
-    const { data, isLoading, error } = useQuery({
-        queryKey: ["houseBankAccounts"],
-        queryFn: () => getHouseBankAccounts(),
-    })
-    return { dataHouseBankAccounts: data || [], isLoading, error };
-};
 
 export const useIgvRate = () => {
     return { igvRate: 0.18, isLoading: false };

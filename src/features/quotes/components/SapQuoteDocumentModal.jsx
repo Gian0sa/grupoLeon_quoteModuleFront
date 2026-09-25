@@ -288,11 +288,7 @@ export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) 
     } catch (e) {}
   }
 
-  const bankVal = (isCredito || saleCond === "CREDITO")
-    ? "Línea de Crédito Comercial"
-    : typeof parsedPayment === "object" && parsedPayment !== null
-      ? (parsedPayment.PymntGroup || parsedPayment.PaymentTermsGroupName || parsedPayment.label || "")
-      : (parsedPayment || (isContado ? "BCP SOLES" : ""));
+  const bcqVal = quote.bankAccount || quote.totals?.bankAccount || quote.paymentMethod || quote.totals?.paymentMethod || "—";
 
   // Totales y Normalización usando calculadora unificada
   const normalizedList = calcTotals.normalizedProducts && calcTotals.normalizedProducts.length > 0
@@ -785,7 +781,7 @@ export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) 
                     <div style={{ display: "flex", alignItems: "center" }}>
                       <span style={{ fontSize: "8.5px", fontWeight: "900", marginRight: "6px" }}>BCQ</span>
                       <span style={{ flex: 1, border: "1px solid #000", background: "#fef08a", padding: "1px 6px", textAlign: "center", fontSize: "8.5px", fontWeight: "900", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {bankVal || "Pendiente de Selección"}
+                        {bcqVal}
                       </span>
                       <span style={{ fontSize: "8.5px", fontWeight: "900", margin: "0 6px" }}>CH/</span>
                       <span style={{ width: "32px", border: "1px solid #000", background: "#fef08a", padding: "1px 2px", textAlign: "center", fontSize: "8.5px", fontWeight: "900" }}>
@@ -955,36 +951,6 @@ export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) 
               </tbody>
             </table>
 
-            {/* 8. CUENTAS BANCARIAS OFICIALES */}
-            <div style={{ border: "1px solid #000", padding: "4px 6px", fontSize: "7px", lineHeight: "1.25", background: "#ffffff" }}>
-              <div style={{ fontWeight: "900", textDecoration: "underline", textTransform: "uppercase", marginBottom: "2px" }}>
-                CUENTAS PARA DEPOSITOS BANCARIOS:
-              </div>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "6.5px", fontWeight: "600", color: "#000" }}>
-                <tbody>
-                  <tr>
-                    <td style={{ width: "36%", verticalAlign: "top" }}>
-                      <div style={{ fontWeight: "900" }}>Banco de Crédito:</div>
-                      <div>MN: 191-0104153-0-50</div>
-                      <div>CCI: 002-191-000104153050-50</div>
-                      <div>ME: 191-0845766-1-99</div>
-                      <div>CCI: 002-191-000845766199-52</div>
-                    </td>
-                    <td style={{ width: "38%", verticalAlign: "top" }}>
-                      <div style={{ fontWeight: "900" }}>Banco Continental:</div>
-                      <div>MN: 0011-0136-0100000938-99</div>
-                      <div>CCI: 011-136-000100000938-89</div>
-                      <div>ME: 0011-0136-0100005190-92</div>
-                      <div>CCI: 011-136-000100005190-92</div>
-                    </td>
-                    <td style={{ width: "26%", verticalAlign: "top" }}>
-                      <div style={{ fontWeight: "900" }}>Scotiabank:</div>
-                      <div>ME: 000-1245211</div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
 
             <div style={{ textAlign: "center", fontSize: "8px", color: "#000000", fontWeight: "bold", marginTop: "4px" }}>
               1/1

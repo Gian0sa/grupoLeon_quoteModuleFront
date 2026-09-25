@@ -144,10 +144,18 @@ export const formatDeliveryPoint = (point, clientAddress) => {
 
 export const formatPaymentTerms = (paymentType, saleCondition) => {
   const extractString = (val) => {
-    if (!val) return "";
+    if (val === null || val === undefined) return "";
+    if (typeof val === "number") {
+      if (val === -1) return "Contado / Entrega";
+      if (val === 1) return "Crédito 15 Días";
+      if (val === 2) return "Crédito 30 Días";
+      if (val === 3) return "Crédito 45 Días";
+      if (val === 4) return "Crédito 60 Días";
+      return `Término de Pago (${val})`;
+    }
     if (typeof val === "string") {
       const trimmed = val.trim();
-      if (trimmed === "[object Object]" || trimmed === "undefined" || trimmed === "null") return "";
+      if (trimmed === "[object Object]" || trimmed === "undefined" || trimmed === "null" || !trimmed) return "";
       if (trimmed.startsWith("{")) {
         try {
           return extractString(JSON.parse(trimmed));
@@ -155,17 +163,27 @@ export const formatPaymentTerms = (paymentType, saleCondition) => {
           return "";
         }
       }
+      if (/^-?\d+$/.test(trimmed)) {
+        const num = Number(trimmed);
+        if (num === -1) return "Contado / Entrega";
+        if (num === 1) return "Crédito 15 Días";
+        if (num === 2) return "Crédito 30 Días";
+        if (num === 3) return "Crédito 45 Días";
+        if (num === 4) return "Crédito 60 Días";
+      }
       return trimmed;
     }
     if (typeof val === "object" && val !== null) {
       const candidates = [
-        val.PymntGroup,
         val.PaymentTermsGroupName,
+        val.PymntGroup,
         val.label,
         val.name,
         val.text,
         val.PymntGroupGroup,
-        val.value
+        val.value,
+        val.GroupNumber,
+        val.GroupNum
       ];
       for (const cand of candidates) {
         const res = extractString(cand);
@@ -182,52 +200,6 @@ export const formatPaymentTerms = (paymentType, saleCondition) => {
   if (saleStr) return saleStr;
 
   return "Contado / Entrega";
-};
-
-export const formatBankAccount = (bankAccount) => {
-  if (!bankAccount) return "Pendiente de Selección";
-
-  let parsed = bankAccount;
-  if (typeof bankAccount === "string") {
-    const trimmed = bankAccount.trim();
-    if (trimmed.startsWith("{")) {
-      try {
-        parsed = JSON.parse(trimmed);
-      } catch (e) {}
-    }
-  }
-
-  if (typeof parsed === "object" && parsed !== null) {
-    const name = parsed.label || parsed.name || parsed.AccountName || parsed.BankCode || parsed.value || "";
-    if (name) return name;
-  }
-
-  const str = String(parsed).trim();
-  const normalized = str.toUpperCase();
-
-  if (normalized === "BCP_SOLES" || normalized.includes("191-0104153-0-50") || normalized.includes("191-0104153-0-60")) {
-    return "BCP (Soles) - Cta: 191-0104153-0-50";
-  }
-  if (normalized === "BCP_USD" || normalized === "BCP_DOLARES" || normalized.includes("191-0845766-1-99") || normalized.includes("191-0104153-1-61")) {
-    return "BCP (Dólares) - Cta: 191-0845766-1-99";
-  }
-  if (normalized === "BBVA_SOLES" || normalized.includes("136-0100000938") || normalized.includes("0011-0175-0100041641") || normalized.includes("0011-0182-0100045231")) {
-    return "BBVA (Soles) - Cta: 136-0100000938";
-  }
-  if (normalized === "BBVA_USD" || normalized === "BBVA_DOLARES" || normalized.includes("136-0100005190") || normalized.includes("0011-0182-0100045240")) {
-    return "BBVA (Dólares) - Cta: 136-0100005190";
-  }
-  if (normalized === "SCOTIABANK" || normalized === "SCOTIABANK_USD" || normalized.includes("000-1245211")) {
-    return "Scotiabank (Dólares) - Cta: 000-1245211";
-  }
-  if (normalized === "BN_DETRACCIONES" || normalized.includes("00-019-004864") || normalized.includes("00-068-123456")) {
-    return "Banco de la Nación (Detracciones) - Cta: 00-019-004864";
-  }
-  if (normalized === "INTERBANK_SOLES") {
-    return "Interbank (Soles)";
-  }
-
-  return str;
 };
 
 export const formatSunatOp = (sunatOp) => {

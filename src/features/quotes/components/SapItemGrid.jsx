@@ -48,9 +48,7 @@ export default function SapItemGrid({
     if (isReadOnly || !selectedItem) return;
     const rawPrice = Number(selectedItem.price || selectedItem.importe || selectedItem.Price || 0);
     const hasSapPrice = rawPrice > 0;
-    // En catálogo de pruebas (cuando el precio viene $0.00), asignar un precio base simulado automático ($25.00)
-    // Cuando se conecta a la ruta real de SAP (precio > 0), usará directamente el precio real de SAP y quedará bloqueado
-    const effectivePrice = hasSapPrice ? rawPrice : 25.0;
+    const effectivePrice = rawPrice;
 
     onAddProduct({
       id: selectedItem.id,
@@ -268,7 +266,7 @@ export default function SapItemGrid({
                   </Box>
                   <Box>
                     <Text fontSize="0.6rem" color="gray.500" fontWeight="800" mb={0.5} textAlign="right">PRECIO U.</Text>
-                    <Text fontSize={{ base: "11px", sm: "xs" }} fontWeight="800" color="gray.900" textAlign="right">{money(price > 0 ? price : 25.0, currency)}</Text>
+                    <Text fontSize={{ base: "11px", sm: "xs" }} fontWeight="800" color="gray.900" textAlign="right">{money(price, currency)}</Text>
                   </Box>
                   <Box textAlign="center">
                     <Text fontSize="0.6rem" color="gray.500" fontWeight="800" mb={0.5}>DESC.</Text>
@@ -494,7 +492,7 @@ export default function SapItemGrid({
                         </VStack>
                       </Td>
                       <Td px={3} textAlign="right" fontWeight="800" fontSize="xs" color="gray.800">
-                        {money(price > 0 ? price : 25.0, currency)}
+                        {money(price, currency)}
                       </Td>
                       <Td px={2} textAlign="center">
                         <Badge colorScheme="green" fontSize="xs" fontWeight="800" px={1.5} py={0.5} borderRadius="md">

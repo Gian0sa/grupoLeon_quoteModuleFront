@@ -146,7 +146,6 @@ export function NewSellTerms({
   deliveryPoints = [],
   deliveryForms = [],
   paymentTypes = [],
-  houseBankAccounts = [],
   selectedPoint,
   selectedTransport,
   selectedDeliveryForm,
@@ -479,6 +478,21 @@ export function NewSellTerms({
     }
   };
 
+  // Auto-seleccionar la condición de pago del cliente (GroupNum / PayTermsGrpCode) si aún no se ha seleccionado ninguna
+  useEffect(() => {
+    if (!selectedPaymentType && client && allPaymentTypes.length > 0) {
+      const clientGroupNum = client.PayTermsGrpCode ?? client.GroupNum ?? client.raw?.PayTermsGrpCode ?? client.raw?.GroupNum;
+      if (clientGroupNum !== undefined && clientGroupNum !== null && clientGroupNum !== "") {
+        const found = allPaymentTypes.find(
+          (pt) => String(pt.GroupNum ?? pt.GroupNumber ?? pt.value) === String(clientGroupNum)
+        );
+        if (found) {
+          handlePaymentTypeChange({ value: found.GroupNum ?? found.value, label: found.PymntGroup || found.label });
+        }
+      }
+    }
+  }, [client, allPaymentTypes, selectedPaymentType]);
+
   return (
     <VStack align="stretch" spacing={5} py={2}>
       {clientAdapted ? (
@@ -596,63 +610,56 @@ export function NewSellTerms({
 
           <Box>
             <DatePickerField
-              label={`Fecha estimada de entrega ${isDeliveryLocked ? "🔒" : ""}`}
+              label={
+                <HStack spacing={1}>
+                  <Text as="span" fontSize="xs" fontWeight="800" color="gray.700">
+                    Fecha estimada de entrega
+                  </Text>
+                  <Text as="span" color="red.500" fontWeight="900" fontSize="sm">
+                    *
+                  </Text>
+                  {isDeliveryLocked && <Text as="span">🔒</Text>}
+                </HStack>
+              }
               selectedDate={deliveryDate}
               setSelectedDate={setDeliveryDate}
               isDisabled={isDeliveryLocked}
+              placeholder="Seleccionar fecha obligatoria..."
             />
           </Box>
         </VStack>
       </Box>
 
-      {/* AVISO INFORMATIVO PARA ASESOR DE VENTAS */}
-      {!isAdmin && (
-        <Box p={4} bg="#f0fdf4" borderRadius="2xl" border="1.5px solid #86efac" boxShadow="xs">
-          <HStack align="flex-start" spacing={3}>
-            <Shield className="w-5 h-5 text-emerald-700 mt-0.5 flex-shrink-0" />
-            <Box>
-              <Text fontSize="xs" fontWeight="900" color="#166534" textTransform="uppercase" letterSpacing="wider">
-                Validación Financiera y Cierre en Administración
-              </Text>
-              <Text fontSize="0.75rem" color="#15803d" mt={0.5} lineHeight="tall" fontWeight="500">
-                Tu cotización pasará directamente a <b>Validación Comercial y Financiera</b>. La asignación de la condición de pago oficial, verificación del comprobante de abono (váucher) y parámetros de facturación SUNAT serán completados por el <b>Administrador</b> al momento de aprobar el pedido en SAP.
-              </Text>
-            </Box>
+      {/* TARJETA 2: 💳 CONDICIÓN DE PAGO Y FACTURACIÓN (SAP B1) */}
+      <Box bg="white" p={{ base: 3, sm: 4, md: 5 }} borderRadius="2xl" border="1.5px solid" borderColor="#e2e8f0" boxShadow="xs">
+        <Flex
+          direction={{ base: "column", sm: "row" }}
+          align={{ base: "flex-start", sm: "center" }}
+          justify="space-between"
+          gap={2}
+          mb={3.5}
+          pb={2.5}
+          borderBottom="1.5px solid"
+          borderColor="emerald.100"
+        >
+          <HStack spacing={2.5}>
+            <CreditCard className="w-5 h-5 text-emerald-700 stroke-[2.5] flex-shrink-0" />
+            <Text fontSize={{ base: "xs", sm: "sm" }} fontWeight="950" color="emerald.900" textTransform="uppercase" letterSpacing="wide">
+              2. Condición de Pago y Facturación (SAP B1)
+            </Text>
           </HStack>
-        </Box>
-      )}
-
-      {/* TARJETA 2: 💳 CONDICIÓN DE PAGO Y FACTURACIÓN (SAP B1) - EXCLUSIVO ADMINISTRADOR */}
-      {isAdmin && (
-        <Box bg="white" p={{ base: 3, sm: 4, md: 5 }} borderRadius="2xl" border="1.5px solid" borderColor="#e2e8f0" boxShadow="xs">
-          <Flex
-            direction={{ base: "column", sm: "row" }}
-            align={{ base: "flex-start", sm: "center" }}
-            justify="space-between"
-            gap={2}
-            mb={3.5}
-            pb={2.5}
-            borderBottom="1.5px solid"
-            borderColor="emerald.100"
-          >
-            <HStack spacing={2.5}>
-              <CreditCard className="w-5 h-5 text-emerald-700 stroke-[2.5] flex-shrink-0" />
-              <Text fontSize={{ base: "xs", sm: "sm" }} fontWeight="950" color="emerald.900" textTransform="uppercase" letterSpacing="wide">
-                2. Condición de Pago y Facturación (SAP B1)
-              </Text>
-            </HStack>
-            <HStack spacing={2}>
-              {isFinanceLocked ? (
-                <Badge colorScheme="green" fontSize="10px" px={2} py={0.5} borderRadius="md">
-                  🔒 Concluido (Aprobado)
-                </Badge>
-              ) : (
-                <Badge colorScheme="purple" fontSize="10px" px={2} py={0.5} borderRadius="md">
-                  ✏️ Editable por Administrador / Mostrador
-                </Badge>
-              )}
-            </HStack>
-          </Flex>
+          <HStack spacing={2}>
+            {isFinanceLocked ? (
+              <Badge colorScheme="green" fontSize="10px" px={2} py={0.5} borderRadius="md">
+                🔒 Concluido (Aprobado)
+              </Badge>
+            ) : (
+              <Badge colorScheme="purple" fontSize="10px" px={2} py={0.5} borderRadius="md">
+                ✏️ Condición Comercial y Facturación
+              </Badge>
+            )}
+          </HStack>
+        </Flex>
 
           {(() => {
             const currentPymntLabel = String(
@@ -818,8 +825,7 @@ export function NewSellTerms({
               </VStack>
             );
           })()}
-        </Box>
-      )}
+      </Box>
     </VStack>
   );
 }
