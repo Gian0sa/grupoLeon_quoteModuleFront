@@ -4,7 +4,8 @@ import {
     getVisitLogById,
     getActiveVisitByVendor,
     getMyVisitLogs,
-    getClientImage
+    getClientImage,
+    getVisitingVendors
 } from "../../services/visitLogService";
 import {getActiveVisitState} from "../../services/visitLogQueue";
 
@@ -67,5 +68,14 @@ export const useClientImage = (sapCode) => {
         enabled: !!sapCode,
         staleTime: 1000 * 60 * 5,
         retry: 1
+    });
+};
+
+export const useVisitingVendors = () => {
+    return useQuery({
+        queryKey: ["visitingVendors"],
+        queryFn: getVisitingVendors,
+        staleTime: 1000 * 60 * 15,
+        refetchOnWindowFocus: false,
     });
 };

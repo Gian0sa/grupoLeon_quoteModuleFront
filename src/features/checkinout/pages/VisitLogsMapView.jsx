@@ -20,8 +20,7 @@ import {
 import { useState, useEffect, useMemo } from "react";
 import { MapContainer, TileLayer, Polyline } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-import { useVisitLogs } from "../hooks/queries/visitLogQueries";
-import { useSellersData } from "../../auth/hooks/queries/authQueries";
+import { useVisitLogs, useVisitingVendors } from "../hooks/queries/visitLogQueries";
 import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
 import Select from "react-select";
 import { getToday, getYesterday, getLastWeek, getFirstDayOfMonth, getLastDayOfMonth, formatDateForInput } from "../utils/datePresets";
@@ -161,8 +160,8 @@ export default function VisitLogsMapView() {
     const hoverBg = useColorModeValue("gray.50", "gray.700");
     const purpleHeaderBg = useColorModeValue("purple.50", "purple.900");
 
-    // 1. Cargar la lista oficial completa de vendedores desde el módulo Auth
-    const { data: sellersDataResponse, isLoading: isLoadingSellers } = useSellersData();
+    // 1. Cargar vendedores activos que realizan visitas a terreno
+    const { data: visitingVendors = [], isLoading: isLoadingSellers } = useVisitingVendors();
 
     const filters = {
         vendor: selectedVendor,
@@ -173,28 +172,34 @@ export default function VisitLogsMapView() {
     const { data, isLoading, error } = useVisitLogs(filters);
     const visitLogs = data?.visits || [];
 
-    // 2. Extraer y unificar TODOS los vendedores (Auth API + Visit Logs) con fallback `SalesEmployeeName` de SAP
+    // 2. Extraer y unificar los vendedores activos que realizan visitas a terreno
     const allVendorNames = useMemo(() => {
-        const officialSellers = Array.isArray(sellersDataResponse)
-            ? sellersDataResponse
-            : (sellersDataResponse?.sellers || sellersDataResponse?.data || sellersDataResponse?.records || []);
-
-        const officialNames = (Array.isArray(officialSellers) ? officialSellers : [])
-            .map(s => s.SalesEmployeeName || s.SlpName || s.name || s.username || s.vendedorName || s.vendedor)
-            .filter(Boolean);
-
+        const vendorList = Array.isArray(visitingVendors) ? visitingVendors : [];
         const visitLogNames = (visitLogs || []).map(v => v.vendorName).filter(Boolean);
 
         const setMap = new Map();
-        [...officialNames, ...visitLogNames].forEach(name => {
+        [...vendorList, ...visitLogNames].forEach(name => {
             const clean = String(name).trim();
-            if (clean && !setMap.has(clean.toLowerCase())) {
-                setMap.set(clean.toLowerCase(), clean);
+            const lower = clean.toLowerCase();
+            // Descartar registros nulos, vacíos o administrativos/sistema
+            if (
+                !clean ||
+                clean === "-" ||
+                lower.includes("ningún empleado") ||
+                lower.includes("ofic administración") ||
+                lower.includes("administracion") ||
+                lower.includes("contabilidad") ||
+                lower.includes("sistemas")
+            ) {
+                return;
+            }
+            if (!setMap.has(lower)) {
+                setMap.set(lower, clean);
             }
         });
 
         return Array.from(setMap.values()).sort((a, b) => a.localeCompare(b));
-    }, [sellersDataResponse, visitLogs]);
+    }, [visitingVendors, visitLogs]);
 
     const vendorColorMap = useMemo(() => {
         const map = {};
@@ -564,7 +569,7 @@ export default function VisitLogsMapView() {
                                         <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={2.5}>
                                             <Box>
                                                 <Text fontSize="11px" fontWeight="700" color="gray.700" mb={1}>
-                                                     Fuerza de Ventas ({allVendorNames.length} Vendedores)
+                                                     Fuerza de Ventas ({allVendorNames.length} Vendedores Activos)
                                                 </Text>
                                                 <Select
                                                     options={vendorOptions}

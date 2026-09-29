@@ -21,8 +21,9 @@ export const refreshAccessToken = async () => {
   return response.data?.token ?? response.data;
 };
 
-export const sellersData = async () => {
-  const response = await axiosInstance.get("/authModule/sellers");
+export const sellersData = async (params = {}) => {
+  const query = params?.unassigned ? "?unassigned=true" : "";
+  const response = await axiosInstance.get(`/authModule/sellers${query}`);
   return response.data;
 };
 

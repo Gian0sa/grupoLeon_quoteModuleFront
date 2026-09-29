@@ -99,12 +99,11 @@ export function DashboardPage() {
     hasAdminQuotesAccess ||
     isVendedor;
 
-  // Ver barra de selección de período comercial: Administradores, Supervisores o Vendedores con permiso de período
+  // Ver barra de selección de período comercial: Exclusivo para Administradores o con permiso explícito (Global/Admin)
   const canViewCommercialPeriod =
     isAdmin ||
     canFilterSellers ||
-    hasAdminQuotesAccess ||
-    hasQuotesAccess;
+    hasAdminQuotesAccess;
 
   // 🗓️ Años dinámicos que CONTIENEN datos reales en SAP (2024 excluido por no tener registros)
   const currentRealYear = new Date().getFullYear();

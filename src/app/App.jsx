@@ -9,14 +9,14 @@ import { useQuoteSocket } from "../features/quotes/hooks/useQuoteSocket";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      refetchOnWindowFocus: true,
+      refetchOnWindowFocus: false,
       refetchOnReconnect: true,
-      refetchOnMount: true,
+      refetchOnMount: false,
       refetchInterval: false,
       refetchIntervalInBackground: false,
       retry: false,
       retryOnMount: false,
-      staleTime: 1000 * 30, // 30s
+      staleTime: 1000 * 60 * 5, // 5m
       gcTime: 1000 * 60 * 15, // 15m
       networkMode: 'online',
     },

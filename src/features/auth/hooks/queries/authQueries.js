@@ -1,10 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { profileUser, sellersData , services } from "../../services/auhtService";
 
-export function useSellersData() {
+export function useSellersData(params = {}) {
   return useQuery({
-    queryKey: ["sellersData"],
-    queryFn: sellersData,
+    queryKey: ["sellersData", params],
+    queryFn: () => sellersData(params),
     staleTime: 1000 * 60 * 15, // 15 min
     cacheTime: 1000 * 60 * 60, // 1 hora
     refetchOnWindowFocus: false,

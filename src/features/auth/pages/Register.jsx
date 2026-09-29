@@ -248,6 +248,8 @@ export function Register() {
                   setSelectedSeller={setSelectedSeller}
                   setValue={setValue}
                   error={errors.salesPerson}
+                  allowAll={false}
+                  onlyUnassigned={true}
                 />
               </Box>
             )}
