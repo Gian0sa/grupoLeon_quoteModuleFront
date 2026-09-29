@@ -115,47 +115,71 @@ export function useQuoteSocket() {
     const handleNewNotification = (notif) => {
       if (!notif) return;
       console.log("🔔 [WS EVENT] notification:new recibido:", notif.id || notif.title);
-      
-      try {
-        const raw = localStorage.getItem("grupoLeon_notifications");
-        const all = raw ? JSON.parse(raw) : [];
-        if (!all.some(n => String(n.id) === String(notif.id) || (n.quoteId === notif.quoteId && n.status === notif.status))) {
-          localStorage.setItem("grupoLeon_notifications", JSON.stringify([notif, ...all]));
+
+      const authState = useAuthStore.getState();
+      const currentUsername = (authState.username || "").trim().toLowerCase();
+      const currentRole = (authState.role || "").trim().toUpperCase();
+      const currentEndpoints = authState.endpoints;
+      const isAdminActive = currentRole === "ADMIN" || currentRole === "FACTURACION" || currentRole === "SUPERVISOR" || checkIsAdmin(currentEndpoints, authState.username);
+
+      const targetRoleUpper = String(notif.targetRole || "").trim().toUpperCase();
+      const targetUser = String(notif.targetUsername || "").trim().toLowerCase();
+
+      let isForMe = false;
+
+      if (isAdminActive) {
+        // Facturación / Admin ONLY recibe cotizaciones pendientes de revisión/aprobación
+        if (targetRoleUpper === "FACTURACION" || targetRoleUpper === "ADMIN") {
+          const statusUpper = String(notif.status || "").trim().toUpperCase();
+          const titleLower = String(notif.title || "").toLowerCase();
+          if (statusUpper !== "EMITIDO" && statusUpper !== "ANULADO" && statusUpper !== "CANCELADO" && !titleLower.includes("orden sap") && !titleLower.includes("pedido emitido")) {
+            isForMe = true;
+          }
         }
-      } catch {}
+      } else {
+        // VENDEDOR: ONLY recibe notificaciones para su rol y dirigidas a su nombre de usuario
+        if (targetRoleUpper === "VENDEDOR" || targetRoleUpper === "SELLER") {
+          if (!targetUser || targetUser === currentUsername || currentUsername.includes(targetUser) || targetUser.includes(currentUsername)) {
+            isForMe = true;
+          }
+        }
+      }
+
+      if (isForMe) {
+        try {
+          const raw = localStorage.getItem("grupoLeon_notifications");
+          const all = raw ? JSON.parse(raw) : [];
+          // Deduplicar: 1 sola alerta canónica por cotización
+          const rawQ = String(notif.quoteId || notif.id || "").trim();
+          const matchWeb = String(notif.title || "").match(/COT-WEB-(\d+)/i) || 
+                           String(notif.title || "").match(/COT-(\d+)/i) ||
+                           rawQ.match(/COT-WEB-(\d+)/i) || 
+                           rawQ.match(/COT-(\d+)/i) || 
+                           rawQ.match(/^(\d+)$/);
+          const canonicalTarget = matchWeb ? `QUOTE-${Number(matchWeb[1])}` : rawQ;
+
+          const remaining = all.filter(n => {
+            const nQ = String(n.quoteId || n.id || "").trim();
+            const nMatch = String(n.title || "").match(/COT-WEB-(\d+)/i) || 
+                           String(n.title || "").match(/COT-(\d+)/i) ||
+                           nQ.match(/COT-WEB-(\d+)/i) || 
+                           nQ.match(/COT-(\d+)/i) || 
+                           nQ.match(/^(\d+)$/);
+            const nCanonical = nMatch ? `QUOTE-${Number(nMatch[1])}` : nQ;
+            return nCanonical !== canonicalTarget;
+          });
+
+          localStorage.setItem("grupoLeon_notifications", JSON.stringify([notif, ...remaining]));
+        } catch {}
+      }
 
       scheduleRefresh({ notifications: true });
 
-      const authState = useAuthStore.getState();
-      const currentUsername = authState.username;
-      const currentRole = authState.role;
-
-      // Si yo mismo envié la cotización, no necesito ver el toast de "Nueva cotización recibida" (ya vi el toast de confirmación local)
-      const isSender = notif.fromUsername && currentUsername && notif.fromUsername.toLowerCase() === currentUsername.toLowerCase();
+      // Si yo mismo envié la cotización, no necesito ver el toast de "Nueva cotización recibida"
+      const isSender = notif.fromUsername && currentUsername && notif.fromUsername.toLowerCase() === currentUsername;
       if (isSender && notif.status === "ENVIADO") {
         return;
       }
-
-      // Normalización inteligente de roles y usuarios para notificaciones
-      const targetRoleUpper = String(notif.targetRole || "").toUpperCase();
-      const currentRoleUpper = String(currentRole || "").toUpperCase();
-
-      const isSellerTarget = targetRoleUpper === "VENDEDOR" || targetRoleUpper === "SELLER";
-      const isSellerActive = currentRoleUpper === "VENDEDOR" || currentRoleUpper === "SELLER";
-
-      const currentEndpoints = useAuthStore.getState().endpoints;
-      const isAdminTarget = targetRoleUpper === "FACTURACION" || targetRoleUpper === "ADMIN" || targetRoleUpper === "SUPERVISOR";
-      const isAdminActive = currentRoleUpper === "ADMIN" || currentRoleUpper === "FACTURACION" || currentRoleUpper === "SUPERVISOR" || checkIsAdmin(currentEndpoints, currentUsername);
-
-      const isUserMatch = Boolean(
-        notif.targetUsername && currentUsername && (
-          notif.targetUsername.toLowerCase() === currentUsername.toLowerCase() ||
-          currentUsername.toLowerCase().includes(notif.targetUsername.toLowerCase()) ||
-          notif.targetUsername.toLowerCase().includes(currentUsername.toLowerCase())
-        )
-      );
-
-      const isForMe = isUserMatch || (isSellerTarget && isSellerActive) || (isAdminTarget && isAdminActive);
 
       if (isForMe && notif.title) {
         const toastId = `ws-notif-${notif.quoteId || notif.id}-${notif.status || 'new'}`;
@@ -178,6 +202,7 @@ export function useQuoteSocket() {
           duration: 7000,
           isClosable: true,
           position: "top-right",
+          isCustom: true
         });
       }
     };

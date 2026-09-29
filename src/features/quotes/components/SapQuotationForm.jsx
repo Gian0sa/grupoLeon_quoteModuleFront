@@ -24,8 +24,7 @@ import { createQuote, updateQuote, getNextDocNumber } from "../services/quoteSer
 import { useQuoteStore, normalizeQuoteClient } from "../stores/quoteStore";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { useExchangeRate } from "../../dashboard/hooks/queries/dashboardQueries";
-import { axiosInstance } from "../../../shared/lib/axiosInstance";
-import { useGetTransports, useGetPaymentType, useGetDeliveryForms, useGetHouseBankAccounts } from "../hooks/queries/quotesQueries";
+import { useGetTransports, useGetPaymentType, useGetDeliveryForms } from "../hooks/queries/quotesQueries";
 import { calculateQuoteTotals } from "../../../shared/utils/quoteCalculator";
 import { useNavigate } from "react-router-dom";
 import QuoteSubmitConfirmModal from "./QuoteSubmitConfirmModal";
@@ -33,6 +32,9 @@ import { isPickupInStoreForm } from "./NewSellTerms";
 import { useIsAdmin, useHasAccess } from "../../../shared/utils/permissions";
 import { useSellersData, useGetProfileData } from "../../auth/hooks/queries/authQueries";
 import { useGetAccountsReceivable } from "../../receivable/hooks/receivableQueries";
+import { useClientPointsDelivery } from "../../clients/hooks/queries/clientQueries";
+import InvoicesModal from "../../receivable/components/InvoicesModal";
+import { axiosInstance } from "../../../shared/lib/axiosInstance";
 
 const money = (val, currency = "USD") => {
   const num = Number(val || 0);
@@ -261,12 +263,27 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     return d.toISOString().split("T")[0];
   });
 
-  // ─── CONSULTA Y ANÁLISIS DE DEUDA DEL CLIENTE EN TIEMPO REAL ───
-  const clientCardCode = client?.CardCode || client?.raw?.CardCode || client?.id || "";
+  const { data: rateData } = useExchangeRate({
+    currency: "USD",
+    date: docDate || todayIso(),
+  });
+  // ⚠️ [NO TOCAR] SÍMBOLO DE CAMBIO - REGLA COMERCIAL AUTOPARTES:
+  // Redondeo a favor de la empresa (+0.04). Si la base termina en 3.385 (3.385 + 0.04 = 3.425), debe quedar en 3.43.
+  const exchangeRate = (() => {
+    const raw = rateData?.collectionRate || rateData?.officialRate;
+    if (!raw) return 3.76;
+    const num = Number(raw);
+    if (rateData?.rawRate === 3.385 || num === 3.42) return 3.43;
+    return isNaN(num) ? 3.76 : num;
+  })();
+
+  // ─── CONSULTA Y ANÁLISIS DE DEUDA Y LOGÍSTICA DEL CLIENTE EN TIEMPO REAL (SAP B1) ───
+  const clientCardCode = client?.CardCode || client?.cardCode || client?.raw?.CardCode || (client?.LicTradNum ? `CL${client.LicTradNum}` : "") || (client?.clientDocument ? `CL${client.clientDocument}` : "") || client?.id || "";
   const { data: receivableData } = useGetAccountsReceivable(
     { clientecode: clientCardCode },
     Boolean(clientCardCode)
   );
+  const { dataDeliveryPoints, isLoadingDeliveryPoints } = useClientPointsDelivery(clientCardCode);
 
   const clientDebtInfo = useMemo(() => {
     if (!client) return null;
@@ -275,85 +292,96 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
     // Buscar en la lista de cuentas por cobrar
     const clientsList = receivableData?.clients?.clients || receivableData?.clients || receivableData?.data || (Array.isArray(receivableData) ? receivableData : []);
+    const cleanClientCode = String(clientCardCode || "").replace(/^CL/i, "").trim().toUpperCase();
     const matchingClient = clientsList.find(c => {
-      const cCode = c.clientCode || c.CardCode || c.cardCode || c.id;
-      return String(cCode).trim().toUpperCase() === String(clientCardCode).trim().toUpperCase();
-    }) || (clientCardCode && clientsList.length === 1 ? clientsList[0] : null);
+      const cCode = String(c.clientCode || c.CardCode || c.cardCode || c.id || "").replace(/^CL/i, "").trim().toUpperCase();
+      return cCode === cleanClientCode;
+    }) || (cleanClientCode && clientsList.length === 1 ? clientsList[0] : null);
 
-    let overduePEN = 0;
     let overdueUSD = 0;
     let overdueDocsCount = 0;
-    let totalPendingPEN = 0;
     let totalPendingUSD = 0;
     let totalDocsCount = 0;
 
     if (matchingClient) {
-      overduePEN = Number(matchingClient.overdueAmount?.PEN ?? matchingClient.saldoVencidoPEN ?? 0);
-      overdueUSD = Number(matchingClient.overdueAmount?.USD ?? matchingClient.saldoVencidoUSD ?? 0);
-      overdueDocsCount = Number(matchingClient.overdueDocumentsCount ?? matchingClient.documentosVencidos ?? 0);
+      const penOverdue = Number(matchingClient.overdueAmount?.PEN ?? matchingClient.saldoVencidoPEN ?? 0);
+      const usdOverdue = Number(matchingClient.overdueAmount?.USD ?? matchingClient.saldoVencidoUSD ?? 0);
+      overdueUSD = Number((usdOverdue + (penOverdue > 0 ? penOverdue / (exchangeRate || 3.564) : 0)).toFixed(2));
+
+      overdueDocsCount = Number(
+        matchingClient.overdueDocumentsCount ??
+        matchingClient.resumenSapCrystal?.countVencidos ??
+        matchingClient.documentosVencidos ??
+        0
+      );
+
+      const penPending = Number(matchingClient.pendingAmount?.PEN ?? 0);
+      const usdPending = Number(matchingClient.pendingAmount?.USD ?? 0);
+      const consolidadoUSD = Number(matchingClient.totalConsolidadoUSD ?? matchingClient.saldoConsolidadoUSD ?? 0);
+      totalPendingUSD = consolidadoUSD > 0
+        ? consolidadoUSD
+        : Number((usdPending + (penPending > 0 ? penPending / (exchangeRate || 3.564) : 0)).toFixed(2));
+
+      totalDocsCount = Number(matchingClient.totalDocuments ?? matchingClient.documents?.length ?? 0);
 
       if (Array.isArray(matchingClient.documents) && matchingClient.documents.length > 0) {
-        totalDocsCount = matchingClient.documents.length;
-        const now = new Date();
-        now.setHours(0, 0, 0, 0);
-
-        matchingClient.documents.forEach(d => {
-          const sPen = Number(d.SALDO_PEN ?? d.sPen ?? 0);
-          const sUsd = Number(d.SALDO_USD ?? d.sUsd ?? 0);
-          totalPendingPEN += sPen;
-          totalPendingUSD += sUsd;
-
-          const isOverdue = Boolean(d.estaVencido || d.isOverdue || d.vdStatus === "VENCIDO") ||
-            (d.FECHA_VENCIMIENTO && new Date(d.FECHA_VENCIMIENTO) < now && (sPen > 0 || sUsd > 0));
-
-          if (isOverdue && (sPen > 0 || sUsd > 0)) {
-            if (!overduePEN && sPen > 0) overduePEN += sPen;
-            if (!overdueUSD && sUsd > 0) overdueUSD += sUsd;
-          }
-        });
-
-        if (overdueDocsCount === 0) {
-          overdueDocsCount = matchingClient.documents.filter(d =>
-            Boolean(d.estaVencido || d.isOverdue || d.vdStatus === "VENCIDO") ||
-            (d.FECHA_VENCIMIENTO && new Date(d.FECHA_VENCIMIENTO) < now && (Number(d.SALDO_PEN || 0) > 0 || Number(d.SALDO_USD || 0) > 0))
-          ).length;
+        if (!totalDocsCount) totalDocsCount = matchingClient.documents.length;
+        if (totalPendingUSD === 0) {
+          matchingClient.documents.forEach(d => {
+            const sPen = Number(d.saldoPendiente?.PEN ?? d.SALDO_PEN ?? 0);
+            const sUsd = Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? 0);
+            totalPendingUSD += Number((sUsd + (sPen > 0 ? sPen / (exchangeRate || 3.564) : 0)).toFixed(2));
+          });
+        }
+        if (overdueDocsCount === 0 && overdueUSD === 0) {
+          const now = new Date();
+          now.setHours(0, 0, 0, 0);
+          matchingClient.documents.forEach(d => {
+            const sPen = Number(d.saldoPendiente?.PEN ?? d.SALDO_PEN ?? 0);
+            const sUsd = Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? 0);
+            const isOverdue = Boolean(d.estaVencido || d.isOverdue || d.vdStatus === "VENCIDO") ||
+              (d.REFDATE && new Date(d.REFDATE) < now && (sPen > 0 || sUsd > 0));
+            if (isOverdue) {
+              overdueUSD += Number((sUsd + (sPen > 0 ? sPen / (exchangeRate || 3.564) : 0)).toFixed(2));
+              overdueDocsCount++;
+            }
+          });
         }
       }
+    } else if (rawBalance > 0) {
+      // Fallback si receivableData aún está cargando: convertir el saldo contable de SAP (PEN) a USD
+      // En B1 Perú, CurrentAccountBalance está en Soles (7,268.55 PEN = $2,039.40 USD a tipo de cambio contable 3.564)
+      totalPendingUSD = Number((rawBalance / 3.564).toFixed(2));
     }
 
-    const hasOverdueDebt = overdueDocsCount > 0 || overduePEN > 0 || overdueUSD > 0;
-    const hasTotalDebt = hasOverdueDebt || rawBalance > 0 || totalPendingPEN > 0 || totalPendingUSD > 0;
+    const hasOverdueDebt = overdueDocsCount > 0 || overdueUSD > 0;
+    const hasTotalDebt = hasOverdueDebt || totalPendingUSD > 0 || rawBalance > 0;
 
     if (!hasTotalDebt) return null;
 
     let debtSummary = "";
     if (hasOverdueDebt) {
-      const parts = [];
-      if (overdueUSD > 0) parts.push(`$${overdueUSD.toFixed(2)} USD`);
-      if (overduePEN > 0) parts.push(`S/ ${overduePEN.toFixed(2)} PEN`);
-      debtSummary = `Deuda vencida: ${parts.length ? parts.join(" y ") : "Documentos en mora"} (${overdueDocsCount} doc${overdueDocsCount > 1 ? "s" : ""})`;
-    } else if (rawBalance > 0) {
-      debtSummary = `Saldo actual registrado en SAP: $${rawBalance.toFixed(2)} USD`;
-    } else if (totalPendingUSD > 0 || totalPendingPEN > 0) {
-      const parts = [];
-      if (totalPendingUSD > 0) parts.push(`$${totalPendingUSD.toFixed(2)} USD`);
-      if (totalPendingPEN > 0) parts.push(`S/ ${totalPendingPEN.toFixed(2)} PEN`);
-      debtSummary = `Saldo pendiente por vencer: ${parts.join(" y ")}`;
+      debtSummary = `Deuda vencida: $${overdueUSD.toFixed(2)} USD (${overdueDocsCount} doc${overdueDocsCount > 1 ? "s" : ""})`;
+      if (totalPendingUSD > 0 && Math.abs(totalPendingUSD - overdueUSD) > 0.01) {
+        debtSummary += ` • Saldo total pendiente: $${totalPendingUSD.toFixed(2)} USD`;
+      }
+    } else if (totalPendingUSD > 0) {
+      debtSummary = `Saldo pendiente por vencer: $${totalPendingUSD.toFixed(2)} USD`;
     }
 
     return {
       hasOverdueDebt,
       hasTotalDebt,
-      overduePEN,
       overdueUSD,
       overdueDocsCount,
-      rawBalance,
-      totalPendingPEN,
       totalPendingUSD,
       totalDocsCount,
       debtSummary,
+      matchingClient,
     };
-  }, [client, clientCardCode, receivableData]);
+  }, [client, clientCardCode, receivableData, exchangeRate]);
+
+  const [isReceivableModalOpen, setIsReceivableModalOpen] = useState(false);
 
   // Estado que permite al Administrador desbloquear/editar cualquier cotización si necesita corregir ítems/precios.
   // Por defecto SIEMPRE inicia en false (bloqueado en modo revisión) para proteger la integridad de los datos.
@@ -402,43 +430,64 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isJsonModalOpen, setIsJsonModalOpen] = useState(false);
 
-  const { data: rateData } = useExchangeRate({
-    currency: "USD",
-    date: docDate || todayIso(),
-  });
-  // ⚠️ [NO TOCAR] SÍMBOLO DE CAMBIO - REGLA COMERCIAL AUTOPARTES:
-  // Redondeo a favor de la empresa (+0.04). Si la base termina en 3.385 (3.385 + 0.04 = 3.425), debe quedar en 3.43.
-  const exchangeRate = (() => {
-    const raw = rateData?.collectionRate || rateData?.officialRate;
-    if (!raw) return 3.76;
-    const num = Number(raw);
-    if (rateData?.rawRate === 3.385 || num === 3.42) return 3.43;
-    return isNaN(num) ? 3.76 : num;
-  })();
-
   const { dataTransports } = useGetTransports();
   const { dataDeliveryForms } = useGetDeliveryForms();
   const { dataPaymentTypes } = useGetPaymentType();
-  const { dataHouseBankAccounts } = useGetHouseBankAccounts();
 
   const deliveryPoints = useMemo(() => {
     if (!client) return [];
-    const list = client.raw?.BPAddresses || client.raw?.bpAddresses || client.raw?.addresses || [];
+
+    // 1. Puntos traídos en vivo desde SAP Business One (Service Layer)
+    const sapApiList = Array.isArray(dataDeliveryPoints) ? dataDeliveryPoints : (dataDeliveryPoints?.value || []);
+
+    // 2. Puntos adjuntos en el objeto raw del cliente (si existen)
+    const rawList = client.raw?.BPAddresses || client.raw?.bpAddresses || client.raw?.addresses || [];
+
+    // 3. Combinar listas
+    const combined = [...sapApiList, ...rawList];
+
     let points = [];
-    if (Array.isArray(list) && list.length > 0) {
-      points = list.filter(addr => addr.AddressType === "bo_ShipTo" || addr.addressType === "bo_ShipTo" || !addr.AddressType);
+    if (combined.length > 0) {
+      points = combined.filter(addr =>
+        addr.AddressType === "bo_ShipTo" ||
+        addr.addressType === "bo_ShipTo" ||
+        !addr.AddressType ||
+        addr.AddressName?.toUpperCase().includes("ALMACEN") ||
+        addr.AddressName?.toUpperCase().includes("ENTREGA")
+      );
       if (points.length === 0) {
-        points = [...list];
+        points = [...combined];
       }
     }
+
+    // Deduplicar por AddressName y Dirección/Street
+    const uniquePoints = [];
+    const seen = new Set();
+    points.forEach(p => {
+      const name = (p.AddressName || p.name || "").trim();
+      const street = (p.Street || p.Address || p.address || "").trim();
+      const key = `${name}_${street}`.toLowerCase();
+      if ((name || street) && !seen.has(key)) {
+        seen.add(key);
+        uniquePoints.push({
+          ...p,
+          AddressName: name || "SUCURSAL",
+          Street: street,
+          Address: street,
+          label: street ? (name ? `${name} - ${street}` : street) : name,
+        });
+      }
+    });
+
     const mainAddress = client.Address || client.address || client.clientAddress || client.raw?.Address;
-    const hasMainInList = points.some(p => {
+    const hasMainInList = uniquePoints.some(p => {
       const pStreet = (p.Street || p.Address || "").trim().toLowerCase();
       const mStreet = (mainAddress || "").trim().toLowerCase();
       return pStreet && mStreet && (pStreet === mStreet || pStreet.includes(mStreet) || mStreet.includes(pStreet));
     });
+
     if (mainAddress && !hasMainInList) {
-      points.unshift({
+      uniquePoints.unshift({
         AddressName: "FISCAL",
         Street: mainAddress,
         Address: mainAddress,
@@ -446,8 +495,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         isDefault: true,
       });
     }
-    return points;
-  }, [client]);
+
+    return uniquePoints;
+  }, [client, dataDeliveryPoints]);
 
   // Extraer lista de personas de contacto oficiales registradas en SAP para este cliente
   const contactList = useMemo(() => {
@@ -769,7 +819,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       isLetra,
       creditTerm,
       docDate,
-      docDueDate,
+      docDueDate: deliveryDate ? (deliveryDate instanceof Date ? deliveryDate.toISOString().split("T")[0] : deliveryDate) : docDueDate,
       deliveryDate: deliveryDate ? (deliveryDate instanceof Date ? deliveryDate.toISOString().split("T")[0] : deliveryDate) : (existingDoc?.deliveryDate || null),
       comment,
       deliveryForm: selectedDeliveryForm,
@@ -784,15 +834,14 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       SlpCode: effectiveSlpCode,
       slpCode: effectiveSlpCode,
       salesPersonCode: effectiveSlpCode,
-      salesEmployeeCode: effectiveSlpCode,
-      paymentMethod: paymentMethod || "DEPOSITO_BANCARIO",
-      bankAccount: bankAccount || "191-0104153-0-50",
+      paymentMethod: paymentMethod || null,
+      bankAccount: bankAccount || null,
       sunatOpType: sunatOpType || "0101",
       U_VS_TIPOPER: "01",
       U_VS_TIPO_FACT: sunatOpType || "0101",
       U_VS_AFEDET: "N",
-      U_VS_BANCO: bankAccount || "191-0104153-0-50",
-      PaymentMethod: paymentMethod || "001",
+      U_VS_BANCO: bankAccount || null,
+      PaymentMethod: paymentMethod || null,
       createdByUsername: finalCreatedByUsername,
       createdByUserId: finalCreatedByUserId,
       createdAt: existingDoc?.createdAt || nowIso,
@@ -854,7 +903,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
           window.dispatchEvent(new Event("localQuotesUpdated"));
         } catch (e) {}
 
-        // Si se ENVIÓ a validación, generar la notificación oficial para Facturación
+        // Si se ENVIÓ a validación, generar la notificación oficial para Facturación y para el Vendedor
         if (targetStatus === "ENVIADO") {
           try {
             const existingNotifs = JSON.parse(localStorage.getItem("grupoLeon_notifications") || "[]");
@@ -866,10 +915,10 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                 ? `🔥 Cotización con Descuento Adicional - ${assignedNumber}`
                 : `📩 Nueva Cotización Recibida - ${assignedNumber}`);
 
-            const notifObj = {
-              id: `NOTIF-${Date.now()}`,
+            const notifAdminObj = {
+              id: `NOTIF-A-${Date.now()}`,
               targetRole: "FACTURACION",
-              targetUsername: ADMIN_FACTURACION_USERNAME,
+              targetUsername: null,
               fromUsername: senderUsername,
               fromUserId: userId || null,
               quoteId: assignedNumber,
@@ -882,7 +931,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                 debtSummary: clientDebtInfo?.debtSummary || null
               },
               title: notifTitle,
-              description: `Enviada por ${activeSeller} • Cliente: ${clientName} (${totalUsdStr})${discountNotice}${debtNotice} ${opNum ? `• Váucher BCP: N° ${opNum}` : ''}. Requiere aprobación comercial.`,
+              description: `Enviada por ${activeSeller} • Cliente: ${clientName} (${totalUsdStr})${discountNotice}${debtNotice} ${opNum ? `• Váucher / Op: N° ${opNum}` : ''}. Requiere aprobación comercial.`,
               status: "ENVIADO",
               hasDiscount: maxAdic > 0,
               maxDiscount: maxAdic,
@@ -893,7 +942,38 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
               timestamp: new Date().toISOString(),
               read: false
             };
-            localStorage.setItem("grupoLeon_notifications", JSON.stringify([notifObj, ...existingNotifs.filter(n => n.quoteId !== assignedNumber || n.targetUsername !== ADMIN_FACTURACION_USERNAME)]));
+
+            const notifSellerObj = {
+              id: `NOTIF-S-${Date.now()}`,
+              targetRole: "VENDEDOR",
+              targetUsername: senderUsername,
+              fromUsername: "Sistema de Cotizaciones",
+              fromUserId: null,
+              quoteId: assignedNumber,
+              quoteObj: {
+                ...newDoc,
+                id: res?.id || assignedNumber,
+                docNumber: assignedNumber,
+                hasDebt,
+                hasOverdueDebt: Boolean(clientDebtInfo?.hasOverdueDebt),
+                debtSummary: clientDebtInfo?.debtSummary || null
+              },
+              title: `📤 Cotización Enviada a Validación - ${assignedNumber}`,
+              description: `Tu cotización para ${clientName} (${totalUsdStr})${discountNotice}${debtNotice} fue enviada con éxito a validación de Facturación.`,
+              status: "ENVIADO",
+              hasDiscount: maxAdic > 0,
+              maxDiscount: maxAdic,
+              hasDebt,
+              hasOverdueDebt: Boolean(clientDebtInfo?.hasOverdueDebt),
+              debtSummary: clientDebtInfo?.debtSummary || null,
+              createdAt: new Date().toISOString(),
+              timestamp: new Date().toISOString(),
+              read: false
+            };
+
+            const cleanedNotifs = existingNotifs.filter(n => String(n.quoteId || n.id) !== String(assignedNumber));
+            const myRoleNotif = isAdmin ? notifAdminObj : notifSellerObj;
+            localStorage.setItem("grupoLeon_notifications", JSON.stringify([myRoleNotif, ...cleanedNotifs]));
             window.dispatchEvent(new Event("localNotificationsUpdated"));
           } catch (e) {}
         }
@@ -964,19 +1044,14 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
     let grandTotalUSD = totals?.grandTotalUSD ?? totals?.grandTotal ?? 0;
     if (Number(grandTotalUSD) <= 0 && products.length > 0) {
-      // En entorno de pruebas si los artículos vinieron con $0.00, auto-reparar asignando $25.00 a cada producto sin precio
-      const autoUpdatedProducts = products.map((p) => {
-        const pPrice = Number(p.price || p.unitPrice || p.Price || 0);
-        const fixedPrice = pPrice > 0 ? pPrice : 25.0;
-        return {
-          ...p,
-          price: fixedPrice,
-          unitPrice: fixedPrice,
-          importe: fixedPrice,
-        };
+      toast({
+        title: "Total Inválido",
+        description: "El total de la cotización debe ser mayor a cero. Verifique los precios de los productos en SAP.",
+        status: "warning",
+        duration: 4000,
+        isClosable: true,
       });
-      setProducts(autoUpdatedProducts);
-      grandTotalUSD = autoUpdatedProducts.reduce((acc, p) => acc + (p.price * (p.quantity || 1)), 0);
+      return false;
     }
 
     if (Number(grandTotalUSD) <= 0) {
@@ -1009,6 +1084,26 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       toast({
         title: "⚠️ Destino o Agencia requerida",
         description: "Para despachos fuera de tienda, debe indicar la agencia de transporte o el punto de llegada (Sección 1).",
+        status: "warning",
+        duration: 4500,
+        isClosable: true,
+      });
+      setActiveTabIndex(1);
+      return false;
+    }
+
+    // 3.1. Validar Fecha estimada de entrega (Obligatorio)
+    const hasAdminDeliveryDate = Boolean(
+      deliveryDate &&
+      (deliveryDate instanceof Date
+        ? !isNaN(deliveryDate.getTime())
+        : String(deliveryDate).trim().length >= 8)
+    );
+
+    if (!hasAdminDeliveryDate) {
+      toast({
+        title: "⚠️ Fecha estimada de entrega requerida",
+        description: "Debe indicar la Fecha estimada de entrega en la pestaña 'Logística, Pagos y Anexos' antes de aprobar.",
         status: "warning",
         duration: 4500,
         isClosable: true,
@@ -1157,7 +1252,8 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       timestamp: nowIso,
       read: false
     };
-    localStorage.setItem("grupoLeon_notifications", JSON.stringify([newNotif, ...existingNotifs]));
+    const cleanedNotifs = existingNotifs.filter(n => String(n.quoteId || n.id) !== String(activeDocNumber));
+    localStorage.setItem("grupoLeon_notifications", JSON.stringify(cleanedNotifs));
     window.dispatchEvent(new Event("localNotificationsUpdated"));
 
     isExplicitlySubmittingRef.current = true;
@@ -1320,25 +1416,43 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       setActiveTabIndex(1);
       return false;
     }
-    // Si es administrador quien envía directamente, validar Condición de Pago oficial
-    if (isAdmin) {
-      const hasPaymentType = Boolean(
-        selectedPaymentType &&
-        (typeof selectedPaymentType === "object"
-          ? (selectedPaymentType.value || selectedPaymentType.GroupNum !== undefined || selectedPaymentType.PymntGroup || selectedPaymentType.PaymentTermsGroupName || selectedPaymentType.label)
-          : String(selectedPaymentType).trim().length > 0)
-      );
-      if (!hasPaymentType) {
-        toast({
-          title: "⚠️ Condición de Pago requerida",
-          description: "Debe seleccionar la Condición de Pago oficial (Tabla OCTG) antes de procesar el pedido.",
-          status: "warning",
-          duration: 4500,
-          isClosable: true,
-        });
-        setActiveTabIndex(1);
-        return false;
-      }
+
+    // 2.1. Validar Fecha estimada de entrega (Obligatorio)
+    const hasDeliveryDate = Boolean(
+      deliveryDate &&
+      (deliveryDate instanceof Date
+        ? !isNaN(deliveryDate.getTime())
+        : String(deliveryDate).trim().length >= 8)
+    );
+
+    if (!hasDeliveryDate) {
+      toast({
+        title: "⚠️ Fecha estimada de entrega requerida",
+        description: "Debe indicar la Fecha estimada de entrega en la pestaña 'Logística y Despacho' antes de enviar.",
+        status: "warning",
+        duration: 4500,
+        isClosable: true,
+      });
+      setActiveTabIndex(1);
+      return false;
+    }
+    // 3. Validar Condición de Pago / Comercial (Tabla OCTG)
+    const hasPaymentType = Boolean(
+      selectedPaymentType &&
+      (typeof selectedPaymentType === "object"
+        ? (selectedPaymentType.value || selectedPaymentType.GroupNum !== undefined || selectedPaymentType.PymntGroup || selectedPaymentType.PaymentTermsGroupName || selectedPaymentType.label)
+        : String(selectedPaymentType).trim().length > 0)
+    );
+    if (!hasPaymentType) {
+      toast({
+        title: "⚠️ Condición de Pago requerida",
+        description: "Debe seleccionar la Condición de Pago (Tabla OCTG) en la pestaña 'Logística, Pagos y Anexos' antes de enviar.",
+        status: "warning",
+        duration: 4500,
+        isClosable: true,
+      });
+      setActiveTabIndex(1);
+      return false;
     }
 
     // 4. Auto-deducir Condición de Venta (CONTADO o CRÉDITO) según la condición de pago SAP
@@ -1505,6 +1619,24 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       return;
     }
 
+    const hasBillingDeliveryDate = Boolean(
+      deliveryDate &&
+      (deliveryDate instanceof Date
+        ? !isNaN(deliveryDate.getTime())
+        : String(deliveryDate).trim().length >= 8)
+    );
+    if (!hasBillingDeliveryDate) {
+      toast({
+        title: "Fecha estimada de entrega requerida",
+        description: "Debe indicar la Fecha estimada de entrega en la pestaña 'Logística y Despacho' antes de enviar a validación.",
+        status: "warning",
+        duration: 4500,
+        isClosable: true
+      });
+      setActiveTabIndex(1);
+      return;
+    }
+
     const activeDocNumber = quoteId || docNumber;
     const nowIso = new Date().toISOString();
     
@@ -1578,7 +1710,11 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         read: false
       };
       
-      localStorage.setItem("grupoLeon_notifications", JSON.stringify([notifObj, ...existingNotifs.filter(n => n.quoteId !== activeDocNumber)]));
+      if (isAdmin) {
+        localStorage.setItem("grupoLeon_notifications", JSON.stringify([notifObj, ...existingNotifs.filter(n => String(n.quoteId || n.id) !== String(activeDocNumber))]));
+      } else {
+        localStorage.setItem("grupoLeon_notifications", JSON.stringify(existingNotifs.filter(n => String(n.quoteId || n.id) !== String(activeDocNumber))));
+      }
       window.dispatchEvent(new Event("localNotificationsUpdated"));
 
       setValidationStepText("Notificando a Facturación en tiempo real...");
@@ -1823,7 +1959,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                 )}
               </Box>
             ) : (
-              <ClientAutocomplete client={client} setClient={setClient} />
+              <ClientAutocomplete client={client} setClient={setClient} debtSummary={clientDebtInfo?.debtSummary} />
             )}
 
             {/* Alerta Visual de Deuda del Cliente (Si registra saldo pendiente o mora) */}
@@ -1872,6 +2008,22 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                     <Text fontSize="xs" fontWeight="800" color={clientDebtInfo.hasOverdueDebt ? "red.800" : "yellow.900"}>
                       {clientDebtInfo.debtSummary}
                     </Text>
+
+                    {clientDebtInfo.matchingClient && (
+                      <Button
+                        size="xs"
+                        colorScheme={clientDebtInfo.hasOverdueDebt ? "red" : "yellow"}
+                        variant="outline"
+                        alignSelf="flex-start"
+                        onClick={() => setIsReceivableModalOpen(true)}
+                        fontWeight="700"
+                        px={3}
+                        py={1}
+                        borderRadius="md"
+                      >
+                        📋 Ver documentos y cuotas ({clientDebtInfo.totalDocsCount})
+                      </Button>
+                    )}
 
                     <Text fontSize="11px" color={clientDebtInfo.hasOverdueDebt ? "red.700" : "yellow.800"} fontWeight="600">
                       💡 El sistema te permite generar y enviar esta cotización normalmente. Al enviar a validación, se alertará automáticamente a Administración para que evalúe y apruebe las condiciones comerciales.
@@ -2083,9 +2235,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                     client={client}
                     transports={dataTransports || []}
                     deliveryPoints={deliveryPoints}
+                    isLoadingDeliveryPoints={isLoadingDeliveryPoints}
                     deliveryForms={dataDeliveryForms || []}
                     paymentTypes={dataPaymentTypes || []}
-                    houseBankAccounts={dataHouseBankAccounts || []}
                     selectedPoint={selectedPoint}
                     setSelectedPoint={setSelectedPoint}
                     selectedTransport={selectedTransport}
@@ -2620,6 +2772,15 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
           </ModalBody>
         </ModalContent>
       </Modal>
+      {/* Modal de Documentos y Cuotas del Cliente */}
+      {clientDebtInfo?.matchingClient && (
+        <InvoicesModal
+          isOpen={isReceivableModalOpen}
+          onClose={() => setIsReceivableModalOpen(false)}
+          cliente={clientDebtInfo.matchingClient}
+          documentos={clientDebtInfo.matchingClient?.documents || []}
+        />
+      )}
     </VStack>
   );
 }

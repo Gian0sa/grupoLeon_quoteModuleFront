@@ -73,28 +73,38 @@ export function DashboardPage() {
   const isAdmin = useIsAdmin();
 
   // Roles y Permisos Granulares
-  const isVendedor = !!(salesEmployeeCode && Number(salesEmployeeCode) > 0);
+  const isVendedor = !isAdmin && !!(salesEmployeeCode && Number(salesEmployeeCode) > 0 && Number(salesEmployeeCode) !== 20);
 
-  // Acceso al panel comercial global (Supervisor / Admin) - Exclusivo para cuentas administrativas
+  const hasAdminQuotesAccess =
+    hasAccess("GET /AdminQuotesSellers/:slpCode/:month") ||
+    hasAccess("GET:/AdminQuotesSellers/:slpCode/:month");
+
+  const hasQuotesAccess =
+    hasAccess("GET /quotesSellers/:slpCode/:month") ||
+    hasAccess("GET:/quotesSellers/:slpCode/:month");
+
+  const hasSellersAccess =
+    hasAccess("GET /sellers") ||
+    hasAccess("GET:/sellers");
+
+  // Acceso al panel comercial global (Supervisor / Admin)
   const canFilterSellers =
-    isAdmin ||
-    (!isVendedor && (
-      (hasAccess("GET /sellers") && (hasAccess("GET /AdminQuotesSellers/:slpCode/:month") || hasAccess("GET:/AdminQuotesSellers/:slpCode/:month"))) ||
-      (hasAccess("GET:/sellers") && (hasAccess("GET /AdminQuotesSellers/:slpCode/:month") || hasAccess("GET:/AdminQuotesSellers/:slpCode/:month")))
-    ));
+    isAdmin || (hasSellersAccess && hasAdminQuotesAccess);
 
   // Permiso para ver métricas / metas comerciales (propias o globales)
   const canViewMetrics =
     isAdmin ||
     canFilterSellers ||
-    hasAccess("GET /quotesSellers/:slpCode/:month") ||
-    hasAccess("GET:/quotesSellers/:slpCode/:month") ||
-    hasAccess("GET /AdminQuotesSellers/:slpCode/:month") ||
-    hasAccess("GET:/AdminQuotesSellers/:slpCode/:month") ||
+    hasQuotesAccess ||
+    hasAdminQuotesAccess ||
     isVendedor;
 
-  // Ver barra de selección de período comercial: ESTRICTAMENTE SOLO ADMINISTRADORES (Nunca vendedores)
-  const canViewCommercialPeriod = isAdmin && !isVendedor;
+  // Ver barra de selección de período comercial: Administradores, Supervisores o Vendedores con permiso de período
+  const canViewCommercialPeriod =
+    isAdmin ||
+    canFilterSellers ||
+    hasAdminQuotesAccess ||
+    hasQuotesAccess;
 
   // 🗓️ Años dinámicos que CONTIENEN datos reales en SAP (2024 excluido por no tener registros)
   const currentRealYear = new Date().getFullYear();

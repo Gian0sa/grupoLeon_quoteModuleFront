@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from "react";
+import React, { useState, useRef, useMemo, useEffect } from "react";
 import { useDebounce } from "../../../shared/hooks/useDebounce";
 import {
   Box,
@@ -34,16 +34,16 @@ import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { BackButton } from "../../../components/BackButton";
 import ActiveFilters from "./ActiveFilters";
 import { useRules } from "../hooks/queries/configQueries";
-import { useHasAccess } from "../../../shared/utils/permissions";
+import { useHasAccess, useIsAdmin } from "../../../shared/utils/permissions";
 import { useGetOrderswithStatusReports } from "../hooks/queries/reportQueries";
 import { RefreshButton } from "../../../components/RefreshButton";
 import { QUERY_KEYS } from "../../../shared/utils/queryKeys";
-
 export default function SalespersonReports({ salespersonId }) {
   const { endpoints } = useAuthStore();
   const btnRef = useRef();
 
   const hasAccess = useHasAccess();
+  const isAdmin = useIsAdmin() || hasAccess("GET:/sellers");
   const { data: rawReglas } = useRules();
   const reglas = Array.isArray(rawReglas) ? rawReglas : [];
 
@@ -62,8 +62,19 @@ export default function SalespersonReports({ salespersonId }) {
   const [startDate, setStartDate] = useState(null);
   const [endDate, setEndDate] = useState(null);
 
-  const [selectedSeller, setSelectedSeller] = useState(null);
-  const dynamicSalespersonId = selectedSeller?.value ?? salespersonId ?? null;
+  const [selectedSeller, setSelectedSeller] = useState(() =>
+    isAdmin ? { value: "", label: "Todos los vendedores" } : null
+  );
+
+  useEffect(() => {
+    if (isAdmin && !selectedSeller) {
+      setSelectedSeller({ value: "", label: "Todos los vendedores" });
+    }
+  }, [isAdmin, selectedSeller]);
+
+  const dynamicSalespersonId = isAdmin
+    ? (selectedSeller?.value ? selectedSeller.value : 0)
+    : (salespersonId || 0);
 
   // Resetear a página 1 cuando cambia la búsqueda
   const handleSearchChange = (val) => {

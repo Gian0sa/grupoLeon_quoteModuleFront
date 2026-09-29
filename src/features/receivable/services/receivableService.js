@@ -1,8 +1,9 @@
 import { axiosInstance } from "../../../shared/lib/axiosInstance";
 
-export const getAccountsReceivable = async ({ vendedor, cliente, clientecode, lastClient = null, skip = 0 }) => {
+export const getAccountsReceivable = async ({ vendedor = "TODOS", cliente, clientecode, lastClient = null, skip = 0 } = {}) => {
   try {
-    let url = `/reportModule/accountsReceivable?vendedor=${encodeURIComponent(vendedor)}`;
+    const validVendedor = (vendedor && vendedor !== "undefined" && vendedor !== "null") ? vendedor : "TODOS";
+    let url = `/reportModule/accountsReceivable?vendedor=${encodeURIComponent(validVendedor)}`;
     if (cliente) url += `&cliente=${encodeURIComponent(cliente)}`;
     if (clientecode) url += `&clientecode=${encodeURIComponent(clientecode)}`;
     if (lastClient) url += `&lastClient=${encodeURIComponent(lastClient)}`;

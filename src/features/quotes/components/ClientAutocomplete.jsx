@@ -9,7 +9,7 @@ import { fetchClientByCode } from "../../clients/services/clientService";
 import { useDebounce } from "../../../shared/hooks/useDebounce";
 import { normalizeQuoteClient } from "../stores/quoteStore";
 
-export default function ClientAutocomplete({ client, setClient }) {
+export default function ClientAutocomplete({ client, setClient, debtSummary }) {
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [isSearchingByCode, setIsSearchingByCode] = useState(false);
@@ -177,11 +177,15 @@ export default function ClientAutocomplete({ client, setClient }) {
           </Text>
         )}
 
-        {Number(normalizedClient.CurrentAccountBalance ?? normalizedClient.raw?.CurrentAccountBalance ?? 0) > 0 && (
+        {debtSummary ? (
           <Text fontSize="xs" color="red.600" fontWeight="700" mt={1}>
-            ⚠️ Saldo deudor en SAP: ${Number(normalizedClient.CurrentAccountBalance ?? normalizedClient.raw?.CurrentAccountBalance).toFixed(2)} USD
+            ⚠️ {debtSummary}
           </Text>
-        )}
+        ) : Number(normalizedClient.CurrentAccountBalance ?? normalizedClient.raw?.CurrentAccountBalance ?? 0) > 0 ? (
+          <Text fontSize="xs" color="red.600" fontWeight="700" mt={1}>
+            ⚠️ Saldo deudor en SAP: ${(Number(normalizedClient.CurrentAccountBalance ?? normalizedClient.raw?.CurrentAccountBalance) / 3.564).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+          </Text>
+        ) : null}
       </Box>
     );
   }

@@ -584,10 +584,8 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
               </VStack>
             </Box>
 
-            {/* Resumen Compacto y Elegante */}
-            <Flex
-              justify="space-between"
-              align="center"
+            {/* Resumen de Precio Unitario y Sumatoria de Línea */}
+            <Box
               p={3}
               borderRadius="xl"
               bg="white"
@@ -595,18 +593,33 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
               borderColor="#e2e8f0"
               fontSize="xs"
             >
-              <VStack align="flex-start" spacing={0}>
-                <Text color="slate.600" fontSize="11px" fontWeight="600">
-                  Total Línea ({qty} {qty === 1 ? "unidad" : "unidades"}):
+              <Flex justify="space-between" align="center">
+                <VStack align="flex-start" spacing={0}>
+                  <Text color="slate.700" fontSize="11px" fontWeight="700" textTransform="uppercase" letterSpacing="wide">
+                    Precio Ajustado (1 unidad):
+                  </Text>
+                  <Text fontSize="10px" color="#047857" fontWeight="700">
+                    Descuento Total: {effectiveTotalDiscPct}%
+                  </Text>
+                </VStack>
+                <Text fontFamily="mono" fontWeight="900" fontSize="lg" color="#064e3b">
+                  ${finalUnitPrice.toFixed(2)} <Text as="span" fontSize="xs" fontWeight="700" color="slate.400">USD</Text>
                 </Text>
-                <Text fontSize="10px" color="#047857" fontWeight="600">
-                  Descuento Total: {effectiveTotalDiscPct}%
-                </Text>
-              </VStack>
-              <Text fontFamily="mono" fontWeight="800" fontSize="lg" color="slate.900">
-                ${finalLineTotal.toFixed(2)} <Text as="span" fontSize="xs" fontWeight="700" color="slate.400">USD</Text>
-              </Text>
-            </Flex>
+              </Flex>
+
+              {qty > 1 && (
+                <Box mt={2} pt={2} borderTop="1px dashed" borderColor="#e2e8f0">
+                  <Flex justify="space-between" align="center">
+                    <Text fontSize="10.5px" color="slate.500" fontWeight="600">
+                      Total en cotización ({qty} unidades × ${finalUnitPrice.toFixed(2)}):
+                    </Text>
+                    <Text fontFamily="mono" fontWeight="800" fontSize="xs" color="slate.700">
+                      ${finalLineTotal.toFixed(2)} USD
+                    </Text>
+                  </Flex>
+                </Box>
+              )}
+            </Box>
 
             {/* Avisos Comerciales Relevantes (Solo si aplica) */}
             {isExceedingCeiling ? (

@@ -124,6 +124,17 @@ export const checkHasAdditionalDiscount = (q) => {
   });
 };
 
+const cleanDeliveryForm = (df) => {
+  if (!df) return null;
+  const str = typeof df === "object"
+    ? String(df.TrnspName || df.label || df.name || df.TrnspCode || "")
+    : String(df);
+  if (/cotizaci[oó]n|oferta|pedido|boleta|factura/i.test(str.trim())) {
+    return null;
+  }
+  return df;
+};
+
 const isDraftOwnedByCurrentUser = (q, currentUsername, currentUserId) => {
   if (!q) return false;
   const st = q.approvalStatus || q.state || q.status;
@@ -221,12 +232,22 @@ export function QuoteApprovalPage() {
   const queryClient = useQueryClient();
   const today = format(new Date(), "EEEE, d 'de' MMMM 'del' yyyy", { locale: es });
 
-  const { username: authUsername, userId: authUserId, role: authRole } = useAuthStore();
+  const { username: authUsername, userId: authUserId, role: authRole, salesEmployeeCode: authSalesCode } = useAuthStore();
   const localUser = (localStorage.getItem("username") || localStorage.getItem("userId") || "").toLowerCase();
   const localRole = (localStorage.getItem("role") || "").toUpperCase();
   const hasAccess = useHasAccess();
   const isAdmin = useIsAdmin();
-  const isAdminUser = isAdmin || authRole === "ADMIN" || localRole === "ADMIN" || hasAccess("POST /quotes/approval") || hasAccess("POST /quotations/approve");
+  const isSellerUser = Boolean(authSalesCode && Number(authSalesCode) > 0 && Number(authSalesCode) !== 20);
+  const isAdminUser =
+    !isSellerUser && (
+      isAdmin ||
+      authRole === "ADMIN" ||
+      authRole === "FACTURACION" ||
+      authRole === "SUPERVISOR" ||
+      localRole === "ADMIN" ||
+      hasAccess("POST /quotes/approval") ||
+      hasAccess("POST /quotations/approve")
+    );
   const activeCurrentUsername = (authUsername || localStorage.getItem("username") || "").toLowerCase().trim();
   const activeCurrentUserId = authUserId || localStorage.getItem("userId");
 
@@ -599,8 +620,8 @@ export function QuoteApprovalPage() {
               client: sq.client || matchedLocal.client,
               clientName: sq.clientName || matchedLocal.clientName,
               totals: (sq.totals && sq.totals.grandTotalUSD) ? sq.totals : matchedLocal.totals,
-              deliveryForm: sq.deliveryForm || matchedLocal.deliveryForm || sq.selectedDeliveryForm || matchedLocal.selectedDeliveryForm || null,
-              selectedDeliveryForm: sq.selectedDeliveryForm || matchedLocal.selectedDeliveryForm || sq.deliveryForm || matchedLocal.deliveryForm || null,
+              deliveryForm: cleanDeliveryForm(sq.deliveryForm || matchedLocal.deliveryForm || sq.selectedDeliveryForm || matchedLocal.selectedDeliveryForm || null),
+              selectedDeliveryForm: cleanDeliveryForm(sq.selectedDeliveryForm || matchedLocal.selectedDeliveryForm || sq.deliveryForm || matchedLocal.deliveryForm || null),
               transport: sq.transport || matchedLocal.transport || sq.selectedTransport || matchedLocal.selectedTransport || null,
               selectedTransport: sq.selectedTransport || matchedLocal.selectedTransport || sq.transport || matchedLocal.transport || null,
               transportDirection: sq.transportDirection || matchedLocal.transportDirection || null,
@@ -702,8 +723,8 @@ export function QuoteApprovalPage() {
                 client: sq.client || localMatch.client,
                 clientName: sq.clientName || localMatch.clientName,
                 totals: (sq.totals && sq.totals.grandTotalUSD) ? sq.totals : localMatch.totals,
-                deliveryForm: sq.deliveryForm || localMatch.deliveryForm || sq.selectedDeliveryForm || localMatch.selectedDeliveryForm || null,
-                selectedDeliveryForm: sq.selectedDeliveryForm || localMatch.selectedDeliveryForm || sq.deliveryForm || localMatch.deliveryForm || null,
+                deliveryForm: cleanDeliveryForm(sq.deliveryForm || localMatch.deliveryForm || sq.selectedDeliveryForm || localMatch.selectedDeliveryForm || null),
+                selectedDeliveryForm: cleanDeliveryForm(sq.selectedDeliveryForm || localMatch.selectedDeliveryForm || sq.deliveryForm || localMatch.deliveryForm || null),
                 transport: sq.transport || localMatch.transport || sq.selectedTransport || localMatch.selectedTransport || null,
                 selectedTransport: sq.selectedTransport || localMatch.selectedTransport || sq.transport || localMatch.transport || null,
                 transportDirection: sq.transportDirection || localMatch.transportDirection || null,
@@ -898,7 +919,7 @@ export function QuoteApprovalPage() {
       });
     }
 
-    // 2.5 Limpiar notificaciones asociadas a esta cotización en almacenamiento local
+    // 2.5 Actualizar notificaciones asociadas a esta cotización en almacenamiento local
     try {
       const targetClient = (targetQuote?.clientName || "").trim().toUpperCase();
       const rawNotifs = localStorage.getItem("grupoLeon_notifications");
@@ -913,10 +934,32 @@ export function QuoteApprovalPage() {
         const isInvalidOrNull = !n.quoteId || n.quoteId === "null" || nTitle.includes("- NULL");
         return !isMatchQuote && !isMatchClient && !isInvalidOrNull;
       });
+
+      // Si es anulación, registrar la notificación para el vendedor
+      if (!isHardDelete && targetQuote) {
+        const sellerUser = targetQuote.createdByUsername || targetQuote.sellerName;
+        const displayDocNumber = targetQuote.docNumber || `COT-WEB-${String(targetQuote.id).padStart(6, "0")}`;
+        const notifSellerObj = {
+          id: `NOTIF-ANUL-${Date.now()}`,
+          targetRole: "VENDEDOR",
+          targetUsername: sellerUser,
+          fromUsername: authUsername || "Administración / Facturación",
+          fromUserId: null,
+          quoteId: String(targetQuote.docNumber || targetQuote.id),
+          title: `🚫 Cotización Anulada - ${displayDocNumber}`,
+          description: `Tu cotización ${displayDocNumber} (${targetQuote.clientName || 'Cliente'}) fue anulada por ${authUsername || 'Administración'}.`,
+          status: "ANULADO",
+          read: false,
+          createdAt: nowIso,
+          timestamp: nowIso
+        };
+        remainingNotifs.unshift(notifSellerObj);
+      }
+
       localStorage.setItem("grupoLeon_notifications", JSON.stringify(remainingNotifs));
       window.dispatchEvent(new Event("localNotificationsUpdated"));
     } catch (notifErr) {
-      console.error("Error limpiando notificaciones locales:", notifErr);
+      console.error("Error actualizando notificaciones locales:", notifErr);
     }
 
     // 3. Sincronizar en Backend
@@ -1412,6 +1455,11 @@ export function QuoteApprovalPage() {
     const qUser = String(q.createdByUsername || q.username || "").toLowerCase().trim();
     const qSeller = String(q.sellerName || "").toLowerCase().trim();
     const qUserId = q.userId || q.createdByUserId;
+    const qSlp = q.salesEmployeeCode || q.SlpCode || q.totals?.salesEmployeeCode;
+
+    if (authSalesCode && qSlp && Number(authSalesCode) === Number(qSlp)) {
+      return true;
+    }
 
     if (activeCurrentUsername) {
       if (qUser === activeCurrentUsername || qSeller === activeCurrentUsername) return true;

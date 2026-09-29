@@ -2,6 +2,7 @@ import React from "react";
 import { Box, Grid } from "@chakra-ui/react";
 import { CreditAlertsCard } from "./CreditAlertsCard";
 import { TopProductsCard } from "./TopProductsCard";
+import { SapSyncStatusBanner } from "./SapSyncStatusBanner";
 
 export function DashboardCommercialPanel({
   selectedSeller,
@@ -40,6 +41,9 @@ export function DashboardCommercialPanel({
           />
         </Box>
       </Grid>
+
+      {/* 🛡️ Barra de Estado de Sincronización con SAP y Buffer de Alta Disponibilidad */}
+      <SapSyncStatusBanner />
     </Box>
   );
 }

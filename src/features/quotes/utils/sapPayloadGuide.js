@@ -327,7 +327,7 @@ export function buildCanonicalSapPayload(quote = {}) {
     client.CardCode ||
     q.clientDocument ||
     q.clientRuc ||
-    (client.documentNumber ? `CL${client.documentNumber}` : "CL72435405")
+    (client.documentNumber ? `CL${client.documentNumber}` : "")
   ).trim();
 
   const cardName = String(

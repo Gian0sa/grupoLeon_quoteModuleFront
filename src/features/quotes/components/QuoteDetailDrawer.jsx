@@ -75,6 +75,11 @@ import {
   Copy,
   Building2,
   Code2,
+  RefreshCw,
+  ArrowRight,
+  Truck,
+  Receipt,
+  Package,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useQuoteStore } from "../stores/quoteStore";
@@ -91,9 +96,9 @@ import { useIsAdmin, useHasAccess } from "../../../shared/utils/permissions";
 import {
   formatDeliveryForm,
   formatTransportName,
+  formatTransportAddress,
   formatDeliveryPoint,
   formatPaymentTerms,
-  formatBankAccount,
   formatSunatOp,
   cleanSellerName,
   cleanClientName
@@ -588,6 +593,14 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
   const isFinalRejected = ["RECHAZADO", "ANULADO", "CANCELADO"].includes(status);
   const isFinalDone = isFinalApproved || isFinalRejected || isObserved;
   const isInReview = ["ENVIADO", "EN_PROCESO", "PENDIENTE_FACTURACION"].includes(status) && !isFinalDone;
+  const isQuoteApproved = Boolean(
+    isApprovedQuote ||
+    isFinalApproved ||
+    isAlreadySyncedToSap ||
+    syncedDocNum ||
+    effectiveQuote.sapDocNum ||
+    effectiveQuote.totals?.sapDocNum
+  );
 
   const stepCotizado = {
     state: "completed",
@@ -1063,13 +1076,13 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         transport: effectiveQuote.transport || effectiveQuote.selectedTransport || effectiveQuote.U_TQC_TRANSPOR,
         deliveryDate: effectiveQuote.deliveryDate || effectiveQuote.docDueDate,
         paymentType: effectiveQuote.paymentType || effectiveQuote.selectedPaymentType,
-        paymentMethod: effectiveQuote.paymentMethod || effectiveQuote.PaymentMethod || "DEPOSITO_BANCARIO",
-        bankAccount: effectiveQuote.bankAccount || effectiveQuote.U_VS_BANCO || "191-0104153-0-50",
+        paymentMethod: effectiveQuote.paymentMethod || effectiveQuote.PaymentMethod || null,
+        bankAccount: effectiveQuote.bankAccount || effectiveQuote.U_VS_BANCO || null,
         sunatOpType: effectiveQuote.sunatOpType || effectiveQuote.U_VS_TIPO_FACT || "0101",
         U_VS_TIPOPER: effectiveQuote.U_VS_TIPOPER || "01",
         U_VS_TIPO_FACT: effectiveQuote.sunatOpType || effectiveQuote.U_VS_TIPO_FACT || "0101",
         U_VS_AFEDET: effectiveQuote.U_VS_AFEDET || "N",
-        U_VS_BANCO: effectiveQuote.bankAccount || effectiveQuote.U_VS_BANCO || "191-0104153-0-50",
+        U_VS_BANCO: effectiveQuote.bankAccount || effectiveQuote.U_VS_BANCO || null,
         saleCondition: effectiveQuote.saleCondition || effectiveQuote.totals?.saleCondition,
         documentType: effectiveQuote.documentType || effectiveQuote.totals?.documentType,
         creditTerm: effectiveQuote.creditTerm || effectiveQuote.totals?.creditTerm,
@@ -2153,9 +2166,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
               const docTypeVal = currentQuote.documentType || currentQuote.U_VS_COMPROBANTE || (isJuridica || cleanDigits.length === 11 ? "FACTURA" : "BOLETA");
               const sunatType = formatSunatOp(currentQuote.sunatOpType || currentQuote.U_VS_TIPO_FACT || currentQuote.U_VS_TIPOPER);
 
-              // 3. Banco y Operación
-              const rawBank = currentQuote.bankAccount || currentQuote.U_VS_BANCO || (typeof paymentObj === "object" ? paymentObj.bankAccount : null);
-              const bank = isCredit ? "Línea de Crédito Comercial" : formatBankAccount(rawBank);
+              // 3. Váucher / Operación (Si se adjuntó comprobante prepago)
               const opNumber = currentQuote.opNum || currentQuote.U_VS_OPNUM || currentQuote.voucherNumber || null;
               const voucherImage = currentQuote.pathImg || currentQuote.paymentImg || currentQuote.voucherUrl;
 
@@ -2164,54 +2175,51 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
               const delivForm = formatDeliveryForm(rawDelivForm);
               const rawTransport = currentQuote.selectedTransport || currentQuote.transport || currentQuote.U_TQC_TRANSPOR;
               const transportName = formatTransportName(rawTransport, rawDelivForm);
-              const transportDir = currentQuote.transportDirection || (typeof rawTransport === "object" ? rawTransport?.U_TQC_DIREC : null);
+              const rawTransportDir = currentQuote.transportDirection || (typeof rawTransport === "object" ? rawTransport?.U_TQC_DIREC : null);
+              const transportDir = formatTransportAddress(rawTransport, rawDelivForm, rawTransportDir);
               const rawPoint = currentQuote.selectedPoint || currentQuote.deliveryPoint;
               const delivAddress = formatDeliveryPoint(rawPoint, currentQuote.clientAddress || (currentQuote.client?.Address || currentQuote.client?.address));
 
               const quoteAttachments = currentQuote.attachments || [];
 
               return (
-                <Grid templateColumns={{ base: "1fr", md: "repeat(3, 1fr)" }} gap={3.5} mb={3.5}>
-                  {/* CUADRILLA 1: FINANZAS Y CONDICIONES */}
-                  <Box p={3.5} bg="white" borderRadius="2xl" border="1.5px solid" borderColor="#e2e8f0" boxShadow="xs">
-                    <Flex align="center" justify="space-between" mb={2}>
-                      <HStack spacing={2}>
-                        <Text fontSize="15px">💳</Text>
-                        <Text fontSize="11px" fontWeight="900" color="gray.800" textTransform="uppercase">
-                          Condición Financiera
-                        </Text>
-                      </HStack>
-                      <Badge colorScheme={isCredit ? "purple" : "green"} variant="solid" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="900">
-                        {isCredit ? "CRÉDITO" : "CONTADO"}
-                      </Badge>
-                    </Flex>
-                    <VStack align="stretch" spacing={1.5} fontSize="xs">
-                      <Flex justify="space-between">
-                        <Text color="gray.500" fontWeight="700">Término:</Text>
-                        <Text fontWeight="800" color="gray.800" textAlign="right" isTruncated maxW="190px" title={paymentLabel}>{paymentLabel}</Text>
-                      </Flex>
-                      <Flex justify="space-between" align="center">
-                        <Text color="gray.500" fontWeight="700">Comprobante:</Text>
-                        <Badge colorScheme={docTypeVal === "FACTURA" ? "purple" : "blue"} variant="subtle" fontSize="9px" px={1.5} py={0.5} borderRadius="md">
-                          {docTypeVal}
+                <>
+                  <Grid templateColumns={{ base: "1fr", md: "repeat(3, 1fr)" }} gap={3.5} mb={3.5}>
+                    {/* CUADRILLA 1: FINANZAS Y CONDICIONES */}
+                    <Box p={3.5} bg="white" borderRadius="2xl" border="1.5px solid" borderColor="#e2e8f0" boxShadow="xs">
+                      <Flex align="center" justify="space-between" mb={2}>
+                        <HStack spacing={2}>
+                          <Text fontSize="15px">💳</Text>
+                          <Text fontSize="11px" fontWeight="900" color="gray.800" textTransform="uppercase">
+                            Condición Financiera
+                          </Text>
+                        </HStack>
+                        <Badge colorScheme={isCredit ? "purple" : "green"} variant="solid" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="900">
+                          {isCredit ? "CRÉDITO" : "CONTADO"}
                         </Badge>
                       </Flex>
-                      {Boolean(rawBank && rawBank !== "Pendiente de Selección") && (
+                      <VStack align="stretch" spacing={1.5} fontSize="xs">
                         <Flex justify="space-between">
-                          <Text color="gray.500" fontWeight="700">Banco:</Text>
-                          <Text fontWeight="800" color="gray.800" textAlign="right" isTruncated maxW="190px" title={bank}>{bank}</Text>
+                          <Text color="gray.500" fontWeight="700">Término:</Text>
+                          <Text fontWeight="800" color="gray.800" textAlign="right" isTruncated maxW="190px" title={paymentLabel}>{paymentLabel}</Text>
                         </Flex>
-                      )}
-                      {Boolean(opNumber) && (
-                        <Flex justify="space-between">
-                          <Text color="gray.500" fontWeight="700">Operación:</Text>
-                          <Text fontWeight="800" color="purple.600" fontFamily="mono" textAlign="right" isTruncated maxW="190px">
-                            {opNumber}
-                          </Text>
+                        <Flex justify="space-between" align="center">
+                          <Text color="gray.500" fontWeight="700">Comprobante:</Text>
+                          <Badge colorScheme={docTypeVal === "FACTURA" ? "purple" : "blue"} variant="subtle" fontSize="9px" px={1.5} py={0.5} borderRadius="md">
+                            {docTypeVal}
+                          </Badge>
                         </Flex>
-                      )}
-                    </VStack>
-                  </Box>
+
+                        {Boolean(opNumber) && (
+                          <Flex justify="space-between">
+                            <Text color="gray.500" fontWeight="700">Operación:</Text>
+                            <Text fontWeight="800" color="purple.600" fontFamily="mono" textAlign="right" isTruncated maxW="190px">
+                              {opNumber}
+                            </Text>
+                          </Flex>
+                        )}
+                      </VStack>
+                    </Box>
 
                   {/* CUADRILLA 2: LOGÍSTICA Y DESPACHO */}
                   <Box p={3.5} bg={!delivForm || delivForm === "—" ? "orange.50" : "white"} borderRadius="2xl" border="1.5px solid" borderColor={!delivForm || delivForm === "—" ? "orange.300" : "#e2e8f0"} boxShadow="xs">
@@ -2248,7 +2256,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                         <Text color="gray.500" fontWeight="700">Transporte:</Text>
                         <Text fontWeight="800" color="gray.800" textAlign="right" isTruncated maxW="190px" title={transportName}>{transportName}</Text>
                       </Flex>
-                      {transportDir && (
+                      {transportDir && transportDir !== "-" && (
                         <Flex justify="space-between">
                           <Text color="gray.500" fontWeight="700">Dir. Agencia:</Text>
                           <Text fontWeight="800" color="gray.700" textAlign="right" isTruncated maxW="190px" title={transportDir}>{transportDir}</Text>
@@ -2336,8 +2344,9 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                     )}
                   </Box>
                 </Grid>
-              );
-            })()}
+              </>
+            );
+          })()}
 
             {/* CARD DE COMENTARIOS U OBSERVACIONES DEL PEDIDO (REFERENCIAL PARA ADMINISTRACIÓN Y SAP) */}
             {(() => {
@@ -2396,26 +2405,36 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
               return (
                 <Box
                   p={4}
-                  bg="purple.50"
+                  bg={isQuoteApproved ? "emerald.50" : "purple.50"}
                   border="2px solid"
-                  borderColor="purple.300"
+                  borderColor={isQuoteApproved ? "emerald.300" : "purple.300"}
                   borderRadius="2xl"
                   boxShadow="sm"
                   mb={2}
                 >
                   <HStack spacing={3.5} align="flex-start">
-                    <Box fontSize="24px" lineHeight="1">⚡</Box>
+                    <Box fontSize="24px" lineHeight="1">{isQuoteApproved ? "✅" : "⚡"}</Box>
                     <VStack align="stretch" spacing={1}>
                       <HStack spacing={2} wrap="wrap">
-                        <Text fontSize="13px" fontWeight="900" color="purple.900" textTransform="uppercase">
+                        <Text fontSize="13px" fontWeight="900" color={isQuoteApproved ? "emerald.900" : "purple.900"} textTransform="uppercase">
                           Cotización con Descuento Adicional Aplicado
                         </Text>
-                        <Badge colorScheme="purple" variant="solid" fontSize="10px" px={2.5} py={0.5} borderRadius="full">
-                          ⚠️ Requiere Aprobación Comercial
+                        <Badge
+                          colorScheme={isQuoteApproved ? "green" : "purple"}
+                          variant="solid"
+                          fontSize="10px"
+                          px={2.5}
+                          py={0.5}
+                          borderRadius="full"
+                        >
+                          {isQuoteApproved ? "✅ Aprobación Comercial Otorgada" : "⚠️ Requiere Aprobación Comercial"}
                         </Badge>
                       </HStack>
-                      <Text fontSize="12px" color="purple.800" fontWeight="600">
-                        El asesor de ventas aplicó descuentos especiales por encima de la tarifa de lista SAP. Revise los porcentajes individuales por artículo en la grilla inferior antes de emitir la aprobación en SAP.
+                      <Text fontSize="12px" color={isQuoteApproved ? "emerald.800" : "purple.800"} fontWeight="600">
+                        {isQuoteApproved
+                          ? "El asesor de ventas aplicó descuentos especiales que fueron aprobados comercialmente y consolidados en el documento oficial."
+                          : "El asesor de ventas aplicó descuentos especiales por encima de la tarifa de lista SAP. Revise los porcentajes individuales por artículo en la grilla inferior antes de emitir la aprobación en SAP."
+                        }
                       </Text>
                     </VStack>
                   </HStack>
@@ -2579,8 +2598,38 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                               <Flex justify="space-between" align="center" fontSize="11px" color="gray.600" pt={1.5} borderTop="1px dashed" borderColor="gray.200">
                                 <Text>Cant: <Text as="span" fontWeight="800" color="gray.900">{item.quantity} uds</Text></Text>
                                 <Text>P. Lista: <Text as="span" fontWeight="800" color="gray.900">${item.price.toFixed(2)}</Text></Text>
-                                <Badge colorScheme={isVolume ? "orange" : reqAppr ? "orange" : "green"} fontSize="9px" px={1.5}>
-                                  {isVolume ? "🔥 Mayoreo (hasta 65%)" : reqAppr ? "⚠️ Req. Aprobación" : isHigherMargin ? "✨ Mayor Margen" : "🟢 Estándar"}
+                                <Badge
+                                  colorScheme={
+                                    isQuoteApproved
+                                      ? "green"
+                                      : isFinalRejected
+                                      ? (reqAppr ? "red" : "gray")
+                                      : isObserved
+                                      ? (reqAppr ? "yellow" : "gray")
+                                      : isVolume
+                                      ? "orange"
+                                      : reqAppr
+                                      ? "orange"
+                                      : "green"
+                                  }
+                                  fontSize="9px"
+                                  px={1.5}
+                                  borderRadius="md"
+                                  fontWeight="800"
+                                >
+                                  {isQuoteApproved
+                                    ? (reqAppr ? "✅ Aprobado" : "🟢 Estándar")
+                                    : isFinalRejected
+                                    ? (reqAppr ? "❌ Rechazado" : "⚪ Estándar")
+                                    : isObserved
+                                    ? (reqAppr ? "⚠️ Observado" : "🟢 Estándar")
+                                    : isVolume
+                                    ? "🔥 Mayoreo (hasta 65%)"
+                                    : reqAppr
+                                    ? "⚠️ Req. Aprobación"
+                                    : isHigherMargin
+                                    ? "✨ Mayor Margen"
+                                    : "🟢 Estándar"}
                                 </Badge>
                               </Flex>
                             </Box>
@@ -2676,14 +2725,36 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                   </Td>
                                   <Td textAlign="center" px={2}>
                                     <Badge
-                                      colorScheme={isVolume ? "orange" : reqAppr ? "orange" : "green"}
+                                      colorScheme={
+                                        isQuoteApproved
+                                          ? "green"
+                                          : isFinalRejected
+                                          ? (reqAppr ? "red" : "gray")
+                                          : isObserved
+                                          ? (reqAppr ? "yellow" : "gray")
+                                          : isVolume
+                                          ? "orange"
+                                          : reqAppr
+                                          ? "orange"
+                                          : "green"
+                                      }
                                       fontSize="10px"
                                       px={2}
                                       py={0.5}
                                       borderRadius="full"
                                       fontWeight="800"
                                     >
-                                      {isVolume ? "🔥 Mayoreo (hasta 65%)" : reqAppr ? "⚠️ Requiere" : "🟢 No"}
+                                      {isQuoteApproved
+                                        ? (reqAppr ? "✅ APROBADO" : "🟢 NO")
+                                        : isFinalRejected
+                                        ? (reqAppr ? "❌ RECHAZADO" : "⚪ NO")
+                                        : isObserved
+                                        ? (reqAppr ? "⚠️ OBSERVADO" : "🟢 NO")
+                                        : isVolume
+                                        ? "🔥 MAYOREO (HASTA 65%)"
+                                        : reqAppr
+                                        ? "⚠️ REQUIERE"
+                                        : "🟢 NO"}
                                     </Badge>
                                   </Td>
                                   <Td textAlign="right" fontWeight="850" color="emerald.900" fontFamily="mono" px={2.5}>${item.lineTotal.toFixed(2)}</Td>
@@ -3057,7 +3128,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                 <Textarea
                   value={resubmitNote}
                   onChange={(e) => setResubmitNote(e.target.value)}
-                  placeholder="Ej: Se adjuntó el nuevo voucher BCP N° 1234567 por el monto correcto de S/180.00. Se actualizó la cantidad del producto X de 2 a 3 unidades..."
+                  placeholder="Ej: Se adjuntó el nuevo comprobante de pago N° 1234567 por el monto correcto de S/180.00. Se actualizó la cantidad del producto X de 2 a 3 unidades..."
                   minH={{ base: "140px", md: "110px" }}
                   fontSize={{ base: "md", md: "xs" }}
                   borderColor={resubmitNote.trim().length > 0 && resubmitNote.trim().length < 10 ? "red.400" : "gray.300"}
