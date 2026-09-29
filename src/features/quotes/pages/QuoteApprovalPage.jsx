@@ -232,12 +232,22 @@ export function QuoteApprovalPage() {
   const queryClient = useQueryClient();
   const today = format(new Date(), "EEEE, d 'de' MMMM 'del' yyyy", { locale: es });
 
-  const { username: authUsername, userId: authUserId, role: authRole } = useAuthStore();
+  const { username: authUsername, userId: authUserId, role: authRole, salesEmployeeCode: authSalesCode } = useAuthStore();
   const localUser = (localStorage.getItem("username") || localStorage.getItem("userId") || "").toLowerCase();
   const localRole = (localStorage.getItem("role") || "").toUpperCase();
   const hasAccess = useHasAccess();
   const isAdmin = useIsAdmin();
-  const isAdminUser = isAdmin || authRole === "ADMIN" || localRole === "ADMIN" || hasAccess("POST /quotes/approval") || hasAccess("POST /quotations/approve");
+  const isSellerUser = Boolean(authSalesCode && Number(authSalesCode) > 0 && Number(authSalesCode) !== 20);
+  const isAdminUser =
+    !isSellerUser && (
+      isAdmin ||
+      authRole === "ADMIN" ||
+      authRole === "FACTURACION" ||
+      authRole === "SUPERVISOR" ||
+      localRole === "ADMIN" ||
+      hasAccess("POST /quotes/approval") ||
+      hasAccess("POST /quotations/approve")
+    );
   const activeCurrentUsername = (authUsername || localStorage.getItem("username") || "").toLowerCase().trim();
   const activeCurrentUserId = authUserId || localStorage.getItem("userId");
 
@@ -1445,6 +1455,11 @@ export function QuoteApprovalPage() {
     const qUser = String(q.createdByUsername || q.username || "").toLowerCase().trim();
     const qSeller = String(q.sellerName || "").toLowerCase().trim();
     const qUserId = q.userId || q.createdByUserId;
+    const qSlp = q.salesEmployeeCode || q.SlpCode || q.totals?.salesEmployeeCode;
+
+    if (authSalesCode && qSlp && Number(authSalesCode) === Number(qSlp)) {
+      return true;
+    }
 
     if (activeCurrentUsername) {
       if (qUser === activeCurrentUsername || qSeller === activeCurrentUsername) return true;
