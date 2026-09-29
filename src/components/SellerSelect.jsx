@@ -11,42 +11,36 @@ export default function SellerSelect({
   hideLabel = false,
   size = "md",
   placeholder = "Selecciona un vendedor",
+  allowAll = true,
+  onlyUnassigned = false,
 }) {
-  const { data: sellers, isLoading } = useSellersData();
+  const { data: sellers, isLoading } = useSellersData(onlyUnassigned ? { unassigned: true } : {});
 
   const rawSellers = useMemo(() => {
     const list = Array.isArray(sellers) ? sellers : (sellers?.sellers || []);
-    const parsed = list
+    return list
       .filter((s) => {
         const code = Number(s.SalesEmployeeCode ?? s.value ?? -1);
         const active = String(s.Active ?? "tYES").toUpperCase();
-        return code > 0 && (active === "TYES" || active === "Y" || active === "TRUE");
+        const locked = String(s.Locked ?? "tNO").toUpperCase();
+        return code > 0 && (active === "TYES" || active === "Y" || active === "TRUE") && locked !== "TYES";
       })
       .map((s) => ({
         value: s.SalesEmployeeCode ?? s.value,
         label: s.SalesEmployeeName ?? s.label,
         email: s.Email ?? s.email,
       }));
-
-    if (parsed.length > 0) {
-      try {
-        localStorage.setItem("cached_sap_sellers", JSON.stringify(parsed));
-      } catch {}
-      return parsed;
-    }
-
-    try {
-      const saved = localStorage.getItem("cached_sap_sellers");
-      if (saved) return JSON.parse(saved);
-    } catch {}
-
-    return [];
   }, [sellers]);
 
-  const sellerOptions = useMemo(() => [
-    { value: 0, label: "Todos los vendedores" }, // ✅ Opción global
-    ...rawSellers,
-  ], [rawSellers]);
+  const sellerOptions = useMemo(() => {
+    if (allowAll) {
+      return [
+        { value: 0, label: "Todos los vendedores" }, // ✅ Opción global
+        ...rawSellers,
+      ];
+    }
+    return rawSellers;
+  }, [rawSellers, allowAll]);
 
   const isSmall = size === "sm";
 

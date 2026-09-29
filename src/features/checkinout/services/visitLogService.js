@@ -152,3 +152,13 @@ export const getClientImage = async (sapCode) => {
     };
   }
 };
+
+export const getVisitingVendors = async () => {
+  try {
+    const response = await axiosInstance.get(`/reportModule/visit-logs/vendors`);
+    return response.data?.vendors || [];
+  } catch (error) {
+    console.error("❌ Error al obtener vendedores que realizan visitas:", error);
+    return [];
+  }
+};
