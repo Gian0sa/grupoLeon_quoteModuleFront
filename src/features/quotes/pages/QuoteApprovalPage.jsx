@@ -298,10 +298,10 @@ export function QuoteApprovalPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyQuotes, setHistoryQuotes] = useState([]);
   
-  // Filtros avanzados para la pestaña de Histórico Completo (Por defecto últimos 3 meses)
+  // Filtros avanzados para la pestaña de Histórico Completo (Por defecto últimos 7 días / 1 semana)
   const defaultStartDate = useMemo(() => {
     const d = new Date();
-    d.setMonth(d.getMonth() - 3);
+    d.setDate(d.getDate() - 7); // 1 semana por defecto para no saturar el servidor
     return d.toISOString().split("T")[0];
   }, []);
   const defaultEndDate = useMemo(() => new Date().toISOString().split("T")[0], []);
@@ -331,13 +331,13 @@ export function QuoteApprovalPage() {
     return () => window.removeEventListener("quoteHighlight", handleHighlight);
   }, []);
 
-  // Auto-cálculo y control estricto de máximo 3 meses para el Histórico
+  // Auto-cálculo y control estricto de máximo 1 mes para el Histórico (evita saturación en servidor)
   const handleStartDateChange = (newStart) => {
     setHistoryStartDate(newStart);
     setHistoryPage(1);
     if (newStart) {
       const d = new Date(newStart + "T00:00:00");
-      d.setMonth(d.getMonth() + 3);
+      d.setMonth(d.getMonth() + 1); // Rango máximo de 1 mes
       const autoEnd = d.toISOString().split("T")[0];
       setHistoryEndDate(autoEnd);
     }
@@ -350,9 +350,9 @@ export function QuoteApprovalPage() {
       const start = new Date(historyStartDate + "T00:00:00");
       const end = new Date(newEnd + "T00:00:00");
       const diffDays = (end - start) / (1000 * 60 * 60 * 24);
-      if (diffDays > 93 || diffDays < 0) {
+      if (diffDays > 31 || diffDays < 0) {
         const autoStart = new Date(end);
-        autoStart.setMonth(autoStart.getMonth() - 3);
+        autoStart.setMonth(autoStart.getMonth() - 1); // Rango máximo de 1 mes
         setHistoryStartDate(autoStart.toISOString().split("T")[0]);
       }
     }
@@ -366,13 +366,26 @@ export function QuoteApprovalPage() {
 
     const timer = setTimeout(async () => {
       try {
-        const response = await getQuotes({
+        const queryParams = {
           startDate: historyStartDate,
           endDate: historyEndDate,
           page: historyPage,
           limit: pageSize,
           paginate: true
-        });
+        };
+
+        // Enviar filtros de vendedor y estado al backend para no saturar memoria ni traer todo
+        if (isAdminUser && historySellerFilter && historySellerFilter !== "TODOS") {
+          queryParams.sellerName = historySellerFilter;
+        } else if (!isAdminUser) {
+          queryParams.createdByUsername = activeCurrentUsername;
+        }
+
+        if (historyStatusFilter && historyStatusFilter !== "TODOS") {
+          queryParams.state = historyStatusFilter;
+        }
+
+        const response = await getQuotes(queryParams);
 
         if (!isCurrent) return;
 
@@ -408,7 +421,7 @@ export function QuoteApprovalPage() {
       isCurrent = false;
       clearTimeout(timer);
     };
-  }, [selectedTab, historyStartDate, historyEndDate, historyPage, pageSize]);
+  }, [selectedTab, historyStartDate, historyEndDate, historySellerFilter, historyStatusFilter, historyPage, pageSize, isAdminUser, activeCurrentUsername]);
 
   // Búsqueda profunda en servidor/SAP cuando se especifique un término relevante (mínimo 3 letras o número específico)
   useEffect(() => {
@@ -2251,8 +2264,8 @@ export function QuoteApprovalPage() {
                 colorScheme="blue"
                 leftIcon={<RotateCcw className="w-3 h-3" />}
                 onClick={() => {
-                  setHistoryStartDate("");
-                  setHistoryEndDate("");
+                  setHistoryStartDate(defaultStartDate);
+                  setHistoryEndDate(defaultEndDate);
                   setHistoryStatusFilter("TODOS");
                   setHistorySellerFilter("TODOS");
                   setSearchQuery("");
@@ -2275,7 +2288,7 @@ export function QuoteApprovalPage() {
                 />
               </Box>
               <Box>
-                <Text fontSize="11px" fontWeight="800" color="gray.600" mb={1}>📅 Fecha Hasta (Max 3 Meses)</Text>
+                <Text fontSize="11px" fontWeight="800" color="gray.600" mb={1}>📅 Fecha Hasta (Max 1 Mes)</Text>
                 <Input
                   type="date"
                   size="sm"

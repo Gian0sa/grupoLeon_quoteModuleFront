@@ -11,45 +11,24 @@ import {
   HStack,
   Badge
 } from "@chakra-ui/react";
-import { FiPackage, FiAlertCircle, FiChevronDown } from "react-icons/fi";
+import { FiPackage, FiAlertCircle, FiChevronDown, FiSearch } from "react-icons/fi";
 import { useProductsPriceList } from "../hooks/queries/productQueries";
 import { ProductPriceListSearchheader } from "../components/ProductPriceListSearchheader";
 import { ProductPriceListCard } from "../components/ProductPriceListCard";
-import { useBrandTypeSubtype } from "../hooks/queries/productQueries";
 
 export function ProductList() {
   const [cardName, setCardName] = useState("");
-
-  // Filtros en edición
-  const [marca, setMarca] = useState("");
-  const [tipo, setTipo] = useState("");
-  const [subtipo, setSubtipo] = useState("");
-  const [tipoPrecio, setTipoPrecio] = useState("FINAL");
-  const [soloConStock, setSoloConStock] = useState("Y");
-
-  // Estado inicial de búsqueda: Al cargar inicialmente muestra solo productos con stock ("Y")
-  const initialParams = {
-    itemName: "",
-    itemCode: "",
-    marca: "",
-    tipo: "",
-    subtipo: "",
-    stock: "Y",
-  };
-
-  const [searchParams, setSearchParams] = useState(initialParams);
-  const [lastSearch, setLastSearch] = useState(initialParams);
-
-  // Estado de paginación
+  const [searchParams, setSearchParams] = useState(null);
+  const [hasSearched, setHasSearched] = useState(false);
   const [page, setPage] = useState(1);
   const [allProducts, setAllProducts] = useState([]);
 
-  // Hook de React Query
-  const { data, isLoading, error, isFetching, refetch } = useProductsPriceList(
-    searchParams ? { ...searchParams, page } : { enabled: false }
-  );
+  // Solo ejecuta la consulta cuando el usuario realmente ha buscado algo
+  const isQueryEnabled = Boolean(searchParams && (searchParams.itemName || searchParams.itemCode));
 
-  const { brandTypeSubtype, isLoadingBrandTypeSubtype, errorBrandTypeSubtype } = useBrandTypeSubtype();
+  const { data, isLoading, error, isFetching, refetch } = useProductsPriceList(
+    isQueryEnabled ? { ...searchParams, page } : { enabled: false }
+  );
 
   // Reseteamos productos acumulados y página en cada cambio de búsqueda
   useEffect(() => {
@@ -74,113 +53,170 @@ export function ProductList() {
     }
   }, [data, page]);
 
-  // Búsqueda simultánea por Código, OEM y Nombre de producto
+  // Búsqueda manual activada por Enter o botón "Buscar"
   const handleSearch = () => {
     const trimmed = String(cardName || "").trim();
-    const newStock = trimmed ? "N" : "Y";
+    if (!trimmed) {
+      setSearchParams(null);
+      setHasSearched(false);
+      setAllProducts([]);
+      return;
+    }
 
-    const isDifferent =
-      trimmed !== searchParams.itemName ||
-      marca !== searchParams.marca ||
-      tipo !== searchParams.tipo ||
-      subtipo !== searchParams.subtipo ||
-      newStock !== searchParams.stock;
+    setPage(1);
+    setHasSearched(true);
+    const newParams = {
+      itemName: trimmed,
+      itemCode: trimmed,
+      stock: "N",
+    };
 
-    if (isDifferent) {
-      const newParams = {
-        itemName: trimmed,
-        itemCode: trimmed,
-        marca,
-        tipo,
-        subtipo,
-        stock: newStock,
-      };
-      setLastSearch(newParams);
-      setSearchParams(newParams);
-    } else {
-      // Si la búsqueda es idéntica, forzamos un refetch manual de React Query para actualizar la data sin vaciar la pantalla
+    if (
+      searchParams &&
+      searchParams.itemName === trimmed &&
+      searchParams.itemCode === trimmed
+    ) {
       refetch();
+    } else {
+      setSearchParams(newParams);
     }
   };
 
   // Cambio de texto con limpieza automática
   const handleCardNameChange = (eOrValue) => {
-    const value = typeof eOrValue === "object" && eOrValue !== null && eOrValue.target 
-      ? eOrValue.target.value 
-      : (typeof eOrValue === "string" ? eOrValue : "");
+    const value =
+      typeof eOrValue === "object" && eOrValue !== null && eOrValue.target
+        ? eOrValue.target.value
+        : typeof eOrValue === "string"
+        ? eOrValue
+        : "";
     setCardName(value);
-    if (!value) {
-      const newParams = {
-        itemName: "",
-        itemCode: "",
-        marca,
-        tipo,
-        subtipo,
-        stock: "Y", // Al vaciar el buscador, volvemos a mostrar solo productos con stock
-      };
-      setLastSearch(newParams);
-      setSearchParams(newParams);
+
+    // Si el usuario borra todo el texto, limpiamos el estado de resultados
+    if (!value.trim()) {
+      setSearchParams(null);
+      setHasSearched(false);
+      setAllProducts([]);
     }
   };
 
-  // Paginación robusta: evalúa totalPages o registros de la última tanda devuelta por la API
-  const totalPages = data?.totalPages || data?.total_pages || data?.pagination?.totalPages || data?.pages || 0;
+  // Paginación
+  const totalPages =
+    data?.totalPages ||
+    data?.total_pages ||
+    data?.pagination?.totalPages ||
+    data?.pages ||
+    0;
   const lastBatchLength = data?.records?.length || data?.items?.length || 0;
   const hasNextPage = totalPages > 0 ? page < totalPages : lastBatchLength >= 4;
 
   return (
     <Box w="full" minH="100vh" bg="gray.50" pb="120px">
-      {/* Cabecera con Buscador y Filtros */}
+      {/* Cabecera con Buscador Simple y Directo */}
       <ProductPriceListSearchheader
-        brandTypeSubtype={brandTypeSubtype}
         cardName={cardName}
         onCardNameChange={handleCardNameChange}
         onSearch={handleSearch}
         isLoading={isLoading}
-        marca={marca}
-        setMarca={setMarca}
-        tipo={tipo}
-        setTipo={setTipo}
-        subtipo={subtipo}
-        setSubtipo={setSubtipo}
-        tipoPrecio={tipoPrecio}
-        setTipoPrecio={setTipoPrecio}
-        soloConStock={soloConStock}
-        setSoloConStock={() => {}}
-        isLoadingBrandTypeSubtype={isLoadingBrandTypeSubtype}
-        errorBrandTypeSubtype={errorBrandTypeSubtype}
       />
 
       <Box maxW="1200px" mx="auto" px={{ base: 3, md: 6 }}>
-        {/* Resultados Header */}
-        {allProducts.length > 0 && (
-          <Flex justify="space-between" align="center" px={{ base: 3, md: 4 }} py={2} mb={2}>
+        {/* Encabezado de resultados */}
+        {hasSearched && allProducts.length > 0 && (
+          <Flex
+            justify="space-between"
+            align="center"
+            px={{ base: 3, md: 4 }}
+            py={2}
+            mb={2}
+          >
             <HStack spacing={2}>
-              <Text fontSize={{ base: "15px", md: "md" }} fontWeight="800" color="gray.800">
+              <Text
+                fontSize={{ base: "15px", md: "md" }}
+                fontWeight="800"
+                color="gray.800"
+              >
                 Resultados de productos
               </Text>
-              <Badge bg="green.100" color="green.800" borderRadius="full" px={2.5} py={0.5} fontSize="12px" fontWeight="700">
+              <Badge
+                bg="green.100"
+                color="green.800"
+                borderRadius="full"
+                px={2.5}
+                py={0.5}
+                fontSize="12px"
+                fontWeight="700"
+              >
                 {allProducts.length} mostrados
               </Badge>
             </HStack>
 
-            <Badge colorScheme="gray" variant="subtle" borderRadius="md" px={2} py={1} fontSize="11px">
+            <Badge
+              colorScheme="gray"
+              variant="subtle"
+              borderRadius="md"
+              px={2}
+              py={1}
+              fontSize="11px"
+            >
               Página {page} {totalPages > 0 ? `de ${totalPages}` : ""}
             </Badge>
           </Flex>
         )}
 
         <Box px={{ base: 2, md: 4 }}>
-          {isLoading && page === 1 ? (
+          {/* 1. Estado inicial al entrar (Sin búsqueda previa - 0ms carga) */}
+          {!hasSearched ? (
+            <Center
+              py={{ base: 14, md: 24 }}
+              bg="white"
+              borderRadius="3xl"
+              my={4}
+              boxShadow="0 4px 20px rgba(0,0,0,0.03)"
+              border="1px solid"
+              borderColor="gray.100"
+            >
+              <VStack spacing={4} maxW="450px" textAlign="center" px={4}>
+                <Box
+                  p={5}
+                  borderRadius="full"
+                  bg="emerald.50"
+                  color="emerald.600"
+                  boxShadow="0 8px 24px rgba(16, 185, 129, 0.15)"
+                >
+                  <Icon as={FiSearch} boxSize={{ base: 8, md: 10 }} />
+                </Box>
+                <VStack spacing={1.5}>
+                  <Text
+                    color="gray.800"
+                    fontSize={{ base: "lg", md: "xl" }}
+                    fontWeight="800"
+                  >
+                    Consulta de Lista de Precios
+                  </Text>
+                  <Text
+                    color="gray.500"
+                    fontSize={{ base: "xs", md: "sm" }}
+                    lineHeight="tall"
+                  >
+                    Escribe un código, sigla o descripción en el buscador superior
+                    para consultar stock y tarifas vigentes en tiempo real.
+                  </Text>
+                </VStack>
+              </VStack>
+            </Center>
+          ) : isLoading && page === 1 ? (
+            /* 2. Cargando búsqueda */
             <Center py={16} bg="white" borderRadius="3xl" my={4}>
               <VStack spacing={4}>
                 <Spinner size="xl" color="green.500" thickness="4px" />
                 <Text color="gray.600" fontSize="md" fontWeight="600">
-                  Buscando productos en la base de datos...
+                  Buscando "{cardName}" en la base de datos...
                 </Text>
               </VStack>
             </Center>
           ) : error ? (
+            /* 3. Error */
             <Center py={16} bg="white" borderRadius="3xl" my={4}>
               <VStack spacing={3}>
                 <Box bg="red.50" p={4} borderRadius="full" color="red.500">
@@ -198,26 +234,27 @@ export function ProductList() {
               </VStack>
             </Center>
           ) : allProducts.length === 0 ? (
+            /* 4. No se encontraron resultados */
             <Center py={16} bg="white" borderRadius="3xl" my={4}>
               <VStack spacing={3}>
                 <Box bg="gray.100" p={4} borderRadius="full" color="gray.400">
                   <Icon as={FiPackage} boxSize={8} />
                 </Box>
                 <Text color="gray.700" fontSize="md" fontWeight="700">
-                  No se encontraron productos
+                  No se encontraron productos para "{cardName}"
                 </Text>
                 <Text color="gray.500" fontSize="xs">
-                  Intenta buscar con otros términos o removiendo filtros
+                  Verifica el código, sigla o término de búsqueda e intenta nuevamente.
                 </Text>
               </VStack>
             </Center>
           ) : (
+            /* 5. Resultados encontrados */
             <VStack spacing={3} align="stretch">
               {allProducts.map((product) => (
                 <ProductPriceListCard
                   key={product.ITEM_CODE}
                   product={product}
-                  tipoPrecio={tipoPrecio}
                 />
               ))}
 
@@ -242,7 +279,7 @@ export function ProductList() {
                     Cargar más productos
                   </Button>
                   <Text fontSize="xs" color="gray.400" fontWeight="medium">
-                    Mostrando {allProducts.length} productos • Click para cargar la siguiente página
+                    Mostrando {allProducts.length} productos • Click para cargar más
                   </Text>
                 </VStack>
               )}
