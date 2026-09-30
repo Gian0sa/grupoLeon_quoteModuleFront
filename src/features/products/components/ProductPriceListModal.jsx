@@ -67,7 +67,12 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
           pb={2}
           width="95%"
         >
-          {ITEM_NAME}
+          {SIGLA && (
+            <Badge colorScheme="teal" variant="subtle" px={2} py={0.5} borderRadius="md" fontSize="12px" fontWeight="800" mr={2} verticalAlign="middle">
+              {SIGLA}
+            </Badge>
+          )}
+          {ITEM_NAME || SIGLA || "Producto sin descripción"}
         </ModalHeader>
         <ModalCloseButton />
         <ModalBody pb={6}>
