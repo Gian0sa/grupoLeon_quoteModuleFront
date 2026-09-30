@@ -17,7 +17,7 @@ const MotionBox = motion(Box);
 export function ProductPriceListCard({ product, tipoPrecio }) {
   const { isOpen, onOpen, onClose } = useDisclosure();
 
-  const { SIGLA, ITEM_CODE, PRECIO_LISTA, PRECIO_DESCUENTO, DESCUENTO_PCT, STOCK_DISPONIBLE, PRECIO_CONTADO, PRECIO_CREDITO } = product;
+  const { SIGLA, ITEM_CODE, ITEM_NAME, MARCA, PRECIO_LISTA, PRECIO_DESCUENTO, DESCUENTO_PCT, STOCK_DISPONIBLE, PRECIO_CONTADO, PRECIO_CREDITO } = product;
 
   const hasDiscount = DESCUENTO_PCT > 0;
   const finalPrice = hasDiscount ? PRECIO_DESCUENTO : PRECIO_LISTA;
@@ -74,13 +74,27 @@ export function ProductPriceListCard({ product, tipoPrecio }) {
         overflow="hidden"
       >
         <Flex direction={{ base: "column", sm: "row" }} justify="space-between" align={{ base: "stretch", sm: "center" }} gap={3}>
-          {/* IZQUIERDA: Nombre + Código */}
+          {/* IZQUIERDA: Sigla + Nombre Completo + Código + Marca */}
           <VStack align="start" spacing={1} flex="1" minW={0} overflow="hidden">
-            <Text textStyle="cardTitle" color="gray.800" lineHeight="1.2" w="full">
-              {SIGLA || "Producto sin descripción"}
-            </Text>
+            <HStack spacing={2} align="center" w="full" flexWrap="wrap">
+              <Text textStyle="cardTitle" color="gray.800" lineHeight="1.2">
+                {SIGLA || ITEM_CODE || "Producto sin código"}
+              </Text>
+              {MARCA && (
+                <Badge colorScheme="purple" variant="subtle" px={2} py={0.5} borderRadius="md" fontSize="11px" fontWeight="700">
+                  {MARCA}
+                </Badge>
+              )}
+            </HStack>
 
-            <HStack spacing={2}>
+            {/* Nombre Completo / Descripción del producto */}
+            {ITEM_NAME && (
+              <Text fontSize={{ base: "13px", md: "14px" }} color="gray.600" fontWeight="500" lineHeight="1.3" noOfLines={2} w="full">
+                {ITEM_NAME}
+              </Text>
+            )}
+
+            <HStack spacing={2} pt={0.5} flexWrap="wrap">
               <Badge bg="gray.100" color="gray.700" px={2} py={0.5} borderRadius="md" fontSize="11px" fontWeight="700">
                 #{ITEM_CODE}
               </Badge>
