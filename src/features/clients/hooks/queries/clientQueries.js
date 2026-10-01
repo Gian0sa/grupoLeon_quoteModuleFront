@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchClientByCode, fetchDeliveryPoints , fetchClientByName , fetchClientProductHistory , fetchClientProductHistoryAdmin , fetchPriceListByItemCodes , fetchPurchaseOrdersImportacion , fetchPurchaseOrderDetail, fetchNewClients, updateNewClient} from "../../services/clientService";
+import { fetchClientByCode, fetchDeliveryPoints , fetchClientByName , fetchClientProductHistory , fetchClientProductHistoryAdmin , fetchPriceListByItemCodes , fetchPurchaseOrdersImportacion , fetchPurchaseOrderDetail, fetchNewClients, searchNewClients, updateNewClient} from "../../services/clientService";
 
 export function useClientQueries(code) {
   const { data, isLoading, error } = useQuery({
@@ -163,6 +163,24 @@ export function useNewClientsQuery(vendorCode, username) {
   };
 }
 
+export function useSearchNewClientsQuery(searchTerm) {
+  const cleanTerm = searchTerm && typeof searchTerm === "string" ? searchTerm.trim() : "";
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ["searchNewClients", cleanTerm],
+    queryFn: () => searchNewClients(cleanTerm),
+    enabled: !!cleanTerm,
+    refetchOnWindowFocus: false,
+    staleTime: 30 * 1000,
+  });
+
+  return {
+    dataNewClients: data || [],
+    isLoadingNewClients: isLoading,
+    errorNewClients: error,
+    refetchNewClients: refetch,
+  };
+}
+
 export function useUpdateNewClientMutation() {
   const queryClient = useQueryClient();
 
@@ -173,3 +191,5 @@ export function useUpdateNewClientMutation() {
     },
   });
 }
+
+

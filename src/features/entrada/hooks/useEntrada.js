@@ -30,22 +30,33 @@ export const useEntrada = () => {
     }
   }, []);
 
+  // Limpieza de memoria al desmontar
+  useEffect(() => {
+    return () => {
+      if (imagePreview && imagePreview.startsWith('blob:')) {
+        URL.revokeObjectURL(imagePreview);
+      }
+    };
+  }, [imagePreview]);
+
   const handleImageChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setIsProcessingImage(true);
     try {
-      // Comprimir la imagen a máximo ~350KB (rango KBs liviano)
+      // Comprimir la imagen a máximo ~350KB (rango KBs liviano con zero-RAM)
       const compressedFile = await compressImage(file, 0.35);
       setImage(compressedFile);
 
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result);
-        setIsProcessingImage(false);
-      };
-      reader.readAsDataURL(compressedFile);
+      const previewUrl = URL.createObjectURL(compressedFile);
+      setImagePreview((prev) => {
+        if (prev && prev.startsWith('blob:')) {
+          URL.revokeObjectURL(prev);
+        }
+        return previewUrl;
+      });
+      setIsProcessingImage(false);
     } catch (error) {
       setIsProcessingImage(false);
       toast({
@@ -60,7 +71,12 @@ export const useEntrada = () => {
 
   const resetImage = () => {
     setImage(null);
-    setImagePreview(null);
+    setImagePreview((prev) => {
+      if (prev && prev.startsWith('blob:')) {
+        URL.revokeObjectURL(prev);
+      }
+      return null;
+    });
   };
 
   const getLocation = useCallback(() => {

@@ -152,6 +152,11 @@ export default function VisitLogsMapView() {
     const [dateTo, setDateTo] = useState(todayStr);
 
     const [statusFilter, setStatusFilter] = useState("all");
+    const [visibleDaysCount, setVisibleDaysCount] = useState(5);
+
+    useEffect(() => {
+        setVisibleDaysCount(5);
+    }, [selectedVendor, statusFilter, dateFrom, dateTo, datePreset]);
 
     const pageBg = useColorModeValue("gray.50", "gray.900");
     const cardBg = useColorModeValue("white", "gray.800");
@@ -391,6 +396,24 @@ export default function VisitLogsMapView() {
 
         return Object.values(grouped).sort((a, b) => b.fullDate - a.fullDate);
     }, [groupsWithSequence, dateFrom, dateTo]);
+
+    const visibleDayGroups = useMemo(() => {
+        return groupedByDay.slice(0, visibleDaysCount);
+    }, [groupedByDay, visibleDaysCount]);
+
+    const mapDisplayVisits = useMemo(() => {
+        // Si hay muchas paradas, limitar en el mapa a las 100 más recientes para garantizar 60 FPS y mapa nítido
+        const MAX_PINS = 100;
+        if (groupsWithSequence.length > MAX_PINS) {
+            const sortedDesc = [...groupsWithSequence].sort((a, b) => {
+                const dateA = new Date(a.in?.createdAt || a.out?.createdAt || 0);
+                const dateB = new Date(b.in?.createdAt || b.out?.createdAt || 0);
+                return dateB - dateA;
+            });
+            return sortedDesc.slice(0, MAX_PINS);
+        }
+        return groupsWithSequence;
+    }, [groupsWithSequence]);
 
     const stats = useMemo(() => {
         const completedVisits = filteredGroups.filter(g => g.in && g.out).length;
@@ -784,6 +807,28 @@ export default function VisitLogsMapView() {
                                     }
                                 }}
                             >
+                                {groupsWithSequence.length > 100 && (
+                                    <Badge
+                                        position="absolute"
+                                        top={3}
+                                        left="50%"
+                                        transform="translateX(-50%)"
+                                        zIndex={1000}
+                                        bg="rgba(15, 23, 42, 0.9)"
+                                        backdropFilter="blur(8px)"
+                                        color="white"
+                                        px={3.5}
+                                        py={1.5}
+                                        borderRadius="full"
+                                        fontSize="11px"
+                                        fontWeight="800"
+                                        boxShadow="0 4px 15px rgba(0,0,0,0.3)"
+                                        border="1px solid rgba(255,255,255,0.2)"
+                                        pointerEvents="none"
+                                    >
+                                        ⚡ Modo Fluido (60 FPS): 100 visitas más recientes de {filteredGroups.length}
+                                    </Badge>
+                                )}
                                 <MapContainer
                                     center={mapCenter}
                                     zoom={mapZoom}
@@ -815,7 +860,7 @@ export default function VisitLogsMapView() {
                                     )}
 
                                     <MapMarkers
-                                        groupedVisits={groupsWithSequence}
+                                        groupedVisits={mapDisplayVisits}
                                         selectedVendor={selectedVendor}
                                         hoveredStore={hoveredStore}
                                         onMarkerClick={handleMarkerClick}
@@ -840,9 +885,16 @@ export default function VisitLogsMapView() {
                                     )}
                                 </Heading>
                             </HStack>
-                            <Badge colorScheme="emerald" fontSize="11px" px={2} py={0.5} borderRadius="full" fontWeight="700">
-                                {filteredGroups.length} resultado{filteredGroups.length !== 1 ? 's' : ''}
-                            </Badge>
+                            <HStack spacing={1.5}>
+                                <Badge colorScheme="emerald" fontSize="11px" px={2} py={0.5} borderRadius="full" fontWeight="700">
+                                    {filteredGroups.length} resultado{filteredGroups.length !== 1 ? 's' : ''}
+                                </Badge>
+                                {groupedByDay.length > visibleDaysCount && (
+                                    <Badge colorScheme="purple" fontSize="11px" px={2} py={0.5} borderRadius="full" fontWeight="700">
+                                        Mostrando {visibleDaysCount} días
+                                    </Badge>
+                                )}
+                            </HStack>
                         </Flex>
 
                         {/* Visitas agrupadas por día */}
@@ -865,7 +917,7 @@ export default function VisitLogsMapView() {
                                     </CardBody>
                                 </Card>
                             ) : (
-                                groupedByDay.map((dayGroup) => (
+                                visibleDayGroups.map((dayGroup) => (
                                     <Box key={dayGroup.date} w="full">
                                         {/* Encabezado del día */}
                                         <HStack
@@ -1009,6 +1061,28 @@ export default function VisitLogsMapView() {
                                         </VStack>
                                     </Box>
                                 ))
+                            )}
+
+                            {/* Botón para cargar más días y evitar congelamiento por miles de elementos */}
+                            {groupedByDay.length > visibleDaysCount && (
+                                <Box pt={2} pb={2} textAlign="center">
+                                    <Button
+                                        w="full"
+                                        variant="outline"
+                                        colorScheme="purple"
+                                        size="sm"
+                                        borderRadius="xl"
+                                        py={5}
+                                        fontWeight="800"
+                                        fontSize="12px"
+                                        onClick={() => setVisibleDaysCount((prev) => prev + 5)}
+                                        _hover={{ bg: "purple.50", transform: "translateY(-1px)" }}
+                                        transition="all 0.2s"
+                                        boxShadow="sm"
+                                    >
+                                        ➕ Cargar más registros (+5 días • {groupedByDay.length - visibleDaysCount} días restantes)
+                                    </Button>
+                                </Box>
                             )}
                         </VStack>
                     </Box>

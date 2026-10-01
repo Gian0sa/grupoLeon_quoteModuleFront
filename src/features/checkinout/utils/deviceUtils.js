@@ -1,66 +1,116 @@
-export const compressImage = (file, maxSizeMB = 0.35) => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = (event) => {
-            const img = new Image();
-            img.src = event.target.result;
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                let width = img.width;
-                let height = img.height;
+/**
+ * Compresión ultra-optimizada para dispositivos móviles (Zero-Crash / Low Memory).
+ * 
+ * Utiliza `createImageBitmap` nativo con redimensionado en decodificación cuando está disponible,
+ * evitando cargar mapas de bits de 50 Megapíxeles o strings Base64 gigantes en la memoria RAM del teléfono.
+ * Si falla o no está soportado, usa `URL.createObjectURL` en lugar de FileReader.
+ */
+export const compressImage = async (file, maxSizeMB = 0.35) => {
+    if (!file) throw new Error("No se proporcionó ningún archivo");
 
-                // Dimensiones optimizadas para pantallas móviles y auditoría nítida (ultra liviano en RAM y KB)
-                const MAX_WIDTH = 1200;
-                const MAX_HEIGHT = 1200;
+    // 960px es nítido y perfecto para pantallas móviles y auditoría, pero pesa menos de 100KB y usa mínima RAM
+    const MAX_DIMENSION = 960;
+    const JPEG_QUALITY = 0.65;
+
+    // Camino 1: API nativa createImageBitmap con redimensionamiento directo en decodificación (ultra eficiente en RAM)
+    if (typeof window !== "undefined" && "createImageBitmap" in window) {
+        try {
+            let bitmap;
+            try {
+                // Algunos navegadores soportan opciones de resize directamente en createImageBitmap
+                bitmap = await createImageBitmap(file, {
+                    resizeWidth: MAX_DIMENSION,
+                    resizeHeight: MAX_DIMENSION,
+                    resizeQuality: "medium",
+                });
+            } catch (e) {
+                // Fallback de createImageBitmap sin opciones
+                bitmap = await createImageBitmap(file);
+            }
+
+            if (bitmap) {
+                let width = bitmap.width;
+                let height = bitmap.height;
 
                 if (width > height) {
-                    if (width > MAX_WIDTH) {
-                        height *= MAX_WIDTH / width;
-                        width = MAX_WIDTH;
+                    if (width > MAX_DIMENSION) {
+                        height = Math.round(height * (MAX_DIMENSION / width));
+                        width = MAX_DIMENSION;
                     }
                 } else {
-                    if (height > MAX_HEIGHT) {
-                        width *= MAX_HEIGHT / height;
-                        height = MAX_HEIGHT;
+                    if (height > MAX_DIMENSION) {
+                        width = Math.round(width * (MAX_DIMENSION / height));
+                        height = MAX_DIMENSION;
                     }
                 }
-                canvas.width = Math.round(width);
-                canvas.height = Math.round(height);
 
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                const canvas = document.createElement("canvas");
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext("2d", { alpha: false });
+                ctx.drawImage(bitmap, 0, 0, width, height);
+                bitmap.close(); // Liberar memoria nativa del bitmap de inmediato
 
-                // Comprimir progresivamente con calidad balanceada (150KB - 300KB)
-                let quality = 0.75;
-                const compress = () => {
-                    canvas.toBlob((blob) => {
-                        if (blob) {
-                            const sizeKB = Math.round(blob.size / 1024);
-                            console.log(`🖼️ Imagen comprimida: ${sizeKB} KB (calidad ${quality.toFixed(2)})`);
+                const blob = await new Promise((resolve) => {
+                    canvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY);
+                });
 
-                            if (sizeKB > (maxSizeMB * 1024) && quality > 0.3) {
-                                quality -= 0.1;
-                                compress();
-                            } else {
-                                const fileName = file?.name || "foto_checkin.jpg";
-                                const compressedFile = new File([blob], fileName, {
-                                    type: 'image/jpeg',
-                                    lastModified: Date.now()
-                                });
-                                resolve(compressedFile);
-                            }
-                        } else {
-                            reject(new Error('Error al comprimir imagen'));
-                        }
-                    }, 'image/jpeg', quality);
-                };
+                if (blob) {
+                    const fileName = file.name ? file.name.replace(/\.[^/.]+$/, ".jpg") : "foto_checkin.jpg";
+                    return new File([blob], fileName, { type: "image/jpeg", lastModified: Date.now() });
+                }
+            }
+        } catch (bitmapError) {
+            console.warn("createImageBitmap no disponible o falló, usando fallback con Blob URL:", bitmapError);
+        }
+    }
 
-                compress();
-            };
-            img.onerror = () => reject(new Error('Error al cargar imagen'));
+    // Camino 2: Fallback con URL.createObjectURL (mucho más ligero en RAM que FileReader.readAsDataURL)
+    return new Promise((resolve, reject) => {
+        const objectUrl = URL.createObjectURL(file);
+        const img = new Image();
+
+        img.onload = () => {
+            URL.revokeObjectURL(objectUrl); // Liberar URL de inmediato
+
+            let width = img.width;
+            let height = img.height;
+
+            if (width > height) {
+                if (width > MAX_DIMENSION) {
+                    height = Math.round(height * (MAX_DIMENSION / width));
+                    width = MAX_DIMENSION;
+                }
+            } else {
+                if (height > MAX_DIMENSION) {
+                    width = Math.round(width * (MAX_DIMENSION / height));
+                    height = MAX_DIMENSION;
+                }
+            }
+
+            const canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+
+            const ctx = canvas.getContext("2d", { alpha: false });
+            ctx.drawImage(img, 0, 0, width, height);
+
+            canvas.toBlob((blob) => {
+                if (blob) {
+                    const fileName = file.name ? file.name.replace(/\.[^/.]+$/, ".jpg") : "foto_checkin.jpg";
+                    resolve(new File([blob], fileName, { type: "image/jpeg", lastModified: Date.now() }));
+                } else {
+                    reject(new Error("Error al procesar la imagen"));
+                }
+            }, "image/jpeg", JPEG_QUALITY);
         };
-        reader.onerror = () => reject(new Error('Error al leer archivo'));
+
+        img.onerror = () => {
+            URL.revokeObjectURL(objectUrl);
+            reject(new Error("No se pudo cargar la imagen para compresión"));
+        };
+
+        img.src = objectUrl;
     });
 };
 

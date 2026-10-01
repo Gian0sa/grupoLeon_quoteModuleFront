@@ -100,6 +100,16 @@ export const fetchNewClients = async ({ vendorCode, username }) => {
     return response.data;
 };
 
+export const searchNewClients = async (searchTerm) => {
+    if (!searchTerm || typeof searchTerm !== "string" || !searchTerm.trim()) {
+        return [];
+    }
+    const response = await axiosInstance.get(`/reportModule/new-clients`, {
+        params: { search: searchTerm.trim(), all: "true" }
+    });
+    return response.data || [];
+};
+
 export const updateNewClient = async ({ id, ...clientData }) => {
     const response = await axiosInstance.put(`/reportModule/new-clients/${id}`, clientData);
     return response.data;

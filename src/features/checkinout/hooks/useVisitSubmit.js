@@ -167,8 +167,17 @@ export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVis
             if (selectedClient.type === "SAP") {
                 formData.append("sapCode", selectedClient.sapCode);
             }
-            // Caso cliente nuevo
-            if (selectedClient.type === "NEW") {
+            // Caso cliente nuevo temporal ya existente
+            else if (selectedClient.type === "NEW_TEMP" || selectedClient.newClientId) {
+                if (selectedClient.sapCode) {
+                    formData.append("sapCode", selectedClient.sapCode);
+                }
+                if (selectedClient.newClientId) {
+                    formData.append("newClientId", selectedClient.newClientId);
+                }
+            }
+            // Caso cliente nuevo (registro nuevo por primera vez)
+            else if (selectedClient.type === "NEW") {
                 formData.append(
                     "newClientData",
                     JSON.stringify({

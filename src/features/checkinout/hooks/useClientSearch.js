@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useClientQueries, useClientQueriesByName } from "../../clients/hooks/queries/clientQueries";
+import { useClientQueries, useClientQueriesByName, useSearchNewClientsQuery } from "../../clients/hooks/queries/clientQueries";
 import { adaptClientFromApi } from "../../clients/adapters/clientAdapter";
 
 export function parseSearchToInitialData(inputString) {
@@ -40,32 +40,64 @@ export function parseSearchToInitialData(inputString) {
 export function useClientSearch() {
     const [inputValue, setInputValue] = useState("");
     const [searchTerm, setSearchTerm] = useState("");
+    const [rawSearchTerm, setRawSearchTerm] = useState("");
     const [isSearchingByCode, setIsSearchingByCode] = useState(true);
-    const [selectedClient, setSelectedClient] = useState(null);
+    const [selectedClient, setSelectedClientState] = useState(() => {
+        try {
+            const cached = sessionStorage.getItem("checkin_selected_client");
+            return cached ? JSON.parse(cached) : null;
+        } catch (e) {
+            return null;
+        }
+    });
+
+    const setSelectedClient = (client) => {
+        setSelectedClientState(client);
+        try {
+            if (client) {
+                sessionStorage.setItem("checkin_selected_client", JSON.stringify(client));
+            } else {
+                sessionStorage.removeItem("checkin_selected_client");
+            }
+        } catch (e) {}
+    };
+
     const [initialClientData, setInitialClientData] = useState(null);
 
     const { data: dataByCode, isLoading: isLoadingByCode, error: errorByCode } =
-        useClientQueries(isSearchingByCode ? searchTerm : null);
+        useClientQueries(isSearchingByCode && searchTerm ? searchTerm : null);
 
     const { data: dataByName, isLoading: isLoadingByName, error: errorByName } =
-        useClientQueriesByName(!isSearchingByCode ? searchTerm : null);
+        useClientQueriesByName(!isSearchingByCode && searchTerm ? searchTerm : null);
 
-    const isSearching = isSearchingByCode ? isLoadingByCode : isLoadingByName;
+    const { dataNewClients, isLoadingNewClients, errorNewClients } =
+        useSearchNewClientsQuery(rawSearchTerm);
+
+    const isSearching = (isSearchingByCode ? isLoadingByCode : isLoadingByName) || isLoadingNewClients;
     const searchError = isSearchingByCode ? errorByCode : errorByName;
 
     const handleSearch = () => {
         const trimmedInput = inputValue.trim();
         if (!trimmedInput) return;
 
-        const isDigitsOnly = /^\d+$/.test(trimmedInput);
-        const isCLCode = /^CL/i.test(trimmedInput);
-        const isCode = isDigitsOnly || isCLCode;
+        setRawSearchTerm(trimmedInput);
 
+        const isDigitsOnly = /^\d+$/.test(trimmedInput);
+        const isCLDigits = /^CL\d+$/i.test(trimmedInput);
+        const isCLTemp = /^CL-TEMP/i.test(trimmedInput);
+
+        if (isCLTemp) {
+            setIsSearchingByCode(false);
+            setSearchTerm("");
+            return;
+        }
+
+        const isCode = isDigitsOnly || isCLDigits;
         setIsSearchingByCode(isCode);
 
         if (isDigitsOnly) {
             setSearchTerm(`CL${trimmedInput}`);
-        } else if (isCLCode) {
+        } else if (isCLDigits) {
             setSearchTerm(trimmedInput.toUpperCase());
         } else {
             setSearchTerm(trimmedInput);
@@ -82,10 +114,39 @@ export function useClientSearch() {
         setSelectedClient({
             ...client,
             type: "SAP",
+            isTemporary: false,
         });
 
         setInputValue("");
         setSearchTerm("");
+        setRawSearchTerm("");
+    };
+
+    const handleSelectTempClient = (clientData) => {
+        const tempCode = clientData.sapCode || `CL-TEMP-${clientData.id}`;
+        setSelectedClient({
+            type: "NEW_TEMP",
+            id: tempCode,
+            sapCode: tempCode,
+            cardCode: tempCode,
+            clientCode: tempCode,
+            newClientId: clientData.id,
+            firstName: clientData.fullName || "Cliente Nuevo",
+            fullName: clientData.fullName,
+            address: clientData.address || "Registrado en campo (Sin registrar en SAP)",
+            personType: clientData.personType,
+            documentType: clientData.documentType,
+            documentNumber: clientData.documentNumber,
+            phone: clientData.phone,
+            email: clientData.email,
+            createdBy: clientData.createdBy,
+            createdAt: clientData.createdAt,
+            isTemporary: true,
+        });
+
+        setInputValue("");
+        setSearchTerm("");
+        setRawSearchTerm("");
     };
 
     const handleCreateNewClient = (formData) => {
@@ -106,22 +167,26 @@ export function useClientSearch() {
             documentNumber: formData.documentNumber,
             phone: formData.phone,
             email: formData.email,
+            isTemporary: true,
         });
 
         setInputValue("");
         setSearchTerm("");
+        setRawSearchTerm("");
     };
 
     const handleClearClient = () => {
         setSelectedClient(null);
         setInputValue("");
         setSearchTerm("");
+        setRawSearchTerm("");
     };
 
     const resetSearch = () => {
         setSelectedClient(null);
         setInputValue("");
         setSearchTerm("");
+        setRawSearchTerm("");
         setIsSearchingByCode(true);
     };
 
@@ -129,11 +194,13 @@ export function useClientSearch() {
         inputValue,
         setInputValue,
         searchTerm,
+        rawSearchTerm,
         isSearchingByCode,
         selectedClient,
         setSelectedClient,
         dataByCode,
         dataByName,
+        dataNewClients: dataNewClients || [],
         isSearching,
         searchError,
         initialClientData,
@@ -141,6 +208,7 @@ export function useClientSearch() {
         handleSearch,
         handleKeyPress,
         handleSelectClient,
+        handleSelectTempClient,
         handleCreateNewClient,
         handleClearClient,
         resetSearch,
