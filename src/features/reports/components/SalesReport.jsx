@@ -12,6 +12,7 @@ import {
   Flex,
   Button,
   Skeleton,
+  SimpleGrid,
   HStack,
   VStack,
   Badge,
@@ -22,6 +23,7 @@ import {
   IconButton,
 } from "@chakra-ui/react";
 import { useDisclosure } from "@chakra-ui/react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Filter, RefreshCw, Search, X } from "lucide-react";
 
 import FiltersWithSummary from "./FilterWithSummary";
@@ -62,15 +64,16 @@ export default function SalespersonReports({ salespersonId }) {
   const [startDate, setStartDate] = useState(null);
   const [endDate, setEndDate] = useState(null);
 
+  const defaultAllSellers = useMemo(() => ({ value: "", label: "Todos los vendedores" }), []);
   const [selectedSeller, setSelectedSeller] = useState(() =>
     isAdmin ? { value: "", label: "Todos los vendedores" } : null
   );
 
   useEffect(() => {
     if (isAdmin && !selectedSeller) {
-      setSelectedSeller({ value: "", label: "Todos los vendedores" });
+      setSelectedSeller(defaultAllSellers);
     }
-  }, [isAdmin, selectedSeller]);
+  }, [isAdmin, selectedSeller, defaultAllSellers]);
 
   const dynamicSalespersonId = isAdmin
     ? (selectedSeller?.value ? selectedSeller.value : 0)
@@ -107,6 +110,41 @@ export default function SalespersonReports({ salespersonId }) {
     search: debouncedSearch,
   });
 
+  // Prefetch inteligente de la siguiente página para paginación instantánea (0ms)
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (reportData?.hasMore) {
+      const nextPage = pagina; // siguiente página en base 0
+      queryClient.prefetchQuery({
+        queryKey: [
+          QUERY_KEYS.orderswithStatusReports,
+          dynamicSalespersonId || 0,
+          estadoOrdenFiltro || "",
+          nextPage,
+          porPagina,
+          debouncedSearch,
+        ],
+        queryFn: () =>
+          getOrderswithStatusReports({
+            salesPersonCode: dynamicSalespersonId || 0,
+            estadopedido: estadoOrdenFiltro || "",
+            page: nextPage,
+            pageSize: porPagina,
+            search: debouncedSearch,
+          }),
+        staleTime: 1000 * 60 * 2,
+      });
+    }
+  }, [
+    reportData?.hasMore,
+    pagina,
+    dynamicSalespersonId,
+    estadoOrdenFiltro,
+    porPagina,
+    debouncedSearch,
+    queryClient,
+  ]);
+
   // Los datos ya vienen filtrados por SAP en backend (por RUC, DNI, cliente o N° orden)
   const filteredOrders = reportData?.data || [];
 
@@ -129,27 +167,6 @@ export default function SalespersonReports({ salespersonId }) {
     openModal();
   };
 
-  if (reportLoading) {
-    return (
-      <Box maxW="1200px" mx="auto" px={{ base: 4, md: 6 }} pt={4} pb="100px">
-        <Skeleton height="100px" width="100%" mb={6} borderRadius="2xl" />
-        <Skeleton height="40px" width="200px" mb={4} borderRadius="xl" />
-        <Skeleton height="180px" mb={4} borderRadius="2xl" />
-        <Skeleton height="180px" mb={4} borderRadius="2xl" />
-      </Box>
-    );
-  }
-
-  if (reportError) {
-    return (
-      <Box maxW="1200px" mx="auto" px={4} py={10} textAlign="center">
-        <Text color="red.500" fontWeight="bold">
-          ❌ Error cargando datos de reporte. Por favor reintenta.
-        </Text>
-      </Box>
-    );
-  }
-
   return (
     <Box w="full" minH="100vh" bg="gray.50" pb="120px">
       {/* HEADER PRINCIPAL UNIFICADO */}
@@ -158,7 +175,6 @@ export default function SalespersonReports({ salespersonId }) {
         subtitle="Monitoreo en tiempo real del flujo de pedidos"
         showBack={true}
         refreshQueries={refreshQueries}
-        mb={6}
       >
         {/* Fila inferior: Selector de Asesor (si tiene acceso) */}
         {hasAccess("GET:/sellers") && (
@@ -227,6 +243,21 @@ export default function SalespersonReports({ salespersonId }) {
                 {searchTerm
                   ? `${filteredOrders.length} encontradas`
                   : `${reportData.data.length} mostradas`}
+              </Badge>
+            )}
+            {reportFetching && (
+              <Badge
+                bg="blue.50"
+                color="blue.600"
+                px={2}
+                py={0.5}
+                borderRadius="full"
+                fontWeight="700"
+                fontSize="10px"
+                border="1px solid"
+                borderColor="blue.200"
+              >
+                ⚡ Actualizando...
               </Badge>
             )}
           </HStack>
@@ -331,13 +362,48 @@ export default function SalespersonReports({ salespersonId }) {
           </DrawerContent>
         </Drawer>
 
-        {/* LISTA DE ÓRDENES FILTRADAS */}
-        <OrdenesLista
-          detalle={filteredOrders}
-          onVerSeguimiento={abrirModal}
-          searchTerm={searchTerm}
-          onClearSearch={() => handleSearchChange("")}
-        />
+        {/* LISTA DE ÓRDENES FILTRADAS O SKELETON PERSISTENTE */}
+        {reportLoading && (!filteredOrders || filteredOrders.length === 0) ? (
+          <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} my={4}>
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+              <Box
+                key={i}
+                p={5}
+                bg="white"
+                borderRadius="2xl"
+                border="1px solid"
+                borderColor="gray.200"
+                boxShadow="xs"
+              >
+                <Flex justify="space-between" align="center" mb={3}>
+                  <Skeleton height="20px" width="80px" borderRadius="md" />
+                  <Skeleton height="22px" width="130px" borderRadius="full" />
+                </Flex>
+                <Skeleton height="18px" width="70%" mb={2} borderRadius="md" />
+                <Skeleton height="14px" width="40%" mb={4} borderRadius="md" />
+                <Flex justify="space-between" align="center" pt={3} borderTop="1px solid" borderColor="gray.100">
+                  <Skeleton height="14px" width="90px" borderRadius="md" />
+                  <Skeleton height="14px" width="110px" borderRadius="md" />
+                </Flex>
+              </Box>
+            ))}
+          </SimpleGrid>
+        ) : reportError ? (
+          <Box p={8} bg="white" borderRadius="2xl" border="1.5px dashed" borderColor="red.200" textAlign="center" my={4}>
+            <Text color="red.500" fontWeight="bold">
+              ❌ Error al cargar órdenes desde SAP. Por favor reintenta con el botón de refrescar.
+            </Text>
+          </Box>
+        ) : (
+          <Box position="relative" transition="opacity 0.2s ease" opacity={reportFetching ? 0.75 : 1}>
+            <OrdenesLista
+              detalle={filteredOrders}
+              onVerSeguimiento={abrirModal}
+              searchTerm={searchTerm}
+              onClearSearch={() => handleSearchChange("")}
+            />
+          </Box>
+        )}
       </Box>
 
       {/* PAGINACIÓN */}

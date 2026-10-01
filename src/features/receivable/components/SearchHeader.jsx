@@ -67,10 +67,9 @@ export function SearchHeader({
       subtitle="Consulta de saldos, clientes y comprobantes vigentes"
       showBack={true}
       refreshQueries={refreshQueries}
-      mb={6}
     >
       {/* Panel de vidrio: integra la búsqueda al header */}
-      <Box p={3} mt={2} {...HEADER_GLASS_PANEL_PROPS}>
+      <Box p={{ base: 2, md: 3 }} mt={{ base: 1, md: 2 }} {...HEADER_GLASS_PANEL_PROPS}>
         <InputGroup size="md">
           <InputLeftElement
             pointerEvents="auto"

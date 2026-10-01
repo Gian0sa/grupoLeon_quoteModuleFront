@@ -157,7 +157,6 @@ export default function CatalogPage() {
         title="Catálogo de Productos"
         subtitle="Exploración de ítems, cruces y equivalencias"
         showBack={true}
-        mb={6}
       >
         <VStack spacing={4} align="stretch">
           <Flex justify="flex-end" w="full">

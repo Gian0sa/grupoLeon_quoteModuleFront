@@ -138,11 +138,10 @@ export const AttendanceAdminPage = () => {
         subtitle="Auditoría de marcaciones diarias, geolocalización y selfies en tiempo real"
         showBack={true}
         backTo="/dashboard"
-        mb={6}
       />
 
       {/* CONTENEDOR PRINCIPAL */}
-      <Box maxW="1280px" mx="auto" px={{ base: 3, md: 6 }} mt={-6}>
+      <Box maxW="1280px" mx="auto" px={{ base: 3, md: 6 }}>
         <VStack spacing={5} align="stretch">
 
           {/* BARRA DE ACCIÓN PRINCIPAL / ESTADÍSTICAS */}

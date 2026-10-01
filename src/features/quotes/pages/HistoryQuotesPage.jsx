@@ -127,10 +127,9 @@ export function HistoryQuotesPage() {
         subtitle={`Centro Unificado de Creación, Historial y Aprobaciones • ${today.charAt(0).toUpperCase() + today.slice(1)}`}
         showBack={true}
         showExchangeRate={false}
-        mb={6}
       />
 
-      <Box maxW="1200px" mx="auto" px={{ base: 3, md: 6 }} mt={-6}>
+      <Box maxW="1200px" mx="auto" px={{ base: 3, md: 6 }}>
         <VStack align="stretch" spacing={6}>
 
 

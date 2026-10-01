@@ -293,7 +293,6 @@ export function DashboardPage() {
         showBack={false}
         showExchangeRate={true}
         refreshQueries={refreshQueries}
-        pb={{ base: 5, md: 7 }}
         mb={0}
       >
         <QuickActions />

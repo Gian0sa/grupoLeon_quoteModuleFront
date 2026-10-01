@@ -626,11 +626,10 @@ export function FAQPage() {
         title="Centro de Ayuda"
         subtitle={`Guías paso a paso para usar todas las funciones (${totalQuestions} guías disponibles)`}
         showBack={true}
-        mb={6}
       />
 
       {/* ── Contenido Principal ── */}
-      <Box maxW="900px" mx="auto" px={{ base: 4, md: 6 }} mt={-2} position="relative" zIndex={2}>
+      <Box maxW="900px" mx="auto" px={{ base: 4, md: 6 }} position="relative" zIndex={2}>
         {/* Barra de búsqueda */}
         <InputGroup
           size="lg"

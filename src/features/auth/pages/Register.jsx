@@ -155,10 +155,9 @@ export function Register() {
         subtitle={`Creación de cuentas, vinculación con vendedor SAP y configuración de accesos • ${today.charAt(0).toUpperCase() + today.slice(1)}`}
         showBack={true}
         backTo="/profileAdmin"
-        mb={6}
       />
 
-      <Box maxW="1000px" mx="auto" px={{ base: 3, md: 6 }} mt={-6}>
+      <Box maxW="1000px" mx="auto" px={{ base: 3, md: 6 }}>
         <Box
           as="form"
           onSubmit={handleSubmit(onSubmit)}

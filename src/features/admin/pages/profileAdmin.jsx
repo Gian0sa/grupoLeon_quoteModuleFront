@@ -622,10 +622,9 @@ export function ProfileAdmin() {
         showBack={true}
         backTo="/dashboard"
         refreshQueries={["adminUsers", "Services"]}
-        mb={6}
       />
 
-      <Box maxW="1200px" mx="auto" px={{ base: 3, md: 6 }} mt={-6}>
+      <Box maxW="1200px" mx="auto" px={{ base: 3, md: 6 }}>
         <VStack align="stretch" spacing={5}>
           {/* ─── TARJETAS DE MÉTRICAS RÁPIDAS ─── */}
           <SimpleGrid columns={{ base: 2, md: 4 }} spacing={3.5}>
