@@ -174,7 +174,7 @@ export function ImageUploadCard({
                 key={fileInputKey}
                 type="file"
                 id="file-input"
-                accept="image/*"
+                accept="image/jpeg,image/*"
                 capture="environment"
                 onChange={onImageChange}
                 display="none"

@@ -42,7 +42,26 @@ export function useClientSearch() {
     const [searchTerm, setSearchTerm] = useState("");
     const [rawSearchTerm, setRawSearchTerm] = useState("");
     const [isSearchingByCode, setIsSearchingByCode] = useState(true);
-    const [selectedClient, setSelectedClient] = useState(null);
+    const [selectedClient, setSelectedClientState] = useState(() => {
+        try {
+            const cached = sessionStorage.getItem("checkin_selected_client");
+            return cached ? JSON.parse(cached) : null;
+        } catch (e) {
+            return null;
+        }
+    });
+
+    const setSelectedClient = (client) => {
+        setSelectedClientState(client);
+        try {
+            if (client) {
+                sessionStorage.setItem("checkin_selected_client", JSON.stringify(client));
+            } else {
+                sessionStorage.removeItem("checkin_selected_client");
+            }
+        } catch (e) {}
+    };
+
     const [initialClientData, setInitialClientData] = useState(null);
 
     const { data: dataByCode, isLoading: isLoadingByCode, error: errorByCode } =

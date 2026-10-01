@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useToast } from "@chakra-ui/react";
 import { compressImage } from "../utils/deviceUtils";
 
@@ -10,6 +10,15 @@ export function useImageUpload() {
     // esto soluciona el bug donde seleccionar la misma foto no dispara onChange
     const [fileInputKey, setFileInputKey] = useState(0);
     const toast = useToast();
+
+    // Limpieza de memoria al desmontar
+    useEffect(() => {
+        return () => {
+            if (imagePreview && imagePreview.startsWith("blob:")) {
+                URL.revokeObjectURL(imagePreview);
+            }
+        };
+    }, [imagePreview]);
 
     const handleImageChange = useCallback(async (e) => {
         const file = e.target.files?.[0];
@@ -28,30 +37,20 @@ export function useImageUpload() {
             const compressedFile = await compressImage(file, 0.35);
             setImage(compressedFile);
 
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                clearTimeout(safetyTimer);
-                setImagePreview(reader.result);
-                setIsProcessingImage(false);
-            };
-            reader.onerror = () => {
-                clearTimeout(safetyTimer);
-                setIsProcessingImage(false);
-                // Incrementar key para resetear el input y permitir reintento
-                setFileInputKey((k) => k + 1);
-                toast({
-                    title: "Error al leer imagen",
-                    description: "No se pudo leer el archivo. Intenta de nuevo.",
-                    status: "error",
-                    duration: 4000,
-                    isClosable: true,
-                });
-            };
-            reader.readAsDataURL(compressedFile);
+            // Usar URL.createObjectURL en lugar de Base64 gigante en memoria (evita OOM en móviles)
+            const previewUrl = URL.createObjectURL(compressedFile);
+            setImagePreview((prev) => {
+                if (prev && prev.startsWith("blob:")) {
+                    URL.revokeObjectURL(prev);
+                }
+                return previewUrl;
+            });
+
+            clearTimeout(safetyTimer);
+            setIsProcessingImage(false);
         } catch (error) {
             clearTimeout(safetyTimer);
             setIsProcessingImage(false);
-            // Incrementar key para resetear el input y permitir reintento
             setFileInputKey((k) => k + 1);
             toast({
                 title: "Error al procesar imagen",
@@ -65,9 +64,12 @@ export function useImageUpload() {
 
     const resetImage = useCallback(() => {
         setImage(null);
-        setImagePreview(null);
-        // Incrementar key para forzar recreación del <input type="file">
-        // Esto permite seleccionar la misma foto de nuevo sin que el proceso se congele
+        setImagePreview((prev) => {
+            if (prev && prev.startsWith("blob:")) {
+                URL.revokeObjectURL(prev);
+            }
+            return null;
+        });
         setFileInputKey((k) => k + 1);
     }, []);
 
