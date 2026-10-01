@@ -62,10 +62,13 @@ function ClientSearchResults({
     isSearching,
     searchError,
     searchTerm,
+    rawSearchTerm,
     isSearchingByCode,
     dataByCode,
     dataByName,
+    dataNewClients,
     onSelectClient,
+    onSelectTempClient,
     onCreateNewClient,
 }) {
     if (isSearching) {
@@ -76,14 +79,15 @@ function ClientSearchResults({
         );
     }
 
-    const is404OrEmpty =
-        searchError ||
-        (searchTerm &&
-            ((isSearchingByCode && !dataByCode) ||
-                (!isSearchingByCode && dataByName?.value?.length === 0)));
+    const hasSapByCode = isSearchingByCode && !!dataByCode;
+    const hasSapByName = !isSearchingByCode && Array.isArray(dataByName?.value) && dataByName.value.length > 0;
+    const hasNewClients = Array.isArray(dataNewClients) && dataNewClients.length > 0;
 
-    if (is404OrEmpty) {
-        const rawSearch = searchTerm ? searchTerm.replace(/^CL/, "") : "";
+    const hasAnyResults = hasSapByCode || hasSapByName || hasNewClients;
+    const searchTriggered = !!searchTerm || !!rawSearchTerm;
+
+    if (searchTriggered && !hasAnyResults) {
+        const rawSearch = rawSearchTerm || (searchTerm ? searchTerm.replace(/^CL/, "") : "");
         return (
             <Box
                 p={4}
@@ -94,10 +98,10 @@ function ClientSearchResults({
                 boxShadow="0 4px 12px rgba(217, 119, 6, 0.08)"
             >
                 <Text color="amber.900" fontSize="sm" fontWeight="800" mb={1}>
-                    Cliente no encontrado en SAP
+                    Cliente no encontrado
                 </Text>
                 <Text color="amber.800" fontSize="xs" mb={3}>
-                    {rawSearch ? `No existen registros en SAP para "${rawSearch}".` : "El cliente consultado no existe en SAP."} Puedes registrarlo inmediatamente como cliente nuevo.
+                    {rawSearch ? `No existen registros en SAP ni en clientes temporales para "${rawSearch}".` : "El cliente consultado no existe en SAP ni en clientes temporales."} Puedes registrarlo inmediatamente como cliente nuevo.
                 </Text>
 
                 <Button
@@ -118,77 +122,148 @@ function ClientSearchResults({
         );
     }
 
-    if (isSearchingByCode && dataByCode) {
-        const client = adaptClientFromApi(dataByCode);
-        return (
-            <Box
-                p={4}
-                bg="green.50"
-                borderRadius="xl"
-                border="1px solid"
-                borderColor="green.200"
-                cursor="pointer"
-                onClick={() => onSelectClient(dataByCode)}
-                _hover={{ bg: "green.100", transform: "translateY(-1px)" }}
-                transition="all 0.2s"
-            >
-                <HStack justify="space-between" mb={1}>
-                    <Text fontWeight="800" fontSize="md" color="green.900">
-                        {client.firstName}
+    return (
+        <VStack spacing={3} align="stretch" pt={1}>
+            {/* 1. RESULTADOS DE CARTERA SAP (SI EXISTEN) */}
+            {hasSapByCode && (
+                <Box>
+                    <Text fontSize="xs" fontWeight="800" color="green.800" textTransform="uppercase" letterSpacing="0.5px" mb={1.5}>
+                        Cartera SAP
                     </Text>
-                    <Badge colorScheme="green" borderRadius="full">SAP</Badge>
-                </HStack>
-                <Text fontSize="xs" color="gray.600" fontWeight="600">
-                    Código: {client.id}
-                </Text>
-                <Text fontSize="xs" color="gray.600">
-                    {client.address}
-                </Text>
-            </Box>
-        );
-    }
-
-    if (!isSearchingByCode && dataByName?.value?.length > 0) {
-        return (
-            <VStack spacing={2} maxH="280px" overflowY="auto" pt={1}>
-                {dataByName.value.map((clientData) => {
-                    const client = adaptClientFromApi(clientData);
-                    return (
-                        <Box
-                            key={client.id}
-                            w="100%"
-                            p={3.5}
-                            bg="green.50"
-                            borderRadius="xl"
-                            border="1px solid"
-                            borderColor="green.200"
-                            cursor="pointer"
-                            onClick={() => onSelectClient(clientData)}
-                            _hover={{ bg: "green.100", transform: "translateY(-1px)" }}
-                            transition="all 0.2s"
-                        >
-                            <HStack justify="space-between" mb={1}>
-                                <Text fontWeight="800" fontSize="sm" color="green.900">
-                                    {client.firstName}
+                    {(() => {
+                        const client = adaptClientFromApi(dataByCode);
+                        return (
+                            <Box
+                                p={3.5}
+                                bg="green.50"
+                                borderRadius="xl"
+                                border="1px solid"
+                                borderColor="green.200"
+                                cursor="pointer"
+                                onClick={() => onSelectClient(dataByCode)}
+                                _hover={{ bg: "green.100", transform: "translateY(-1px)" }}
+                                transition="all 0.2s"
+                            >
+                                <HStack justify="space-between" mb={1}>
+                                    <Text fontWeight="800" fontSize="sm" color="green.900">
+                                        {client.firstName}
+                                    </Text>
+                                    <Badge colorScheme="green" borderRadius="full" fontSize="10px">CARTERA SAP</Badge>
+                                </HStack>
+                                <Text fontSize="xs" color="gray.600" fontWeight="600">
+                                    Código SAP: {client.id}
                                 </Text>
-                                <Badge colorScheme="green" borderRadius="full" fontSize="10px">
-                                    {client.id}
-                                </Badge>
-                            </HStack>
-                            <Text fontSize="xs" color="gray.600" isTruncated>
-                                {client.address}
-                            </Text>
-                        </Box>
-                    );
-                })}
-            </VStack>
-        );
-    }
+                                <Text fontSize="xs" color="gray.600">
+                                    {client.address}
+                                </Text>
+                            </Box>
+                        );
+                    })()}
+                </Box>
+            )}
 
-    return null;
+            {hasSapByName && (
+                <Box>
+                    <Text fontSize="xs" fontWeight="800" color="green.800" textTransform="uppercase" letterSpacing="0.5px" mb={1.5}>
+                        Cartera SAP ({dataByName.value.length})
+                    </Text>
+                    <VStack spacing={2} maxH="220px" overflowY="auto" align="stretch">
+                        {dataByName.value.map((clientData) => {
+                            const client = adaptClientFromApi(clientData);
+                            return (
+                                <Box
+                                    key={client.id}
+                                    p={3}
+                                    bg="green.50"
+                                    borderRadius="xl"
+                                    border="1px solid"
+                                    borderColor="green.200"
+                                    cursor="pointer"
+                                    onClick={() => onSelectClient(clientData)}
+                                    _hover={{ bg: "green.100", transform: "translateY(-1px)" }}
+                                    transition="all 0.2s"
+                                >
+                                    <HStack justify="space-between" mb={1}>
+                                        <Text fontWeight="800" fontSize="xs" color="green.900">
+                                            {client.firstName}
+                                        </Text>
+                                        <Badge colorScheme="green" borderRadius="full" fontSize="10px">
+                                            {client.id}
+                                        </Badge>
+                                    </HStack>
+                                    <Text fontSize="xs" color="gray.600" isTruncated>
+                                        {client.address}
+                                    </Text>
+                                </Box>
+                            );
+                        })}
+                    </VStack>
+                </Box>
+            )}
+
+            {/* 2. RESULTADOS DE CLIENTES NUEVOS TEMPORALES (CON BURBUJITA CELESTE) */}
+            {hasNewClients && (
+                <Box>
+                    <Text fontSize="xs" fontWeight="800" color="blue.800" textTransform="uppercase" letterSpacing="0.5px" mb={1.5}>
+                        ⚡ Clientes Nuevos en Campo ({dataNewClients.length})
+                    </Text>
+                    <VStack spacing={2} maxH="220px" overflowY="auto" align="stretch">
+                        {dataNewClients.map((client) => {
+                            const tempSapCode = client.sapCode || `CL-TEMP-${client.id}`;
+                            return (
+                                <Box
+                                    key={`temp-${client.id}`}
+                                    p={3.5}
+                                    bg="blue.50"
+                                    borderRadius="xl"
+                                    border="1px solid"
+                                    borderColor="blue.200"
+                                    cursor="pointer"
+                                    onClick={() => onSelectTempClient(client)}
+                                    _hover={{ bg: "blue.100", transform: "translateY(-1px)", borderColor: "blue.300" }}
+                                    transition="all 0.2s"
+                                >
+                                    <HStack justify="space-between" mb={1}>
+                                        <Text fontWeight="800" fontSize="sm" color="blue.950">
+                                            {client.fullName}
+                                        </Text>
+                                        <Badge
+                                            bg="linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)"
+                                            color="white"
+                                            borderRadius="full"
+                                            fontSize="10px"
+                                            px={2.5}
+                                            py={0.5}
+                                            fontWeight="800"
+                                            boxShadow="0 2px 4px rgba(14, 165, 233, 0.25)"
+                                        >
+                                            CLIENTE NUEVO
+                                        </Badge>
+                                    </HStack>
+                                    <HStack spacing={3} fontSize="xs" color="gray.700" fontWeight="600" flexWrap="wrap" mb={0.5}>
+                                        <Text><strong>Cód:</strong> {tempSapCode}</Text>
+                                        {client.documentNumber && <Text><strong>Doc:</strong> {client.documentNumber}</Text>}
+                                    </HStack>
+                                    {client.createdBy && (
+                                        <Text fontSize="11px" color="gray.600">
+                                            Registrado por: <strong>{client.createdBy}</strong>
+                                        </Text>
+                                    )}
+                                </Box>
+                            );
+                        })}
+                    </VStack>
+                </Box>
+            )}
+        </VStack>
+    );
 }
 
 function SelectedClient({ client, hasActiveCheckIn, onClear }) {
+    const isTempClient =
+        client.type === "NEW_TEMP" ||
+        client.isTemporary ||
+        (typeof client.sapCode === "string" && client.sapCode.startsWith("CL-TEMP"));
     const isNewClient = client.type === "NEW";
     const navigate = useNavigate();
 
@@ -196,6 +271,100 @@ function SelectedClient({ client, hasActiveCheckIn, onClear }) {
         ? client.id
         : (client.sapCode || client.cardCode || client.clientCode || "");
 
+    // CASO 1: CLIENTE NUEVO CON CÓDIGO SAP TEMPORAL (FONDO NORMAL + BURBUJITA CELESTE)
+    if (isTempClient || isNewClient) {
+        return (
+            <Box
+                p={4}
+                bg="linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)"
+                borderRadius="xl"
+                border="2px solid"
+                borderColor="green.500"
+                position="relative"
+                boxShadow="0 4px 15px rgba(34, 197, 94, 0.12)"
+            >
+                {!hasActiveCheckIn && (
+                    <Button
+                        size="xs"
+                        position="absolute"
+                        top={3}
+                        right={3}
+                        colorScheme="red"
+                        variant="ghost"
+                        borderRadius="full"
+                        onClick={onClear}
+                        leftIcon={<FiX />}
+                    >
+                        Cambiar
+                    </Button>
+                )}
+
+                <HStack spacing={2} mb={2}>
+                    {hasActiveCheckIn && (
+                        <Badge
+                            bg="#0e572b"
+                            color="white"
+                            px={3}
+                            py={1}
+                            borderRadius="full"
+                            fontSize="11px"
+                            fontWeight="900"
+                            letterSpacing="0.5px"
+                            boxShadow="0 2px 6px rgba(14, 87, 43, 0.25)"
+                        >
+                            ✓ CHECK-IN ACTIVO
+                        </Badge>
+                    )}
+                    <Badge
+                        bg="linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)"
+                        color="white"
+                        px={3}
+                        py={1}
+                        borderRadius="full"
+                        fontSize="11px"
+                        fontWeight="900"
+                        letterSpacing="0.5px"
+                        boxShadow="0 2px 6px rgba(14, 165, 233, 0.35)"
+                    >
+                        CLIENTE NUEVO
+                    </Badge>
+                </HStack>
+
+                <Text fontWeight="850" fontSize="md" color="green.950" mb={1} lineHeight="1.2">
+                    {client.firstName || client.fullName}
+                </Text>
+
+                <VStack align="stretch" spacing={1} fontSize="xs" color="gray.800" pt={0.5}>
+                    <HStack spacing={4} flexWrap="wrap">
+                        <Text>
+                            <strong>Cód. SAP Temporal:</strong> {sapCodeDisplay || "En generación"}
+                        </Text>
+                        <Text>
+                            <strong>Documento:</strong> {client.documentNumber || "No asignado"}
+                        </Text>
+                    </HStack>
+                    <HStack spacing={4} flexWrap="wrap">
+                        <Text>
+                            <strong>Tipo:</strong> {client.personType || "Natural / General"}
+                        </Text>
+                        {client.createdBy && (
+                            <Text>
+                                <strong>Registrado por:</strong> {client.createdBy}
+                            </Text>
+                        )}
+                    </HStack>
+                </VStack>
+
+                <Box mt={3} p={2.5} bg="whiteAlpha.900" borderRadius="md" borderLeft="4px solid #0284c7" border="1px solid" borderColor="blue.100" borderLeftColor="#0284c7">
+                    <Text fontSize="11px" color="blue.900" fontWeight="600">
+                        ℹ️ Cliente nuevo registrado en campo con código provisional. Al registrar Check-In quedará vinculado directamente a su expediente comercial.
+                    </Text>
+                </Box>
+            </Box>
+        );
+    }
+
+    // CASO 2: CLIENTE REGULAR DE CARTERA SAP (DISEÑO VERDE ESMERALDA)
     return (
         <Box
             p={4}
@@ -224,7 +393,7 @@ function SelectedClient({ client, hasActiveCheckIn, onClear }) {
 
             <HStack spacing={2} mb={2}>
                 <Badge
-                    bg={hasActiveCheckIn ? "#0e572b" : isNewClient ? "blue.600" : "green.700"}
+                    bg={hasActiveCheckIn ? "#0e572b" : "green.700"}
                     color="white"
                     px={3}
                     py={1}
@@ -236,9 +405,7 @@ function SelectedClient({ client, hasActiveCheckIn, onClear }) {
                 >
                     {hasActiveCheckIn
                         ? "✓ CHECK-IN ACTIVO"
-                        : isNewClient
-                            ? "CLIENTE NUEVO"
-                            : "CLIENTE SELECCIONADO"}
+                        : "CARTERA SAP"}
                 </Badge>
             </HStack>
 
@@ -246,31 +413,13 @@ function SelectedClient({ client, hasActiveCheckIn, onClear }) {
                 {client.firstName}
             </Text>
 
-            {/* SOLO SAP */}
-            {!isNewClient && (
-                <Text fontSize="xs" color="gray.800" fontWeight="600" mb={0.5}>
-                    <strong>Código SAP:</strong> {sapCodeDisplay || "No asignado"}
-                </Text>
-            )}
+            <Text fontSize="xs" color="gray.800" fontWeight="600" mb={0.5}>
+                <strong>Código SAP:</strong> {sapCodeDisplay || "No asignado"}
+            </Text>
 
-            {/* SOLO SAP */}
-            {!isNewClient && (
-                <Text fontSize="xs" color="gray.700" fontWeight="500">
-                    <strong>Dirección:</strong> {client.address}
-                </Text>
-            )}
-
-            {/* SOLO NUEVO */}
-            {isNewClient && (
-                <HStack spacing={4} pt={0.5}>
-                    <Text fontSize="xs" color="gray.700">
-                        <strong>Documento:</strong> {client.documentNumber}
-                    </Text>
-                    <Text fontSize="xs" color="gray.700">
-                        <strong>Tipo:</strong> {client.isBusiness ? "Empresa" : "Persona"}
-                    </Text>
-                </HStack>
-            )}
+            <Text fontSize="xs" color="gray.700" fontWeight="500">
+                <strong>Dirección:</strong> {client.address}
+            </Text>
 
             {/* APARTADO COMPACTO INTERNO PARA ACCESO AL COTIZADOR EN CHECK-OUT */}
             {hasActiveCheckIn && (
@@ -330,12 +479,15 @@ export function ClientSearchCard({
     isSearching,
     searchError,
     searchTerm,
+    rawSearchTerm,
     isSearchingByCode,
     dataByCode,
     dataByName,
+    dataNewClients,
     selectedClient,
     hasActiveCheckIn,
     onSelectClient,
+    onSelectTempClient,
     onCreateNewClient,
     onClearClient,
 }) {
@@ -382,10 +534,13 @@ export function ClientSearchCard({
                         isSearching={isSearching}
                         searchError={searchError}
                         searchTerm={searchTerm}
+                        rawSearchTerm={rawSearchTerm}
                         isSearchingByCode={isSearchingByCode}
                         dataByCode={dataByCode}
                         dataByName={dataByName}
+                        dataNewClients={dataNewClients}
                         onSelectClient={onSelectClient}
+                        onSelectTempClient={onSelectTempClient}
                         onCreateNewClient={onCreateNewClient}
                     />
                 </>

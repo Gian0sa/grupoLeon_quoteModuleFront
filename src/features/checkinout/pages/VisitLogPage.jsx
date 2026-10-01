@@ -51,11 +51,13 @@ export default function VisitLogPage() {
         inputValue,
         setInputValue,
         searchTerm,
+        rawSearchTerm,
         isSearchingByCode,
         selectedClient,
         setSelectedClient,
         dataByCode,
         dataByName,
+        dataNewClients,
         isSearching,
         searchError,
         initialClientData,
@@ -63,6 +65,7 @@ export default function VisitLogPage() {
         handleSearch,
         handleKeyPress,
         handleSelectClient,
+        handleSelectTempClient,
         handleCreateNewClient,
         handleClearClient,
         resetSearch,
@@ -96,6 +99,7 @@ export default function VisitLogPage() {
     useEffect(() => {
         if (hasActiveCheckIn && activeVisit && !selectedClient) {
             const sapCodeVal = activeVisit.sapCode || activeVisit.cardCode || activeVisit.clientCode || "";
+            const isTemp = typeof sapCodeVal === "string" && sapCodeVal.startsWith("CL-TEMP");
             setSelectedClient({
                 id: sapCodeVal || "AUTO",
                 sapCode: sapCodeVal,
@@ -103,7 +107,8 @@ export default function VisitLogPage() {
                 clientCode: sapCodeVal,
                 firstName: activeVisit.storeName,
                 address: activeVisit.address || `Lat: ${activeVisit.latitude || ""}, Lon: ${activeVisit.longitude || ""}`,
-                type: sapCodeVal ? "SAP" : "NEW",
+                type: isTemp ? "NEW_TEMP" : (sapCodeVal ? "SAP" : "NEW"),
+                isTemporary: isTemp,
             });
         }
     }, [hasActiveCheckIn, activeVisit, selectedClient]);
@@ -163,12 +168,15 @@ export default function VisitLogPage() {
                             isSearching={isSearching}
                             searchError={searchError}
                             searchTerm={searchTerm}
+                            rawSearchTerm={rawSearchTerm}
                             isSearchingByCode={isSearchingByCode}
                             dataByCode={dataByCode}
                             dataByName={dataByName}
+                            dataNewClients={dataNewClients}
                             selectedClient={selectedClient}
                             hasActiveCheckIn={hasActiveCheckIn}
                             onSelectClient={handleSelectClient}
+                            onSelectTempClient={handleSelectTempClient}
                             onCreateNewClient={(rawSearch) => {
                                 const prefilled = parseSearchToInitialData(rawSearch || inputValue);
                                 setInitialClientData(prefilled);
@@ -213,6 +221,14 @@ export default function VisitLogPage() {
                     initialData={initialClientData}
                     onCreate={(data) => {
                         handleCreateNewClient(data);
+                        onClose();
+                    }}
+                    onSelectExisting={(match) => {
+                        if (match.type === "SAP") {
+                            handleSelectClient(match.client);
+                        } else {
+                            handleSelectTempClient(match.client);
+                        }
                         onClose();
                     }}
                 />
