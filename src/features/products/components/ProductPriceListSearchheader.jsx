@@ -30,10 +30,9 @@ export function ProductPriceListSearchheader({
       title="Lista de Precios de Productos"
       subtitle="Consulta de stock en tiempo real y tarifas vigentes"
       showBack={true}
-      mb={6}
     >
       {/* Panel de búsqueda simplificado sin filtros pesados */}
-      <Box p={2.5} {...HEADER_GLASS_PANEL_PROPS} position="relative" zIndex={2}>
+      <Box p={{ base: 2, md: 2.5 }} {...HEADER_GLASS_PANEL_PROPS} position="relative" zIndex={2}>
         <HStack spacing={2} w="full" align="center">
           {/* Input de Búsqueda */}
           <InputGroup size="sm" flex="1">

@@ -331,13 +331,13 @@ export function QuoteApprovalPage() {
     return () => window.removeEventListener("quoteHighlight", handleHighlight);
   }, []);
 
-  // Auto-cálculo y control estricto de máximo 1 mes para el Histórico (evita saturación en servidor)
+  // Auto-cálculo y control estricto de máximo 1 semana para el Histórico (evita saturación en servidor)
   const handleStartDateChange = (newStart) => {
     setHistoryStartDate(newStart);
     setHistoryPage(1);
     if (newStart) {
       const d = new Date(newStart + "T00:00:00");
-      d.setMonth(d.getMonth() + 1); // Rango máximo de 1 mes
+      d.setDate(d.getDate() + 7); // Rango de 1 semana
       const autoEnd = d.toISOString().split("T")[0];
       setHistoryEndDate(autoEnd);
     }
@@ -350,9 +350,9 @@ export function QuoteApprovalPage() {
       const start = new Date(historyStartDate + "T00:00:00");
       const end = new Date(newEnd + "T00:00:00");
       const diffDays = (end - start) / (1000 * 60 * 60 * 24);
-      if (diffDays > 31 || diffDays < 0) {
+      if (diffDays > 7 || diffDays < 0) {
         const autoStart = new Date(end);
-        autoStart.setMonth(autoStart.getMonth() - 1); // Rango máximo de 1 mes
+        autoStart.setDate(autoStart.getDate() - 7); // Rango máximo de 1 semana
         setHistoryStartDate(autoStart.toISOString().split("T")[0]);
       }
     }
@@ -2288,7 +2288,7 @@ export function QuoteApprovalPage() {
                 />
               </Box>
               <Box>
-                <Text fontSize="11px" fontWeight="800" color="gray.600" mb={1}>📅 Fecha Hasta (Max 1 Mes)</Text>
+                <Text fontSize="11px" fontWeight="800" color="gray.600" mb={1}>📅 Fecha Hasta (Max 1 Semana)</Text>
                 <Input
                   type="date"
                   size="sm"

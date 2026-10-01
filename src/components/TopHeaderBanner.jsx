@@ -42,10 +42,10 @@ export function TopHeaderBanner({
   showExchangeRate = false,
   refreshQueries,
   children,
-  minH = "270px",
-  pb = { base: 6, md: 7 },
-  pt = { base: 5, md: 6 },
-  mb = 6
+  minH = { base: "220px", md: "235px" },
+  pb = { base: 3.5, md: 4.5 },
+  pt = { base: 3.5, md: 4.5 },
+  mb = { base: 4, md: 6 }
 }) {
   const { salesEmployeeCode, username, userId, role } = useAuthStore();
   const todayStr = format(new Date(), "yyyy-MM-dd");
@@ -155,10 +155,10 @@ export function TopHeaderBanner({
     <Box
       w="full"
       maxW="100vw"
-      minH={{ base: "auto", md: minH }}
+      minH={typeof minH === "string" ? { base: minH, md: minH } : minH}
       bg="#126C36"
-      borderRadius={{ base: "0 0 28px 28px", md: "0 0 36px 36px" }}
-      boxShadow="0 20px 45px -10px rgba(18, 108, 54, 0.45)"
+      borderRadius={{ base: "0 0 24px 24px", md: "0 0 34px 34px" }}
+      boxShadow="0 14px 35px -8px rgba(18, 108, 54, 0.40)"
       position="relative"
       overflow="hidden"
       color="white"
@@ -238,8 +238,9 @@ export function TopHeaderBanner({
         position="relative"
         zIndex={2}
       >
-        {/* BARRA SUPERIOR DE UTILIDAD: Botón Volver + USD Rate (solo si showExchangeRate) y Refrescar + Campana + Menú Lateral (der) */}
-        <Flex justify="space-between" align="center" gap={2} mb={{ base: 4, md: 6 }}>
+        <Box w="full">
+          {/* BARRA SUPERIOR DE UTILIDAD: Botón Volver + USD Rate (solo si showExchangeRate) y Refrescar + Campana + Menú Lateral (der) */}
+          <Flex justify="space-between" align="center" gap={2} mb={{ base: 2, md: 2.5 }}>
           <HStack spacing={{ base: 2, md: 3 }} minW={0} flexShrink={1}>
             {showBack && <BackButton color="white" to={backTo} onClick={onBackClick} />}
 
@@ -391,18 +392,16 @@ export function TopHeaderBanner({
 
         {/* TÍTULO GIGANTE 4XL E IDENTICO AL DASHBOARD */}
         {(title || subtitle) && (
-          <Box w="full" maxW="100%" mb={children ? 4 : 2}>
-            <VStack align="start" spacing={1} maxW="100%">
+          <Box w="full" maxW="100%" mb={children ? { base: 2.5, md: 3.5 } : 0}>
+            <VStack align="start" spacing={0.5} maxW="100%">
               {title && (
                 <Text
-                  fontSize={{ base: "xl", sm: "2xl", md: "3xl", lg: "4xl" }}
+                  fontSize={{ base: "xl", sm: "2xl", md: "3xl", lg: "32px" }}
                   fontWeight="800"
                   color="white"
                   letterSpacing="tight"
                   lineHeight="1.2"
                   maxW="100%"
-                  // Títulos largos parten de línea en vez de recortarse o
-                  // desbordar horizontalmente en pantallas angostas.
                   overflowWrap="anywhere"
                 >
                   {title}
@@ -410,11 +409,11 @@ export function TopHeaderBanner({
               )}
               {subtitle && (
                 <Text
-                  fontSize={{ base: "13px", sm: "sm" }}
+                  fontSize={{ base: "12px", sm: "13px", md: "sm" }}
                   color="whiteAlpha.900"
                   fontWeight="500"
                   letterSpacing="wide"
-                  lineHeight="1.45"
+                  lineHeight="1.4"
                   maxW="100%"
                   overflowWrap="anywhere"
                 >
@@ -424,9 +423,14 @@ export function TopHeaderBanner({
             </VStack>
           </Box>
         )}
+        </Box>
 
         {/* CONTENIDO ADICIONAL (Buscadores / Filtros / Acciones integradas) */}
-        {children}
+        {children && (
+          <Box w="full" mt="auto">
+            {children}
+          </Box>
+        )}
       </Box>
     </Box>
   );

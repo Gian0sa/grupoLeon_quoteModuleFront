@@ -35,10 +35,9 @@ export function Requests() {
         subtitle="Listado y revisión de solicitudes de cotización recibidas"
         showBack={true}
         backTo="/dashboard"
-        mb={6}
       />
 
-      <Box maxW="1100px" mx="auto" px={{ base: 4, md: 6 }} mt={-6}>
+      <Box maxW="1100px" mx="auto" px={{ base: 4, md: 6 }}>
         {quotesLoading ? (
           <Stack spacing={4}>
             {[...Array(3)].map((_, i) => (
