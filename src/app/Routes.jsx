@@ -1,12 +1,13 @@
-import { lazy, Suspense } from "react";
+import { Component, lazy, Suspense } from "react";
 import { Routes, Route } from "react-router-dom";
-import { Flex, Spinner } from "@chakra-ui/react";
+import { Flex, Spinner, Text, Button } from "@chakra-ui/react";
 import { PrivateRoute } from "../app/middlewares/privateRoute.jsx";
 import { RoleRoute } from "../app/middlewares/roleRoute.jsx";
 import { RouteMemoryTracker } from "./middlewares/RouteMemoryTracker.jsx";
 
-// ─── Importaciones estáticas esenciales: Login y flujo offline de Visitas / Check-in ───
+// ─── Importaciones estáticas esenciales: Login, Dashboard y flujo offline de Visitas / Check-in ───
 import Login from "../features/auth/pages/Login.jsx";
+import { DashboardPage } from "../features/dashboard/pages/DashboardPage.jsx";
 import ClienteBusquedaPage from "../features/clients/pages/ClienteBusquedaPage.jsx";
 import VisitLogPage from "../features/checkinout/pages/VisitLogPage.jsx";
 
@@ -14,7 +15,6 @@ import VisitLogPage from "../features/checkinout/pages/VisitLogPage.jsx";
 const Register             = lazy(() => import("../features/auth/pages/Register.jsx").then(m => ({ default: m.Register })));
 const ClientStatementPage  = lazy(() => import("../features/receivable/pages/ClientStatementPage.jsx").then(m => ({ default: m.ClientStatementPage })));
 const ClientPage           = lazy(() => import("../features/clients/pages/ClientPage.jsx").then(m => ({ default: m.ClientPage })));
-const DashboardPage        = lazy(() => import("../features/dashboard/pages/DashboardPage.jsx").then(m => ({ default: m.DashboardPage })));
 const NewQuotesPage        = lazy(() => import("../features/quotes/pages/NewQuotePage.jsx").then(m => ({ default: m.NewQuotesPage })));
 const SupervisorPage       = lazy(() => import("../features/supervisor/pages/SupervisorPage.jsx").then(m => ({ default: m.SupervisorPage })));
 const ProductosPage        = lazy(() => import("../features/products/pages/ProductosPage.jsx").then(m => ({ default: m.ProductosPage })));
@@ -49,52 +49,90 @@ function PageLoader() {
   );
 }
 
+class RouteErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error("Error en ruta:", error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <Flex direction="column" align="center" justify="center" minH="100vh" p={6} textAlign="center" bg="gray.50">
+          <Text fontSize="xl" fontWeight="bold" color="green.700" mb={2}>
+            Pantalla no disponible sin conexión
+          </Text>
+          <Text color="gray.600" mb={4} maxW="400px">
+            Esta pantalla requiere conexión a internet para descargarse. Puedes volver a Registro de Visitas.
+          </Text>
+          <Flex gap={3}>
+            <Button colorScheme="green" onClick={() => { this.setState({ hasError: false }); window.location.href = "/visitLog"; }}>
+              Ir a Registro de Visitas
+            </Button>
+            <Button variant="outline" colorScheme="green" onClick={() => { this.setState({ hasError: false }); window.location.href = "/dashboard"; }}>
+              Ir al Inicio
+            </Button>
+          </Flex>
+        </Flex>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const AppRoutes = () => {
   return (
     <>
       <RouteMemoryTracker />
-      <Suspense fallback={<PageLoader />}>
-        <Routes>
-          {/* Público */}
-          <Route path="/"                      element={<Login />} />
-          <Route path="/s/:code"               element={<ClientStatementPage />} />
-          <Route path="/estado-cuenta/:token"  element={<ClientStatementPage />} />
-          <Route path="/statement/:token"      element={<ClientStatementPage />} />
+      <RouteErrorBoundary>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            {/* Público */}
+            <Route path="/"                      element={<Login />} />
+            <Route path="/s/:code"               element={<ClientStatementPage />} />
+            <Route path="/estado-cuenta/:token"  element={<ClientStatementPage />} />
+            <Route path="/statement/:token"      element={<ClientStatementPage />} />
 
-          {/* Privados */}
-          <Route path="/client"            element={<PrivateRoute><ClientPage /></PrivateRoute>} />
-          <Route path="/dashboard"         element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
-          <Route path="/newquotes"         element={<RoleRoute requiredPermission="POST:/quotes"><NewQuotesPage /></RoleRoute>} />
-          <Route path="/historyquotes"     element={<RoleRoute requiredPermission="GET:/quotes"><HistoryQuotesPage /></RoleRoute>} />
-          <Route path="/approvals"         element={<RoleRoute requiredPermission="POST:/quotes/approval"><QuoteApprovalPage /></RoleRoute>} />
-          <Route path="/products"          element={<PrivateRoute><ProductosPage /></PrivateRoute>} />
-          <Route path="/history"           element={<PrivateRoute><History /></PrivateRoute>} />
-          <Route path="/reports"           element={<RoleRoute requiredPermission="GET:/reports"><ReportPage /></RoleRoute>} />
-          <Route path="/configrules"       element={<RoleRoute requiredPermission="PUT:/rules/:id"><ConfigRulesPage /></RoleRoute>} />
-          <Route path="/receivable"        element={<RoleRoute requiredPermission="GET:/accountsReceivable"><ReceivablePage /></RoleRoute>} />
-          <Route path="/profile"           element={<PrivateRoute><Profile /></PrivateRoute>} />
-          <Route path="/profileAdmin"      element={<RoleRoute requiredPermission="PUT:/profile/admin/:userId"><ProfileAdmin /></RoleRoute>} />
-          <Route path="/register"          element={<RoleRoute requiredPermission="POST:/register"><Register /></RoleRoute>} />
-          <Route path="/notification"      element={<RoleRoute requiredPermission="PUT:/profile/admin/:userId"><NotificationPage /></RoleRoute>} />
-          <Route path="/productsPriceList" element={<RoleRoute requiredPermission="GET:/priceList"><ProductList /></RoleRoute>} />
-          <Route path="/catalog/create"    element={<RoleRoute requiredPermission="POST:/catalogProducts"><FormCatalogPage /></RoleRoute>} />
-          <Route path="/catalog/edit/:id"  element={<RoleRoute requiredPermission="PUT:/catalogProducts/:id"><FormCatalogPage /></RoleRoute>} />
-          <Route path="/catalog/product/:slug" element={<RoleRoute requiredPermission="GET:/catalogProducts"><ProductDetailPage /></RoleRoute>} />
-          <Route path="/catalog"           element={<RoleRoute requiredPermission="GET:/catalogProducts"><CatalogPage /></RoleRoute>} />
-          <Route path="/OrdersDashboard"   element={<PrivateRoute><OrdersDashboard /></PrivateRoute>} />
-          <Route path="/clienteInfo"       element={<PrivateRoute><ClienteInfo /></PrivateRoute>} />
-          <Route path="/clienteBusqueda"   element={<PrivateRoute><ClienteBusquedaPage /></PrivateRoute>} />
-          <Route path="/importaciones"     element={<RoleRoute requiredPermission="GET:/purchaseOrdersImportacion"><ImportacionesPage /></RoleRoute>} />
-          <Route path="/visitLog"          element={<RoleRoute requiredPermission="POST:/visit-logs"><VisitLogPage /></RoleRoute>} />
-          <Route path="/VisitMap"          element={<RoleRoute requiredPermission="GET:/visit-logs"><VisitLogsMapView /></RoleRoute>} />
-          <Route path="/visitMap"          element={<RoleRoute requiredPermission="GET:/visit-logs"><VisitLogsMapView /></RoleRoute>} />
-          <Route path="/myVisits"          element={<RoleRoute requiredPermission="POST:/visit-logs"><MyVisitsPage /></RoleRoute>} />
-          <Route path="/newClients"        element={<RoleRoute requiredPermission="POST:/visit-logs"><NewClientsPage /></RoleRoute>} />
-          <Route path="/entrada"           element={<RoleRoute requiredPermission="POST:/attendance"><EntradaPage /></RoleRoute>} />
-          <Route path="/admin/attendance"  element={<RoleRoute requiredPermission="PUT:/profile/admin/:userId"><AttendanceAdminPage /></RoleRoute>} />
-          <Route path="/faq"               element={<PrivateRoute><FAQPage /></PrivateRoute>} />
-        </Routes>
-      </Suspense>
+            {/* Privados */}
+            <Route path="/client"            element={<PrivateRoute><ClientPage /></PrivateRoute>} />
+            <Route path="/dashboard"         element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
+            <Route path="/newquotes"         element={<RoleRoute requiredPermission="POST:/quotes"><NewQuotesPage /></RoleRoute>} />
+            <Route path="/historyquotes"     element={<RoleRoute requiredPermission="GET:/quotes"><HistoryQuotesPage /></RoleRoute>} />
+            <Route path="/approvals"         element={<RoleRoute requiredPermission="POST:/quotes/approval"><QuoteApprovalPage /></RoleRoute>} />
+            <Route path="/products"          element={<PrivateRoute><ProductosPage /></PrivateRoute>} />
+            <Route path="/history"           element={<PrivateRoute><History /></PrivateRoute>} />
+            <Route path="/reports"           element={<RoleRoute requiredPermission="GET:/reports"><ReportPage /></RoleRoute>} />
+            <Route path="/configrules"       element={<RoleRoute requiredPermission="PUT:/rules/:id"><ConfigRulesPage /></RoleRoute>} />
+            <Route path="/receivable"        element={<RoleRoute requiredPermission="GET:/accountsReceivable"><ReceivablePage /></RoleRoute>} />
+            <Route path="/profile"           element={<PrivateRoute><Profile /></PrivateRoute>} />
+            <Route path="/profileAdmin"      element={<RoleRoute requiredPermission="PUT:/profile/admin/:userId"><ProfileAdmin /></RoleRoute>} />
+            <Route path="/register"          element={<RoleRoute requiredPermission="POST:/register"><Register /></RoleRoute>} />
+            <Route path="/notification"      element={<RoleRoute requiredPermission="PUT:/profile/admin/:userId"><NotificationPage /></RoleRoute>} />
+            <Route path="/productsPriceList" element={<RoleRoute requiredPermission="GET:/priceList"><ProductList /></RoleRoute>} />
+            <Route path="/catalog/create"    element={<RoleRoute requiredPermission="POST:/catalogProducts"><FormCatalogPage /></RoleRoute>} />
+            <Route path="/catalog/edit/:id"  element={<RoleRoute requiredPermission="PUT:/catalogProducts/:id"><FormCatalogPage /></RoleRoute>} />
+            <Route path="/catalog/product/:slug" element={<RoleRoute requiredPermission="GET:/catalogProducts"><ProductDetailPage /></RoleRoute>} />
+            <Route path="/catalog"           element={<RoleRoute requiredPermission="GET:/catalogProducts"><CatalogPage /></RoleRoute>} />
+            <Route path="/OrdersDashboard"   element={<PrivateRoute><OrdersDashboard /></PrivateRoute>} />
+            <Route path="/clienteInfo"       element={<PrivateRoute><ClienteInfo /></PrivateRoute>} />
+            <Route path="/clienteBusqueda"   element={<PrivateRoute><ClienteBusquedaPage /></PrivateRoute>} />
+            <Route path="/importaciones"     element={<RoleRoute requiredPermission="GET:/purchaseOrdersImportacion"><ImportacionesPage /></RoleRoute>} />
+            <Route path="/visitLog"          element={<RoleRoute requiredPermission="POST:/visit-logs"><VisitLogPage /></RoleRoute>} />
+            <Route path="/VisitMap"          element={<RoleRoute requiredPermission="GET:/visit-logs"><VisitLogsMapView /></RoleRoute>} />
+            <Route path="/visitMap"          element={<RoleRoute requiredPermission="GET:/visit-logs"><VisitLogsMapView /></RoleRoute>} />
+            <Route path="/myVisits"          element={<RoleRoute requiredPermission="POST:/visit-logs"><MyVisitsPage /></RoleRoute>} />
+            <Route path="/newClients"        element={<RoleRoute requiredPermission="POST:/visit-logs"><NewClientsPage /></RoleRoute>} />
+            <Route path="/entrada"           element={<RoleRoute requiredPermission="POST:/attendance"><EntradaPage /></RoleRoute>} />
+            <Route path="/admin/attendance"  element={<RoleRoute requiredPermission="PUT:/profile/admin/:userId"><AttendanceAdminPage /></RoleRoute>} />
+            <Route path="/faq"               element={<PrivateRoute><FAQPage /></PrivateRoute>} />
+          </Routes>
+        </Suspense>
+      </RouteErrorBoundary>
     </>
   );
 };
