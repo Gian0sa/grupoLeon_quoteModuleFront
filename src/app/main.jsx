@@ -40,7 +40,7 @@ createRoot(document.getElementById('root')).render(
   </StrictMode>,
 )
 
-// ─── Desvanecimiento ágil del Splash Screen al cargar React ──────────────────
+// ─── Desvanecimiento cinematográfico del Splash Screen al cargar React ────────
 if (typeof window !== 'undefined') {
   const dismissSplash = () => {
     const splash = document.getElementById('app-splash');
@@ -48,15 +48,17 @@ if (typeof window !== 'undefined') {
       splash.classList.add('fade-out');
       setTimeout(() => {
         splash.style.display = 'none';
-      }, 260);
+      }, 420);
     }
   };
 
-  // Desvanecer ágilmente tan pronto la aplicación React esté montada
-  // Si cargó ultra rápido en caché, damos un instante mínimo (~300ms) para que no sea abrupto
-  const elapsedMs = typeof performance !== 'undefined' ? performance.now() : 0;
-  const remainingMs = Math.max(0, 300 - elapsedMs);
+  // Garantizar que la animación de marca se aprecie completa (~1350ms)
+  // evitando que salga una pantalla en blanco y haciendo la transición suave
+  const splashStart = window.__splashStartTime || 0;
+  const elapsed = performance.now() - splashStart;
+  const MIN_ANIMATION_TIME = 1350; // Tiempo para apreciar trazo de letras + pulso
+  const remaining = Math.max(0, MIN_ANIMATION_TIME - elapsed);
 
-  setTimeout(dismissSplash, remainingMs);
+  setTimeout(dismissSplash, remaining);
 }
 

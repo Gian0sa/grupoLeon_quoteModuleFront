@@ -2,13 +2,23 @@
 <html lang="es" class="notranslate" translate="no">
   <head>
     <meta charset="UTF-8" />
+    <script>window.__splashStartTime = performance.now();</script>
     <meta name="google" content="notranslate" />
     <meta name="googlebot" content="notranslate" />
     <meta http-equiv="Content-Language" content="es" />
+    <meta name="color-scheme" content="light" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    <link 
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" 
+      rel="stylesheet" 
+      media="print" 
+      onload="this.media='all'" 
+    />
+    <noscript>
+      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    </noscript>
     <meta 
       name="viewport" 
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" 
@@ -22,15 +32,23 @@
         position: fixed;
         top: 0;
         left: 0;
-        width: 100%;
-        height: 100%;
+        width: 100vw;
+        height: 100vh;
+        height: 100dvh;
         background: #FFFFFF;
         overflow: hidden;
-        z-index: 999999;
-        transition: opacity 0.25s ease-out, visibility 0.25s ease-out;
+        z-index: 9999999;
+        -webkit-backface-visibility: hidden;
+        backface-visibility: hidden;
+        -webkit-transform: translateZ(0);
+        transform: translateZ(0);
+        will-change: opacity, transform;
+        transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        opacity: 1;
       }
       #app-splash.fade-out {
         opacity: 0;
+        transform: scale(1.025);
         visibility: hidden;
         pointer-events: none;
       }
@@ -59,17 +77,18 @@
         overflow: visible;
       }
       #app-splash .isotype-elastic {
-        transform-origin: -13px -66px;
-        animation: splashIsotypePop 0.38s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        transform-box: fill-box;
+        transform-origin: center;
+        animation: splashIsotypePop 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
       }
       @keyframes splashIsotypePop {
         0% {
           opacity: 0;
-          transform: scale(0.4) translateY(6px);
+          transform: scale(0.3) translateY(8px);
         }
         70% {
           opacity: 1;
-          transform: scale(1.05) translateY(-1px);
+          transform: scale(1.06) translateY(-1px);
         }
         100% {
           opacity: 1;
@@ -82,7 +101,7 @@
         stroke-dasharray: 450;
         stroke-dashoffset: 450;
         fill: transparent;
-        animation: splashTraceAndFillNeon 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        animation: splashTraceAndFillNeon 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
       }
       @keyframes splashTraceAndFillNeon {
         0% {
@@ -90,16 +109,16 @@
           fill: transparent;
           filter: drop-shadow(0 0 0 rgba(45, 150, 80, 0));
         }
-        50% {
+        55% {
           stroke-dashoffset: 0;
           fill: transparent;
           filter: drop-shadow(0 0 6px rgba(45, 150, 80, 0.5));
         }
         100% {
           stroke-dashoffset: 0;
-          stroke-width: 0.6;
+          stroke-width: 0.8;
           fill: #2D9650;
-          filter: drop-shadow(0 0 2px rgba(45, 150, 80, 0.2));
+          filter: drop-shadow(0 0 1px rgba(45, 150, 80, 0.15));
         }
       }
       #app-splash .splash-subline {
@@ -111,7 +130,7 @@
         color: #94A3B8;
         margin-top: 14px;
         opacity: 0;
-        animation: splashFadeInSubline 0.25s ease-out forwards 0.2s;
+        animation: splashFadeInSubline 0.35s ease-out forwards 0.35s;
       }
       @keyframes splashFadeInSubline {
         from { opacity: 0; transform: translateY(3px); }
@@ -142,6 +161,29 @@
         0% { left: -40%; width: 30%; }
         50% { left: 35%; width: 50%; }
         100% { left: 100%; width: 30%; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #app-splash .isotype-elastic {
+          opacity: 1 !important;
+          transform: none !important;
+          animation: none !important;
+        }
+        #app-splash .brand-letter-trace {
+          stroke-dashoffset: 0 !important;
+          stroke-width: 0.8 !important;
+          fill: #2D9650 !important;
+          animation: none !important;
+        }
+        #app-splash .splash-subline {
+          opacity: 1 !important;
+          transform: none !important;
+          animation: none !important;
+        }
+        #app-splash .pulse-line-glow {
+          left: 0 !important;
+          width: 100% !important;
+          animation: none !important;
+        }
       }
     </style>
   </head>
