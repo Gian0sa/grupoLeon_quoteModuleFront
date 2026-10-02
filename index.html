@@ -46,6 +46,13 @@
         transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         opacity: 1;
       }
+      /* Modo PWA / App instalada: Android ya muestra el splash nativo oficial.
+         Ocultamos el splash web para entrar de una y súper rápido al Login sin doble capa */
+      @media (display-mode: standalone) {
+        #app-splash {
+          display: none !important;
+        }
+      }
       #app-splash.fade-out {
         opacity: 0;
         transform: scale(1.025);
@@ -190,6 +197,11 @@
   <body class="notranslate" translate="no">
     <!-- Mobile Splash Screen: Rápido, Elegante y Minimalista -->
     <div id="app-splash" class="notranslate" translate="no" aria-hidden="true">
+      <script>
+        if ((window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true) {
+          document.getElementById('app-splash').style.display = 'none';
+        }
+      </script>
       <div class="splash-inner">
         <!-- Contenido Central del Splash -->
         <div class="splash-body">

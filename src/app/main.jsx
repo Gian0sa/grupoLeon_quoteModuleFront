@@ -42,23 +42,32 @@ createRoot(document.getElementById('root')).render(
 
 // ─── Desvanecimiento cinematográfico del Splash Screen al cargar React ────────
 if (typeof window !== 'undefined') {
+  const isStandalone =
+    (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+    window.navigator.standalone === true;
+
   const dismissSplash = () => {
     const splash = document.getElementById('app-splash');
     if (splash && !splash.classList.contains('fade-out')) {
       splash.classList.add('fade-out');
       setTimeout(() => {
         splash.style.display = 'none';
-      }, 420);
+      }, 250);
     }
   };
 
-  // Garantizar que la animación de marca se aprecie completa (~1350ms)
-  // evitando que salga una pantalla en blanco y haciendo la transición suave
-  const splashStart = window.__splashStartTime || 0;
-  const elapsed = performance.now() - splashStart;
-  const MIN_ANIMATION_TIME = 1350; // Tiempo para apreciar trazo de letras + pulso
-  const remaining = Math.max(0, MIN_ANIMATION_TIME - elapsed);
+  if (isStandalone) {
+    // 📱 Celular instalado (PWA): Android ya mostró la pantalla nativa oficial.
+    // Ocultamos de inmediato el splash web para entrar de una y rápido al Login sin doble capa.
+    dismissSplash();
+  } else {
+    // 💻 Navegador web (PC / pestaña): mostramos la animación de bienvenida
+    const splashStart = window.__splashStartTime || 0;
+    const elapsed = performance.now() - splashStart;
+    const MIN_ANIMATION_TIME = 1100;
+    const remaining = Math.max(0, MIN_ANIMATION_TIME - elapsed);
 
-  setTimeout(dismissSplash, remaining);
+    setTimeout(dismissSplash, remaining);
+  }
 }
 
