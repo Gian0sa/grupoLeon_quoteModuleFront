@@ -5,11 +5,14 @@ import { PrivateRoute } from "../app/middlewares/privateRoute.jsx";
 import { RoleRoute } from "../app/middlewares/roleRoute.jsx";
 import { RouteMemoryTracker } from "./middlewares/RouteMemoryTracker.jsx";
 
-// ─── Importaciones estáticas esenciales: Login, Dashboard y flujo offline de Visitas / Check-in ───
+// ─── Importación estática esencial: Login (pantalla de entrada) ───
 import Login from "../features/auth/pages/Login.jsx";
-import { DashboardPage } from "../features/dashboard/pages/DashboardPage.jsx";
-import ClienteBusquedaPage from "../features/clients/pages/ClienteBusquedaPage.jsx";
-import VisitLogPage from "../features/checkinout/pages/VisitLogPage.jsx";
+
+// ─── Lazy imports ── cada página descarga su propio chunk solo cuando se visita
+const DashboardPage        = lazy(() => import("../features/dashboard/pages/DashboardPage.jsx").then(m => ({ default: m.DashboardPage })));
+const ClienteBusquedaPage  = lazy(() => import("../features/clients/pages/ClienteBusquedaPage.jsx"));
+const VisitLogPage         = lazy(() => import("../features/checkinout/pages/VisitLogPage.jsx"));
+
 
 // ─── Lazy imports ── cada página privada descarga su propio chunk solo cuando se visita
 const Register             = lazy(() => import("../features/auth/pages/Register.jsx").then(m => ({ default: m.Register })));

@@ -5,6 +5,7 @@ import { ChakraProvider, ColorModeScript } from "@chakra-ui/react";
 import theme from "../components/theme";
 import { SyncQueueProvider } from "../features/checkinout/context/SyncQueueProvider";
 import { useQuoteSocket } from "../features/quotes/hooks/useQuoteSocket";
+import { useAuthStore } from "../features/auth/stores/useAuthStore";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -26,9 +27,15 @@ const queryClient = new QueryClient({
   },
 });
 
-function RealtimeSocketListener() {
+function RealtimeSocketConsumer() {
   useQuoteSocket();
   return null;
+}
+
+function RealtimeSocketListener() {
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  if (!isAuthenticated) return null;
+  return <RealtimeSocketConsumer />;
 }
 
 function App() {
