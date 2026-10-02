@@ -1,4 +1,4 @@
-const CACHE_NAME = 'autopartes-pwa-v4';
+const CACHE_NAME = 'autopartes-pwa-v5';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
