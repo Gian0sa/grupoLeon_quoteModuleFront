@@ -39,35 +39,3 @@ createRoot(document.getElementById('root')).render(
     </BrowserRouter>
   </StrictMode>,
 )
-
-// ─── Desvanecimiento cinematográfico del Splash Screen al cargar React ────────
-if (typeof window !== 'undefined') {
-  const isStandalone =
-    (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
-    window.navigator.standalone === true;
-
-  const dismissSplash = () => {
-    const splash = document.getElementById('app-splash');
-    if (splash && !splash.classList.contains('fade-out')) {
-      splash.classList.add('fade-out');
-      setTimeout(() => {
-        splash.style.display = 'none';
-      }, 250);
-    }
-  };
-
-  if (isStandalone) {
-    // 📱 Celular instalado (PWA): Android ya mostró la pantalla nativa oficial.
-    // Ocultamos de inmediato el splash web para entrar de una y rápido al Login sin doble capa.
-    dismissSplash();
-  } else {
-    // 💻 Navegador web (PC / pestaña): mostramos la animación de bienvenida
-    const splashStart = window.__splashStartTime || 0;
-    const elapsed = performance.now() - splashStart;
-    const MIN_ANIMATION_TIME = 1100;
-    const remaining = Math.max(0, MIN_ANIMATION_TIME - elapsed);
-
-    setTimeout(dismissSplash, remaining);
-  }
-}
-
