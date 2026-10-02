@@ -1,5 +1,4 @@
-// Service Worker mínimo para habilitar el criterio de instalación PWA en navegadores
-const CACHE_NAME = 'autopartes-pwa-v1';
+const CACHE_NAME = 'autopartes-pwa-v3';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();

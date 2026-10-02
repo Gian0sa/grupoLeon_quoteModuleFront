@@ -39,3 +39,24 @@ createRoot(document.getElementById('root')).render(
     </BrowserRouter>
   </StrictMode>,
 )
+
+// ─── Desvanecimiento ágil del Splash Screen al cargar React ──────────────────
+if (typeof window !== 'undefined') {
+  const dismissSplash = () => {
+    const splash = document.getElementById('app-splash');
+    if (splash && !splash.classList.contains('fade-out')) {
+      splash.classList.add('fade-out');
+      setTimeout(() => {
+        splash.style.display = 'none';
+      }, 260);
+    }
+  };
+
+  // Desvanecer ágilmente tan pronto la aplicación React esté montada
+  // Si cargó ultra rápido en caché, damos un instante mínimo (~300ms) para que no sea abrupto
+  const elapsedMs = typeof performance !== 'undefined' ? performance.now() : 0;
+  const remainingMs = Math.max(0, 300 - elapsedMs);
+
+  setTimeout(dismissSplash, remainingMs);
+}
+

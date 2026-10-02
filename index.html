@@ -14,11 +14,186 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" 
     />
     <link rel="manifest" href="/manifest.json" />
-    <meta name="theme-color" content="#0f4a25" />
-    <link rel="apple-touch-icon" href="/icon.svg" />
+    <meta name="theme-color" content="#ffffff" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
     <title>Autopartes App</title>
+    <style>
+      #app-splash {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: #FFFFFF;
+        overflow: hidden;
+        z-index: 999999;
+        transition: opacity 0.25s ease-out, visibility 0.25s ease-out;
+      }
+      #app-splash.fade-out {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+      #app-splash .splash-inner {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+      #app-splash .splash-body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        max-width: 320px;
+        padding: 0 16px;
+        z-index: 10;
+      }
+      #app-splash .brand-logo-svg {
+        width: 100%;
+        height: auto;
+        overflow: visible;
+      }
+      #app-splash .isotype-elastic {
+        transform-origin: -13px -66px;
+        animation: splashIsotypePop 0.38s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+      @keyframes splashIsotypePop {
+        0% {
+          opacity: 0;
+          transform: scale(0.4) translateY(6px);
+        }
+        70% {
+          opacity: 1;
+          transform: scale(1.05) translateY(-1px);
+        }
+        100% {
+          opacity: 1;
+          transform: scale(1) translateY(0);
+        }
+      }
+      #app-splash .brand-letter-trace {
+        stroke: #2D9650;
+        stroke-width: 2.2;
+        stroke-dasharray: 450;
+        stroke-dashoffset: 450;
+        fill: transparent;
+        animation: splashTraceAndFillNeon 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      }
+      @keyframes splashTraceAndFillNeon {
+        0% {
+          stroke-dashoffset: 450;
+          fill: transparent;
+          filter: drop-shadow(0 0 0 rgba(45, 150, 80, 0));
+        }
+        50% {
+          stroke-dashoffset: 0;
+          fill: transparent;
+          filter: drop-shadow(0 0 6px rgba(45, 150, 80, 0.5));
+        }
+        100% {
+          stroke-dashoffset: 0;
+          stroke-width: 0.6;
+          fill: #2D9650;
+          filter: drop-shadow(0 0 2px rgba(45, 150, 80, 0.2));
+        }
+      }
+      #app-splash .splash-subline {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: #94A3B8;
+        margin-top: 14px;
+        opacity: 0;
+        animation: splashFadeInSubline 0.25s ease-out forwards 0.2s;
+      }
+      @keyframes splashFadeInSubline {
+        from { opacity: 0; transform: translateY(3px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      #app-splash .pulse-line-track {
+        width: 130px;
+        height: 2.5px;
+        background: #F1F5F9;
+        border-radius: 999px;
+        position: relative;
+        overflow: hidden;
+        margin-top: 14px;
+        box-shadow: inset 0 1px 1px rgba(0,0,0,0.03);
+      }
+      #app-splash .pulse-line-glow {
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        width: 40%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #126C36, #2D9650, #4ADE80);
+        box-shadow: 0 0 8px rgba(45, 150, 80, 0.75);
+        animation: splashPulseLineSlide 1.2s ease-in-out infinite;
+      }
+      @keyframes splashPulseLineSlide {
+        0% { left: -40%; width: 30%; }
+        50% { left: 35%; width: 50%; }
+        100% { left: 100%; width: 30%; }
+      }
+    </style>
   </head>
   <body class="notranslate" translate="no">
+    <!-- Mobile Splash Screen: Rápido, Elegante y Minimalista -->
+    <div id="app-splash" class="notranslate" translate="no" aria-hidden="true">
+      <div class="splash-inner">
+        <!-- Contenido Central del Splash -->
+        <div class="splash-body">
+          <svg class="brand-logo-svg" viewBox="-68.2 -135 595 155">
+            <!-- Isotipo "A" con entrada elástica ágil -->
+            <g class="isotype-elastic">
+              <!-- Punto de la "A" -->
+              <path fill="#0F172A" d="M-42.6-58.1c17.1,0,30.1,16.7,24.1,34.6c-2.2,6.5-6.9,11.7-13.2,14.4c-18.6,7.9-36.5-5.7-36.5-23.3C-68.2-46.6-56.7-58.1-42.6-58.1z"/>
+              <!-- Pilar inclinado de la "A" -->
+              <path fill="#0F172A" d="M-47.2-73.9c0,0,30.8-45.4,33.9-49.8c3.1-4.4,5.6-4.6,6.6-2.2S41.6-6.4,41.6-6.4H1.9l-30.6-69.4c0,0-1.7-5.2-3.9-4.8c-2.2,0.4-4.6,2.1-7.6,5.1s-4.4,4.1-5.7,4.8C-47.3-70-48.6-72-47.2-73.9z"/>
+            </g>
+
+            <!-- Letras "utopartes" con animación de trazo ágil y relleno verde -->
+            <g id="brand-letters-group">
+              <!-- u -->
+              <path class="brand-letter-trace" style="animation-delay: 0.05s" d="M90.4-63.3v57.1H78.9l0.7-9.8h-0.2C77.2-9,72-5.5,63.9-5.5C53-5.5,47.6-12,47.6-24.9v-38.4h11.5v35.1c0,4.9,0.6,8.1,1.7,9.6c1.1,1.5,3.5,2.3,7.1,2.3c7.4,0,11-5.3,11-15.8v-31.2H90.4L90.4-63.3z"/>
+              <!-- t -->
+              <path class="brand-letter-trace" style="animation-delay: 0.08s" d="M133-63.3v10.4h-18.5v28.7c0,5.3,1.7,8,5.1,8c3.7,0,5.6-3.2,5.6-9.6v-2.3h9.8v2.9c0,2.6-0.1,4.9-0.2,6.8c-0.6,8.7-6.1,13.1-16.4,13.1c-10.2,0-15.4-5.6-15.4-16.8v-30.8h-6.2v-10.4h6.2V-76h11.5v12.8H133V-63.3z"/>
+              <!-- o -->
+              <path class="brand-letter-trace" style="animation-delay: 0.11s" d="M180.6-58.6c-2.9-3.6-8.9-5.3-18.2-5.3c-9.6,0-15.8,1.8-18.6,5.4c-2.9,3.5-4.3,11.3-4.3,23.3c0,12.5,1.4,20.6,4.3,24.2c2.9,3.7,9.3,5.5,19.1,5.5c9.1,0,15-2,17.8-5.9c2.8-3.9,4.2-12.3,4.2-24.9C184.9-47.6,183.5-55.1,180.6-58.6z M171.4-19.7c-1.3,2.3-4.3,3.4-9.1,3.4c-5,0-8.1-1.1-9.3-3.2c-1.2-2.1-1.8-7.5-1.8-16.1c0-7.6,0.7-12.3,2-14.4c1.3-2.1,4.3-3.1,9.1-3.1c4.7,0,7.7,1,9,3c1.3,2.1,2,6.7,2,14C173.3-27.4,172.6-22,171.4-19.7z"/>
+              <!-- p -->
+              <path class="brand-letter-trace" style="animation-delay: 0.14s" d="M235.9-57.8c-2.6-4.1-7.4-6.2-14.4-6.2c-7.5,0-12.7,3.1-15.5,9.3l-0.3-0.1l0.5-8.5h-11.7v81.5h12v-32.8h0.2c2.2,6,7.2,9,14.7,9c7,0,11.9-2.1,14.5-6.3c2.6-4.2,3.9-12,3.9-23.4C239.8-46.2,238.5-53.7,235.9-57.8z M226.2-19.9c-1.3,2.3-4.2,3.5-8.7,3.5c-4.4,0-7.4-1.2-8.8-3.6c-1.5-2.5-2.2-7.4-2.2-14.8c0-7.6,0.7-12.5,2-14.9c1.4-2.3,4.2-3.5,8.6-3.5c4.7,0,7.7,1.2,9.1,3.3c1.3,2.2,2,7.3,2,15.1C228.2-27.2,227.5-22.2,226.2-19.9z"/>
+              <!-- a -->
+              <path class="brand-letter-trace" style="animation-delay: 0.17s" d="M287.1-59.8c-3-2.8-8.9-4.2-17.5-4.2c-7.9,0-13.2,1.2-15.9,3.5c-2.7,2.4-4,6.9-4,13.8h11.7c0-5.4,2.9-8,8.8-8.2c4,0,6.7,0.8,8,2.2c1.3,1.5,2,4.4,2,8.9v9.3H280c-1.7-4.4-6.6-6.5-14.5-6.5c-11.9,0-17.8,5.9-17.8,17.8c0,11.7,5.8,17.6,17.4,17.6c8,0,13.1-2.9,15.3-8.6l0.3,0.1l-0.5,7.8h11.5v-37.3C291.7-51.6,290.1-57,287.1-59.8z M269.9-14.7c-4.3,0-7.1-0.5-8.5-1.7c-1.3-1.2-2-3.6-2-7.3c0-5.3,3.2-8,9.7-8c7.4,0,11.2,2.9,11.3,8.6C280.4-17.5,276.9-14.7,269.9-14.7z"/>
+              <!-- r -->
+              <path class="brand-letter-trace" style="animation-delay: 0.20s" d="M303.4-63.3h11.5l-0.7,8l0.3,0.1c2.7-6,7.1-9,13-9c8.4,0,12.6,6.3,12.6,19v4h-10.8c0.1-1.5,0.2-2.6,0.2-3.1c0-6.1-2-9.1-6-9.1c-5.7,0-8.5,4.5-8.5,13.6v33.6h-11.5L303.4-63.3L303.4-63.3z"/>
+              <!-- t -->
+              <path class="brand-letter-trace" style="animation-delay: 0.23s" d="M377.4-63.3v10.4h-18.5v28.7c0,5.3,1.7,8,5.1,8c3.7,0,5.6-3.2,5.6-9.6v-2.3h9.8v2.9c0,2.6-0.1,4.9-0.2,6.8c-0.6,8.7-6.1,13.1-16.4,13.1c-10.2,0-15.3-5.6-15.3-16.8v-30.8h-6.2v-10.4h6.2V-76H359v12.8h18.4V-63.3z"/>
+              <!-- e -->
+              <path class="brand-letter-trace" style="animation-delay: 0.26s" d="M428.2-32.2v-4.2c0-10.9-1.5-18.2-4.4-22s-8.6-5.6-17.2-5.6c-8.9,0-14.9,1.9-18,5.7c-3.1,3.8-4.6,11.3-4.6,22.4c0,12.6,1.4,20.7,4.4,24.6c2.9,3.9,9.2,5.8,18.7,5.8c14.1,0,21.1-5.6,21.1-16.7v-2.2h-11.6c0,3.6-0.6,6-1.9,7.1c-1.2,1.1-4,1.6-8.2,1.6c-4.3,0-7.3-0.9-8.7-2.8c-1.5-1.9-2.2-5.6-2.2-11.2c0-0.4,0.1-1.2,0.1-2.5H428.2z M397.6-51.3c1.3-1.7,4.1-2.5,8.4-2.5c4.4,0,7.3,0.7,8.6,2c1.3,1.4,2,4.4,2,8.9l0.1,2.3h-21C395.7-46.1,396.3-49.7,397.6-51.3z"/>
+              <!-- s -->
+              <path class="brand-letter-trace" style="animation-delay: 0.29s" d="M477.8-47.6h-11.2c-0.1-0.5-0.1-0.8-0.2-1.1c-0.2-2.7-0.9-4.5-2-5.1c-1.1-0.7-3.7-1-7.9-1c-6,0-9,2.3-9,6.9c0,3.2,0.5,5,1.6,5.6s4.6,1.1,10.7,1.4c8.2,0.5,13.5,1.8,16,3.9s3.7,6.4,3.7,13c0,7-1.6,11.8-5,14.5c-3.3,2.7-9.2,4.1-17.7,4.1c-8.2,0-13.8-1.2-16.8-3.7c-3-2.4-4.5-7-4.5-13.6v-1.4h11.9c-0.2,0.8-0.3,1.4-0.3,1.9c-0.5,5.1,2.8,7.6,9.8,7.6c7.3,0,10.9-2.5,10.9-7.5c0-4.8-2.3-7.2-6.8-7.2c-10.3,0-17-1.1-20.3-3.5c-3.3-2.3-4.9-7.1-4.9-14.4c0-6.5,1.5-11,4.5-13.2c3-2.3,8.7-3.5,17.2-3.5c8,0,13.4,1.1,16.1,3.3C476.4-58.4,477.8-54,477.8-47.6L477.8-47.6z"/>
+            </g>
+          </svg>
+
+          <!-- Subtítulo -->
+          <div class="splash-subline">SISTEMA COMERCIAL</div>
+
+          <!-- Barra de Pulso Neón -->
+          <div class="pulse-line-track">
+            <div class="pulse-line-glow"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div id="root" class="notranslate" translate="no"></div>
     <script type="module" src="/src/app/main.jsx"></script>
     <script>
