@@ -25,6 +25,9 @@ export default defineConfig({
             if (id.includes('xlsx') || id.includes('exceljs')) return 'vendor-excel';
             if (id.includes('html2canvas') || id.includes('jspdf')) return 'vendor-pdf';
             if (id.includes('leaflet')) return 'vendor-maps';
+            if (id.includes('recharts')) return 'vendor-charts';
+            if (id.includes('tesseract.js')) return 'vendor-ocr';
+            if (id.includes('socket.io-client')) return 'vendor-socket';
             return 'vendor';
           }
         }
