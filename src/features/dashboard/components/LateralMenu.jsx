@@ -21,6 +21,7 @@ import {
   MdRequestQuote,
   MdPersonAdd,
   MdPerson,
+  MdPeople,
   MdLocalShipping,
   MdAccountBalanceWallet,
   MdPriceChange,
@@ -67,6 +68,7 @@ const ACCOUNT_OPTIONS = [
 
 const ADMIN_OPTIONS = [
   { label: 'Gestión de Usuarios', icon: MdPerson, path: '/profileAdmin', access: 'PUT:/profile/admin/:userId' },
+  { label: 'Usuarios en línea', icon: MdPeople, path: '/admin/online-users', access: 'PUT:/profile/admin/:userId' },
   { label: 'Actualizar servicios', icon: MdHelp, path: '#', access: 'PUT:/services/:id' },
   { label: 'Gestionar Notificaciones', icon: MdAssignment, path: '/notification', access: 'PUT:/profile/admin/:userId' },
   { label: 'Control de Asistencias (Admin)', icon: MdAccessTime, path: '/admin/attendance', access: 'PUT:/profile/admin/:userId' }

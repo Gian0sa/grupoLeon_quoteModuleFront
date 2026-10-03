@@ -6,6 +6,7 @@ import theme from "../components/theme";
 import { SyncQueueProvider } from "../features/checkinout/context/SyncQueueProvider";
 import { useQuoteSocket } from "../features/quotes/hooks/useQuoteSocket";
 import { useAuthStore } from "../features/auth/stores/useAuthStore";
+import { usePresenceHeartbeat } from "../features/admin/hooks/usePresenceHeartbeat";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -29,6 +30,7 @@ const queryClient = new QueryClient({
 
 function RealtimeSocketConsumer() {
   useQuoteSocket();
+  usePresenceHeartbeat();
   return null;
 }
 

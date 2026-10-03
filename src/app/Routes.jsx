@@ -43,6 +43,7 @@ const EntradaPage          = lazy(() => import("../features/entrada/pages/Entrad
 const AttendanceAdminPage  = lazy(() => import("../features/entrada/pages/AttendanceAdminPage.jsx").then(m => ({ default: m.AttendanceAdminPage })));
 const NewClientsPage       = lazy(() => import("../features/clients/pages/NewClientsPage.jsx").then(m => ({ default: m.NewClientsPage })));
 const FAQPage              = lazy(() => import("../features/help/pages/FAQPage.jsx").then(m => ({ default: m.FAQPage })));
+const OnlineUsersPage      = lazy(() => import("../features/admin/pages/OnlineUsersPage.jsx"));
 // ─── Fallback de carga: spinner mínimo centrado con color de marca ───────────
 function PageLoader() {
   return (
@@ -131,8 +132,9 @@ const AppRoutes = () => {
             <Route path="/myVisits"          element={<RoleRoute requiredPermission="POST:/visit-logs"><MyVisitsPage /></RoleRoute>} />
             <Route path="/newClients"        element={<RoleRoute requiredPermission="POST:/visit-logs"><NewClientsPage /></RoleRoute>} />
             <Route path="/entrada"           element={<RoleRoute requiredPermission="POST:/attendance"><EntradaPage /></RoleRoute>} />
-            <Route path="/admin/attendance"  element={<RoleRoute requiredPermission="PUT:/profile/admin/:userId"><AttendanceAdminPage /></RoleRoute>} />
-            <Route path="/faq"               element={<PrivateRoute><FAQPage /></PrivateRoute>} />
+            <Route path="/admin/attendance"   element={<RoleRoute requiredPermission="PUT:/profile/admin/:userId"><AttendanceAdminPage /></RoleRoute>} />
+            <Route path="/admin/online-users" element={<RoleRoute requiredPermission="PUT:/profile/admin/:userId"><OnlineUsersPage /></RoleRoute>} />
+            <Route path="/faq"                element={<PrivateRoute><FAQPage /></PrivateRoute>} />
           </Routes>
         </Suspense>
       </RouteErrorBoundary>

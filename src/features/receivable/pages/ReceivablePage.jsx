@@ -177,7 +177,7 @@ export function ReceivablePage() {
   }, [data]);
 
   const refreshQueries = [
-    [QUERY_KEYS.accountsReceivable, vendedorNombre, cliente.toUpperCase(), clientecode, lastClient, currentSkip]
+    ["accountsReceivable"]
   ];
 
   // 1. Helper para identificar si un cliente es de TARJETA AZUL (Saldo neto a favor del cliente)

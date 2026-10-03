@@ -31,7 +31,23 @@ export const socket = io(SOCKET_URL, {
   reconnection: true,
   reconnectionAttempts: Infinity,
   reconnectionDelay: 2000,
-  withCredentials: false,
+  withCredentials: true,
+  auth: (cb) => {
+    try {
+      const rawUser = localStorage.getItem("userId");
+      const username = localStorage.getItem("username");
+      const endpoints = JSON.parse(localStorage.getItem("endpoints") || "[]");
+      const salesEmployeeCode = localStorage.getItem("salesEmployeeCode");
+      cb({
+        userId: rawUser ? Number(rawUser) : null,
+        username: username || null,
+        permissions: endpoints,
+        salesEmployeeCode: salesEmployeeCode ? Number(salesEmployeeCode) : null,
+      });
+    } catch {
+      cb({});
+    }
+  },
 });
 
 socket.on("connect", () => {
