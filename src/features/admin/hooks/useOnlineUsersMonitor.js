@@ -43,13 +43,27 @@ export function useOnlineUsersMonitor() {
         if (isMounted) setIsLoadingPresence(false);
       });
 
+    const getAdminPayload = () => {
+      try {
+        const rawId = localStorage.getItem("userId");
+        return {
+          userId: rawId ? Number(rawId) : null,
+          username: localStorage.getItem("username") || null,
+          permissions: JSON.parse(localStorage.getItem("endpoints") || "[]"),
+          salesEmployeeCode: localStorage.getItem("salesEmployeeCode") || null,
+        };
+      } catch {
+        return {};
+      }
+    };
+
     // 2. Suscribirse a la sala de monitor en el WebSocket
     const onConnect = () => {
-      socket.emit("presence:subscribe");
+      socket.emit("presence:subscribe", { user: getAdminPayload() });
     };
 
     if (socket.connected) {
-      socket.emit("presence:subscribe");
+      socket.emit("presence:subscribe", { user: getAdminPayload() });
     } else {
       socket.connect();
       socket.once("connect", onConnect);
@@ -100,15 +114,10 @@ export function useOnlineUsersMonitor() {
       // Calcular estado dinámico con el timestamp actual
       let status = "OFFLINE";
       if (hasPresence && presence.status) {
-        const timeSinceActivity = now - (presence.lastActivity || 0);
-        const timeSinceHeartbeat = now - (presence.lastHeartbeat || 0);
-
-        if (presence.status === "OFFLINE" || timeSinceHeartbeat > 60000 || presence.activeTabs === 0) {
-          status = "OFFLINE";
-        } else if (timeSinceActivity <= 60000) {
-          status = "ONLINE";
+        if (presence.status === "ONLINE" || presence.status === "IDLE") {
+          status = presence.status;
         } else {
-          status = "IDLE";
+          status = "OFFLINE";
         }
       }
 

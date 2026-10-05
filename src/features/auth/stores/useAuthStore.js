@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { updateSocketAuth } from '../../../shared/lib/socket';
 
 const getSafeValue = (key) => {
   try {
@@ -55,6 +56,9 @@ export const useAuthStore = create((set) => ({
       ...safeValues,
       isAuthenticated: true,
     });
+
+    // Sincronizar y autenticar WebSockets en tiempo real
+    updateSocketAuth();
   },
 
   updateEndpoints: (newEndpoints) => {
@@ -63,6 +67,7 @@ export const useAuthStore = create((set) => ({
         localStorage.setItem("endpoints", JSON.stringify(newEndpoints));
       } catch (e) {}
       set({ endpoints: newEndpoints });
+      updateSocketAuth();
     }
   },
 
@@ -80,5 +85,7 @@ export const useAuthStore = create((set) => ({
       endpoints: [],
       isAuthenticated: false,
     });
+
+    updateSocketAuth();
   },
 }));

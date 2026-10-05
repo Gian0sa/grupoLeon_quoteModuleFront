@@ -149,9 +149,11 @@ export default function ClienteBusquedaPage() {
     const isOlderThanOneMonth = (date) =>
         date && (Date.now() - new Date(date).getTime() > ONE_MONTH_MS);
 
-    const errorMessage = errorProductHistory?.response?.status === 504
-        ? "El servidor tardó demasiado en responder."
-        : errorProductHistory?.message || "Ocurrió un error";
+    const errorMessage = typeof navigator !== "undefined" && !navigator.onLine
+        ? "Modo sin conexión: No se pudo consultar SAP en este momento. Puedes volver a Registro de Visitas con el botón superior."
+        : errorProductHistory?.response?.status === 504
+            ? "El servidor tardó demasiado en responder."
+            : errorProductHistory?.message || "Ocurrió un error al consultar el historial";
 
     return (
         <Container

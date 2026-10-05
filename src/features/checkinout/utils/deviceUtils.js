@@ -1,108 +1,247 @@
 /**
- * Compresión ultra-optimizada para dispositivos móviles (Zero-Crash / Low Memory).
- * 
- * Utiliza `createImageBitmap` nativo con redimensionado en decodificación cuando está disponible,
- * evitando cargar mapas de bits de 50 Megapíxeles o strings Base64 gigantes en la memoria RAM del teléfono.
- * Si falla o no está soportado, usa `URL.createObjectURL` en lugar de FileReader.
+ * Detecta el perfil de hardware y memoria del dispositivo móvil para auto-ajustar
+ * la calidad y resolución a la menor exigencia posible que garantice legibilidad
+ * y cero saturación de memoria RAM (Zero-Crash / Low-Memory).
  */
-export const compressImage = async (file, maxSizeMB = 0.35) => {
+export const getDeviceQualityProfile = () => {
+    if (typeof window === "undefined" || typeof navigator === "undefined") {
+        return {
+            profile: "BALANCED",
+            maxDimension: 768,
+            quality: 0.60,
+            label: "Equilibrado",
+            isLowEnd: false,
+        };
+    }
+
+    const deviceMemory = navigator.deviceMemory || 4; // RAM en GB (ej. 0.5, 1, 2, 4, 8)
+    const hardwareConcurrency = navigator.hardwareConcurrency || 4; // Núcleos de CPU
+    const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    const isSaveData = connection?.saveData === true;
+    const isSlowConnection = connection?.effectiveType === "2g" || connection?.effectiveType === "slow-2g";
+
+    // Celulares económicos suelen tener <= 2GB de RAM o <= 4 núcleos pequeños o modo ahorro
+    const isLowEnd = deviceMemory <= 2 || hardwareConcurrency <= 4 || isSaveData || isSlowConnection;
+
+    if (isLowEnd) {
+        return {
+            profile: "LITE",
+            maxDimension: 640,
+            quality: 0.52,
+            label: "Ultra-Ligero (Bajo consumo)",
+            isLowEnd: true,
+            deviceMemory,
+        };
+    }
+
+    if (deviceMemory <= 4 || hardwareConcurrency <= 6) {
+        return {
+            profile: "BALANCED",
+            maxDimension: 768,
+            quality: 0.60,
+            label: "Equilibrado",
+            isLowEnd: false,
+            deviceMemory,
+        };
+    }
+
+    return {
+        profile: "HIGH",
+        maxDimension: 960,
+        quality: 0.65,
+        label: "Alta Definición",
+        isLowEnd: false,
+        deviceMemory,
+    };
+};
+
+/**
+ * Calcula las dimensiones proporcionales (aspect ratio intacto) sin sobrepasar maxDimension.
+ */
+export const calculateTargetDimensions = (origW, origH, maxDim) => {
+    if (!origW || !origH) return { width: maxDim, height: maxDim };
+    let w = origW;
+    let h = origH;
+    if (w > h) {
+        if (w > maxDim) {
+            h = Math.round(h * (maxDim / w));
+            w = maxDim;
+        }
+    } else {
+        if (h > maxDim) {
+            w = Math.round(w * (maxDim / h));
+            h = maxDim;
+        }
+    }
+    return { width: Math.max(1, w), height: Math.max(1, h) };
+};
+
+/**
+ * Obtiene las dimensiones originales de la foto en milisegundos sin decodificar
+ * mapas de bits gigantescos en la memoria del hilo principal.
+ */
+const getQuickImageDimensions = (file) => {
+    return new Promise((resolve) => {
+        if (typeof window === "undefined") return resolve(null);
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        let completed = false;
+
+        const timer = setTimeout(() => {
+            if (!completed) {
+                completed = true;
+                URL.revokeObjectURL(url);
+                resolve(null);
+            }
+        }, 2000);
+
+        img.onload = () => {
+            if (!completed) {
+                completed = true;
+                clearTimeout(timer);
+                const w = img.naturalWidth || img.width;
+                const h = img.naturalHeight || img.height;
+                URL.revokeObjectURL(url);
+                resolve(w && h ? { width: w, height: h } : null);
+            }
+        };
+
+        img.onerror = () => {
+            if (!completed) {
+                completed = true;
+                clearTimeout(timer);
+                URL.revokeObjectURL(url);
+                resolve(null);
+            }
+        };
+
+        img.src = url;
+    });
+};
+
+/**
+ * Compresión ultra-optimizada y adaptativa para dispositivos móviles (Zero-Crash / Zero-Leak).
+ * 
+ * Se auto-adapta a las capacidades del teléfono (gama baja: 640px / ~35KB, gama alta: 960px).
+ * Limpia buffers de GPU y libera memoria inmediatamente tras procesar la imagen.
+ */
+export const compressImage = async (file, customOptions = {}) => {
     if (!file) throw new Error("No se proporcionó ningún archivo");
 
-    // 960px es nítido y perfecto para pantallas móviles y auditoría, pero pesa menos de 100KB y usa mínima RAM
-    const MAX_DIMENSION = 960;
-    const JPEG_QUALITY = 0.65;
+    // 1. Detectar perfil de hardware del dispositivo
+    const deviceProfile = getDeviceQualityProfile();
+    const maxDimension = typeof customOptions === "number" 
+        ? deviceProfile.maxDimension 
+        : (customOptions.maxDimension || deviceProfile.maxDimension);
+    const jpegQuality = typeof customOptions === "number"
+        ? (customOptions <= 0.5 ? 0.52 : 0.62)
+        : (customOptions.quality || deviceProfile.quality);
 
-    // Camino 1: API nativa createImageBitmap con redimensionamiento directo en decodificación (ultra eficiente en RAM)
+    // 2. Extraer dimensiones previas para mantener relación de aspecto exacta
+    const origDims = await getQuickImageDimensions(file);
+    const target = origDims 
+        ? calculateTargetDimensions(origDims.width, origDims.height, maxDimension)
+        : { width: maxDimension, height: maxDimension };
+
+    const fileName = file.name ? file.name.replace(/\.[^/.]+$/, ".jpg") : "foto_checkin.jpg";
+
+    // Camino 1: API nativa createImageBitmap con redimensionamiento directo en decodificación
+    // Al pasarle target.width y target.height proporcionales, el motor Web NO carga los 50MP a RAM.
     if (typeof window !== "undefined" && "createImageBitmap" in window) {
         try {
-            let bitmap;
+            let bitmap = null;
             try {
-                // Algunos navegadores soportan opciones de resize directamente en createImageBitmap
                 bitmap = await createImageBitmap(file, {
-                    resizeWidth: MAX_DIMENSION,
-                    resizeHeight: MAX_DIMENSION,
+                    resizeWidth: target.width,
+                    resizeHeight: target.height,
                     resizeQuality: "medium",
                 });
-            } catch (e) {
-                // Fallback de createImageBitmap sin opciones
+            } catch (optionsErr) {
+                // Fallback si el browser no admite opciones de resize en createImageBitmap
                 bitmap = await createImageBitmap(file);
             }
 
             if (bitmap) {
-                let width = bitmap.width;
-                let height = bitmap.height;
-
-                if (width > height) {
-                    if (width > MAX_DIMENSION) {
-                        height = Math.round(height * (MAX_DIMENSION / width));
-                        width = MAX_DIMENSION;
-                    }
-                } else {
-                    if (height > MAX_DIMENSION) {
-                        width = Math.round(width * (MAX_DIMENSION / height));
-                        height = MAX_DIMENSION;
-                    }
-                }
+                const finalDims = origDims 
+                    ? target 
+                    : calculateTargetDimensions(bitmap.width, bitmap.height, maxDimension);
 
                 const canvas = document.createElement("canvas");
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext("2d", { alpha: false });
-                ctx.drawImage(bitmap, 0, 0, width, height);
-                bitmap.close(); // Liberar memoria nativa del bitmap de inmediato
+                canvas.width = finalDims.width;
+                canvas.height = finalDims.height;
+                const ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
+                ctx.drawImage(bitmap, 0, 0, finalDims.width, finalDims.height);
+                
+                // Liberar bitmap nativo de inmediato
+                bitmap.close();
 
                 const blob = await new Promise((resolve) => {
-                    canvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY);
+                    canvas.toBlob(resolve, "image/jpeg", jpegQuality);
                 });
 
+                // Liberar textura gráfica del canvas de la GPU inmediatamente
+                canvas.width = 0;
+                canvas.height = 0;
+
                 if (blob) {
-                    const fileName = file.name ? file.name.replace(/\.[^/.]+$/, ".jpg") : "foto_checkin.jpg";
-                    return new File([blob], fileName, { type: "image/jpeg", lastModified: Date.now() });
+                    const finalFile = new File([blob], fileName, { type: "image/jpeg", lastModified: Date.now() });
+                    finalFile.optimizedInfo = {
+                        profile: deviceProfile.profile,
+                        profileLabel: deviceProfile.label,
+                        originalSizeKB: Math.round(file.size / 1024),
+                        sizeKB: Math.round(blob.size / 1024),
+                        width: finalDims.width,
+                        height: finalDims.height,
+                    };
+                    return finalFile;
                 }
             }
         } catch (bitmapError) {
-            console.warn("createImageBitmap no disponible o falló, usando fallback con Blob URL:", bitmapError);
+            console.warn("createImageBitmap falló, activando fallback ligero con Canvas:", bitmapError);
         }
     }
 
-    // Camino 2: Fallback con URL.createObjectURL (mucho más ligero en RAM que FileReader.readAsDataURL)
+    // Camino 2: Fallback estándar con Image + Canvas
     return new Promise((resolve, reject) => {
         const objectUrl = URL.createObjectURL(file);
         const img = new Image();
 
         img.onload = () => {
-            URL.revokeObjectURL(objectUrl); // Liberar URL de inmediato
+            URL.revokeObjectURL(objectUrl);
 
-            let width = img.width;
-            let height = img.height;
-
-            if (width > height) {
-                if (width > MAX_DIMENSION) {
-                    height = Math.round(height * (MAX_DIMENSION / width));
-                    width = MAX_DIMENSION;
-                }
-            } else {
-                if (height > MAX_DIMENSION) {
-                    width = Math.round(width * (MAX_DIMENSION / height));
-                    height = MAX_DIMENSION;
-                }
-            }
+            const finalDims = calculateTargetDimensions(
+                img.naturalWidth || img.width, 
+                img.naturalHeight || img.height, 
+                maxDimension
+            );
 
             const canvas = document.createElement("canvas");
-            canvas.width = width;
-            canvas.height = height;
+            canvas.width = finalDims.width;
+            canvas.height = finalDims.height;
 
-            const ctx = canvas.getContext("2d", { alpha: false });
-            ctx.drawImage(img, 0, 0, width, height);
+            const ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
+            ctx.drawImage(img, 0, 0, finalDims.width, finalDims.height);
 
             canvas.toBlob((blob) => {
+                // Liberar buffer del canvas
+                canvas.width = 0;
+                canvas.height = 0;
+
                 if (blob) {
-                    const fileName = file.name ? file.name.replace(/\.[^/.]+$/, ".jpg") : "foto_checkin.jpg";
-                    resolve(new File([blob], fileName, { type: "image/jpeg", lastModified: Date.now() }));
+                    const finalFile = new File([blob], fileName, { type: "image/jpeg", lastModified: Date.now() });
+                    finalFile.optimizedInfo = {
+                        profile: deviceProfile.profile,
+                        profileLabel: deviceProfile.label,
+                        originalSizeKB: Math.round(file.size / 1024),
+                        sizeKB: Math.round(blob.size / 1024),
+                        width: finalDims.width,
+                        height: finalDims.height,
+                    };
+                    resolve(finalFile);
                 } else {
-                    reject(new Error("Error al procesar la imagen"));
+                    reject(new Error("Error al comprimir imagen"));
                 }
-            }, "image/jpeg", JPEG_QUALITY);
+            }, "image/jpeg", jpegQuality);
         };
 
         img.onerror = () => {

@@ -13,12 +13,13 @@ import {
     ModalCloseButton,
     useColorModeValue,
 } from "@chakra-ui/react";
-import { FiCamera, FiClock, FiMaximize2 } from "react-icons/fi";
+import { FiCamera, FiClock, FiMaximize2, FiCheckCircle } from "react-icons/fi";
 import { useDisclosure } from "@chakra-ui/react";
 
 export function ImageUploadCard({
     image,
     imagePreview,
+    imageInfo,
     isProcessingImage,
     onImageChange,
     existingImageData,
@@ -112,20 +113,51 @@ export function ImageUploadCard({
             )}
 
             {imagePreview && (
-                <Box
-                    mb={4}
-                    borderRadius="xl"
-                    overflow="hidden"
-                    border="2px solid"
-                    borderColor="green.400"
-                    boxShadow="0 4px 14px rgba(34, 197, 94, 0.15)"
-                >
-                    <img
-                        src={imagePreview}
-                        alt="Preview"
-                        decoding="async"
-                        style={{ width: "100%", height: "200px", objectFit: "cover" }}
-                    />
+                <Box mb={4}>
+                    <Box
+                        borderRadius="xl"
+                        overflow="hidden"
+                        border="2px solid"
+                        borderColor="green.400"
+                        boxShadow="0 4px 14px rgba(34, 197, 94, 0.15)"
+                    >
+                        <img
+                            src={imagePreview}
+                            alt="Preview"
+                            decoding="async"
+                            style={{ width: "100%", height: "200px", objectFit: "cover" }}
+                        />
+                    </Box>
+
+                    {imageInfo && (
+                        <Flex
+                            mt={2}
+                            px={3}
+                            py={1.5}
+                            bg="green.50"
+                            borderRadius="lg"
+                            align="center"
+                            justify="space-between"
+                            border="1px solid"
+                            borderColor="green.200"
+                        >
+                            <Flex align="center" gap={1.5}>
+                                <Icon as={FiCheckCircle} color="green.600" boxSize={3.5} />
+                                <Text fontSize="xs" fontWeight="700" color="green.800">
+                                    Foto Optimizada ({imageInfo.sizeKB} KB)
+                                </Text>
+                            </Flex>
+                            <Badge
+                                colorScheme={imageInfo.profile === "LITE" ? "purple" : "green"}
+                                variant="subtle"
+                                fontSize="2xs"
+                                borderRadius="md"
+                                px={1.5}
+                            >
+                                {imageInfo.profileLabel}
+                            </Badge>
+                        </Flex>
+                    )}
                 </Box>
             )}
 
