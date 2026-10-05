@@ -220,7 +220,9 @@ export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVis
                 const localId = await addToQueue(formData);
                 toast({
                     title: `Check-${type === "IN" ? "In" : "Out"} guardado localmente`,
-                    description: "Tienes marcas pendientes de enviar. Esta se sincronizará junto con ellas, en orden.",
+                    description: type === "IN"
+                        ? "Check-In guardado en tu teléfono. Redirigiendo a Historial del Cliente..."
+                        : "Tienes marcas pendientes de enviar. Esta se sincronizará junto con ellas, en orden.",
                     status: "warning",
                     duration: 5000,
                     isClosable: true,
@@ -257,7 +259,9 @@ export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVis
                         const localId = await addToQueue(formData);
                         toast({
                             title: `Check-${type === "IN" ? "In" : "Out"} guardado localmente`,
-                            description: `La operación quedó pendiente de sincronización debido a un fallo de red o del servidor.`,
+                            description: type === "IN"
+                                ? "Check-In guardado en tu teléfono (sin conexión). Redirigiendo a Historial de Cliente..."
+                                : "Check-Out guardado en tu teléfono. Se sincronizará automáticamente al recuperar internet.",
                             status: "warning",
                             duration: 5000,
                             isClosable: true,

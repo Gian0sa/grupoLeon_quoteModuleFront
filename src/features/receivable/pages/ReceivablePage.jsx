@@ -151,11 +151,22 @@ export function ReceivablePage() {
         const newClients = incomingClients;
         if (!lastClient && currentSkip === 0) return newClients;
         
-        // Actualizar clientes existentes con sus nuevos datos de SAP
+        // Actualizar clientes existentes con sus nuevos datos de SAP sin perder documentos previos
         const incomingMap = new Map(newClients.map((c) => [c.clientCode || c.cardCode, c]));
         const updatedPrev = prev.map((c) => {
           const code = c.clientCode || c.cardCode;
-          return incomingMap.has(code) ? incomingMap.get(code) : c;
+          if (!incomingMap.has(code)) return c;
+          const incoming = incomingMap.get(code);
+          const existingDocKeys = new Set(
+            (c.documents || []).map((d) => `${d.tipoDocumento || d.TIPO_DOC}_${d.numeroDocumento || d.NRO_DOC || d.id}`)
+          );
+          const uniqueNewDocs = (incoming.documents || []).filter(
+            (d) => !existingDocKeys.has(`${d.tipoDocumento || d.TIPO_DOC}_${d.numeroDocumento || d.NRO_DOC || d.id}`)
+          );
+          return {
+            ...incoming,
+            documents: [...(c.documents || []), ...uniqueNewDocs],
+          };
         });
 
         const existingCodes = new Set(prev.map((c) => c.clientCode || c.cardCode));
@@ -177,7 +188,7 @@ export function ReceivablePage() {
   }, [data]);
 
   const refreshQueries = [
-    [QUERY_KEYS.accountsReceivable, vendedorNombre, cliente.toUpperCase(), clientecode, lastClient, currentSkip]
+    ["accountsReceivable"]
   ];
 
   // 1. Helper para identificar si un cliente es de TARJETA AZUL (Saldo neto a favor del cliente)

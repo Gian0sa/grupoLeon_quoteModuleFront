@@ -5,11 +5,12 @@ import { PrivateRoute } from "../app/middlewares/privateRoute.jsx";
 import { RoleRoute } from "../app/middlewares/roleRoute.jsx";
 import { RouteMemoryTracker } from "./middlewares/RouteMemoryTracker.jsx";
 
-// ─── Importaciones estáticas esenciales: Login, Dashboard y flujo offline de Visitas / Check-in ───
+// ─── Importaciones estáticas esenciales para funcionamiento offline en campo ───
 import Login from "../features/auth/pages/Login.jsx";
 import { DashboardPage } from "../features/dashboard/pages/DashboardPage.jsx";
 import ClienteBusquedaPage from "../features/clients/pages/ClienteBusquedaPage.jsx";
 import VisitLogPage from "../features/checkinout/pages/VisitLogPage.jsx";
+import MyVisitsPage from "../features/checkinout/pages/MyVisitsPage.jsx";
 
 // ─── Lazy imports ── cada página privada descarga su propio chunk solo cuando se visita
 const Register             = lazy(() => import("../features/auth/pages/Register.jsx").then(m => ({ default: m.Register })));
@@ -35,11 +36,12 @@ const OrdersDashboard      = lazy(() => import("../features/dashboard/pages/Orde
 const ClienteInfo          = lazy(() => import("../features/reports/pages/ClienteInfo.jsx"));
 const ImportacionesPage    = lazy(() => import("../features/imports/pages/ImportacionesPage.jsx"));
 const VisitLogsMapView     = lazy(() => import("../features/checkinout/pages/VisitLogsMapView.jsx"));
-const MyVisitsPage         = lazy(() => import("../features/checkinout/pages/MyVisitsPage.jsx"));
 const EntradaPage          = lazy(() => import("../features/entrada/pages/EntradaPage.jsx").then(m => ({ default: m.EntradaPage })));
 const AttendanceAdminPage  = lazy(() => import("../features/entrada/pages/AttendanceAdminPage.jsx").then(m => ({ default: m.AttendanceAdminPage })));
 const NewClientsPage       = lazy(() => import("../features/clients/pages/NewClientsPage.jsx").then(m => ({ default: m.NewClientsPage })));
 const FAQPage              = lazy(() => import("../features/help/pages/FAQPage.jsx").then(m => ({ default: m.FAQPage })));
+const OnlineUsersPage      = lazy(() => import("../features/admin/pages/OnlineUsersPage.jsx"));
+
 // ─── Fallback de carga: spinner mínimo centrado con color de marca ───────────
 function PageLoader() {
   return (
@@ -68,13 +70,13 @@ class RouteErrorBoundary extends Component {
             Pantalla no disponible sin conexión
           </Text>
           <Text color="gray.600" mb={4} maxW="400px">
-            Esta pantalla requiere conexión a internet para descargarse. Puedes volver a Registro de Visitas.
+            Esta pantalla requiere conexión a internet para descargarse. Puedes volver a Registro de Visitas para continuar con tu operación.
           </Text>
           <Flex gap={3}>
-            <Button colorScheme="green" onClick={() => { this.setState({ hasError: false }); window.location.href = "/visitLog"; }}>
+            <Button colorScheme="green" onClick={() => { this.setState({ hasError: false, error: null }); window.location.href = "/visitLog"; }}>
               Ir a Registro de Visitas
             </Button>
-            <Button variant="outline" colorScheme="green" onClick={() => { this.setState({ hasError: false }); window.location.href = "/dashboard"; }}>
+            <Button variant="outline" colorScheme="green" onClick={() => { this.setState({ hasError: false, error: null }); window.location.href = "/dashboard"; }}>
               Ir al Inicio
             </Button>
           </Flex>
@@ -128,8 +130,9 @@ const AppRoutes = () => {
             <Route path="/myVisits"          element={<RoleRoute requiredPermission="POST:/visit-logs"><MyVisitsPage /></RoleRoute>} />
             <Route path="/newClients"        element={<RoleRoute requiredPermission="POST:/visit-logs"><NewClientsPage /></RoleRoute>} />
             <Route path="/entrada"           element={<RoleRoute requiredPermission="POST:/attendance"><EntradaPage /></RoleRoute>} />
-            <Route path="/admin/attendance"  element={<RoleRoute requiredPermission="PUT:/profile/admin/:userId"><AttendanceAdminPage /></RoleRoute>} />
-            <Route path="/faq"               element={<PrivateRoute><FAQPage /></PrivateRoute>} />
+            <Route path="/admin/attendance"   element={<RoleRoute requiredPermission="PUT:/profile/admin/:userId"><AttendanceAdminPage /></RoleRoute>} />
+            <Route path="/admin/online-users" element={<RoleRoute requiredPermission="PUT:/profile/admin/:userId"><OnlineUsersPage /></RoleRoute>} />
+            <Route path="/faq"                element={<PrivateRoute><FAQPage /></PrivateRoute>} />
           </Routes>
         </Suspense>
       </RouteErrorBoundary>

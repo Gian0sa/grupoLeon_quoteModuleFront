@@ -49,10 +49,10 @@ export function SalesSummary({ data }) {
     // 1. 👑 Si superó la meta del mes (>= 100%)
     if (value >= 100) {
       const topPhrases = [
-        `🎃 ¡${firstName}, modo monstruo al ${value.toFixed(1)}%!`,
-        `👑 ¡Brujería pura ${firstName}! Meta reventada`,
-        `🍬 ¡Dulce victoria ${firstName}! 100% cazado`,
-        `👻 ¡${firstName}, ventas de otro mundo!`,
+        `🏆 ¡Meta superada, ${firstName}! (${value.toFixed(1)}%)`,
+        `👑 ¡100% alcanzado, ${firstName}!`,
+        `🚀 ¡Excelente mes, ${firstName}!`,
+        `🔥 ¡Meta cumplida con éxito!`,
       ];
       return topPhrases[seed % topPhrases.length];
     }
@@ -61,10 +61,10 @@ export function SalesSummary({ data }) {
     if (value >= 80) {
       const formattedFalta = faltaNum.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
       const nearPhrases = [
-        faltaNum > 0 ? `🦇 ¡${firstName}, solo faltan $${formattedFalta}! Cazalo` : `🦇 ¡${firstName}, a un paso del 100%!`,
-        `🎃 ¡Al ${value.toFixed(1)}% ${firstName}! Cierre macabro`,
-        `🧙‍♂️ ¡Último hechizo ${firstName}, falta poco!`,
-        `⚡ ¡${firstName}, acechando la meta con todo!`,
+        faltaNum > 0 ? `🎯 Falta $${formattedFalta} para el 100%` : `🎯 ¡A un paso de la meta!`,
+        `⚡ ¡Al ${value.toFixed(1)}%, ${firstName}! Recta final`,
+        `📈 ¡Casi en la meta, ${firstName}!`,
+        `💪 ¡Último esfuerzo para cerrar!`,
       ];
       return nearPhrases[seed % nearPhrases.length];
     }
@@ -73,10 +73,10 @@ export function SalesSummary({ data }) {
     if (ventasHoyNum > 0 && value >= 50) {
       const formattedHoy = ventasHoyNum.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
       const salePhrases = [
-        `🔥 ¡+$${formattedHoy} hoy! Hechizo activo, ${firstName}`,
-        `🎃 ¡Venta terrorífica hoy, ${firstName}!`,
-        `🍬 ¡Dulce venta hoy ${firstName}! Al ${value.toFixed(1)}%`,
-        `⚡ ¡${firstName}, cazando pedidos hoy!`,
+        `🔥 +$${formattedHoy} hoy. ¡Bien, ${firstName}!`,
+        `⚡ Sumando +$${formattedHoy} hoy`,
+        `💼 Venta de hoy: +$${formattedHoy}`,
+        `📈 Buen avance hoy, ${firstName}`,
       ];
       return salePhrases[seed % salePhrases.length];
     }
@@ -84,10 +84,10 @@ export function SalesSummary({ data }) {
     // 4. 📈 Si va a buen ritmo (50% - 79% sin venta hoy)
     if (value >= 50) {
       const midPhrases = [
-        `📈 ¡Al ${value.toFixed(1)}% ${firstName}! No te duermas 👻`,
-        `🎃 ¡Firme ${firstName}, saca las garras!`,
-        `🦇 ¡Buen vuelo ${firstName}! La meta espera`,
-        `🧙‍♂️ ¡${firstName}, ponle magia a ese cierre!`,
+        `📈 Al ${value.toFixed(1)}%. ¡A seguir sumando!`,
+        `💪 Buen ritmo, ${firstName}. ¡Vamos!`,
+        `🎯 Superando el 50%. ¡A cerrar!`,
+        `🚀 Enfocados en la meta del mes`,
       ];
       return midPhrases[seed % midPhrases.length];
     }
@@ -96,20 +96,20 @@ export function SalesSummary({ data }) {
     if (ventasHoyNum > 0) {
       const formattedHoy = ventasHoyNum.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
       const earlySalePhrases = [
-        `⚡ ¡+$${formattedHoy} hoy! Buen mordisco, ${firstName}`,
-        `🍬 ¡Arrancando dulce con +$${formattedHoy}!`,
-        `🔥 ¡Espantando la racha ${firstName}! A sumar más`,
-        `🎃 ¡Buen susto hoy ${firstName}! A cerrar más`,
+        `⚡ +$${formattedHoy} hoy. ¡Bien, ${firstName}!`,
+        `💼 Sumando hoy: +$${formattedHoy}`,
+        `📈 Buen inicio hoy: +$${formattedHoy}`,
+        `🔥 Cierre registrado: +$${formattedHoy}`,
       ];
       return earlySalePhrases[seed % earlySalePhrases.length];
     }
 
     // 6. 🌱 Si está iniciando o con ritmo bajo (< 50% sin venta hoy)
     const lowPhrases = [
-      `👻 ¡A espantar la flojera, ${firstName}!`,
-      `🎃 ¡A cazar clientes ${firstName}, con todo!`,
-      `🦇 ¡Despliega las alas ${firstName}, a facturar!`,
-      `🧙‍♂️ ¡Lanza el hechizo ${firstName}, cada venta cuenta!`,
+      `🎯 ¡Con todo este mes, ${firstName}!`,
+      `💼 ¡A generar nuevas ventas hoy!`,
+      `🚀 ¡A contactar clientes, ${firstName}!`,
+      `📞 ¡A mover cotizaciones hoy!`,
     ];
     return lowPhrases[seed % lowPhrases.length];
   };

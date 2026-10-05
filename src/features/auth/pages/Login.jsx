@@ -175,8 +175,8 @@ export function Login() {
 
   if (isAuthenticated) {
     return (
-      <Center height="100vh" bg="#051f11">
-        <Spinner size="xl" color="emerald.400" thickness="4px" />
+      <Center height="100vh" bg="white">
+        <Spinner size="xl" color="green.600" thickness="3px" speed="0.7s" />
       </Center>
     );
   }

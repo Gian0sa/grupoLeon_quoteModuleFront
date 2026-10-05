@@ -41,6 +41,9 @@ export const useEntrada = () => {
 
   const handleImageChange = async (e) => {
     const file = e.target.files?.[0];
+    if (e.target) {
+      e.target.value = "";
+    }
     if (!file) return;
 
     setIsProcessingImage(true);

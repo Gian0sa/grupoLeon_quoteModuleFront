@@ -71,7 +71,7 @@ export default function VisitLogPage() {
         resetSearch,
     } = useClientSearch();
 
-    const { image, imagePreview, isProcessingImage, handleImageChange, resetImage, fileInputKey } =
+    const { image, imagePreview, imageInfo, isProcessingImage, handleImageChange, resetImage, fileInputKey } =
         useImageUpload();
 
     const {
@@ -124,8 +124,9 @@ export default function VisitLogPage() {
     };
 
     const handleNavigateHistory = () => {
-        const storeName = selectedClient?.firstName || activeVisit?.storeName;
-        navigate(`/clienteBusqueda?storeName=${encodeURIComponent(storeName)}`);
+        const storeName = selectedClient?.firstName || activeVisit?.storeName || "";
+        const clientCode = selectedClient?.sapCode || selectedClient?.cardCode || activeVisit?.sapCode || activeVisit?.cardCode || "";
+        navigate(`/clienteBusqueda?storeName=${encodeURIComponent(storeName)}&clientCode=${encodeURIComponent(clientCode)}&returnTo=/visitLog`);
     };
 
     return (
@@ -192,6 +193,7 @@ export default function VisitLogPage() {
                             <ImageUploadCard
                                 image={image}
                                 imagePreview={imagePreview}
+                                imageInfo={imageInfo}
                                 isProcessingImage={isProcessingImage}
                                 onImageChange={handleImageChange}
                                 existingImageData={clientImageData}
