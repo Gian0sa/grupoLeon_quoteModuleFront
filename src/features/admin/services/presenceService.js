@@ -4,9 +4,35 @@ import { axiosInstance } from "../../../shared/lib/axiosInstance";
  * Servicio para consultar el monitor de presencia y utilidades de traducción de rutas y dispositivos
  */
 
+let globalServerOffset = 0;
+
+export function setServerClockOffset(offset) {
+  if (typeof offset === "number" && !isNaN(offset)) {
+    globalServerOffset = offset;
+  }
+}
+
+export function getServerTime() {
+  return Date.now() - globalServerOffset;
+}
+
 export const getPresenceUsers = async () => {
   const response = await axiosInstance.get("/quoteModule/presence/users");
-  return response.data || [];
+  try {
+    const serverDateHeader = response.headers?.["date"];
+    if (serverDateHeader) {
+      const serverTime = new Date(serverDateHeader).getTime();
+      if (!isNaN(serverTime)) {
+        setServerClockOffset(Date.now() - serverTime);
+      }
+    }
+  } catch (e) {}
+
+  const data = response.data || [];
+  if (Array.isArray(data) && data[0]?.serverTime) {
+    setServerClockOffset(Date.now() - data[0].serverTime);
+  }
+  return data;
 };
 
 // ─── Diccionario de Traducción de Rutas del Sistema ───────────────────────────
@@ -117,7 +143,7 @@ export function formatRelativeActivity(timestamp) {
   const time = typeof timestamp === "number" ? timestamp : new Date(timestamp).getTime();
   if (isNaN(time)) return "Desconocida";
 
-  const now = Date.now();
+  const now = getServerTime();
   const diffSec = Math.max(0, Math.floor((now - time) / 1000));
 
   if (diffSec < 15) return "Ahora";
@@ -141,7 +167,7 @@ export function formatSessionDuration(connectedAt) {
   const time = typeof connectedAt === "number" ? connectedAt : new Date(connectedAt).getTime();
   if (isNaN(time)) return "-";
 
-  const now = Date.now();
+  const now = getServerTime();
   const diffSec = Math.max(0, Math.floor((now - time) / 1000));
 
   if (diffSec < 60) return `${diffSec} s`;
@@ -164,7 +190,7 @@ export function formatDisconnectionDuration(disconnectedAt) {
   const time = typeof disconnectedAt === "number" ? disconnectedAt : new Date(disconnectedAt).getTime();
   if (isNaN(time)) return "-";
 
-  const now = Date.now();
+  const now = getServerTime();
   const diffSec = Math.max(0, Math.floor((now - time) / 1000));
 
   if (diffSec < 60) return `${diffSec} s desconectado`;

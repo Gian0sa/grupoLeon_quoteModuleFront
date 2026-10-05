@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { socket } from "../../../shared/lib/socket";
-import { getPresenceUsers } from "../services/presenceService";
+import { getPresenceUsers, setServerClockOffset } from "../services/presenceService";
 import { useGetAllUsersAdmin } from "./queries/authAdminQueries";
 
 /**
@@ -84,9 +84,17 @@ export function useOnlineUsersMonitor() {
     const handlePresenceList = (list) => {
       if (!isMounted || !Array.isArray(list)) return;
       const map = {};
+      let firstServerTime = null;
       list.forEach((u) => {
         map[u.userId] = u;
+        if (!firstServerTime) {
+          if (u.serverTime) firstServerTime = u.serverTime;
+          else if (u.lastHeartbeat && u.status === "ONLINE") firstServerTime = u.lastHeartbeat;
+        }
       });
+      if (firstServerTime) {
+        setServerClockOffset(Date.now() - firstServerTime);
+      }
       setPresenceMap(map);
       setIsLoadingPresence(false);
     };
@@ -94,6 +102,11 @@ export function useOnlineUsersMonitor() {
     // 4. Escuchar actualización atómica de un usuario
     const handlePresenceUpdate = (user) => {
       if (!isMounted || !user || !user.userId) return;
+      if (user.serverTime) {
+        setServerClockOffset(Date.now() - user.serverTime);
+      } else if (user.lastHeartbeat && user.status === "ONLINE") {
+        setServerClockOffset(Date.now() - user.lastHeartbeat);
+      }
       setPresenceMap((prev) => ({
         ...prev,
         [user.userId]: user,
@@ -122,24 +135,20 @@ export function useOnlineUsersMonitor() {
       const presence = presenceMap[regUser.id] || presenceMap[String(regUser.id)] || presenceMap[Number(regUser.id)];
       const hasPresence = !!presence;
 
-      // Calcular estado dinámico con el timestamp actual
+      // Estado oficial determinado por el servidor en tiempo real
       let status = "OFFLINE";
       let disconnectedAt = null;
 
-      if (hasPresence) {
-        const isHeartbeatAlive = presence.lastHeartbeat && (now - presence.lastHeartbeat) <= 45 * 1000;
-        const hasTabs = (presence.activeTabs || 0) > 0;
-
-        if (hasTabs && isHeartbeatAlive && (presence.status === "ONLINE" || presence.status === "IDLE")) {
-          const isRecent = presence.lastActivity && (now - presence.lastActivity) <= 60 * 1000;
-          status = isRecent ? "ONLINE" : "IDLE";
+      if (hasPresence && presence.status) {
+        if (presence.status === "ONLINE" || presence.status === "IDLE") {
+          status = presence.status;
         } else {
           status = "OFFLINE";
         }
+      }
 
-        if (status === "OFFLINE") {
-          disconnectedAt = presence.disconnectedAt || presence.lastActivity || presence.lastHeartbeat || null;
-        }
+      if (status === "OFFLINE" && hasPresence) {
+        disconnectedAt = presence.disconnectedAt || null;
       }
 
       resultMap.set(regUser.id, {
@@ -151,8 +160,8 @@ export function useOnlineUsersMonitor() {
         role: regUser.salesEmployeeCode ? "Asesor de Ventas" : "Administrador / Oficina",
         active: regUser.active !== false,
         status,
-        currentPage: hasPresence ? presence.currentPage : "-",
-        lastPage: hasPresence ? presence.lastPage : "-",
+        currentPage: hasPresence && status !== "OFFLINE" ? presence.currentPage : "-",
+        lastPage: hasPresence && status !== "OFFLINE" ? presence.lastPage : "-",
         pageHistory: hasPresence && Array.isArray(presence.pageHistory) ? presence.pageHistory : [],
         connectedAt: hasPresence && status !== "OFFLINE" ? presence.connectedAt : null,
         disconnectedAt,
@@ -165,19 +174,12 @@ export function useOnlineUsersMonitor() {
     // Agregar usuarios que estén en presenceMap pero no estén en la lista de registrados
     Object.values(presenceMap).forEach((presUser) => {
       if (!resultMap.has(presUser.userId)) {
-        let presStatus = presUser.status || "OFFLINE";
-        const isHeartbeatAlive = presUser.lastHeartbeat && (now - presUser.lastHeartbeat) <= 45 * 1000;
-        const hasTabs = (presUser.activeTabs || 0) > 0;
-
-        if (hasTabs && isHeartbeatAlive && (presStatus === "ONLINE" || presStatus === "IDLE")) {
-          const isRecent = presUser.lastActivity && (now - presUser.lastActivity) <= 60 * 1000;
-          presStatus = isRecent ? "ONLINE" : "IDLE";
-        } else {
-          presStatus = "OFFLINE";
-        }
+        const presStatus = (presUser.status === "ONLINE" || presUser.status === "IDLE")
+          ? presUser.status
+          : "OFFLINE";
 
         const presDisconnectedAt = presStatus === "OFFLINE"
-          ? (presUser.disconnectedAt || presUser.lastActivity || presUser.lastHeartbeat || null)
+          ? (presUser.disconnectedAt || null)
           : null;
 
         resultMap.set(presUser.userId, {
@@ -189,8 +191,8 @@ export function useOnlineUsersMonitor() {
           role: presUser.role || "Usuario",
           active: true,
           status: presStatus,
-          currentPage: presUser.currentPage || "-",
-          lastPage: presUser.lastPage || "-",
+          currentPage: presStatus !== "OFFLINE" ? (presUser.currentPage || "-") : "-",
+          lastPage: presStatus !== "OFFLINE" ? (presUser.lastPage || "-") : "-",
           pageHistory: Array.isArray(presUser.pageHistory) ? presUser.pageHistory : [],
           connectedAt: presStatus !== "OFFLINE" ? presUser.connectedAt : null,
           disconnectedAt: presDisconnectedAt,
