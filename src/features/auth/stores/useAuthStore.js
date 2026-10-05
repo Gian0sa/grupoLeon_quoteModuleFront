@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { updateSocketAuth } from '../../../shared/lib/socket';
+import { updateSocketAuth, socket } from '../../../shared/lib/socket';
 
 const getSafeValue = (key) => {
   try {
@@ -72,6 +72,19 @@ export const useAuthStore = create((set) => ({
   },
 
   logout: () => {
+    try {
+      const currentUserId = useAuthStore.getState().userId || localStorage.getItem('userId');
+      if (socket && socket.connected) {
+        socket.emit('presence:logout', {
+          userId: currentUserId ? Number(currentUserId) : null,
+          timestamp: Date.now(),
+        });
+        socket.disconnect();
+      }
+    } catch (e) {
+      console.warn("⚠️ Error emitiendo logout de presencia:", e);
+    }
+
     try {
       ['userId', 'username', 'salesEmployeeCode', 'endpoints', 'lastRoute'].forEach((key) =>
         localStorage.removeItem(key)

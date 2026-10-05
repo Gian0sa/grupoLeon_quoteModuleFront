@@ -110,12 +110,15 @@ export function getDeviceDetails() {
 }
 
 /**
- * Formatea la última actividad en texto amigable ("Ahora", "Hace 2 min", etc.)
+ * Formatea la última actividad en texto amigable ("Ahora", "Hace 20 s", "Hace 2 min", etc.)
  */
 export function formatRelativeActivity(timestamp) {
   if (!timestamp) return "Desconocida";
+  const time = typeof timestamp === "number" ? timestamp : new Date(timestamp).getTime();
+  if (isNaN(time)) return "Desconocida";
+
   const now = Date.now();
-  const diffSec = Math.floor((now - timestamp) / 1000);
+  const diffSec = Math.max(0, Math.floor((now - time) / 1000));
 
   if (diffSec < 15) return "Ahora";
   if (diffSec < 60) return `Hace ${diffSec} s`;
@@ -131,17 +134,52 @@ export function formatRelativeActivity(timestamp) {
 }
 
 /**
- * Calcula la duración de sesión ("32 min", "1 h 12 min")
+ * Calcula la duración de sesión exacta ("15 s", "45 s", "1 min", "2 min", "1 h 12 min")
  */
 export function formatSessionDuration(connectedAt) {
   if (!connectedAt) return "-";
-  const now = Date.now();
-  const diffMin = Math.floor((now - connectedAt) / 60000);
+  const time = typeof connectedAt === "number" ? connectedAt : new Date(connectedAt).getTime();
+  if (isNaN(time)) return "-";
 
-  if (diffMin < 1) return "< 1 min";
+  const now = Date.now();
+  const diffSec = Math.max(0, Math.floor((now - time) / 1000));
+
+  if (diffSec < 60) return `${diffSec} s`;
+
+  const diffMin = Math.floor(diffSec / 60);
   if (diffMin < 60) return `${diffMin} min`;
 
   const hours = Math.floor(diffMin / 60);
   const remainingMin = diffMin % 60;
   return `${hours} h ${remainingMin} min`;
+}
+
+/**
+ * Calcula el tiempo transcurrido desde la desconexión del usuario
+ * ("15 s desconectado", "1 min desconectado", "2 h 15 min desconectado", etc.)
+ * Diseñado como contador en tiempo real desde el segundo exacto en que se desconectó.
+ */
+export function formatDisconnectionDuration(disconnectedAt) {
+  if (!disconnectedAt) return "-";
+  const time = typeof disconnectedAt === "number" ? disconnectedAt : new Date(disconnectedAt).getTime();
+  if (isNaN(time)) return "-";
+
+  const now = Date.now();
+  const diffSec = Math.max(0, Math.floor((now - time) / 1000));
+
+  if (diffSec < 60) return `${diffSec} s desconectado`;
+
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin} min desconectado`;
+
+  const hours = Math.floor(diffMin / 60);
+  const remainingMin = diffMin % 60;
+  if (hours < 24) {
+    return remainingMin > 0
+      ? `${hours} h ${remainingMin} min desconectado`
+      : `${hours} h desconectado`;
+  }
+
+  const days = Math.floor(hours / 24);
+  return `${days} d desconectado`;
 }

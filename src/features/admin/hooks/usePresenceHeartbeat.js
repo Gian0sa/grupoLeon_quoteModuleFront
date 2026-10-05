@@ -5,7 +5,7 @@ import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { getDeviceDetails } from "../services/presenceService";
 
 const HEARTBEAT_INTERVAL_MS = 20 * 1000; // Cada 20 segundos
-const ACTIVITY_THROTTLE_MS = 20 * 1000;  // Máximo 1 evento de actividad cada 20 segundos
+const ACTIVITY_THROTTLE_MS = 5 * 1000;   // Máximo 1 evento de actividad cada 5 segundos
 
 function getUserPayload() {
   try {
@@ -117,6 +117,18 @@ export function usePresenceHeartbeat() {
       sendHeartbeat();
     };
 
+    const handleBeforeUnload = () => {
+      if (socket && socket.connected) {
+        const user = getUserPayload();
+        if (user && user.userId) {
+          socket.emit("presence:leave", {
+            userId: user.userId,
+            timestamp: Date.now(),
+          });
+        }
+      }
+    };
+
     const eventOptions = { passive: true };
     const activityEvents = ["click", "keydown", "mousemove", "scroll", "touchstart"];
 
@@ -125,6 +137,8 @@ export function usePresenceHeartbeat() {
     });
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("online", handleOnline);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("pagehide", handleBeforeUnload);
 
     return () => {
       clearInterval(heartbeatTimer);
@@ -134,6 +148,8 @@ export function usePresenceHeartbeat() {
       });
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("online", handleOnline);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("pagehide", handleBeforeUnload);
     };
   }, [isAuthenticated, location.pathname]);
 }

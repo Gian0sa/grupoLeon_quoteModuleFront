@@ -13,12 +13,23 @@ export function useOnlineUsersMonitor() {
   const [isLoadingPresence, setIsLoadingPresence] = useState(true);
   const [now, setNow] = useState(Date.now());
 
-  // Timer local para refrescar tiempos relativos y expiraciones sin consultar al servidor
+  // Timer local para refrescar segundos en tiempo real y tiempos relativos sin consultar al servidor
   useEffect(() => {
     const timer = setInterval(() => {
       setNow(Date.now());
-    }, 10000);
-    return () => clearInterval(timer);
+    }, 1000);
+
+    const handleVis = () => {
+      if (document.visibilityState === "visible") {
+        setNow(Date.now());
+      }
+    };
+    document.addEventListener("visibilitychange", handleVis);
+
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", handleVis);
+    };
   }, []);
 
   // Carga inicial y suscripción a WebSockets
@@ -113,11 +124,21 @@ export function useOnlineUsersMonitor() {
 
       // Calcular estado dinámico con el timestamp actual
       let status = "OFFLINE";
-      if (hasPresence && presence.status) {
-        if (presence.status === "ONLINE" || presence.status === "IDLE") {
-          status = presence.status;
+      let disconnectedAt = null;
+
+      if (hasPresence) {
+        const isHeartbeatAlive = presence.lastHeartbeat && (now - presence.lastHeartbeat) <= 45 * 1000;
+        const hasTabs = (presence.activeTabs || 0) > 0;
+
+        if (hasTabs && isHeartbeatAlive && (presence.status === "ONLINE" || presence.status === "IDLE")) {
+          const isRecent = presence.lastActivity && (now - presence.lastActivity) <= 60 * 1000;
+          status = isRecent ? "ONLINE" : "IDLE";
         } else {
           status = "OFFLINE";
+        }
+
+        if (status === "OFFLINE") {
+          disconnectedAt = presence.disconnectedAt || presence.lastActivity || presence.lastHeartbeat || null;
         }
       }
 
@@ -134,6 +155,7 @@ export function useOnlineUsersMonitor() {
         lastPage: hasPresence ? presence.lastPage : "-",
         pageHistory: hasPresence && Array.isArray(presence.pageHistory) ? presence.pageHistory : [],
         connectedAt: hasPresence && status !== "OFFLINE" ? presence.connectedAt : null,
+        disconnectedAt,
         lastActivity: hasPresence ? presence.lastActivity : null,
         device: hasPresence ? presence.device : { type: "Desktop", browser: "-", os: "-" },
         activeTabs: hasPresence ? presence.activeTabs : 0,
@@ -143,6 +165,21 @@ export function useOnlineUsersMonitor() {
     // Agregar usuarios que estén en presenceMap pero no estén en la lista de registrados
     Object.values(presenceMap).forEach((presUser) => {
       if (!resultMap.has(presUser.userId)) {
+        let presStatus = presUser.status || "OFFLINE";
+        const isHeartbeatAlive = presUser.lastHeartbeat && (now - presUser.lastHeartbeat) <= 45 * 1000;
+        const hasTabs = (presUser.activeTabs || 0) > 0;
+
+        if (hasTabs && isHeartbeatAlive && (presStatus === "ONLINE" || presStatus === "IDLE")) {
+          const isRecent = presUser.lastActivity && (now - presUser.lastActivity) <= 60 * 1000;
+          presStatus = isRecent ? "ONLINE" : "IDLE";
+        } else {
+          presStatus = "OFFLINE";
+        }
+
+        const presDisconnectedAt = presStatus === "OFFLINE"
+          ? (presUser.disconnectedAt || presUser.lastActivity || presUser.lastHeartbeat || null)
+          : null;
+
         resultMap.set(presUser.userId, {
           userId: presUser.userId,
           name: presUser.name || presUser.username || `Usuario #${presUser.userId}`,
@@ -151,14 +188,15 @@ export function useOnlineUsersMonitor() {
           salesEmployeeCode: presUser.salesEmployeeCode,
           role: presUser.role || "Usuario",
           active: true,
-          status: presUser.status || "ONLINE",
+          status: presStatus,
           currentPage: presUser.currentPage || "-",
           lastPage: presUser.lastPage || "-",
           pageHistory: Array.isArray(presUser.pageHistory) ? presUser.pageHistory : [],
-          connectedAt: presUser.connectedAt,
+          connectedAt: presStatus !== "OFFLINE" ? presUser.connectedAt : null,
+          disconnectedAt: presDisconnectedAt,
           lastActivity: presUser.lastActivity,
           device: presUser.device || { type: "Desktop", browser: "-", os: "-" },
-          activeTabs: presUser.activeTabs || 1,
+          activeTabs: presUser.activeTabs || 0,
         });
       }
     });

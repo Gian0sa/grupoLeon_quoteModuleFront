@@ -70,6 +70,7 @@ import {
   translateRoute,
   formatRelativeActivity,
   formatSessionDuration,
+  formatDisconnectionDuration,
 } from "../services/presenceService";
 
 const STATUS_PRIORITY = {
@@ -683,21 +684,27 @@ export function OnlineUsersPage() {
                           {/* Fila secundaria: Dispositivo y Duración */}
                           <Flex justify="space-between" align="center" gap={2} fontSize="11px">
                             {/* Dispositivo */}
-                            <HStack spacing={1.5} color="gray.600" minW={0}>
-                              <Box color="gray.500" flexShrink={0}>
+                            <HStack spacing={1.5} color={!isOffline ? "gray.600" : "gray.400"} minW={0}>
+                              <Box color={!isOffline ? "gray.500" : "gray.400"} flexShrink={0}>
                                 {getDeviceIcon(u.device?.type)}
                               </Box>
-                              <Text color="gray.700" fontWeight="600" noOfLines={1}>
-                                {u.device ? `${u.device.browser} · ${u.device.os}` : "—"}
+                              <Text color={!isOffline ? "gray.700" : "gray.500"} fontWeight="600" noOfLines={1}>
+                                {u.device && u.device.browser && u.device.browser !== "-"
+                                  ? `${u.device.browser} · ${u.device.os}`
+                                  : "—"}
                               </Text>
                             </HStack>
 
-                            {/* Tiempo conectado */}
-                            {!isOffline && u.connectedAt && (
+                            {/* Tiempo conectado / desconectado */}
+                            {!isOffline && u.connectedAt ? (
                               <Tag size="sm" variant="subtle" colorScheme="blue" borderRadius="md" px={2} py={0.5} fontSize="10px" fontWeight="700">
-                                {formatSessionDuration(u.connectedAt)}
+                                <TagLabel>{formatSessionDuration(u.connectedAt)} activo</TagLabel>
                               </Tag>
-                            )}
+                            ) : isOffline && u.disconnectedAt ? (
+                              <Tag size="sm" variant="subtle" colorScheme="gray" borderRadius="md" px={2} py={0.5} fontSize="10px" fontWeight="700">
+                                <TagLabel>{formatDisconnectionDuration(u.disconnectedAt)}</TagLabel>
+                              </Tag>
+                            ) : null}
                           </Flex>
 
                           {/* Fila terciaria: Última Actividad */}
@@ -915,6 +922,22 @@ export function OnlineUsersPage() {
                                     </Tag>
                                   )}
                                 </VStack>
+                              ) : isOffline && u.disconnectedAt ? (
+                                <VStack align="flex-start" spacing={1} minW={0}>
+                                  {u.device && u.device.browser && u.device.browser !== "-" && (
+                                    <HStack spacing={1.5} color="gray.400" minW={0} w="full">
+                                      <Box color="gray.400" flexShrink={0}>
+                                        {getDeviceIcon(u.device?.type)}
+                                      </Box>
+                                      <Text fontSize="xs" fontWeight="500" color="gray.500" noOfLines={1}>
+                                        {u.device.browser} · {u.device.os}
+                                      </Text>
+                                    </HStack>
+                                  )}
+                                  <Tag size="sm" variant="subtle" colorScheme="gray" borderRadius="md" px={1.5} py={0} fontSize="10px" fontWeight="700">
+                                    <TagLabel>{formatDisconnectionDuration(u.disconnectedAt)}</TagLabel>
+                                  </Tag>
+                                </VStack>
                               ) : (
                                 <Text fontSize="xs" color="gray.300">
                                   —
@@ -1029,24 +1052,34 @@ export function OnlineUsersPage() {
                   <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3} fontSize="sm">
                     <Box>
                       <Text color="gray.400" fontSize="xs">
-                        Hora de Conexión:
+                        {activeSelectedUser.status !== "OFFLINE" ? "Hora de Conexión:" : "Hora de Desconexión:"}
                       </Text>
                       <Text fontWeight="600" color="gray.800">
-                        {activeSelectedUser.connectedAt
-                          ? new Date(activeSelectedUser.connectedAt).toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                              second: "2-digit",
-                            })
-                          : "No disponible"}
+                        {activeSelectedUser.status !== "OFFLINE"
+                          ? (activeSelectedUser.connectedAt
+                              ? new Date(activeSelectedUser.connectedAt).toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                  second: "2-digit",
+                                })
+                              : "No disponible")
+                          : (activeSelectedUser.disconnectedAt
+                              ? new Date(activeSelectedUser.disconnectedAt).toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                  second: "2-digit",
+                                })
+                              : "No disponible")}
                       </Text>
                     </Box>
                     <Box>
                       <Text color="gray.400" fontSize="xs">
-                        Tiempo Transcurrido:
+                        {activeSelectedUser.status !== "OFFLINE" ? "Tiempo Activo:" : "Tiempo Desconectado:"}
                       </Text>
                       <Text fontWeight="600" color="gray.800">
-                        {formatSessionDuration(activeSelectedUser.connectedAt)}
+                        {activeSelectedUser.status !== "OFFLINE"
+                          ? `${formatSessionDuration(activeSelectedUser.connectedAt)} activo`
+                          : formatDisconnectionDuration(activeSelectedUser.disconnectedAt)}
                       </Text>
                     </Box>
                     <Box>
