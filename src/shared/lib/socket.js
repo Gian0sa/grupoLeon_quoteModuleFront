@@ -1,4 +1,5 @@
 import { io } from "socket.io-client";
+import { getDeviceDetails } from "../../features/admin/services/presenceService";
 
 const resolveSocketUrl = () => {
   if (import.meta.env.VITE_WS_URL) {
@@ -29,11 +30,13 @@ export const getCurrentSocketAuth = () => {
     const username = localStorage.getItem("username");
     const endpoints = JSON.parse(localStorage.getItem("endpoints") || "[]");
     const salesEmployeeCode = localStorage.getItem("salesEmployeeCode");
+    const device = typeof window !== "undefined" ? getDeviceDetails() : null;
     return {
       userId: rawUser ? Number(rawUser) : null,
       username: username || null,
       permissions: endpoints,
       salesEmployeeCode: salesEmployeeCode ? Number(salesEmployeeCode) : null,
+      device,
     };
   } catch {
     return {};
@@ -67,7 +70,13 @@ export const updateSocketAuth = () => {
     socket.auth = authData;
     if (socket.connected) {
       if (authData.userId) {
-        socket.emit("presence:identify", { user: authData });
+        const page = typeof window !== "undefined" ? window.location.pathname : "/";
+        socket.emit("presence:identify", {
+          user: authData,
+          device: authData.device,
+          page,
+          timestamp: Date.now(),
+        });
       }
     } else {
       socket.connect();
@@ -81,7 +90,13 @@ socket.on("connect", () => {
   console.log("⚡ [WS] Conectado en tiempo real con Socket.io a:", SOCKET_URL);
   const currentAuth = getCurrentSocketAuth();
   if (currentAuth.userId) {
-    socket.emit("presence:identify", { user: currentAuth });
+    const page = typeof window !== "undefined" ? window.location.pathname : "/";
+    socket.emit("presence:identify", {
+      user: currentAuth,
+      device: currentAuth.device,
+      page,
+      timestamp: Date.now(),
+    });
   }
 });
 

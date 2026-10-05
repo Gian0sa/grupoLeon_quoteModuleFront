@@ -108,7 +108,7 @@ export function useOnlineUsersMonitor() {
 
     // Agregar todos los usuarios registrados
     allUsersList.forEach((regUser) => {
-      const presence = presenceMap[regUser.id];
+      const presence = presenceMap[regUser.id] || presenceMap[String(regUser.id)] || presenceMap[Number(regUser.id)];
       const hasPresence = !!presence;
 
       // Calcular estado dinámico con el timestamp actual
