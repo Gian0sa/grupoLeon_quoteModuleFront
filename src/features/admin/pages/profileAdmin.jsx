@@ -77,10 +77,28 @@ export const isUserBlocked = (user) => {
   return Boolean(user?.blockedUntil && new Date(user.blockedUntil) > new Date());
 };
 
+// Helper de alta precisión para identificar si un usuario posee privilegios de Administrador Maestro
+export const isUserMasterAdmin = (u) => {
+  if (!u) return false;
+  const userEndpoints = (u.permittedServices || []).map((p) => {
+    if (typeof p === "string") return p;
+    if (p && p.service) return `${p.service.method}:${p.service.path}`;
+    if (p && p.method && p.path) return `${p.method}:${p.path}`;
+    return "";
+  });
+  const hasService22 = (u.permittedServices || []).some((p) => {
+    const sId = Number(p?.id || p?.service?.id || p?.serviceId || p);
+    const sPath = p?.path || p?.service?.path || "";
+    return sId === 22 || sPath.includes("profile/admin");
+  });
+  return hasService22 || checkIsAdmin(userEndpoints, u.username);
+};
+
 // Componente de tarjeta para vista móvil
 function UserMobileCard({ user, onEdit, onUnlock, isUnlocking }) {
   const permCount = Array.isArray(user.permittedServices) ? user.permittedServices.length : 0;
   const blocked = isUserBlocked(user);
+  const isAdmin = isUserMasterAdmin(user);
 
   return (
     <Card
@@ -104,9 +122,26 @@ function UserMobileCard({ user, onEdit, onUnlock, isUnlocking }) {
               fontWeight="800"
             />
             <Box>
-              <Text fontWeight="800" fontSize="sm" color="gray.900">
-                {user.username}
-              </Text>
+              <HStack spacing={1.5} align="center">
+                <Text fontWeight="800" fontSize="sm" color="gray.900">
+                  {user.username}
+                </Text>
+                {isAdmin && (
+                  <Badge
+                    bg="#fee2e2"
+                    color="#991b1b"
+                    border="1px solid #fca5a5"
+                    fontSize="9px"
+                    fontWeight="900"
+                    px={1.5}
+                    py={0.2}
+                    borderRadius="sm"
+                    letterSpacing="wider"
+                  >
+                    🛡️ ADMIN
+                  </Badge>
+                )}
+              </HStack>
               <Text fontSize="11px" color="gray.500">
                 {user.email}
               </Text>
@@ -885,14 +920,26 @@ export function ProfileAdmin() {
                                   fontWeight="800"
                                 />
                                 <Box>
-                                  <Text fontWeight="800" fontSize="12.5px" color="gray.900">
-                                    {user.username}
-                                  </Text>
-                                  {checkIsAdmin(user.endpoints, user.username) && (
-                                    <Badge colorScheme="purple" fontSize="9px" px={1.5} borderRadius="sm">
-                                      Admin
-                                    </Badge>
-                                  )}
+                                  <HStack spacing={1.5} align="center">
+                                    <Text fontWeight="800" fontSize="12.5px" color="gray.900">
+                                      {user.username}
+                                    </Text>
+                                    {isUserMasterAdmin(user) && (
+                                      <Badge
+                                        bg="#fee2e2"
+                                        color="#991b1b"
+                                        border="1px solid #fca5a5"
+                                        fontSize="9px"
+                                        fontWeight="900"
+                                        px={1.5}
+                                        py={0.2}
+                                        borderRadius="sm"
+                                        letterSpacing="wider"
+                                      >
+                                        🛡️ ADMIN
+                                      </Badge>
+                                    )}
+                                  </HStack>
                                 </Box>
                               </HStack>
                             </Td>
@@ -1103,6 +1150,18 @@ export function ProfileAdmin() {
                   selectedUser={selectedUser}
                   onUnlock={(id) => unlockUser.mutate(id)}
                   isUnlocking={unlockUser.isPending && unlockUser.variables === selectedUser?.id}
+                  onToggleMasterAdmin={(enable) => {
+                    setFormData((prev) => {
+                      const current = new Set((prev.permittedServices || []).map((id) => Number(id)));
+                      const ADMIN_SERVICES = [3, 4, 5, 6, 7, 16, 21, 22];
+                      if (enable) {
+                        ADMIN_SERVICES.forEach((id) => current.add(id));
+                      } else {
+                        ADMIN_SERVICES.forEach((id) => current.delete(id));
+                      }
+                      return { ...prev, permittedServices: Array.from(current) };
+                    });
+                  }}
                 />
               </Box>
 

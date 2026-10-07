@@ -34,6 +34,7 @@ import {
   Receipt,
   Award,
   ShieldCheck,
+  ShieldAlert,
   RotateCcw
 } from "lucide-react";
 import {
@@ -188,12 +189,20 @@ const PermissionsTreeView = memo(function PermissionsTreeView({
 
   const handleToggleCategory = (categoryServices, selectAll) => {
     const current = new Set((permittedServices || []).map((id) => Number(id)));
-    const ids = (categoryServices || []).map((s) => Number(s.id));
+
+    // 🛡️ Seguridad Crítica: Jamás auto-marcar el permiso de Administrador Maestro (ID 22: PUT /profile/admin/:userId)
+    // al hacer clic masivo en la casilla de la categoría. Solo se puede marcar de forma individual, consciente y explícita.
+    const CRITICAL_MASTER_SERVICE_IDS = new Set([22]);
 
     if (selectAll) {
-      ids.forEach((id) => current.add(id));
+      (categoryServices || []).forEach((s) => {
+        const sId = Number(s.id);
+        if (!CRITICAL_MASTER_SERVICE_IDS.has(sId)) {
+          current.add(sId);
+        }
+      });
     } else {
-      ids.forEach((id) => current.delete(id));
+      (categoryServices || []).forEach((s) => current.delete(Number(s.id)));
     }
 
     onChange(Array.from(current));
@@ -211,13 +220,12 @@ const PermissionsTreeView = memo(function PermissionsTreeView({
   // Calcular dinámicamente la cantidad de servicios de cada plantilla según el catálogo cargado
   const presetCounts = useMemo(() => {
     if (!services || services.length === 0) {
-      return { vendedor: 0, facturacion: 0, supervisor: 0, admin: 0 };
+      return { vendedor: 0, facturacion: 0, supervisor: 0 };
     }
     return {
       vendedor: getPresetServiceIds("vendedor", services).length,
       facturacion: getPresetServiceIds("facturacion", services).length,
       supervisor: getPresetServiceIds("supervisor", services).length,
-      admin: services.length,
     };
   }, [services]);
 
@@ -226,7 +234,6 @@ const PermissionsTreeView = memo(function PermissionsTreeView({
     if (!services || services.length === 0) return null;
     const currentCount = (permittedServices || []).length;
     if (currentCount === 0) return "limpiar";
-    if (currentCount === services.length) return "admin";
 
     const currentSet = new Set((permittedServices || []).map((id) => Number(id)));
 
@@ -363,31 +370,6 @@ const PermissionsTreeView = memo(function PermissionsTreeView({
             Supervisor Comercial
             <Badge ml={1.5} bg="#e9d5ff" color="#6b21a8" fontSize="9px" px={1.5} borderRadius="full">
               {presetCounts.supervisor}
-            </Badge>
-          </Button>
-
-          {/* 🛡️ ADMIN TOTAL */}
-          <Button
-            size="xs"
-            variant="outline"
-            bg={activePresetKey === "admin" ? "#fee2e2" : "white"}
-            borderColor={activePresetKey === "admin" ? "#dc2626" : "#fecaca"}
-            color="#b91c1c"
-            _hover={{ bg: "#fee2e2", borderColor: "#dc2626", transform: "translateY(-1px)" }}
-            _active={{ transform: "translateY(0)" }}
-            boxShadow={activePresetKey === "admin" ? "0 0 0 2px rgba(220, 38, 38, 0.3)" : "none"}
-            transition="all 0.15s ease"
-            leftIcon={<ShieldCheck className="w-3.5 h-3.5 stroke-[2.5]" />}
-            onClick={() => handleApplyPreset("admin")}
-            fontWeight="800"
-            borderRadius="lg"
-            h="32px"
-            px={3}
-            title={ROLE_PRESETS.admin?.description}
-          >
-            Admin Total
-            <Badge ml={1.5} bg="#fecaca" color="#991b1b" fontSize="9px" px={1.5} borderRadius="full">
-              Todos
             </Badge>
           </Button>
 
@@ -681,8 +663,9 @@ const PermissionsTreeView = memo(function PermissionsTreeView({
                           py={0.8}
                           px={2}
                           borderRadius="md"
+                          bg="transparent"
                           _hover={{ bg: "#f0fdf4" }}
-                          transition="background 0.1s"
+                          transition="all 0.15s ease-in-out"
                         >
                           <HStack spacing={2} flex="1" minW={0}>
                             {/* Guía horizontal del árbol */}
@@ -695,9 +678,14 @@ const PermissionsTreeView = memo(function PermissionsTreeView({
                               onChange={(checked) => handleToggleService(srv.id, checked)}
                             />
 
-                            <FileText className="w-3.5 h-3.5 text-gray-400" />
+                            <FileText className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
 
-                            <Text fontSize="11.5px" fontWeight="600" color="gray.800" noOfLines={1}>
+                            <Text
+                              fontSize="11.5px"
+                              fontWeight="600"
+                              color="gray.800"
+                              noOfLines={1}
+                            >
                               {srv.displayName || srv.name}
                             </Text>
 

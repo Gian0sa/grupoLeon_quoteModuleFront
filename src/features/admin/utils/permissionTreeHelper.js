@@ -9,9 +9,15 @@
 export function buildPermissionTree(services = []) {
   if (!Array.isArray(services) || services.length === 0) return [];
 
+  // 🛡️ Excluir el servicio maestro ID 22 (PUT /profile/admin/:userId) del árbol de casillas
+  // para que sea controlado única y exclusivamente por el Switch superior de "Rol Administrador del Sistema".
+  const operationalServices = services.filter(
+    (s) => Number(s.id) !== 22 && !s.path?.includes("profile/admin")
+  );
+
   const categoriesMap = new Map();
 
-  services.forEach((service) => {
+  operationalServices.forEach((service) => {
     let rawCategory = "Otros";
     let displayName = service.name || "Servicio";
 
@@ -65,6 +71,9 @@ export function buildPermissionTree(services = []) {
     "clientes",
     "compras",
     "notificaciones",
+    "comercial",
+    "monitoreo",
+    "perfil",
     "admin",
     "otros"
   ];
@@ -113,7 +122,7 @@ export const ROLE_PRESETS = {
     badgeBorder: "#bbf7d0",
     hoverBg: "#bbf7d0",
     patterns: [
-      "GET /quotesSellers/:slpCode/:month",
+      "GET /quotesSellers/:slpCode",
       "GET /quotes",
       "POST /quotes",
       "GET /quotes/:id",
@@ -127,7 +136,6 @@ export const ROLE_PRESETS = {
       "GET /deliveryNote/:code",
       "GET /invoice/:code",
       "GET /accountsReceivable",
-      "GET /reports/:code",
       "GET /pdf/:code",
       "GET /compareOrderDelivery/:orderCode/:deliveryCode",
       "GET /invoiceDeliveryNoteperOrder/:docEntry",
@@ -167,18 +175,14 @@ export const ROLE_PRESETS = {
     patterns: [
       "GET /quotes",
       "GET /quotes/:id",
-      "POST /quotes/approval",
       "POST /quotes/sap/:id/copy-to-order",
       "POST /quotes/sap/:id/copy-to-invoice",
       "GET /quotes/sap/relationship-map/:docNum",
       "GET /orderswithStatus/:code/:estadopedido",
-      "GET /orders",
       "GET /order/:code",
       "GET /deliveryNote/:code",
       "GET /invoice/:code",
       "GET /accountsReceivable",
-      "GET /reports",
-      "GET /reports/:code",
       "GET /pdf/:code",
       "GET /invoiceDeliveryNoteperOrder/:docEntry",
       "POST /statement/share",
@@ -204,8 +208,8 @@ export const ROLE_PRESETS = {
     badgeBorder: "#e9d5ff",
     hoverBg: "#e9d5ff",
     patterns: [
-      "GET /quotesSellers/:slpCode/:month",
-      "GET /AdminQuotesSellers/:slpCode/:month",
+      "GET /quotesSellers/:slpCode",
+      "GET /AdminQuotesSellers/:slpCode",
       "GET /sellers",
       "GET /quotes",
       "POST /quotes",
@@ -213,20 +217,16 @@ export const ROLE_PRESETS = {
       "PUT /quotes/:id",
       "DELETE /quotes/:id",
       "POST /quotes/sap/create",
-      "POST /quotes/approval",
       "POST /quotes/sap/:id/copy-to-order",
       "POST /quotes/sap/:id/copy-to-invoice",
       "GET /quotes/sap/relationship-map/:docNum",
       "GET /requestQuotes",
       "POST /promotions",
       "GET /orderswithStatus/:code/:estadopedido",
-      "GET /orders",
       "GET /order/:code",
       "GET /deliveryNote/:code",
       "GET /invoice/:code",
       "GET /accountsReceivable",
-      "GET /reports",
-      "GET /reports/:code",
       "GET /pdf/:code",
       "GET /compareOrderDelivery/:orderCode/:deliveryCode",
       "GET /invoiceDeliveryNoteperOrder/:docEntry",
@@ -243,7 +243,6 @@ export const ROLE_PRESETS = {
       "GET /visit-logs/:id",
       "POST /visit-logs",
       "GET /visit-logs/active/:vendorName",
-      "GET /visit-logs/seller/:sellerCode",
       "GET /attendance",
       "POST /attendance",
       "GET /clients/:code",
@@ -254,21 +253,13 @@ export const ROLE_PRESETS = {
       "GET /clients/payment-terms",
       "GET /rules",
       "GET /rules/:id",
-      "GET /exchangeRate",
+      "PUT /rules/:id",
+      "POST /rules",
+      "DELETE /rules/:id",
       "GET /notifications",
       "GET /notifications/:id",
       "PUT /profile"
     ]
-  },
-  admin: {
-    key: "admin",
-    label: "Admin",
-    roleName: "Acceso Total",
-    description: "Selecciona el 100% de los servicios y rutas del sistema sin restricciones.",
-    badgeBg: "#fee2e2",
-    badgeColor: "#b91c1c",
-    badgeBorder: "#fecaca",
-    hoverBg: "#fecaca"
   },
   limpiar: {
     key: "limpiar",
@@ -287,10 +278,6 @@ export const ROLE_PRESETS = {
  */
 export function getPresetServiceIds(presetKey, allServices = []) {
   if (!presetKey || !Array.isArray(allServices) || allServices.length === 0) return [];
-
-  if (presetKey === "admin") {
-    return allServices.map((s) => Number(s.id));
-  }
 
   if (presetKey === "limpiar" || presetKey === "clear") {
     return [];

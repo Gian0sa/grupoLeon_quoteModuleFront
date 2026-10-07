@@ -61,11 +61,14 @@ import {
   Sparkles,
   Wifi,
   ExternalLink,
+  Monitor,
+  FileText,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
 import { useOnlineUsersMonitor } from "../hooks/useOnlineUsersMonitor";
+import { UserSessionDetailModal } from "../components/UserSessionDetailModal";
 import {
   translateRoute,
   formatRelativeActivity,
@@ -743,28 +746,22 @@ export function OnlineUsersPage() {
                   })}
                 </VStack>
 
-                {/* ─── VISTA ESCRITORIO (>= 768px): TABLA COMPACTA Y SIN DESBORDE ─── */}
+                {/* ─── VISTA ESCRITORIO (>= 768px): TABLA DE USUARIOS Y ACTIVIDAD (DISEÑO OFICIAL) ─── */}
                 <Box display={{ base: "none", md: "block" }} w="full" overflow="hidden">
                   <Table variant="simple" size="sm" sx={{ tableLayout: "fixed" }} w="full">
                     <Thead bg="gray.50" borderBottom="1px solid" borderColor="gray.200">
                       <Tr>
-                        <Th w="23%" color="gray.600" fontSize="10px" fontWeight="800" textTransform="uppercase" letterSpacing="wider" py={3} px={3}>
+                        <Th w="26%" color="gray.600" fontSize="11px" fontWeight="700" textTransform="none" letterSpacing="normal" py={3.5} px={4}>
                           Usuario
                         </Th>
-                        <Th w="15%" color="gray.600" fontSize="10px" fontWeight="800" textTransform="uppercase" letterSpacing="wider" py={3} px={2}>
-                          Estado
+                        <Th w="24%" color="gray.600" fontSize="11px" fontWeight="700" textTransform="none" letterSpacing="normal" py={3.5} px={3}>
+                          Dispositivo
                         </Th>
-                        <Th w="25%" color="gray.600" fontSize="10px" fontWeight="800" textTransform="uppercase" letterSpacing="wider" py={3} px={2}>
-                          Página Actual
+                        <Th w="32%" color="gray.600" fontSize="11px" fontWeight="700" textTransform="none" letterSpacing="normal" py={3.5} px={3}>
+                          Página (actual / última)
                         </Th>
-                        <Th w="19%" color="gray.600" fontSize="10px" fontWeight="800" textTransform="uppercase" letterSpacing="wider" py={3} px={2}>
-                          Dispositivo / Sesión
-                        </Th>
-                        <Th w="11%" color="gray.600" fontSize="10px" fontWeight="800" textTransform="uppercase" letterSpacing="wider" py={3} px={2}>
+                        <Th w="18%" color="gray.600" fontSize="11px" fontWeight="700" textTransform="none" letterSpacing="normal" py={3.5} px={3}>
                           Actividad
-                        </Th>
-                        <Th w="7%" color="gray.600" fontSize="10px" fontWeight="800" textTransform="uppercase" letterSpacing="wider" py={3} px={2} textAlign="center">
-                          Acción
                         </Th>
                       </Tr>
                     </Thead>
@@ -775,206 +772,117 @@ export function OnlineUsersPage() {
                         const isOffline = u.status === "OFFLINE";
 
                         const relativeAct = formatRelativeActivity(u.lastActivity);
-                        const isActNow = relativeAct === "Ahora";
+
+                        // Dispositivo y OS
+                        const hasDevice = Boolean(u.device && u.device.browser && u.device.browser !== "-");
+                        const browserName = hasDevice
+                          ? (u.device.browser.includes("Chrome") ? u.device.browser : `${u.device.type === "Mac" ? "Mac" : "PC"} - ${u.device.browser}`)
+                          : "—";
+                        const osName = hasDevice ? (u.device.os || (u.device.type === "Mac" ? "macOS" : "Windows")) : "";
+
+                        // Página actual / última
+                        const displayPageTitle = (!isOffline && u.currentPage && u.currentPage !== "-")
+                          ? translateRoute(u.currentPage)
+                          : (u.lastPage ? translateRoute(u.lastPage) : "Inicio");
+                        const displaySubtext = "Autopartes";
 
                         return (
                           <Tr
                             key={u.userId}
-                            _hover={{ bg: "rgba(18, 108, 54, 0.02)" }}
+                            onClick={() => handleOpenDetail(u)}
+                            cursor="pointer"
                             transition="background 0.15s ease"
+                            _hover={{ bg: "gray.50" }}
+                            borderBottom="1px solid"
+                            borderColor="gray.100"
                           >
-                            {/* Usuario con Avatar */}
-                            <Td py={2.5} px={3}>
-                              <HStack spacing={2.5} minW={0}>
-                                <Avatar
-                                  size="sm"
-                                  name={u.name || u.username}
-                                  bg={isOnline ? "green.600" : isIdle ? "yellow.500" : "gray.300"}
-                                  color="white"
-                                  fontWeight="bold"
-                                  fontSize="xs"
-                                  flexShrink={0}
-                                />
-                                <Box minW={0} overflow="hidden">
-                                  <Text fontWeight="700" color="gray.900" fontSize="xs" noOfLines={1}>
-                                    {u.name || u.username}
-                                  </Text>
-                                  <Text fontSize="10px" color="gray.400" noOfLines={1}>
-                                    {u.email && u.email !== "-" ? u.email : `@${u.username}`}
-                                  </Text>
+                            {/* 1. Usuario */}
+                            <Td py={3} px={4}>
+                              <HStack spacing={3} minW={0}>
+                                <Box position="relative">
+                                  <Avatar
+                                    size="sm"
+                                    name={u.name || u.username}
+                                    bg={isOnline ? "green.600" : isIdle ? "yellow.500" : "gray.300"}
+                                    color="white"
+                                    fontWeight="bold"
+                                    fontSize="xs"
+                                    w="32px"
+                                    h="32px"
+                                  />
+                                  {/* Dot status indicator */}
+                                  <Box
+                                    position="absolute"
+                                    bottom="-1px"
+                                    right="-1px"
+                                    w="8px"
+                                    h="8px"
+                                    borderRadius="full"
+                                    bg={isOnline ? "#10b981" : isIdle ? "#eab308" : "#9ca3af"}
+                                    border="1.5px solid white"
+                                  />
                                 </Box>
+                                <Text fontWeight="700" color="gray.900" fontSize="13px" noOfLines={1}>
+                                  {u.name || u.username}
+                                </Text>
                               </HStack>
                             </Td>
 
-                            {/* Estado con Badge Premium */}
-                            <Td py={2.5} px={2}>
-                              {isOnline && (
-                                <Badge
-                                  bg="green.50"
-                                  color="green.700"
-                                  border="1px solid"
-                                  borderColor="rgba(34, 197, 94, 0.3)"
-                                  px={2}
-                                  py={0.5}
-                                  borderRadius="full"
-                                  fontSize="10px"
-                                  fontWeight="800"
-                                  boxShadow="0 1px 4px rgba(34, 197, 94, 0.15)"
-                                >
-                                  <HStack spacing={1}>
-                                    <Box
-                                      w="5px"
-                                      h="5px"
-                                      borderRadius="full"
-                                      bg="green.500"
-                                      flexShrink={0}
-                                      sx={{
-                                        animation: "pulseOnline 2s infinite",
-                                        "@keyframes pulseOnline": {
-                                          "0%": { transform: "scale(0.95)", boxShadow: "0 0 0 0 rgba(34, 197, 94, 0.7)" },
-                                          "70%": { transform: "scale(1)", boxShadow: "0 0 0 4px rgba(34, 197, 94, 0)" },
-                                          "100%": { transform: "scale(0.95)", boxShadow: "0 0 0 0 rgba(34, 197, 94, 0)" },
-                                        },
-                                      }}
-                                    />
-                                    <Text as="span">EN LÍNEA</Text>
-                                  </HStack>
-                                </Badge>
-                              )}
-                              {isIdle && (
-                                <Badge
-                                  bg="yellow.50"
-                                  color="yellow.800"
-                                  border="1px solid"
-                                  borderColor="rgba(234, 179, 8, 0.3)"
-                                  px={2}
-                                  py={0.5}
-                                  borderRadius="full"
-                                  fontSize="10px"
-                                  fontWeight="800"
-                                >
-                                  <HStack spacing={1}>
-                                    <Box w="5px" h="5px" borderRadius="full" bg="yellow.500" flexShrink={0} />
-                                    <Text as="span">AUSENTE</Text>
-                                  </HStack>
-                                </Badge>
-                              )}
-                              {isOffline && (
-                                <Badge
-                                  bg="gray.100"
-                                  color="gray.500"
-                                  border="1px solid"
-                                  borderColor="gray.200"
-                                  px={2}
-                                  py={0.5}
-                                  borderRadius="full"
-                                  fontSize="10px"
-                                  fontWeight="600"
-                                >
-                                  <HStack spacing={1}>
-                                    <Box w="5px" h="5px" borderRadius="full" bg="gray.400" flexShrink={0} />
-                                    <Text as="span">DESCONECTADO</Text>
-                                  </HStack>
-                                </Badge>
-                              )}
-                            </Td>
-
-                            {/* Página Actual con Chip Estilizado */}
-                            <Td py={2.5} px={2}>
-                              {!isOffline && u.currentPage && u.currentPage !== "-" ? (
-                                <VStack align="flex-start" spacing={0} minW={0} overflow="hidden">
-                                  <HStack spacing={1} color="green.700" minW={0} w="full">
-                                    <Box color="green.600" flexShrink={0}>
-                                      <Compass size={13} />
-                                    </Box>
-                                    <Text fontSize="xs" fontWeight="700" color="gray.800" noOfLines={1}>
-                                      {translateRoute(u.currentPage)}
+                            {/* 2. Dispositivo */}
+                            <Td py={3} px={3}>
+                              {hasDevice ? (
+                                <HStack spacing={2.5} align="flex-start">
+                                  <Box color="gray.400" pt={0.5}>
+                                    <Monitor size={15} />
+                                  </Box>
+                                  <VStack align="flex-start" spacing={0} minW={0}>
+                                    <Text fontSize="12.5px" fontWeight="600" color="gray.700" noOfLines={1}>
+                                      {browserName}
                                     </Text>
-                                  </HStack>
-                                  <Text fontSize="10px" color="gray.400" fontFamily="mono" pl="17px" noOfLines={1}>
-                                    {u.currentPage}
-                                  </Text>
-                                </VStack>
-                              ) : (
-                                <Text fontSize="xs" color="gray.400" fontStyle="italic">
-                                  Sin sesión activa
-                                </Text>
-                              )}
-                            </Td>
-
-                            {/* Dispositivo y Duración de Sesión Unificado */}
-                            <Td py={2.5} px={2}>
-                              {!isOffline && (u.device || u.connectedAt) ? (
-                                <VStack align="flex-start" spacing={1} minW={0}>
-                                  {u.device && (
-                                    <HStack spacing={1.5} color="gray.700" minW={0} w="full">
-                                      <Box color="gray.500" flexShrink={0}>
-                                        {getDeviceIcon(u.device?.type)}
-                                      </Box>
-                                      <Text fontSize="xs" fontWeight="600" color="gray.700" noOfLines={1}>
-                                        {u.device.browser} · {u.device.os}
+                                    {osName && (
+                                      <Text fontSize="11px" color="gray.400" noOfLines={1}>
+                                        {osName}
                                       </Text>
-                                    </HStack>
-                                  )}
-                                  {u.connectedAt && (
-                                    <Tag size="sm" variant="subtle" colorScheme="blue" borderRadius="md" px={1.5} py={0} fontSize="10px" fontWeight="700">
-                                      <TagLabel>{formatSessionDuration(u.connectedAt)} activo</TagLabel>
-                                    </Tag>
-                                  )}
-                                </VStack>
-                              ) : isOffline && u.disconnectedAt ? (
-                                <VStack align="flex-start" spacing={1} minW={0}>
-                                  {u.device && u.device.browser && u.device.browser !== "-" && (
-                                    <HStack spacing={1.5} color="gray.400" minW={0} w="full">
-                                      <Box color="gray.400" flexShrink={0}>
-                                        {getDeviceIcon(u.device?.type)}
-                                      </Box>
-                                      <Text fontSize="xs" fontWeight="500" color="gray.500" noOfLines={1}>
-                                        {u.device.browser} · {u.device.os}
-                                      </Text>
-                                    </HStack>
-                                  )}
-                                  <Tag size="sm" variant="subtle" colorScheme="gray" borderRadius="md" px={1.5} py={0} fontSize="10px" fontWeight="700">
-                                    <TagLabel>{formatDisconnectionDuration(u.disconnectedAt)}</TagLabel>
-                                  </Tag>
-                                </VStack>
+                                    )}
+                                  </VStack>
+                                </HStack>
                               ) : (
-                                <Text fontSize="xs" color="gray.300">
+                                <Text fontSize="13px" color="gray.400">
                                   —
                                 </Text>
                               )}
                             </Td>
 
-                            {/* Última Actividad */}
-                            <Td py={2.5} px={2}>
-                              {isActNow ? (
-                                <Badge bg="green.100" color="green.800" px={2} py={0.5} borderRadius="md" fontSize="10px" fontWeight="800">
-                                  ⚡ AHORA
-                                </Badge>
-                              ) : (
-                                <Text fontSize="xs" fontWeight="500" color={!isOffline ? "gray.700" : "gray.400"} noOfLines={1}>
-                                  {relativeAct}
+                            {/* 3. Página (actual / última) */}
+                            <Td py={3} px={3}>
+                              <VStack align="flex-start" spacing={0} minW={0}>
+                                <Text fontSize="13px" fontWeight="600" color="gray.800" noOfLines={1}>
+                                  {displayPageTitle}
                                 </Text>
-                              )}
+                                <HStack spacing={1} color="gray.400" fontSize="11px">
+                                  <FileText size={11} />
+                                  <Text noOfLines={1}>{displaySubtext}</Text>
+                                </HStack>
+                              </VStack>
                             </Td>
 
-                            {/* Acciones */}
-                            <Td py={2.5} px={2} textAlign="center">
-                              <Button
-                                size="xs"
-                                colorScheme="green"
-                                variant="outline"
-                                leftIcon={<Eye size={12} />}
-                                onClick={() => handleOpenDetail(u)}
-                                borderRadius="lg"
-                                fontWeight="600"
-                                px={2.5}
-                                h="26px"
-                                _hover={{ bg: "green.600", color: "white", borderColor: "green.600", boxShadow: "0 2px 8px rgba(18, 108, 54, 0.25)" }}
-                                transition="all 0.15s ease"
-                              >
-                                Ver
-                              </Button>
+                            {/* 4. Actividad */}
+                            <Td py={3} px={3}>
+                              {isOnline ? (
+                                <Text fontSize="13px" fontWeight="600" color="#059669">
+                                  Activo ahora
+                                </Text>
+                              ) : isIdle ? (
+                                <Text fontSize="12.5px" fontWeight="500" color="#d97706">
+                                  Ausente · {relativeAct}
+                                </Text>
+                              ) : (
+                                <Text fontSize="12.5px" color="gray.400" fontWeight="400">
+                                  {u.disconnectedAt
+                                    ? `Desconectado · ${formatDisconnectionDuration(u.disconnectedAt)}`
+                                    : "Desconectado"}
+                                </Text>
+                              )}
                             </Td>
                           </Tr>
                         );
@@ -988,323 +896,12 @@ export function OnlineUsersPage() {
         </VStack>
       </Box>
 
-      {/* ─── MODAL DE DETALLE DE USUARIO ESTILIZADO ───────────────────────── */}
-      <Modal isOpen={isOpen} onClose={onClose} size={{ base: "full", sm: "lg" }} isCentered>
-        <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
-        <ModalContent borderRadius={{ base: "none", sm: "2xl" }} overflow="hidden" boxShadow="0 25px 50px -12px rgba(0,0,0,0.25)" my={{ base: 0, sm: 4 }}>
-          {/* Header con gradiente de marca */}
-          <ModalHeader
-            bg="linear-gradient(135deg, #0e572b 0%, #126C36 50%, #0b4a24 100%)"
-            color="white"
-            p={{ base: 4, sm: 5 }}
-          >
-            <Flex justify="space-between" align="center" wrap="wrap" gap={2}>
-              <HStack spacing={3}>
-                <Avatar
-                  size="md"
-                  name={activeSelectedUser?.name || activeSelectedUser?.username}
-                  bg="whiteAlpha.300"
-                  color="white"
-                  fontWeight="bold"
-                  border="2px solid rgba(255,255,255,0.4)"
-                />
-                <Box>
-                  <Heading size="sm" color="white" fontWeight="800" noOfLines={1}>
-                    {activeSelectedUser?.name || activeSelectedUser?.username}
-                  </Heading>
-                  <Text fontSize="xs" color="whiteAlpha.800" mt={0.5} noOfLines={1}>
-                    {activeSelectedUser?.email || "Sin correo"} · {activeSelectedUser?.role}
-                  </Text>
-                </Box>
-              </HStack>
-
-              {/* Badge de Estado en Header */}
-              {activeSelectedUser?.status === "ONLINE" && (
-                <Badge bg="white" color="green.700" px={3} py={1} borderRadius="full" fontSize="xs" fontWeight="800">
-                  🟢 EN LÍNEA
-                </Badge>
-              )}
-              {activeSelectedUser?.status === "IDLE" && (
-                <Badge bg="yellow.100" color="yellow.900" px={3} py={1} borderRadius="full" fontSize="xs" fontWeight="800">
-                  🟡 AUSENTE
-                </Badge>
-              )}
-              {activeSelectedUser?.status === "OFFLINE" && (
-                <Badge bg="whiteAlpha.300" color="white" px={3} py={1} borderRadius="full" fontSize="xs" fontWeight="600">
-                  ⚪ DESCONECTADO
-                </Badge>
-              )}
-            </Flex>
-          </ModalHeader>
-          <ModalCloseButton color="white" top={4} right={4} />
-
-          <ModalBody p={{ base: 4, sm: 6 }} bg="white">
-            {activeSelectedUser && (
-              <VStack spacing={4} align="stretch">
-                {/* Bloque 1: Sesión en Vivo */}
-                <Box p={4} borderRadius="xl" bg="gray.50" border="1px solid" borderColor="gray.100">
-                  <HStack spacing={2} mb={3} color="green.700">
-                    <Clock size={16} />
-                    <Text fontSize="xs" fontWeight="800" textTransform="uppercase" letterSpacing="wider">
-                      Sesión en Tiempo Real
-                    </Text>
-                  </HStack>
-                  <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3} fontSize="sm">
-                    <Box>
-                      <Text color="gray.400" fontSize="xs">
-                        {activeSelectedUser.status !== "OFFLINE" ? "Hora de Conexión:" : "Hora de Desconexión:"}
-                      </Text>
-                      <Text fontWeight="600" color="gray.800">
-                        {activeSelectedUser.status !== "OFFLINE"
-                          ? (activeSelectedUser.connectedAt
-                              ? new Date(activeSelectedUser.connectedAt).toLocaleTimeString([], {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                  second: "2-digit",
-                                })
-                              : "No disponible")
-                          : (activeSelectedUser.disconnectedAt
-                              ? new Date(activeSelectedUser.disconnectedAt).toLocaleTimeString([], {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                  second: "2-digit",
-                                })
-                              : "No disponible")}
-                      </Text>
-                    </Box>
-                    <Box>
-                      <Text color="gray.400" fontSize="xs">
-                        {activeSelectedUser.status !== "OFFLINE" ? "Tiempo Activo:" : "Tiempo Desconectado:"}
-                      </Text>
-                      <Text fontWeight="600" color="gray.800">
-                        {activeSelectedUser.status !== "OFFLINE"
-                          ? `${formatSessionDuration(activeSelectedUser.connectedAt)} activo`
-                          : formatDisconnectionDuration(activeSelectedUser.disconnectedAt)}
-                      </Text>
-                    </Box>
-                    <Box>
-                      <Text color="gray.400" fontSize="xs">
-                        Última Interacción:
-                      </Text>
-                      <Text fontWeight="600" color="gray.800">
-                        {formatRelativeActivity(activeSelectedUser.lastActivity)}
-                      </Text>
-                    </Box>
-                    <Box>
-                      <Text color="gray.400" fontSize="xs">
-                        Pestañas Activas:
-                      </Text>
-                      <Text fontWeight="600" color="gray.800">
-                        {activeSelectedUser.activeTabs || 0} pestaña{activeSelectedUser.activeTabs === 1 ? "" : "s"}
-                      </Text>
-                    </Box>
-                  </SimpleGrid>
-                </Box>
-
-                {/* Bloque 2: Dispositivo y Entorno */}
-                <Box p={4} borderRadius="xl" bg="gray.50" border="1px solid" borderColor="gray.100">
-                  <HStack spacing={2} mb={3} color="blue.600">
-                    <Laptop size={16} />
-                    <Text fontSize="xs" fontWeight="800" textTransform="uppercase" letterSpacing="wider">
-                      Dispositivo y Plataforma
-                    </Text>
-                  </HStack>
-                  <SimpleGrid columns={{ base: 1, sm: 3 }} spacing={3} fontSize="sm">
-                    <Box>
-                      <Text color="gray.400" fontSize="xs">
-                        Tipo:
-                      </Text>
-                      <Text fontWeight="600" color="gray.800">
-                        {activeSelectedUser.device?.type || "Desktop"}
-                      </Text>
-                    </Box>
-                    <Box>
-                      <Text color="gray.400" fontSize="xs">
-                        Navegador:
-                      </Text>
-                      <Text fontWeight="600" color="gray.800">
-                        {activeSelectedUser.device?.browser || "Desconocido"}
-                      </Text>
-                    </Box>
-                    <Box>
-                      <Text color="gray.400" fontSize="xs">
-                        Sistema Operativo:
-                      </Text>
-                      <Text fontWeight="600" color="gray.800">
-                        {activeSelectedUser.device?.os || "Desconocido"}
-                      </Text>
-                    </Box>
-                  </SimpleGrid>
-                </Box>
-
-                {/* Bloque 3: Historial Cronológico de Navegación de Sesión */}
-                <Box p={4} borderRadius="xl" bg="gray.50" border="1px solid" borderColor="gray.100">
-                  <Flex align="center" justify="space-between" mb={3.5}>
-                    <HStack spacing={2} color="purple.600">
-                      <History size={16} />
-                      <Text fontSize="xs" fontWeight="800" textTransform="uppercase" letterSpacing="wider">
-                        Historial de Navegación de Sesión
-                      </Text>
-                    </HStack>
-                    <Badge
-                      colorScheme="purple"
-                      variant="subtle"
-                      borderRadius="full"
-                      px={2.5}
-                      py={0.5}
-                      fontSize="10px"
-                      fontWeight="700"
-                    >
-                      {activeHistory.length} {activeHistory.length === 1 ? "pantalla" : "pantallas"}
-                    </Badge>
-                  </Flex>
-
-                  {/* Lista Cronológica / Timeline */}
-                  {activeHistory.length > 0 ? (
-                    <Box
-                      maxH="280px"
-                      overflowY="auto"
-                      pr={1}
-                      sx={{
-                        "&::-webkit-scrollbar": { width: "5px" },
-                        "&::-webkit-scrollbar-track": { bg: "transparent" },
-                        "&::-webkit-scrollbar-thumb": { bg: "gray.300", borderRadius: "full" },
-                      }}
-                    >
-                      <VStack align="stretch" spacing={0} position="relative">
-                        {activeHistory.map((item, index) => {
-                          const isCurrent = index === 0;
-                          const isLast = index === activeHistory.length - 1;
-                          const timeStr = formatHistoryTime(item.enteredAt);
-                          const relativeStr = formatRelativeActivity(item.enteredAt);
-
-                          return (
-                            <Flex
-                              key={`${item.page}-${item.enteredAt || index}-${index}`}
-                              position="relative"
-                              pb={isLast ? 0 : 3.5}
-                              align="flex-start"
-                            >
-                              {/* Línea vertical conectora */}
-                              {!isLast && (
-                                <Box
-                                  position="absolute"
-                                  left="11px"
-                                  top="20px"
-                                  bottom="-2px"
-                                  w="2px"
-                                  bg="gray.200"
-                                />
-                              )}
-
-                              {/* Nodo indicador */}
-                              <Flex
-                                w="24px"
-                                h="24px"
-                                borderRadius="full"
-                                align="center"
-                                justify="center"
-                                bg={isCurrent ? "green.100" : "gray.100"}
-                                border="2px solid"
-                                borderColor={isCurrent ? "green.500" : "gray.300"}
-                                flexShrink={0}
-                                mr={3}
-                                mt="2px"
-                                zIndex={1}
-                              >
-                                <Box
-                                  w={isCurrent ? "8px" : "6px"}
-                                  h={isCurrent ? "8px" : "6px"}
-                                  borderRadius="full"
-                                  bg={isCurrent ? "green.600" : "gray.400"}
-                                />
-                              </Flex>
-
-                              {/* Tarjeta de información de la pantalla */}
-                              <Box
-                                flex={1}
-                                minW={0}
-                                bg={isCurrent ? "white" : "transparent"}
-                                p={isCurrent ? 2.5 : 0.5}
-                                borderRadius={isCurrent ? "lg" : "none"}
-                                border={isCurrent ? "1px solid" : "none"}
-                                borderColor={isCurrent ? "green.200" : "transparent"}
-                                boxShadow={isCurrent ? "xs" : "none"}
-                              >
-                                <Flex align="center" justify="space-between" wrap="wrap" gap={1} mb={0.5}>
-                                  <HStack spacing={1.5} minW={0}>
-                                    <Text
-                                      fontWeight={isCurrent ? "800" : "600"}
-                                      fontSize="sm"
-                                      color={isCurrent ? "green.900" : "gray.800"}
-                                      noOfLines={1}
-                                    >
-                                      {translateRoute(item.page)}
-                                    </Text>
-                                    {isCurrent && (
-                                      <Badge
-                                        colorScheme="green"
-                                        variant="solid"
-                                        fontSize="9px"
-                                        px={1.5}
-                                        py={0.2}
-                                        borderRadius="md"
-                                        fontWeight="800"
-                                      >
-                                        En foco ahora
-                                      </Badge>
-                                    )}
-                                  </HStack>
-                                  <HStack spacing={1.5} fontSize="xs" color={isCurrent ? "green.700" : "gray.400"}>
-                                    <Clock size={11} />
-                                    <Text fontWeight="600">{timeStr}</Text>
-                                    <Text fontSize="10px">({relativeStr})</Text>
-                                  </HStack>
-                                </Flex>
-                                <Text fontSize="xs" fontFamily="mono" color={isCurrent ? "green.700" : "gray.400"} noOfLines={1}>
-                                  {item.page || "—"}
-                                </Text>
-                              </Box>
-                            </Flex>
-                          );
-                        })}
-                      </VStack>
-                    </Box>
-                  ) : (
-                    <Box p={3} bg="white" borderRadius="lg" border="1px dashed" borderColor="gray.200" textAlign="center">
-                      <Text fontSize="xs" color="gray.500">
-                        No hay historial de navegación disponible para esta sesión.
-                      </Text>
-                    </Box>
-                  )}
-
-                  {activeHistory.length === 1 && (
-                    <Box mt={3} p={2} borderRadius="lg" bg="white" border="1px dashed" borderColor="green.200">
-                      <Text fontSize="11px" color="gray.500" textAlign="center">
-                        📍 El usuario inició su sesión en esta pantalla y no se ha desplazado a otras rutas aún.
-                      </Text>
-                    </Box>
-                  )}
-                </Box>
-              </VStack>
-            )}
-          </ModalBody>
-
-          <ModalFooter bg="gray.50" borderTop="1px solid" borderColor="gray.100" p={4}>
-            <Button
-              colorScheme="green"
-              onClick={onClose}
-              size="sm"
-              w={{ base: "full", sm: "auto" }}
-              borderRadius="xl"
-              px={5}
-              boxShadow="0 4px 12px rgba(18, 108, 54, 0.25)"
-            >
-              Cerrar
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+      {/* ─── MODAL DE SESIONES Y RECORRIDO (DISEÑO OFICIAL) ────────────────── */}
+      <UserSessionDetailModal
+        isOpen={isOpen}
+        onClose={onClose}
+        user={activeSelectedUser}
+      />
     </Box>
   );
 }

@@ -12,8 +12,7 @@ export function checkIsAdmin(endpoints = [], username = "") {
     // Endpoints maestros exclusivos de administración de usuarios y sistema en backend
     endpointsList.includes("PUT:/profile/admin/:userId") ||
     endpointsList.includes("PUT /profile/admin/:userId") ||
-    endpointsList.includes("GET:/adminUsers") ||
-    endpointsList.includes("GET /adminUsers") ||
+    endpointsList.includes("*") ||
     // Nombres o alias reconocidos de administradores del sistema
     normUser === "admin" ||
     normUser === "administrador" ||
@@ -110,6 +109,30 @@ export function useHasAccess() {
 
     if (endpoint.includes("/attendance")) {
       candidateList.push("GET /attendance", "GET:/attendance", "POST /attendance", "POST:/attendance");
+    }
+
+    if (endpoint.includes("/presence/users")) {
+      candidateList.push(
+        "GET /presence/users",
+        "GET:/presence/users",
+        "GET /adminUsers",
+        "GET:/adminUsers",
+        "PUT /profile/admin/:userId",
+        "PUT:/profile/admin/:userId"
+      );
+    }
+
+    if (endpoint.includes("/quotesSellers") || endpoint.includes("/AdminQuotesSellers")) {
+      candidateList.push(
+        "GET /quotesSellers/:slpCode",
+        "GET:/quotesSellers/:slpCode",
+        "GET /quotesSellers/:slpCode/:month",
+        "GET:/quotesSellers/:slpCode/:month",
+        "GET /AdminQuotesSellers/:slpCode",
+        "GET:/AdminQuotesSellers/:slpCode",
+        "GET /AdminQuotesSellers/:slpCode/:month",
+        "GET:/AdminQuotesSellers/:slpCode/:month"
+      );
     }
 
     return endpoints.some((e) => candidateList.includes(e));
