@@ -113,12 +113,12 @@ export function useAuthMutations() {
     },
     onSuccess: () => {
       logout();
-      navigate("/");
+      window.location.replace("/");
     },
     onError: () => {
-      // Si el backend falla, igual se cierra sesión localmente.
+      // Si el backend falla, igual se cierra sesión localmente y se libera memoria.
       logout();
-      navigate("/");
+      window.location.replace("/");
     },
   });
 
