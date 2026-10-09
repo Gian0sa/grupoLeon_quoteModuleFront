@@ -71,8 +71,16 @@ export default function VisitLogPage() {
         resetSearch,
     } = useClientSearch();
 
-    const { image, imagePreview, imageInfo, isProcessingImage, handleImageChange, resetImage, fileInputKey } =
-        useImageUpload();
+    const {
+        image,
+        imagePreview,
+        imageInfo,
+        isProcessingImage,
+        handleImageChange,
+        setDirectImage,
+        resetImage,
+        fileInputKey,
+    } = useImageUpload();
 
     const {
         data: clientImageData,
@@ -99,16 +107,17 @@ export default function VisitLogPage() {
     useEffect(() => {
         if (hasActiveCheckIn && activeVisit && !selectedClient) {
             const sapCodeVal = activeVisit.sapCode || activeVisit.cardCode || activeVisit.clientCode || "";
-            const isTemp = typeof sapCodeVal === "string" && sapCodeVal.startsWith("CL-TEMP");
+            const isTemp = (typeof sapCodeVal === "string" && sapCodeVal.startsWith("CL-TEMP")) || !!activeVisit.newClientId;
             setSelectedClient({
-                id: sapCodeVal || "AUTO",
-                sapCode: sapCodeVal,
-                cardCode: sapCodeVal,
-                clientCode: sapCodeVal,
+                id: sapCodeVal || (activeVisit.newClientId ? `CL-TEMP-${activeVisit.newClientId}` : "AUTO"),
+                sapCode: sapCodeVal || (activeVisit.newClientId ? `CL-TEMP-${activeVisit.newClientId}` : null),
+                cardCode: sapCodeVal || (activeVisit.newClientId ? `CL-TEMP-${activeVisit.newClientId}` : null),
+                clientCode: sapCodeVal || (activeVisit.newClientId ? `CL-TEMP-${activeVisit.newClientId}` : null),
+                newClientId: activeVisit.newClientId || null,
                 firstName: activeVisit.storeName,
                 address: activeVisit.address || `Lat: ${activeVisit.latitude || ""}, Lon: ${activeVisit.longitude || ""}`,
-                type: isTemp ? "NEW_TEMP" : (sapCodeVal ? "SAP" : "NEW"),
-                isTemporary: isTemp,
+                type: (isTemp || activeVisit.newClientId) ? "NEW_TEMP" : (sapCodeVal ? "SAP" : "NEW"),
+                isTemporary: isTemp || !!activeVisit.newClientId,
             });
         }
     }, [hasActiveCheckIn, activeVisit, selectedClient]);
@@ -196,6 +205,7 @@ export default function VisitLogPage() {
                                 imageInfo={imageInfo}
                                 isProcessingImage={isProcessingImage}
                                 onImageChange={handleImageChange}
+                                onDirectImage={setDirectImage}
                                 existingImageData={clientImageData}
                                 isLoadingExistingImage={isLoadingClientImage}
                                 fileInputKey={fileInputKey}

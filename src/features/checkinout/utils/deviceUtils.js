@@ -77,8 +77,51 @@ export const calculateTargetDimensions = (origW, origH, maxDim) => {
 };
 
 /**
- * Obtiene las dimensiones originales de la foto en milisegundos sin decodificar
- * mapas de bits gigantescos en la memoria del hilo principal.
+ * Extrae las dimensiones (ancho x alto) de un archivo JPEG/PNG leyendo solo
+ * los primeros bytes de la cabecera (SOF marker), consumiendo 0 MB de memoria RAM.
+ */
+const getHeaderDimensions = async (file) => {
+    try {
+        if (!file || typeof file.slice !== "function") return null;
+        const slice = file.slice(0, 65536);
+        const buffer = await slice.arrayBuffer();
+        const view = new DataView(buffer);
+
+        // JPEG (0xFFD8)
+        if (view.byteLength > 4 && view.getUint16(0) === 0xFFD8) {
+            let offset = 2;
+            while (offset < view.byteLength - 8) {
+                const marker = view.getUint16(offset);
+                offset += 2;
+                // Marcadores SOF (Start of Frame): SOF0 (0xFFC0), SOF1 (0xFFC1), SOF2 (0xFFC2)
+                if (marker >= 0xFFC0 && marker <= 0xFFC3) {
+                    const height = view.getUint16(offset + 3);
+                    const width = view.getUint16(offset + 5);
+                    if (width > 0 && height > 0) {
+                        return { width, height };
+                    }
+                }
+                const length = view.getUint16(offset);
+                offset += length;
+            }
+        }
+
+        // PNG (0x89504E47)
+        if (view.byteLength > 24 && view.getUint32(0) === 0x89504E47) {
+            const width = view.getUint32(16);
+            const height = view.getUint32(20);
+            if (width > 0 && height > 0) {
+                return { width, height };
+            }
+        }
+    } catch (e) {
+        // Fallback silencioso si la cabecera no se pudo parsear
+    }
+    return null;
+};
+
+/**
+ * Obtiene las dimensiones originales de la foto como fallback si no se pudo leer la cabecera.
  */
 const getQuickImageDimensions = (file) => {
     return new Promise((resolve) => {
@@ -91,6 +134,7 @@ const getQuickImageDimensions = (file) => {
             if (!completed) {
                 completed = true;
                 URL.revokeObjectURL(url);
+                img.src = "";
                 resolve(null);
             }
         }, 2000);
@@ -102,6 +146,7 @@ const getQuickImageDimensions = (file) => {
                 const w = img.naturalWidth || img.width;
                 const h = img.naturalHeight || img.height;
                 URL.revokeObjectURL(url);
+                img.src = "";
                 resolve(w && h ? { width: w, height: h } : null);
             }
         };
@@ -111,6 +156,7 @@ const getQuickImageDimensions = (file) => {
                 completed = true;
                 clearTimeout(timer);
                 URL.revokeObjectURL(url);
+                img.src = "";
                 resolve(null);
             }
         };
@@ -128,17 +174,25 @@ const getQuickImageDimensions = (file) => {
 export const compressImage = async (file, customOptions = {}) => {
     if (!file) throw new Error("No se proporcionó ningún archivo");
 
+    // Si ya es un archivo muy liviano (< 60KB), devolverlo directamente para no saturar RAM
+    if (file.size && file.size < 60 * 1024) {
+        return file;
+    }
+
     // 1. Detectar perfil de hardware del dispositivo
     const deviceProfile = getDeviceQualityProfile();
     const maxDimension = typeof customOptions === "number" 
         ? deviceProfile.maxDimension 
         : (customOptions.maxDimension || deviceProfile.maxDimension);
     const jpegQuality = typeof customOptions === "number"
-        ? (customOptions <= 0.5 ? 0.52 : 0.62)
+        ? (customOptions <= 0.5 ? 0.50 : 0.60)
         : (customOptions.quality || deviceProfile.quality);
 
-    // 2. Extraer dimensiones previas para mantener relación de aspecto exacta
-    const origDims = await getQuickImageDimensions(file);
+    // 2. Extraer dimensiones previas leyendo primero cabecera binaria (0 MB RAM)
+    let origDims = await getHeaderDimensions(file);
+    if (!origDims) {
+        origDims = await getQuickImageDimensions(file);
+    }
     const target = origDims 
         ? calculateTargetDimensions(origDims.width, origDims.height, maxDimension)
         : { width: maxDimension, height: maxDimension };
@@ -154,17 +208,16 @@ export const compressImage = async (file, customOptions = {}) => {
                 bitmap = await createImageBitmap(file, {
                     resizeWidth: target.width,
                     resizeHeight: target.height,
-                    resizeQuality: "medium",
+                    resizeQuality: "low",
                 });
             } catch (optionsErr) {
-                // Fallback si el browser no admite opciones de resize en createImageBitmap
-                bitmap = await createImageBitmap(file);
+                // Si el browser móvil no admite opciones de resize en createImageBitmap,
+                // NO cargar el bitmap completo sin resize (evita consumir 200MB en RAM).
+                bitmap = null;
             }
 
             if (bitmap) {
-                const finalDims = origDims 
-                    ? target 
-                    : calculateTargetDimensions(bitmap.width, bitmap.height, maxDimension);
+                const finalDims = { width: bitmap.width, height: bitmap.height };
 
                 const canvas = document.createElement("canvas");
                 canvas.width = finalDims.width;
@@ -222,6 +275,9 @@ export const compressImage = async (file, customOptions = {}) => {
             const ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
             ctx.drawImage(img, 0, 0, finalDims.width, finalDims.height);
 
+            // Liberar imagen de la memoria del navegador
+            img.src = "";
+
             canvas.toBlob((blob) => {
                 // Liberar buffer del canvas
                 canvas.width = 0;
@@ -246,6 +302,7 @@ export const compressImage = async (file, customOptions = {}) => {
 
         img.onerror = () => {
             URL.revokeObjectURL(objectUrl);
+            img.src = "";
             reject(new Error("No se pudo cargar la imagen para compresión"));
         };
 

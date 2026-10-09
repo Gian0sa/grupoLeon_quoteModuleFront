@@ -85,12 +85,49 @@ export function useImageUpload() {
         setFileInputKey((k) => k + 1);
     }, []);
 
+    const setDirectImage = useCallback(async (fileOrBlob) => {
+        if (!fileOrBlob) return;
+        setIsProcessingImage(true);
+        try {
+            const file = fileOrBlob instanceof File
+                ? fileOrBlob
+                : new File([fileOrBlob], "foto_checkin.jpg", { type: "image/jpeg", lastModified: Date.now() });
+
+            const compressedFile = await compressImage(file);
+            setImage(compressedFile);
+            if (compressedFile.optimizedInfo) {
+                setImageInfo(compressedFile.optimizedInfo);
+            }
+
+            const previewUrl = URL.createObjectURL(compressedFile);
+            setImagePreview((prev) => {
+                if (prev && prev.startsWith("blob:")) {
+                    URL.revokeObjectURL(prev);
+                }
+                return previewUrl;
+            });
+            setIsProcessingImage(false);
+            setFileInputKey((k) => k + 1);
+        } catch (error) {
+            setIsProcessingImage(false);
+            setFileInputKey((k) => k + 1);
+            toast({
+                title: "Error al procesar fotografía",
+                description: error.message || "Intenta tomar la fotografía nuevamente",
+                status: "error",
+                duration: 4000,
+                isClosable: true,
+            });
+        }
+    }, [toast]);
+
     return {
         image,
         imagePreview,
         imageInfo,
         isProcessingImage,
         handleImageChange,
+        setDirectImage,
         resetImage,
         fileInputKey,
     };

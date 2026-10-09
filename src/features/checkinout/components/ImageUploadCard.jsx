@@ -1,9 +1,11 @@
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
     Box,
     Flex,
+    VStack,
+    HStack,
     Icon,
     Text,
-    Input,
     Button,
     Badge,
     Spinner,
@@ -12,8 +14,19 @@ import {
     ModalContent,
     ModalCloseButton,
     useColorModeValue,
+    useToast,
+    IconButton,
 } from "@chakra-ui/react";
-import { FiCamera, FiClock, FiMaximize2, FiCheckCircle } from "react-icons/fi";
+import {
+    FiCamera,
+    FiClock,
+    FiMaximize2,
+    FiCheckCircle,
+    FiTrash2,
+    FiRefreshCw,
+    FiX,
+    FiCheck,
+} from "react-icons/fi";
 import { useDisclosure } from "@chakra-ui/react";
 
 export function ImageUploadCard({
@@ -22,14 +35,174 @@ export function ImageUploadCard({
     imageInfo,
     isProcessingImage,
     onImageChange,
+    onDirectImage,
     existingImageData,
     isLoadingExistingImage,
     fileInputKey,
+    onResetImage,
 }) {
     const hasExistingImage = existingImageData?.hasImage;
     const { isOpen, onOpen, onClose } = useDisclosure();
     const cardBg = useColorModeValue("white", "gray.800");
     const borderColor = useColorModeValue("gray.100", "gray.700");
+    const toast = useToast();
+
+    // Estados de cámara en vivo (WebRTC / In-App)
+    const [isCameraActive, setIsCameraActive] = useState(false);
+    const [stream, setStream] = useState(null);
+    const [facingMode, setFacingMode] = useState("environment"); // "environment" = trasera por defecto
+    const [isCapturing, setIsCapturing] = useState(false);
+    const videoRef = useRef(null);
+    const nativeCameraInputRef = useRef(null);
+
+    // Detener la cámara y liberar tracks de hardware
+    const stopCamera = useCallback((mediaStream = stream) => {
+        if (mediaStream) {
+            mediaStream.getTracks().forEach((track) => {
+                try {
+                    track.stop();
+                } catch (e) {
+                    // ignorar
+                }
+            });
+        }
+        setStream(null);
+        setIsCameraActive(false);
+        setIsCapturing(false);
+    }, [stream]);
+
+    // Iniciar cámara in-app con resolución óptima (evita OOM de 108MP de apps externas)
+    const startCamera = useCallback(async (desiredFacingMode = facingMode) => {
+        // Verificar soporte básico de WebRTC
+        if (
+            typeof navigator === "undefined" ||
+            !navigator.mediaDevices ||
+            !navigator.mediaDevices.getUserMedia
+        ) {
+            // Si el navegador o webview no soporta getUserMedia, disparar fallback nativo
+            nativeCameraInputRef.current?.click();
+            return;
+        }
+
+        try {
+            // Detener stream anterior si había uno
+            if (stream) {
+                stream.getTracks().forEach((t) => t.stop());
+            }
+
+            setIsCameraActive(true);
+
+            // Solicitar cámara trasera (o frontal si se alternó) a 720p/1080p
+            const mediaStream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: { ideal: desiredFacingMode },
+                    width: { ideal: 1280, max: 1920 },
+                    height: { ideal: 720, max: 1080 },
+                },
+                audio: false,
+            });
+
+            setStream(mediaStream);
+        } catch (err) {
+            console.warn("Fallo al iniciar cámara in-app:", err);
+            setIsCameraActive(false);
+            setStream(null);
+
+            // Fallback transparente: abrir cámara nativa del sistema
+            if (nativeCameraInputRef.current) {
+                nativeCameraInputRef.current.click();
+            } else {
+                toast({
+                    title: "Acceso a cámara",
+                    description: "Por favor autoriza el permiso de cámara en tu navegador.",
+                    status: "warning",
+                    duration: 4000,
+                    isClosable: true,
+                    position: "top",
+                });
+            }
+        }
+    }, [facingMode, stream, toast]);
+
+    // Asignar el stream al elemento <video> cuando esté montado
+    useEffect(() => {
+        if (isCameraActive && stream && videoRef.current) {
+            videoRef.current.srcObject = stream;
+            videoRef.current.play().catch(() => {});
+        }
+    }, [isCameraActive, stream]);
+
+    // Limpieza al desmontar el componente
+    useEffect(() => {
+        return () => {
+            if (stream) {
+                stream.getTracks().forEach((track) => track.stop());
+            }
+        };
+    }, [stream]);
+
+    // Cambiar entre cámara trasera y frontal
+    const toggleFacingMode = () => {
+        const nextMode = facingMode === "environment" ? "user" : "environment";
+        setFacingMode(nextMode);
+        startCamera(nextMode);
+    };
+
+    // Capturar la fotografía desde el visor de video
+    const handleCapturePhoto = () => {
+        if (!videoRef.current || isCapturing) return;
+        setIsCapturing(true);
+
+        try {
+            const video = videoRef.current;
+            const canvas = document.createElement("canvas");
+            canvas.width = video.videoWidth || 1280;
+            canvas.height = video.videoHeight || 720;
+            const ctx = canvas.getContext("2d", { willReadFrequently: false });
+
+            if (facingMode === "user") {
+                // Espejo para selfies
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1);
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+            } else {
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            }
+
+            canvas.toBlob(
+                (blob) => {
+                    if (blob) {
+                        const file = new File(
+                            [blob],
+                            `checkin_${Date.now()}.jpg`,
+                            { type: "image/jpeg", lastModified: Date.now() }
+                        );
+                        if (onDirectImage) {
+                            onDirectImage(file);
+                        }
+                    }
+                    // Liberar memoria gráfica del canvas inmediatamente
+                    canvas.width = 0;
+                    canvas.height = 0;
+                    stopCamera();
+                },
+                "image/jpeg",
+                0.85
+            );
+        } catch (err) {
+            console.error("Error al capturar frame de video:", err);
+            setIsCapturing(false);
+            stopCamera();
+            toast({
+                title: "Error al capturar",
+                description: "Ocurrió un problema capturando la imagen. Intenta de nuevo.",
+                status: "error",
+                duration: 3000,
+                isClosable: true,
+            });
+        }
+    };
 
     return (
         <Box
@@ -40,21 +213,34 @@ export function ImageUploadCard({
             border="1px solid"
             borderColor={borderColor}
         >
-            <Flex align="center" mb={4}>
-                <Flex
-                    w="34px"
-                    h="34px"
-                    borderRadius="xl"
-                    bg="green.50"
-                    align="center"
-                    justify="center"
-                    mr={3}
-                >
-                    <Icon as={FiCamera} color="green.600" boxSize={4} />
+            <Flex align="center" justify="space-between" mb={4}>
+                <Flex align="center">
+                    <Flex
+                        w="34px"
+                        h="34px"
+                        borderRadius="xl"
+                        bg="green.50"
+                        align="center"
+                        justify="center"
+                        mr={3}
+                    >
+                        <Icon as={FiCamera} color="green.600" boxSize={4} />
+                    </Flex>
+                    <Box>
+                        <Text fontSize="sm" fontWeight="700" color="gray.800">
+                            Fotografía de Verificación (Check-In)
+                        </Text>
+                        <Text fontSize="2xs" color="gray.500" fontWeight="500">
+                            Captura obligatoria en tiempo real
+                        </Text>
+                    </Box>
                 </Flex>
-                <Text fontSize="sm" fontWeight="700" color="gray.800">
-                    Fotografía de Verificación (Check-In)
-                </Text>
+
+                {isCameraActive && (
+                    <Badge colorScheme="red" variant="subtle" borderRadius="full" px={2} py={0.5} fontSize="2xs">
+                        🔴 En Vivo
+                    </Badge>
+                )}
             </Flex>
 
             {isLoadingExistingImage && (
@@ -63,7 +249,8 @@ export function ImageUploadCard({
                 </Flex>
             )}
 
-            {!isLoadingExistingImage && hasExistingImage && !imagePreview && (
+            {/* Foto registrada previamente en SAP / backend */}
+            {!isLoadingExistingImage && hasExistingImage && !imagePreview && !isCameraActive && (
                 <Box mb={4}>
                     <Flex align="center" mb={2} gap={2}>
                         <Icon as={FiClock} color="gray.400" boxSize={3.5} />
@@ -72,7 +259,6 @@ export function ImageUploadCard({
                         </Text>
                     </Flex>
 
-                    {/* Imagen clickeable */}
                     <Box
                         borderRadius="xl"
                         overflow="hidden"
@@ -92,7 +278,6 @@ export function ImageUploadCard({
                             decoding="async"
                             style={{ width: "100%", height: "180px", objectFit: "cover" }}
                         />
-                        {/* Ícono de expansión */}
                         <Flex
                             position="absolute"
                             bottom={3}
@@ -106,13 +291,92 @@ export function ImageUploadCard({
                             gap={1.5}
                         >
                             <Icon as={FiMaximize2} color="white" boxSize={3.5} />
-                            <Text fontSize="xs" color="white" fontWeight="600">Ampliar</Text>
+                            <Text fontSize="xs" color="white" fontWeight="600">
+                                Ampliar
+                            </Text>
                         </Flex>
                     </Box>
                 </Box>
             )}
 
-            {imagePreview && (
+            {/* VISOR DE CÁMARA EN VIVO (WebRTC In-App - Consumo <5MB RAM) */}
+            {isCameraActive && (
+                <Box mb={4} position="relative" borderRadius="2xl" overflow="hidden" bg="black">
+                    <video
+                        ref={videoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        style={{
+                            width: "100%",
+                            height: "240px",
+                            objectFit: "cover",
+                            borderRadius: "16px",
+                            backgroundColor: "#000",
+                        }}
+                    />
+
+                    {/* Botón flotante para alternar cámara (frontal / trasera) */}
+                    <IconButton
+                        aria-label="Cambiar cámara"
+                        icon={<Icon as={FiRefreshCw} />}
+                        size="sm"
+                        position="absolute"
+                        top={3}
+                        right={3}
+                        colorScheme="blackAlpha"
+                        bg="blackAlpha.600"
+                        color="white"
+                        borderRadius="full"
+                        onClick={toggleFacingMode}
+                        _hover={{ bg: "blackAlpha.800" }}
+                    />
+
+                    {/* Controles de captura en vivo */}
+                    <Flex
+                        position="absolute"
+                        bottom={3}
+                        left={0}
+                        right={0}
+                        px={4}
+                        justify="space-between"
+                        align="center"
+                    >
+                        <Button
+                            size="sm"
+                            variant="ghost"
+                            color="white"
+                            bg="blackAlpha.500"
+                            borderRadius="xl"
+                            leftIcon={<Icon as={FiX} />}
+                            onClick={() => stopCamera()}
+                            _hover={{ bg: "blackAlpha.700" }}
+                        >
+                            Cancelar
+                        </Button>
+
+                        <Button
+                            size="sm"
+                            colorScheme="green"
+                            bg="green.500"
+                            color="white"
+                            borderRadius="xl"
+                            px={4}
+                            leftIcon={<Icon as={FiCamera} />}
+                            onClick={handleCapturePhoto}
+                            isLoading={isCapturing}
+                            loadingText="Capturando..."
+                            boxShadow="0 4px 14px rgba(34, 197, 94, 0.4)"
+                            _hover={{ bg: "green.600" }}
+                        >
+                            Capturar Foto
+                        </Button>
+                    </Flex>
+                </Box>
+            )}
+
+            {/* PREVIEW DE LA FOTO CAPTURADA */}
+            {imagePreview && !isCameraActive && (
                 <Box mb={4}>
                     <Box
                         borderRadius="xl"
@@ -123,7 +387,7 @@ export function ImageUploadCard({
                     >
                         <img
                             src={imagePreview}
-                            alt="Preview"
+                            alt="Preview de Fotografía"
                             decoding="async"
                             style={{ width: "100%", height: "200px", objectFit: "cover" }}
                         />
@@ -161,58 +425,92 @@ export function ImageUploadCard({
                 </Box>
             )}
 
-            <Button
-                as="label"
-                htmlFor="file-input"
-                bg="gray.50"
-                color="gray.700"
-                border="1.5px dashed"
-                borderColor="gray.300"
-                width="100%"
-                h="52px"
-                borderRadius="xl"
-                fontSize="sm"
-                fontWeight="700"
-                cursor="pointer"
-                leftIcon={
-                    <Flex
-                        w="30px"
-                        h="30px"
-                        borderRadius="lg"
-                        bg="white"
-                        align="center"
-                        justify="center"
-                        border="1px solid"
-                        borderColor="gray.200"
-                        boxShadow="0 2px 5px rgba(0,0,0,0.05)"
-                    >
-                        <Icon as={FiCamera} color="gray.600" boxSize={4} />
-                    </Flex>
-                }
-                _hover={{
-                    bg: "gray.100",
-                    borderColor: "green.500",
-                    color: "green.800",
-                    transform: "translateY(-1px)",
-                }}
-                transition="all 0.2s"
-                isLoading={isProcessingImage}
-                loadingText="Procesando..."
-            >
-                {image ? "Cambiar Fotografía" : hasExistingImage ? "Actualizar Fotografía" : "Tomar / Subir Fotografía"}
-            </Button>
+            {/* BOTONES DE ACCIÓN: ÚNICAMENTE CÁMARA (CERO GALERÍA / CERO ARCHIVOS) */}
+            {!isCameraActive && (
+                <VStack spacing={2.5} width="100%">
+                    {!imagePreview ? (
+                        <Button
+                            bg="green.500"
+                            color="white"
+                            width="100%"
+                            h="48px"
+                            borderRadius="xl"
+                            fontSize="sm"
+                            fontWeight="700"
+                            cursor="pointer"
+                            onClick={() => startCamera()}
+                            leftIcon={
+                                <Flex
+                                    w="28px"
+                                    h="28px"
+                                    borderRadius="lg"
+                                    bg="whiteAlpha.300"
+                                    align="center"
+                                    justify="center"
+                                >
+                                    <Icon as={FiCamera} color="white" boxSize={4} />
+                                </Flex>
+                            }
+                            _hover={{
+                                bg: "green.600",
+                                transform: "translateY(-1px)",
+                                boxShadow: "0 4px 14px rgba(34, 197, 94, 0.3)",
+                            }}
+                            transition="all 0.2s"
+                            isLoading={isProcessingImage}
+                            loadingText="Procesando foto..."
+                        >
+                            {hasExistingImage ? "Tomar Nueva Foto (Cámara)" : "Tomar Fotografía (Cámara)"}
+                        </Button>
+                    ) : (
+                        <VStack spacing={2} width="100%">
+                            <Button
+                                width="100%"
+                                h="44px"
+                                bg="green.50"
+                                color="green.800"
+                                border="1.5px solid"
+                                borderColor="green.300"
+                                borderRadius="xl"
+                                fontSize="xs"
+                                fontWeight="700"
+                                cursor="pointer"
+                                onClick={() => startCamera()}
+                                leftIcon={<Icon as={FiCamera} boxSize={3.5} />}
+                                _hover={{ bg: "green.100", borderColor: "green.400" }}
+                                isLoading={isProcessingImage}
+                            >
+                                Retomar Fotografía (Cámara)
+                            </Button>
 
-            <Input
-                key={fileInputKey}
+                            {onResetImage && (
+                                <Button
+                                    size="xs"
+                                    variant="ghost"
+                                    colorScheme="red"
+                                    onClick={onResetImage}
+                                    leftIcon={<Icon as={FiTrash2} boxSize={3} />}
+                                >
+                                    Quitar fotografía seleccionada
+                                </Button>
+                            )}
+                        </VStack>
+                    )}
+                </VStack>
+            )}
+
+            {/* Input nativo de fallback: EXCLUSIVO de captura por cámara (Sin opción de galería) */}
+            <input
+                ref={nativeCameraInputRef}
+                key={`cam-${fileInputKey}`}
                 type="file"
-                id="file-input"
-                accept="image/jpeg,image/*"
+                accept="image/*"
                 capture="environment"
                 onChange={onImageChange}
-                display="none"
+                style={{ display: "none" }}
             />
 
-            {/* Modal para ver imagen completa */}
+            {/* Modal para ver imagen completa previa */}
             {hasExistingImage && (
                 <Modal isOpen={isOpen} onClose={onClose} size="xl" isCentered>
                     <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(6px)" />
@@ -223,7 +521,12 @@ export function ImageUploadCard({
                                 src={existingImageData.imageUrl}
                                 alt="Foto ampliada"
                                 decoding="async"
-                                style={{ width: "100%", borderRadius: "16px", maxHeight: "80vh", objectFit: "contain" }}
+                                style={{
+                                    width: "100%",
+                                    borderRadius: "16px",
+                                    maxHeight: "80vh",
+                                    objectFit: "contain",
+                                }}
                             />
                         </Box>
                     </ModalContent>
@@ -231,4 +534,4 @@ export function ImageUploadCard({
             )}
         </Box>
     );
-}
+}
