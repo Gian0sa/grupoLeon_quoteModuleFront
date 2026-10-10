@@ -78,6 +78,9 @@ axiosInstance.interceptors.response.use((res) => res, async (error) => {
                     console.warn("Logout backend failed", logoutErr);
                 }
                 authStore.logout(); // limpia Zustand + localStorage
+                if (typeof window !== "undefined" && window.location.pathname !== "/") {
+                    window.location.href = "/";
+                }
             }
 
             return Promise.reject(err);
