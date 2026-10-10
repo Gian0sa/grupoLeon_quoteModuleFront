@@ -131,7 +131,7 @@ const AppRoutes = () => {
             <Route path="/newClients"        element={<RoleRoute requiredPermission="POST:/visit-logs"><NewClientsPage /></RoleRoute>} />
             <Route path="/entrada"           element={<RoleRoute requiredPermission="POST:/attendance"><EntradaPage /></RoleRoute>} />
             <Route path="/admin/attendance"   element={<RoleRoute requiredPermission="PUT:/profile/admin/:userId"><AttendanceAdminPage /></RoleRoute>} />
-            <Route path="/admin/online-users" element={<RoleRoute requiredPermission="PUT:/profile/admin/:userId"><OnlineUsersPage /></RoleRoute>} />
+            <Route path="/admin/online-users" element={<RoleRoute requiredPermission="GET:/presence/users"><OnlineUsersPage /></RoleRoute>} />
             <Route path="/faq"                element={<PrivateRoute><FAQPage /></PrivateRoute>} />
           </Routes>
         </Suspense>

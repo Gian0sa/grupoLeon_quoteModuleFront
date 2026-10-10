@@ -2,29 +2,30 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchClientByCode, fetchDeliveryPoints , fetchClientByName , fetchClientProductHistory , fetchClientProductHistoryAdmin , fetchPriceListByItemCodes , fetchPurchaseOrdersImportacion , fetchPurchaseOrderDetail, fetchNewClients, searchNewClients, updateNewClient} from "../../services/clientService";
 
 export function useClientQueries(code) {
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["client", code],
     queryFn: () => fetchClientByCode(code),
     enabled: !!code,
     refetchOnWindowFocus: false,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
   });
 
   return {
     data,
     isLoading,
     error,
+    refetch,
   };
 }
 
 export function useClientQueriesByName(name) {
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ["client", name],
+    queryKey: ["clientByName", name],
     queryFn: () => fetchClientByName(name),
     enabled: !!name,
     refetchOnWindowFocus: false,
-    staleTime: 10 * 60 * 1000,
-    gcTime: 15 * 60 * 1000,
+    staleTime: 30 * 1000,
+    gcTime: 2 * 60 * 1000,
   });
 
   return {

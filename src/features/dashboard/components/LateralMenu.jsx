@@ -68,8 +68,9 @@ const ACCOUNT_OPTIONS = [
 
 const ADMIN_OPTIONS = [
   { label: 'Gestión de Usuarios', icon: MdPerson, path: '/profileAdmin', access: 'PUT:/profile/admin/:userId' },
-  { label: 'Usuarios en línea', icon: MdPeople, path: '/admin/online-users', access: 'PUT:/profile/admin/:userId' },
+  { label: 'Usuarios en línea', icon: MdPeople, path: '/admin/online-users', access: 'GET:/presence/users' },
   { label: 'Actualizar servicios', icon: MdHelp, path: '#', access: 'PUT:/services/:id' },
+  // ⚠️ No usar GET:/notifications ni GET:/attendance aquí: vienen en los presets de Vendedor/Supervisor
   { label: 'Gestionar Notificaciones', icon: MdAssignment, path: '/notification', access: 'PUT:/profile/admin/:userId' },
   { label: 'Control de Asistencias (Admin)', icon: MdAccessTime, path: '/admin/attendance', access: 'PUT:/profile/admin/:userId' }
 ];
@@ -183,7 +184,7 @@ export function LateralMenu() {
 
   // Etiqueta dinámica de rol para evitar catalogar falsamente como Administrador
   const userRoleLabel = useMemo(() => {
-    if (hasAccess("PUT:/profile/admin/:userId") || hasAccess("GET:/adminUsers")) {
+    if (hasAccess("PUT:/profile/admin/:userId")) {
       return "Administrador";
     }
     if (hasAccess("GET:/AdminQuotesSellers/:slpCode/:month") || (hasAccess("GET:/sellers") && hasAccess("GET:/visit-logs"))) {

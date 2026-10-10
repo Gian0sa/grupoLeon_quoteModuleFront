@@ -1,9 +1,10 @@
+import React, { useRef, useEffect } from "react";
 import {
     Box,
     Flex,
+    VStack,
     Icon,
     Text,
-    Input,
     Button,
     Badge,
     Spinner,
@@ -12,10 +13,23 @@ import {
     ModalContent,
     ModalCloseButton,
     useColorModeValue,
+    useDisclosure,
 } from "@chakra-ui/react";
-import { FiCamera, FiClock, FiMaximize2, FiCheckCircle } from "react-icons/fi";
-import { useDisclosure } from "@chakra-ui/react";
+import {
+    FiCamera,
+    FiClock,
+    FiMaximize2,
+    FiCheckCircle,
+    FiTrash2,
+} from "react-icons/fi";
+import { purgeMemoryBeforeCamera } from "../utils/deviceUtils";
+import { sendDeviceTelemetry } from "../services/telemetryService";
 
+/**
+ * ImageUploadCard
+ * Componente con el diseño visual original exacto (borde punteado y recuadro blanco).
+ * Dispara la cámara del dispositivo con purga preventiva de RAM para evitar "Memoria insuficiente".
+ */
 export function ImageUploadCard({
     image,
     imagePreview,
@@ -25,11 +39,33 @@ export function ImageUploadCard({
     existingImageData,
     isLoadingExistingImage,
     fileInputKey,
+    onResetImage,
+    onBeforeCamera,
+    onCameraCancel,
 }) {
     const hasExistingImage = existingImageData?.hasImage;
     const { isOpen, onOpen, onClose } = useDisclosure();
     const cardBg = useColorModeValue("white", "gray.800");
     const borderColor = useColorModeValue("gray.100", "gray.700");
+    const fileInputRef = useRef(null);
+
+    useEffect(() => {
+        const input = fileInputRef.current;
+        const handleCancel = () => onCameraCancel?.();
+        input?.addEventListener("cancel", handleCancel);
+        return () => input?.removeEventListener("cancel", handleCancel);
+    }, [fileInputKey, onCameraCancel]);
+
+    const handleOpenNativeCamera = () => {
+        if (!fileInputRef.current || isProcessingImage) return;
+        onBeforeCamera?.();
+        // Purga preventiva de memoria antes de que Android abra la cámara
+        purgeMemoryBeforeCamera();
+        sendDeviceTelemetry("CAMERA_LAUNCH", { action: "Botón pulsado" });
+        if (fileInputRef.current) {
+            fileInputRef.current.click();
+        }
+    };
 
     return (
         <Box
@@ -40,6 +76,7 @@ export function ImageUploadCard({
             border="1px solid"
             borderColor={borderColor}
         >
+            {/* Encabezado original */}
             <Flex align="center" mb={4}>
                 <Flex
                     w="34px"
@@ -57,12 +94,14 @@ export function ImageUploadCard({
                 </Text>
             </Flex>
 
+            {/* Spinner si carga imagen anterior desde el servidor */}
             {isLoadingExistingImage && (
                 <Flex justify="center" py={4}>
                     <Spinner size="sm" color="green.600" />
                 </Flex>
             )}
 
+            {/* Fotografía previa registrada en SAP / backend */}
             {!isLoadingExistingImage && hasExistingImage && !imagePreview && (
                 <Box mb={4}>
                     <Flex align="center" mb={2} gap={2}>
@@ -72,7 +111,6 @@ export function ImageUploadCard({
                         </Text>
                     </Flex>
 
-                    {/* Imagen clickeable */}
                     <Box
                         borderRadius="xl"
                         overflow="hidden"
@@ -92,7 +130,6 @@ export function ImageUploadCard({
                             decoding="async"
                             style={{ width: "100%", height: "180px", objectFit: "cover" }}
                         />
-                        {/* Ícono de expansión */}
                         <Flex
                             position="absolute"
                             bottom={3}
@@ -106,12 +143,15 @@ export function ImageUploadCard({
                             gap={1.5}
                         >
                             <Icon as={FiMaximize2} color="white" boxSize={3.5} />
-                            <Text fontSize="xs" color="white" fontWeight="600">Ampliar</Text>
+                            <Text fontSize="xs" color="white" fontWeight="600">
+                                Ampliar
+                            </Text>
                         </Flex>
                     </Box>
                 </Box>
             )}
 
+            {/* Preview de la foto recién capturada */}
             {imagePreview && (
                 <Box mb={4}>
                     <Box
@@ -161,69 +201,98 @@ export function ImageUploadCard({
                 </Box>
             )}
 
-            <Button
-                as="label"
-                htmlFor="file-input"
-                bg="gray.50"
-                color="gray.700"
-                border="1.5px dashed"
-                borderColor="gray.300"
-                width="100%"
-                h="52px"
-                borderRadius="xl"
-                fontSize="sm"
-                fontWeight="700"
-                cursor="pointer"
-                leftIcon={
-                    <Flex
-                        w="30px"
-                        h="30px"
-                        borderRadius="lg"
-                        bg="white"
-                        align="center"
-                        justify="center"
-                        border="1px solid"
-                        borderColor="gray.200"
-                        boxShadow="0 2px 5px rgba(0,0,0,0.05)"
-                    >
-                        <Icon as={FiCamera} color="gray.600" boxSize={4} />
-                    </Flex>
-                }
-                _hover={{
-                    bg: "gray.100",
-                    borderColor: "green.500",
-                    color: "green.800",
-                    transform: "translateY(-1px)",
-                }}
-                transition="all 0.2s"
-                isLoading={isProcessingImage}
-                loadingText="Procesando..."
-            >
-                {image ? "Cambiar Fotografía" : hasExistingImage ? "Actualizar Fotografía" : "Tomar / Subir Fotografía"}
-            </Button>
+            {/* BOTÓN CON EL DISEÑO ORIGINAL EXACTO (Borde punteado y recuadro blanco) */}
+            <VStack spacing={2} width="100%">
+                <Button
+                    onClick={handleOpenNativeCamera}
+                    bg="gray.50"
+                    color="gray.700"
+                    border="1.5px dashed"
+                    borderColor="gray.300"
+                    width="100%"
+                    h="52px"
+                    borderRadius="xl"
+                    fontSize="sm"
+                    fontWeight="700"
+                    cursor="pointer"
+                    leftIcon={
+                        <Flex
+                            w="30px"
+                            h="30px"
+                            borderRadius="lg"
+                            bg="white"
+                            align="center"
+                            justify="center"
+                            border="1px solid"
+                            borderColor="gray.200"
+                            boxShadow="0 2px 5px rgba(0,0,0,0.05)"
+                        >
+                            <Icon as={FiCamera} color="gray.600" boxSize={4} />
+                        </Flex>
+                    }
+                    _hover={{
+                        bg: "gray.100",
+                        borderColor: "green.500",
+                        color: "green.800",
+                        transform: "translateY(-1px)",
+                    }}
+                    transition="all 0.2s"
+                    isLoading={isProcessingImage}
+                    loadingText="Procesando..."
+                >
+                    {image
+                        ? "Cambiar Fotografía"
+                        : hasExistingImage
+                        ? "Actualizar Fotografía"
+                        : "Tomar / Subir Fotografía"}
+                </Button>
 
-            <Input
-                key={fileInputKey}
+                {imagePreview && onResetImage && (
+                    <Button
+                        size="xs"
+                        variant="ghost"
+                        colorScheme="red"
+                        onClick={onResetImage}
+                        leftIcon={<Icon as={FiTrash2} boxSize={3} />}
+                    >
+                        Quitar fotografía seleccionada
+                    </Button>
+                )}
+            </VStack>
+
+            {/* Input nativo de cámara: abre directamente la app de cámara a pantalla completa */}
+            <input
+                ref={fileInputRef}
+                key={`cam-${fileInputKey}`}
                 type="file"
-                id="file-input"
-                accept="image/jpeg,image/*"
+                accept="image/*"
                 capture="environment"
                 onChange={onImageChange}
-                display="none"
+                style={{ display: "none" }}
             />
 
-            {/* Modal para ver imagen completa */}
+            {/* Modal para ver imagen ampliada si existía foto previa en SAP */}
             {hasExistingImage && (
                 <Modal isOpen={isOpen} onClose={onClose} size="xl" isCentered>
                     <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(6px)" />
                     <ModalContent bg="transparent" boxShadow="none">
-                        <ModalCloseButton color="white" bg="blackAlpha.500" borderRadius="full" zIndex={2} />
+                        <ModalCloseButton
+                            color="white"
+                            bg="blackAlpha.500"
+                            borderRadius="full"
+                            zIndex={2}
+                        />
                         <Box p={2}>
                             <img
                                 src={existingImageData.imageUrl}
                                 alt="Foto ampliada"
                                 decoding="async"
-                                style={{ width: "100%", borderRadius: "16px", maxHeight: "80vh", objectFit: "contain" }}
+                                style={{
+                                    width: "100%",
+                                    borderRadius: "16px",
+                                    maxHeight: "80vh",
+                                    objectFit: "contain",
+                                }}
                             />
                         </Box>
                     </ModalContent>
@@ -232,3 +301,5 @@ export function ImageUploadCard({
         </Box>
     );
 }
+
+export default ImageUploadCard;

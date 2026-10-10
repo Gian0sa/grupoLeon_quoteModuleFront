@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { updateSocketAuth, socket } from '../../../shared/lib/socket';
+import { clearSessionCaches } from '../../../shared/lib/queryClient';
 
 const getSafeValue = (key) => {
   try {
@@ -90,6 +91,9 @@ export const useAuthStore = create((set) => ({
         localStorage.removeItem(key)
       );
     } catch (e) {}
+
+    // Limpieza profunda de memoria RAM (React Query), sessionStorage y cachés volátiles
+    clearSessionCaches();
 
     set({
       userId: null,

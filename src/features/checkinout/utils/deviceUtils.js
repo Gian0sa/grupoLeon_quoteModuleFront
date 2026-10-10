@@ -1,264 +1,199 @@
-/**
- * Detecta el perfil de hardware y memoria del dispositivo móvil para auto-ajustar
- * la calidad y resolución a la menor exigencia posible que garantice legibilidad
- * y cero saturación de memoria RAM (Zero-Crash / Low-Memory).
- */
+import { queryClient } from "../../../shared/lib/queryClient";
+import { CAMERA_PENDING_KEY, readSessionValue, removeSessionValue, writeSessionValue } from "./checkinSession";
+
+const previewUrls = new Set();
+export const createImagePreviewUrl = (file) => {
+    const url = URL.createObjectURL(file);
+    previewUrls.add(url);
+    return url;
+};
+export const revokeImagePreviewUrl = (url) => {
+    if (url && previewUrls.delete(url)) URL.revokeObjectURL(url);
+};
+export const clearCameraPending = () => removeSessionValue(CAMERA_PENDING_KEY);
+export const purgeMemoryBeforeCamera = () => {
+    for (const url of previewUrls) URL.revokeObjectURL(url);
+    previewUrls.clear();
+    try { queryClient.removeQueries({ type: "inactive" }); }
+    catch (error) { console.warn("Purga de queries previa a cámara falló:", error); }
+    writeSessionValue(CAMERA_PENDING_KEY, String(Date.now()));
+};
 export const getDeviceQualityProfile = () => {
-    if (typeof window === "undefined" || typeof navigator === "undefined") {
-        return {
-            profile: "BALANCED",
-            maxDimension: 768,
-            quality: 0.60,
-            label: "Equilibrado",
-            isLowEnd: false,
-        };
-    }
-
-    const deviceMemory = navigator.deviceMemory || 4; // RAM en GB (ej. 0.5, 1, 2, 4, 8)
-    const hardwareConcurrency = navigator.hardwareConcurrency || 4; // Núcleos de CPU
-    const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-    const isSaveData = connection?.saveData === true;
-    const isSlowConnection = connection?.effectiveType === "2g" || connection?.effectiveType === "slow-2g";
-
-    // Celulares económicos suelen tener <= 2GB de RAM o <= 4 núcleos pequeños o modo ahorro
-    const isLowEnd = deviceMemory <= 2 || hardwareConcurrency <= 4 || isSaveData || isSlowConnection;
-
-    if (isLowEnd) {
-        return {
-            profile: "LITE",
-            maxDimension: 640,
-            quality: 0.52,
-            label: "Ultra-Ligero (Bajo consumo)",
-            isLowEnd: true,
-            deviceMemory,
-        };
-    }
-
-    if (deviceMemory <= 4 || hardwareConcurrency <= 6) {
-        return {
-            profile: "BALANCED",
-            maxDimension: 768,
-            quality: 0.60,
-            label: "Equilibrado",
-            isLowEnd: false,
-            deviceMemory,
-        };
-    }
-
+    const deviceMemory = typeof navigator !== "undefined" ? navigator.deviceMemory || 4 : 4;
+    const cores = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 4 : 4;
+    const connection = typeof navigator !== "undefined"
+        ? navigator.connection || navigator.mozConnection || navigator.webkitConnection : null;
+    const isLowEnd = deviceMemory <= 2 || cores <= 4 || connection?.saveData === true ||
+        ["2g", "slow-2g"].includes(connection?.effectiveType);
     return {
-        profile: "HIGH",
-        maxDimension: 960,
-        quality: 0.65,
-        label: "Alta Definición",
-        isLowEnd: false,
-        deviceMemory,
+        profile: isLowEnd ? "LITE" : "BALANCED",
+        maxDimension: isLowEnd ? 640 : 768,
+        quality: isLowEnd ? 0.52 : 0.60,
+        label: isLowEnd ? "Ultra-Ligero (Bajo consumo)" : "Equilibrado",
+        isLowEnd, deviceMemory,
     };
 };
-
-/**
- * Calcula las dimensiones proporcionales (aspect ratio intacto) sin sobrepasar maxDimension.
- */
-export const calculateTargetDimensions = (origW, origH, maxDim) => {
-    if (!origW || !origH) return { width: maxDim, height: maxDim };
-    let w = origW;
-    let h = origH;
-    if (w > h) {
-        if (w > maxDim) {
-            h = Math.round(h * (maxDim / w));
-            w = maxDim;
+export const calculateTargetDimensions = (width, height, maxDimension) => {
+    const scale = Math.min(1, maxDimension / Math.max(width, height));
+    return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
+};
+const readExifOrientation = (view, start, end) => {
+    try {
+        if (end - start < 14 || view.getUint32(start) !== 0x45786966 || view.getUint16(start + 4) !== 0) return 1;
+        const tiff = start + 6;
+        const byteOrder = view.getUint16(tiff);
+        if (byteOrder !== 0x4949 && byteOrder !== 0x4D4D) return 1;
+        const littleEndian = byteOrder === 0x4949;
+        if (view.getUint16(tiff + 2, littleEndian) !== 42) return 1;
+        const ifd = tiff + view.getUint32(tiff + 4, littleEndian);
+        if (ifd < tiff + 8 || ifd + 2 > end) return 1;
+        const entries = view.getUint16(ifd, littleEndian);
+        for (let i = 0; i < entries; i++) {
+            const offset = ifd + 2 + i * 12;
+            if (offset + 12 > end) break;
+            if (view.getUint16(offset, littleEndian) === 0x0112 &&
+                view.getUint16(offset + 2, littleEndian) === 3 &&
+                view.getUint32(offset + 4, littleEndian) === 1) {
+                const orientation = view.getUint16(offset + 8, littleEndian);
+                return orientation >= 1 && orientation <= 8 ? orientation : 1;
+            }
         }
-    } else {
-        if (h > maxDim) {
-            w = Math.round(w * (maxDim / h));
-            h = maxDim;
+    } catch { /* EXIF incompleto: conservar la orientación por defecto. */ }
+    return 1;
+};
+/** Lee como máximo 64 KiB de cabecera; nunca decodifica píxeles para medirlos. */
+export const getHeaderDimensions = async (file) => {
+    if (!file || typeof file.slice !== "function") return null;
+    const view = new DataView(await file.slice(0, 65536).arrayBuffer());
+    const size = view.byteLength;
+    if (size >= 4 && view.getUint16(0) === 0xFFD8) {
+        const sofMarkers = new Set([0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF]);
+        let offset = 2;
+        let dimensions = null;
+        let orientation = 1;
+        while (offset + 1 < size) {
+            if (view.getUint8(offset++) !== 0xFF) return null;
+            while (offset < size && view.getUint8(offset) === 0xFF) offset++;
+            if (offset >= size) break;
+            const marker = view.getUint8(offset++);
+            if (marker === 0xDA || marker === 0xD9) break;
+            if (marker === 0x01 || (marker >= 0xD0 && marker <= 0xD8)) continue;
+            if (offset + 2 > size) break;
+            const length = view.getUint16(offset);
+            if (length < 2 || offset + length > size) break;
+            if (marker === 0xE1 && length >= 8 && view.getUint32(offset + 2) === 0x45786966) {
+                orientation = readExifOrientation(view, offset + 2, offset + length);
+            }
+            if (sofMarkers.has(marker) && length >= 8) {
+                const height = view.getUint16(offset + 3);
+                const width = view.getUint16(offset + 5);
+                if (width && height) dimensions = { width, height };
+            }
+            offset += length;
+        }
+        if (!dimensions) return null;
+        return orientation >= 5 ? { width: dimensions.height, height: dimensions.width } : dimensions;
+    }
+    if (size >= 33 && view.getUint32(0) === 0x89504E47 && view.getUint32(4) === 0x0D0A1A0A &&
+        view.getUint32(8) === 13 && view.getUint32(12) === 0x49484452) {
+        const width = view.getUint32(16);
+        const height = view.getUint32(20);
+        return width && height ? { width, height } : null;
+    }
+    // WebP: VP8, VP8L y VP8X declaran las dimensiones sin decodificar.
+    if (size >= 30 && view.getUint32(0) === 0x52494646 && view.getUint32(8) === 0x57454250) {
+        const type = view.getUint32(12);
+        const uint24 = (offset) => view.getUint8(offset) | view.getUint8(offset + 1) << 8 | view.getUint8(offset + 2) << 16;
+        if (type === 0x56503858) return { width: uint24(24) + 1, height: uint24(27) + 1 };
+        if (type === 0x56503820 && view.getUint8(23) === 0x9D && view.getUint8(24) === 1 && view.getUint8(25) === 0x2A) {
+            const width = view.getUint16(26, true) & 0x3FFF;
+            const height = view.getUint16(28, true) & 0x3FFF;
+            return width && height ? { width, height } : null;
+        }
+        if (type === 0x5650384C && view.getUint8(20) === 0x2F) {
+            const bits = view.getUint32(21, true);
+            return { width: (bits & 0x3FFF) + 1, height: ((bits >>> 14) & 0x3FFF) + 1 };
         }
     }
-    return { width: Math.max(1, w), height: Math.max(1, h) };
+    return null;
 };
-
-/**
- * Obtiene las dimensiones originales de la foto en milisegundos sin decodificar
- * mapas de bits gigantescos en la memoria del hilo principal.
- */
-const getQuickImageDimensions = (file) => {
-    return new Promise((resolve) => {
-        if (typeof window === "undefined") return resolve(null);
-        const url = URL.createObjectURL(file);
-        const img = new Image();
-        let completed = false;
-
-        const timer = setTimeout(() => {
-            if (!completed) {
-                completed = true;
-                URL.revokeObjectURL(url);
-                resolve(null);
-            }
-        }, 2000);
-
-        img.onload = () => {
-            if (!completed) {
-                completed = true;
-                clearTimeout(timer);
-                const w = img.naturalWidth || img.width;
-                const h = img.naturalHeight || img.height;
-                URL.revokeObjectURL(url);
-                resolve(w && h ? { width: w, height: h } : null);
-            }
-        };
-
-        img.onerror = () => {
-            if (!completed) {
-                completed = true;
-                clearTimeout(timer);
-                URL.revokeObjectURL(url);
-                resolve(null);
-            }
-        };
-
-        img.src = url;
-    });
+const checkAborted = (signal) => {
+    if (signal?.aborted) throw new DOMException("Procesamiento cancelado", "AbortError");
 };
-
 /**
- * Compresión ultra-optimizada y adaptativa para dispositivos móviles (Zero-Crash / Zero-Leak).
- * 
- * Se auto-adapta a las capacidades del teléfono (gama baja: 640px / ~35KB, gama alta: 960px).
- * Limpia buffers de GPU y libera memoria inmediatamente tras procesar la imagen.
+ * Solicita un bitmap reducido. El pico interno del decodificador depende del navegador;
+ * no se reintenta con Image ni con un bitmap de tamaño completo.
  */
 export const compressImage = async (file, customOptions = {}) => {
-    if (!file) throw new Error("No se proporcionó ningún archivo");
-
-    // 1. Detectar perfil de hardware del dispositivo
-    const deviceProfile = getDeviceQualityProfile();
-    const maxDimension = typeof customOptions === "number" 
-        ? deviceProfile.maxDimension 
-        : (customOptions.maxDimension || deviceProfile.maxDimension);
-    const jpegQuality = typeof customOptions === "number"
-        ? (customOptions <= 0.5 ? 0.52 : 0.62)
-        : (customOptions.quality || deviceProfile.quality);
-
-    // 2. Extraer dimensiones previas para mantener relación de aspecto exacta
-    const origDims = await getQuickImageDimensions(file);
-    const target = origDims 
-        ? calculateTargetDimensions(origDims.width, origDims.height, maxDimension)
-        : { width: maxDimension, height: maxDimension };
-
-    const fileName = file.name ? file.name.replace(/\.[^/.]+$/, ".jpg") : "foto_checkin.jpg";
-
-    // Camino 1: API nativa createImageBitmap con redimensionamiento directo en decodificación
-    // Al pasarle target.width y target.height proporcionales, el motor Web NO carga los 50MP a RAM.
-    if (typeof window !== "undefined" && "createImageBitmap" in window) {
-        try {
-            let bitmap = null;
-            try {
-                bitmap = await createImageBitmap(file, {
-                    resizeWidth: target.width,
-                    resizeHeight: target.height,
-                    resizeQuality: "medium",
-                });
-            } catch (optionsErr) {
-                // Fallback si el browser no admite opciones de resize en createImageBitmap
-                bitmap = await createImageBitmap(file);
-            }
-
-            if (bitmap) {
-                const finalDims = origDims 
-                    ? target 
-                    : calculateTargetDimensions(bitmap.width, bitmap.height, maxDimension);
-
-                const canvas = document.createElement("canvas");
-                canvas.width = finalDims.width;
-                canvas.height = finalDims.height;
-                const ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
-                ctx.drawImage(bitmap, 0, 0, finalDims.width, finalDims.height);
-                
-                // Liberar bitmap nativo de inmediato
-                bitmap.close();
-
-                const blob = await new Promise((resolve) => {
-                    canvas.toBlob(resolve, "image/jpeg", jpegQuality);
-                });
-
-                // Liberar textura gráfica del canvas de la GPU inmediatamente
-                canvas.width = 0;
-                canvas.height = 0;
-
-                if (blob) {
-                    const finalFile = new File([blob], fileName, { type: "image/jpeg", lastModified: Date.now() });
-                    finalFile.optimizedInfo = {
-                        profile: deviceProfile.profile,
-                        profileLabel: deviceProfile.label,
-                        originalSizeKB: Math.round(file.size / 1024),
-                        sizeKB: Math.round(blob.size / 1024),
-                        width: finalDims.width,
-                        height: finalDims.height,
-                    };
-                    return finalFile;
-                }
-            }
-        } catch (bitmapError) {
-            console.warn("createImageBitmap falló, activando fallback ligero con Canvas:", bitmapError);
+    const options = typeof customOptions === "number" ? { quality: customOptions } : customOptions;
+    const signal = options.signal;
+    let bitmap = null;
+    let canvas = null;
+    try {
+        if (!file) throw new Error("No se proporcionó ningún archivo");
+        checkAborted(signal);
+        const original = await getHeaderDimensions(file);
+        checkAborted(signal);
+        if (!original) throw new Error("No pudimos leer esta foto de forma segura. Utiliza una imagen JPEG, PNG o WebP con menor resolución.");
+        if (typeof createImageBitmap !== "function") throw new Error("Actualiza tu navegador para procesar fotografías de forma segura.");
+        const profile = getDeviceQualityProfile();
+        const maxDimension = Number.isFinite(options.maxDimension)
+            ? Math.max(1, Math.min(768, Math.round(options.maxDimension))) : profile.maxDimension;
+        const quality = Number.isFinite(options.quality) ? Math.max(0.1, Math.min(1, options.quality)) : profile.quality;
+        const target = calculateTargetDimensions(original.width, original.height, maxDimension);
+        bitmap = await createImageBitmap(file, {
+            resizeWidth: target.width, resizeHeight: target.height, resizeQuality: "low", imageOrientation: "from-image",
+        });
+        checkAborted(signal);
+        if (bitmap.width !== target.width || bitmap.height !== target.height) {
+            throw new Error("El navegador no redujo la foto de forma segura. Actualiza el navegador o toma una foto con menor resolución.");
         }
+        canvas = document.createElement("canvas");
+        canvas.width = target.width;
+        canvas.height = target.height;
+        const context = canvas.getContext("2d", { alpha: false, desynchronized: true });
+        if (!context) throw new Error("No hay memoria disponible para procesar la foto. Intenta nuevamente.");
+        context.drawImage(bitmap, 0, 0);
+        bitmap.close();
+        bitmap = null;
+        const blob = await new Promise((resolve, reject) => {
+            canvas.toBlob((value) => value ? resolve(value) : reject(new Error("No se pudo comprimir la foto")), "image/jpeg", quality);
+        });
+        checkAborted(signal);
+        const fileName = file.name ? file.name.replace(/\.[^/.]+$/, "") + ".jpg" : "foto_checkin.jpg";
+        const result = new File([blob], fileName, { type: "image/jpeg", lastModified: Date.now() });
+        result.optimizedInfo = {
+            profile: profile.profile, profileLabel: profile.label,
+            originalSizeKB: Math.round(file.size / 1024), sizeKB: Math.round(blob.size / 1024),
+            width: target.width, height: target.height,
+        };
+        return result;
+    } finally {
+        if (bitmap) bitmap.close();
+        if (canvas) { canvas.width = 0; canvas.height = 0; }
+        clearCameraPending();
     }
-
-    // Camino 2: Fallback estándar con Image + Canvas
-    return new Promise((resolve, reject) => {
-        const objectUrl = URL.createObjectURL(file);
-        const img = new Image();
-
-        img.onload = () => {
-            URL.revokeObjectURL(objectUrl);
-
-            const finalDims = calculateTargetDimensions(
-                img.naturalWidth || img.width, 
-                img.naturalHeight || img.height, 
-                maxDimension
-            );
-
-            const canvas = document.createElement("canvas");
-            canvas.width = finalDims.width;
-            canvas.height = finalDims.height;
-
-            const ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
-            ctx.drawImage(img, 0, 0, finalDims.width, finalDims.height);
-
-            canvas.toBlob((blob) => {
-                // Liberar buffer del canvas
-                canvas.width = 0;
-                canvas.height = 0;
-
-                if (blob) {
-                    const finalFile = new File([blob], fileName, { type: "image/jpeg", lastModified: Date.now() });
-                    finalFile.optimizedInfo = {
-                        profile: deviceProfile.profile,
-                        profileLabel: deviceProfile.label,
-                        originalSizeKB: Math.round(file.size / 1024),
-                        sizeKB: Math.round(blob.size / 1024),
-                        width: finalDims.width,
-                        height: finalDims.height,
-                    };
-                    resolve(finalFile);
-                } else {
-                    reject(new Error("Error al comprimir imagen"));
-                }
-            }, "image/jpeg", jpegQuality);
-        };
-
-        img.onerror = () => {
-            URL.revokeObjectURL(objectUrl);
-            reject(new Error("No se pudo cargar la imagen para compresión"));
-        };
-
-        img.src = objectUrl;
-    });
 };
-
 // Memoria en sesión para coordenadas recientes válidas (evita demoras en campo)
+const LOCATION_CACHE_KEY = "gl_checkin_location";
+const LOCATION_MAX_AGE_MS = 5 * 60 * 1000;
 let cachedLocation = null;
 let cachedTimestamp = 0;
 
 export const getCachedLocation = () => {
-    if (cachedLocation && (Date.now() - cachedTimestamp < 5 * 60 * 1000)) {
+    if (!cachedLocation) {
+        try {
+            const saved = JSON.parse(readSessionValue(LOCATION_CACHE_KEY));
+            if (saved && Number.isFinite(saved.timestamp) && saved.timestamp <= Date.now() &&
+                Date.now() - saved.timestamp < LOCATION_MAX_AGE_MS &&
+                Number.isFinite(saved.location?.latitude) && Math.abs(saved.location.latitude) <= 90 &&
+                Number.isFinite(saved.location?.longitude) && Math.abs(saved.location.longitude) <= 180) {
+                cachedLocation = saved.location;
+                cachedTimestamp = saved.timestamp;
+            }
+        } catch { /* Coordenadas ausentes o inválidas. */ }
+    }
+    if (cachedLocation && Date.now() - cachedTimestamp < LOCATION_MAX_AGE_MS) {
         return cachedLocation;
     }
     return null;
@@ -286,6 +221,7 @@ export const getLocation = (options = {}) => {
             };
             cachedLocation = loc;
             cachedTimestamp = Date.now();
+            writeSessionValue(LOCATION_CACHE_KEY, JSON.stringify({ location: loc, timestamp: cachedTimestamp }));
             console.log("📍 Coordenadas GPS obtenidas exitosamente:", loc);
             resolve(loc);
         };

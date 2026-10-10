@@ -1,6 +1,7 @@
 import "./App.css";
 import { useEffect } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClient } from "../shared/lib/queryClient";
 import AppRoutes from "./Routes";
 import { ChakraProvider, ColorModeScript, useToast } from "@chakra-ui/react";
 import theme from "../components/theme";
@@ -8,27 +9,6 @@ import { SyncQueueProvider } from "../features/checkinout/context/SyncQueueProvi
 import { useQuoteSocket } from "../features/quotes/hooks/useQuoteSocket";
 import { useAuthStore } from "../features/auth/stores/useAuthStore";
 import { usePresenceHeartbeat } from "../features/admin/hooks/usePresenceHeartbeat";
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      refetchOnWindowFocus: false,
-      refetchOnReconnect: true,
-      refetchOnMount: false,
-      refetchInterval: false,
-      refetchIntervalInBackground: false,
-      retry: false,
-      retryOnMount: false,
-      staleTime: 1000 * 60 * 5, // 5m
-      gcTime: 1000 * 60 * 15, // 15m
-      networkMode: 'offlineFirst',
-    },
-    mutations: {
-      retry: false,
-      networkMode: 'offlineFirst',
-    },
-  },
-});
 
 function RealtimeSocketConsumer() {
   useQuoteSocket();

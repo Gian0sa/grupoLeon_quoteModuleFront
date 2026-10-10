@@ -35,6 +35,11 @@ export const getPresenceUsers = async () => {
   return data;
 };
 
+export const getUserSessions = async (userId) => {
+  const response = await axiosInstance.get(`/quoteModule/presence/users/${userId}/sessions`);
+  return response.data;
+};
+
 // ─── Diccionario de Traducción de Rutas del Sistema ───────────────────────────
 export const PAGE_NAMES = {
   "/": "Inicio de Sesión",
