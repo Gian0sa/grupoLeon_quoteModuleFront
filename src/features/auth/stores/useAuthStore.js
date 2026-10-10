@@ -20,12 +20,27 @@ const getSafeJsonValue = (key) => {
   }
 };
 
+const SESSION_MAX_DURATION_MS = 5 * 60 * 60 * 1000; // 5 horas exactas
+
+const isSessionExpired = () => {
+  const loginTime = Number(getSafeValue('sessionLoginTime') || 0);
+  if (!loginTime) return false;
+  return Date.now() - loginTime > SESSION_MAX_DURATION_MS;
+};
+
+// Si expiró la sesión al abrir/recargar la app, limpiar de inmediato
+if (isSessionExpired()) {
+  ['userId', 'username', 'salesEmployeeCode', 'endpoints', 'lastRoute', 'sessionLoginTime'].forEach((key) => {
+    try { localStorage.removeItem(key); } catch (e) {}
+  });
+}
+
 export const useAuthStore = create((set) => ({
-  userId: getSafeValue('userId'),
-  username: typeof getSafeValue('username') === 'string' ? getSafeValue('username').trim() : getSafeValue('username'),
-  salesEmployeeCode: getSafeValue('salesEmployeeCode'),
-  endpoints: getSafeJsonValue('endpoints') || [],
-  isAuthenticated: !!getSafeValue('userId'),
+  userId: isSessionExpired() ? null : getSafeValue('userId'),
+  username: isSessionExpired() ? null : (typeof getSafeValue('username') === 'string' ? getSafeValue('username').trim() : getSafeValue('username')),
+  salesEmployeeCode: isSessionExpired() ? null : getSafeValue('salesEmployeeCode'),
+  endpoints: isSessionExpired() ? [] : (getSafeJsonValue('endpoints') || []),
+  isAuthenticated: !isSessionExpired() && !!getSafeValue('userId'),
 
   login: ({ userId, username, salesEmployeeCode, endpoints }) => {
     const cleanUsername = typeof username === 'string' ? username.trim() : username;
@@ -34,6 +49,7 @@ export const useAuthStore = create((set) => ({
       username: cleanUsername || null,
       salesEmployeeCode: salesEmployeeCode || null,
       endpoints: endpoints || [],
+      sessionLoginTime: Date.now().toString(),
     };
 
     // Guardar en localStorage solo lo público
@@ -54,7 +70,10 @@ export const useAuthStore = create((set) => ({
     }
 
     set({
-      ...safeValues,
+      userId: safeValues.userId,
+      username: safeValues.username,
+      salesEmployeeCode: safeValues.salesEmployeeCode,
+      endpoints: safeValues.endpoints,
       isAuthenticated: true,
     });
 
@@ -72,6 +91,17 @@ export const useAuthStore = create((set) => ({
     }
   },
 
+  checkSessionExpiry: () => {
+    if (useAuthStore.getState().isAuthenticated && isSessionExpired()) {
+      useAuthStore.getState().logout();
+      if (typeof window !== "undefined" && window.location.pathname !== "/") {
+        window.location.href = "/";
+      }
+      return true;
+    }
+    return false;
+  },
+
   logout: () => {
     try {
       const currentUserId = useAuthStore.getState().userId || localStorage.getItem('userId');
@@ -87,7 +117,7 @@ export const useAuthStore = create((set) => ({
     }
 
     try {
-      ['userId', 'username', 'salesEmployeeCode', 'endpoints', 'lastRoute'].forEach((key) =>
+      ['userId', 'username', 'salesEmployeeCode', 'endpoints', 'lastRoute', 'sessionLoginTime'].forEach((key) =>
         localStorage.removeItem(key)
       );
     } catch (e) {}
@@ -106,3 +136,16 @@ export const useAuthStore = create((set) => ({
     updateSocketAuth();
   },
 }));
+
+if (typeof window !== "undefined") {
+  const handleWakeup = () => {
+    const store = useAuthStore.getState();
+    if (store?.isAuthenticated && typeof store.checkSessionExpiry === "function") {
+      store.checkSessionExpiry();
+    }
+  };
+  window.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") handleWakeup();
+  });
+  window.addEventListener("focus", handleWakeup);
+}
