@@ -1,134 +1,109 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useToast } from "@chakra-ui/react";
-import { compressImage } from "../utils/deviceUtils";
+import { compressImage, createImagePreviewUrl, revokeImagePreviewUrl, clearCameraPending } from "../utils/deviceUtils";
+import { sendDeviceTelemetry } from "../services/telemetryService";
 
 export function useImageUpload() {
     const [image, setImage] = useState(null);
     const [imagePreview, setImagePreview] = useState(null);
     const [imageInfo, setImageInfo] = useState(null);
     const [isProcessingImage, setIsProcessingImage] = useState(false);
-    // fileInputKey cambia en cada selección para forzar al browser a recrear el <input>
-    // esto soluciona el bug donde seleccionar la misma foto no dispara onChange
     const [fileInputKey, setFileInputKey] = useState(0);
+    const mountedRef = useRef(false);
+    const imageRef = useRef(null);
+    const previewRef = useRef(null);
+    const operationRef = useRef(null);
     const toast = useToast();
 
-    // Limpieza de memoria al desmontar
+    const releasePreview = useCallback(() => {
+        revokeImagePreviewUrl(previewRef.current);
+        previewRef.current = null;
+    }, []);
+    const replacePreview = useCallback((file) => {
+        releasePreview();
+        const url = file ? createImagePreviewUrl(file) : null;
+        previewRef.current = url;
+        setImagePreview(url);
+    }, [releasePreview]);
     useEffect(() => {
+        mountedRef.current = true;
         return () => {
-            if (imagePreview && imagePreview.startsWith("blob:")) {
-                URL.revokeObjectURL(imagePreview);
-            }
+            mountedRef.current = false;
+            operationRef.current?.abort();
+            releasePreview();
+            imageRef.current = null;
         };
-    }, [imagePreview]);
+    }, [releasePreview]);
 
-    const handleImageChange = useCallback(async (e) => {
-        const file = e.target.files?.[0];
-        // CRÍTICO PARA MÓVILES: Limpiar inmediatamente el valor del input nativo.
-        // Si no se limpia, cuando el usuario toma una foto nueva pero el sistema móvil
-        // le asigna el mismo nombre de archivo temporal, el evento onChange NO se vuelve a disparar.
-        if (e.target) {
-            e.target.value = "";
-        }
-        if (!file) return;
-
+    const processImage = useCallback(async (fileOrBlob) => {
+        // El candado permanece hasta que el decodificador termina, también tras reset.
+        if (!fileOrBlob || operationRef.current || !mountedRef.current) return;
+        const operation = new AbortController();
+        operationRef.current = operation;
         setIsProcessingImage(true);
-
-        // Guardia de seguridad reducida a 10s: si el proceso se congela, liberar el spinner
-        const safetyTimer = setTimeout(() => {
-            setIsProcessingImage(false);
-            setFileInputKey((k) => k + 1);
-        }, 10000);
-
         try {
-            const compressedFile = await compressImage(file);
-            setImage(compressedFile);
-            if (compressedFile.optimizedInfo) {
-                setImageInfo(compressedFile.optimizedInfo);
-            }
-
-            // Usar URL.createObjectURL en lugar de Base64 gigante en memoria (evita OOM en móviles)
-            const previewUrl = URL.createObjectURL(compressedFile);
-            setImagePreview((prev) => {
-                if (prev && prev.startsWith("blob:")) {
-                    URL.revokeObjectURL(prev);
-                }
-                return previewUrl;
+            const file = fileOrBlob instanceof File ? fileOrBlob
+                : new File([fileOrBlob], "foto_checkin.jpg", { type: fileOrBlob.type || "image/jpeg" });
+            const compressed = await compressImage(file, { signal: operation.signal });
+            if (!mountedRef.current || operation.signal.aborted) return;
+            replacePreview(compressed);
+            imageRef.current = compressed;
+            setImage(compressed);
+            setImageInfo(compressed.optimizedInfo || null);
+            void sendDeviceTelemetry("IMAGE_OPTIMIZED_SUCCESS", {
+                originalSizeKB: Math.round(file.size / 1024),
+                optimizedSizeKB: compressed.optimizedInfo?.sizeKB,
+                dimensions: compressed.optimizedInfo?.width + "x" + compressed.optimizedInfo?.height,
+                profile: compressed.optimizedInfo?.profile,
             });
-
-            clearTimeout(safetyTimer);
-            setIsProcessingImage(false);
-            // Recrear el input para el próximo cambio
-            setFileInputKey((k) => k + 1);
         } catch (error) {
-            clearTimeout(safetyTimer);
-            setIsProcessingImage(false);
-            setFileInputKey((k) => k + 1);
-            toast({
-                title: "Error al procesar imagen",
-                description: error.message || "Intenta con otra foto",
-                status: "error",
-                duration: 4000,
-                isClosable: true,
+            if (!mountedRef.current || operation.signal.aborted) return;
+            if (imageRef.current && !previewRef.current) {
+                try { replacePreview(imageRef.current); } catch { /* La asignación del preview también puede fallar. */ }
+            }
+            void sendDeviceTelemetry("IMAGE_PROCESSING_ERROR", {
+                errorMessage: error?.message || "Error al procesar",
+                originalSizeKB: Math.round(fileOrBlob.size / 1024),
             });
+            toast({
+                title: "Error al procesar imagen", description: error.message || "Intenta con otra foto",
+                status: "error", duration: 5000, isClosable: true,
+            });
+        } finally {
+            clearCameraPending();
+            if (operationRef.current === operation) operationRef.current = null;
+            if (mountedRef.current) {
+                setIsProcessingImage(false);
+                setFileInputKey((key) => key + 1);
+            }
         }
-    }, [toast]);
+    }, [replacePreview, toast]);
 
+    const handleCameraCancel = useCallback(() => {
+        clearCameraPending();
+        if (mountedRef.current && imageRef.current && !previewRef.current) replacePreview(imageRef.current);
+    }, [replacePreview]);
+    const handleImageChange = useCallback((event) => {
+        const file = event.target.files?.[0];
+        event.target.value = "";
+        if (!file) { handleCameraCancel(); return; }
+        return processImage(file);
+    }, [processImage, handleCameraCancel]);
+    const prepareForCamera = useCallback(() => {
+        releasePreview();
+        setImagePreview(null);
+    }, [releasePreview]);
     const resetImage = useCallback(() => {
+        operationRef.current?.abort();
+        clearCameraPending();
+        imageRef.current = null;
         setImage(null);
         setImageInfo(null);
-        setImagePreview((prev) => {
-            if (prev && prev.startsWith("blob:")) {
-                URL.revokeObjectURL(prev);
-            }
-            return null;
-        });
-        setFileInputKey((k) => k + 1);
-    }, []);
-
-    const setDirectImage = useCallback(async (fileOrBlob) => {
-        if (!fileOrBlob) return;
-        setIsProcessingImage(true);
-        try {
-            const file = fileOrBlob instanceof File
-                ? fileOrBlob
-                : new File([fileOrBlob], "foto_checkin.jpg", { type: "image/jpeg", lastModified: Date.now() });
-
-            const compressedFile = await compressImage(file);
-            setImage(compressedFile);
-            if (compressedFile.optimizedInfo) {
-                setImageInfo(compressedFile.optimizedInfo);
-            }
-
-            const previewUrl = URL.createObjectURL(compressedFile);
-            setImagePreview((prev) => {
-                if (prev && prev.startsWith("blob:")) {
-                    URL.revokeObjectURL(prev);
-                }
-                return previewUrl;
-            });
-            setIsProcessingImage(false);
-            setFileInputKey((k) => k + 1);
-        } catch (error) {
-            setIsProcessingImage(false);
-            setFileInputKey((k) => k + 1);
-            toast({
-                title: "Error al procesar fotografía",
-                description: error.message || "Intenta tomar la fotografía nuevamente",
-                status: "error",
-                duration: 4000,
-                isClosable: true,
-            });
-        }
-    }, [toast]);
-
+        replacePreview(null);
+        setFileInputKey((key) => key + 1);
+    }, [replacePreview]);
     return {
-        image,
-        imagePreview,
-        imageInfo,
-        isProcessingImage,
-        handleImageChange,
-        setDirectImage,
-        resetImage,
-        fileInputKey,
+        image, imagePreview, imageInfo, isProcessingImage, handleImageChange,
+        setDirectImage: processImage, resetImage, fileInputKey, prepareForCamera, handleCameraCancel,
     };
 }

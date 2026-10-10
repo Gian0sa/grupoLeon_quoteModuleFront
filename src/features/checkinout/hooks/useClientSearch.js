@@ -37,40 +37,20 @@ export function parseSearchToInitialData(inputString) {
     }
 }
 
-export function useClientSearch() {
-    const [inputValue, setInputValue] = useState("");
+export function useClientSearch(initialDraft = null) {
+    const [inputValue, setInputValue] = useState(initialDraft?.inputValue || "");
     const [searchTerm, setSearchTerm] = useState("");
     const [rawSearchTerm, setRawSearchTerm] = useState("");
     const [isSearchingByCode, setIsSearchingByCode] = useState(true);
-    const [selectedClient, setSelectedClientState] = useState(() => {
-        try {
-            const cached = sessionStorage.getItem("checkin_selected_client");
-            return cached ? JSON.parse(cached) : null;
-        } catch (e) {
-            return null;
-        }
-    });
-
-    const setSelectedClient = (client) => {
-        setSelectedClientState(client);
-        try {
-            if (client) {
-                sessionStorage.setItem("checkin_selected_client", JSON.stringify(client));
-            } else {
-                sessionStorage.removeItem("checkin_selected_client");
-            }
-        } catch (e) {}
-    };
-
-    const [initialClientData, setInitialClientData] = useState(null);
-
-    const { data: dataByCode, isLoading: isLoadingByCode, error: errorByCode } =
+    const [selectedClient, setSelectedClient] = useState(initialDraft?.selectedClient || null);
+    const [initialClientData, setInitialClientData] = useState(initialDraft?.initialClientData || null);
+    const { data: dataByCode, isLoading: isLoadingByCode, error: errorByCode, refetch: refetchByCode } =
         useClientQueries(isSearchingByCode && searchTerm ? searchTerm : null);
 
-    const { data: dataByName, isLoading: isLoadingByName, error: errorByName } =
+    const { data: dataByName, isLoading: isLoadingByName, error: errorByName, refetch: refetchByName } =
         useClientQueriesByName(!isSearchingByCode && searchTerm ? searchTerm : null);
 
-    const { dataNewClients, isLoadingNewClients, errorNewClients } =
+    const { dataNewClients, isLoadingNewClients, errorNewClients, refetch: refetchNewClients } =
         useSearchNewClientsQuery(rawSearchTerm);
 
     const isSearching = (isSearchingByCode ? isLoadingByCode : isLoadingByName) || isLoadingNewClients;
@@ -95,12 +75,22 @@ export function useClientSearch() {
         const isCode = isDigitsOnly || isCLDigits;
         setIsSearchingByCode(isCode);
 
+        let targetTerm = trimmedInput;
         if (isDigitsOnly) {
-            setSearchTerm(`CL${trimmedInput}`);
+            targetTerm = `CL${trimmedInput}`;
         } else if (isCLDigits) {
-            setSearchTerm(trimmedInput.toUpperCase());
+            targetTerm = trimmedInput.toUpperCase();
+        }
+
+        if (searchTerm === targetTerm) {
+            if (isCode) {
+                refetchByCode?.();
+            } else {
+                refetchByName?.();
+            }
+            refetchNewClients?.();
         } else {
-            setSearchTerm(trimmedInput);
+            setSearchTerm(targetTerm);
         }
     };
 

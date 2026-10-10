@@ -1,5 +1,5 @@
 import { Box, VStack, Flex, Spinner, useColorModeValue } from "@chakra-ui/react";
-import { useEffect } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { useActiveVisitByVendor } from "../../checkinout/hooks/queries/visitLogQueries";
@@ -18,13 +18,21 @@ import { useVisitSubmit } from "../hooks/useVisitSubmit";
 import { useClientImage } from "../hooks/queries/visitLogQueries";
 import { useSyncQueueContext } from "../context/SyncQueueProvider";
 
-import { useDisclosure } from "@chakra-ui/react";
+import { useDisclosure, useToast } from "@chakra-ui/react";
 import { NewClientModal } from "../components/NewClientModal";
 import { getLocation } from "../utils/deviceUtils";
+import { getCheckinDraftOwner, readCheckinDraft, saveCheckinDraft, clearCheckinDraft, consumeCameraRecovery } from "../utils/checkinSession";
+import { sendDeviceTelemetry } from "../services/telemetryService";
 
 export default function VisitLogPage() {
     const { username, salesEmployeeCode } = useAuthStore();
     const navigate = useNavigate();
+    const toast = useToast();
+    const draftOwner = getCheckinDraftOwner(username, salesEmployeeCode);
+    // Restaurar antes del primer render evita que el auto-guardado sobrescriba el borrador.
+    const [restoredDraft] = useState(() => readCheckinDraft(draftOwner));
+    const draftSnapshotRef = useRef(null);
+    const draftCompletedRef = useRef(false);
     const { isOpen, onOpen, onClose } = useDisclosure();
 
     const pageBg = useColorModeValue("gray.50", "gray.900");
@@ -69,7 +77,7 @@ export default function VisitLogPage() {
         handleCreateNewClient,
         handleClearClient,
         resetSearch,
-    } = useClientSearch();
+    } = useClientSearch(restoredDraft);
 
     const {
         image,
@@ -80,6 +88,8 @@ export default function VisitLogPage() {
         setDirectImage,
         resetImage,
         fileInputKey,
+        prepareForCamera,
+        handleCameraCancel,
     } = useImageUpload();
 
     const {
@@ -98,6 +108,51 @@ export default function VisitLogPage() {
         image,
         existingImageData: clientImageData,
     });
+
+    draftSnapshotRef.current = {
+        owner: draftOwner, selectedClient, initialClientData, inputValue,
+        visitType: hasActiveCheckIn ? "OUT" : "IN",
+        // La vista actual no tiene un campo de comentario editable.
+        comment: restoredDraft?.comment || "",
+    };
+    const persistDraft = useCallback(() => {
+        if (!draftCompletedRef.current) saveCheckinDraft(draftSnapshotRef.current);
+    }, []);
+
+    useEffect(() => {
+        draftCompletedRef.current = false;
+        persistDraft();
+    }, [selectedClient, initialClientData, inputValue, persistDraft]);
+
+    useEffect(() => {
+        const saveWhenHidden = () => {
+            if (document.visibilityState === "hidden") persistDraft();
+        };
+        document.addEventListener("visibilitychange", saveWhenHidden);
+        window.addEventListener("pagehide", persistDraft);
+        return () => {
+            document.removeEventListener("visibilitychange", saveWhenHidden);
+            window.removeEventListener("pagehide", persistDraft);
+        };
+    }, [persistDraft]);
+
+    useEffect(() => {
+        const recovery = consumeCameraRecovery(document.wasDiscarded === true);
+        if (!recovery) return;
+        void sendDeviceTelemetry("APP_KILLED_BY_OS_OOM", { ...recovery, draftRestored: !!restoredDraft });
+        toast({
+            title: restoredDraft ? "Datos restaurados" : "La pantalla se reinició",
+            description: restoredDraft
+                ? "Restauramos tus datos tras una liberación de memoria de tu teléfono. Ya puedes tomar la foto."
+                : "Tu teléfono pudo liberar memoria. Selecciona el cliente para continuar.",
+            status: "info", duration: 6000, isClosable: true,
+        });
+    }, [restoredDraft, toast]);
+
+    const handleBeforeCamera = () => {
+        persistDraft();
+        prepareForCamera();
+    };
 
     useEffect(() => {
         // Pre-calentar el GPS y solicitar permisos desde que el usuario entra a la pantalla
@@ -125,9 +180,14 @@ export default function VisitLogPage() {
     const handleSubmit = (type) => {
         submit(type, {
             onSuccess: async (_, type) => {
-                await refetchActiveVisit();
-                if (type === "OUT") resetSearch();
+                draftCompletedRef.current = true;
+                clearCheckinDraft();
                 resetImage();
+                await refetchActiveVisit();
+                if (type === "OUT") {
+                    resetSearch();
+                    setInitialClientData(null);
+                }
             },
         });
     };
@@ -210,6 +270,8 @@ export default function VisitLogPage() {
                                 isLoadingExistingImage={isLoadingClientImage}
                                 fileInputKey={fileInputKey}
                                 onResetImage={resetImage}
+                                onBeforeCamera={handleBeforeCamera}
+                                onCameraCancel={handleCameraCancel}
                             />
                         )}
 

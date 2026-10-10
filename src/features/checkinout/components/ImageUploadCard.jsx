@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React, { useRef, useEffect } from "react";
 import {
     Box,
     Flex,
@@ -21,14 +21,14 @@ import {
     FiMaximize2,
     FiCheckCircle,
     FiTrash2,
-    FiRefreshCw,
 } from "react-icons/fi";
+import { purgeMemoryBeforeCamera } from "../utils/deviceUtils";
+import { sendDeviceTelemetry } from "../services/telemetryService";
 
 /**
  * ImageUploadCard
- * Componente para captura de fotografía de verificación de Check-In.
- * Utiliza la cámara nativa del dispositivo a pantalla completa (vía capture="environment")
- * garantizando la experiencia original del teléfono sin visores web recortados ni consumo excesivo de RAM.
+ * Componente con el diseño visual original exacto (borde punteado y recuadro blanco).
+ * Dispara la cámara del dispositivo con purga preventiva de RAM para evitar "Memoria insuficiente".
  */
 export function ImageUploadCard({
     image,
@@ -40,6 +40,8 @@ export function ImageUploadCard({
     isLoadingExistingImage,
     fileInputKey,
     onResetImage,
+    onBeforeCamera,
+    onCameraCancel,
 }) {
     const hasExistingImage = existingImageData?.hasImage;
     const { isOpen, onOpen, onClose } = useDisclosure();
@@ -47,7 +49,19 @@ export function ImageUploadCard({
     const borderColor = useColorModeValue("gray.100", "gray.700");
     const fileInputRef = useRef(null);
 
+    useEffect(() => {
+        const input = fileInputRef.current;
+        const handleCancel = () => onCameraCancel?.();
+        input?.addEventListener("cancel", handleCancel);
+        return () => input?.removeEventListener("cancel", handleCancel);
+    }, [fileInputKey, onCameraCancel]);
+
     const handleOpenNativeCamera = () => {
+        if (!fileInputRef.current || isProcessingImage) return;
+        onBeforeCamera?.();
+        // Purga preventiva de memoria antes de que Android abra la cámara
+        purgeMemoryBeforeCamera();
+        sendDeviceTelemetry("CAMERA_LAUNCH", { action: "Botón pulsado" });
         if (fileInputRef.current) {
             fileInputRef.current.click();
         }
@@ -62,29 +76,22 @@ export function ImageUploadCard({
             border="1px solid"
             borderColor={borderColor}
         >
-            {/* Encabezado */}
-            <Flex align="center" justify="space-between" mb={4}>
-                <Flex align="center">
-                    <Flex
-                        w="36px"
-                        h="36px"
-                        borderRadius="xl"
-                        bg="green.50"
-                        align="center"
-                        justify="center"
-                        mr={3}
-                    >
-                        <Icon as={FiCamera} color="green.600" boxSize={4.5} />
-                    </Flex>
-                    <Box>
-                        <Text fontSize="sm" fontWeight="700" color="gray.800">
-                            Fotografía de Verificación (Check-In)
-                        </Text>
-                        <Text fontSize="2xs" color="gray.500" fontWeight="500">
-                            Apertura directa de la cámara del teléfono
-                        </Text>
-                    </Box>
+            {/* Encabezado original */}
+            <Flex align="center" mb={4}>
+                <Flex
+                    w="34px"
+                    h="34px"
+                    borderRadius="xl"
+                    bg="green.50"
+                    align="center"
+                    justify="center"
+                    mr={3}
+                >
+                    <Icon as={FiCamera} color="green.600" boxSize={4} />
                 </Flex>
+                <Text fontSize="sm" fontWeight="700" color="gray.800">
+                    Fotografía de Verificación (Check-In)
+                </Text>
             </Flex>
 
             {/* Spinner si carga imagen anterior desde el servidor */}
@@ -94,7 +101,7 @@ export function ImageUploadCard({
                 </Flex>
             )}
 
-            {/* Fotografía previamente registrada en SAP / base de datos */}
+            {/* Fotografía previa registrada en SAP / backend */}
             {!isLoadingExistingImage && hasExistingImage && !imagePreview && (
                 <Box mb={4}>
                     <Flex align="center" mb={2} gap={2}>
@@ -108,7 +115,7 @@ export function ImageUploadCard({
                         borderRadius="xl"
                         overflow="hidden"
                         border="2px solid"
-                        borderColor={existingImageData.isValid ? "green.300" : "orange.300"}
+                        borderColor={existingImageData.isValid ? "green.300" : "amber.300"}
                         position="relative"
                         cursor="pointer"
                         onClick={onOpen}
@@ -118,7 +125,7 @@ export function ImageUploadCard({
                     >
                         <img
                             src={existingImageData.imageUrl}
-                            alt="Foto anterior registrada"
+                            alt="Foto anterior"
                             loading="lazy"
                             decoding="async"
                             style={{ width: "100%", height: "180px", objectFit: "cover" }}
@@ -144,7 +151,7 @@ export function ImageUploadCard({
                 </Box>
             )}
 
-            {/* Preview de la fotografía recién capturada */}
+            {/* Preview de la foto recién capturada */}
             {imagePreview && (
                 <Box mb={4}>
                     <Box
@@ -156,7 +163,7 @@ export function ImageUploadCard({
                     >
                         <img
                             src={imagePreview}
-                            alt="Preview de fotografía tomada"
+                            alt="Preview"
                             decoding="async"
                             style={{ width: "100%", height: "200px", objectFit: "cover" }}
                         />
@@ -194,80 +201,66 @@ export function ImageUploadCard({
                 </Box>
             )}
 
-            {/* Botones de acción - DISPARAN DIRECTAMENTE LA CÁMARA NATIVA DEL CELULAR A PANTALLA COMPLETA */}
-            <VStack spacing={2.5} width="100%">
-                {!imagePreview ? (
-                    <Button
-                        bg="green.500"
-                        color="white"
-                        width="100%"
-                        h="50px"
-                        borderRadius="xl"
-                        fontSize="sm"
-                        fontWeight="700"
-                        cursor="pointer"
-                        onClick={handleOpenNativeCamera}
-                        leftIcon={
-                            <Flex
-                                w="28px"
-                                h="28px"
-                                borderRadius="lg"
-                                bg="whiteAlpha.300"
-                                align="center"
-                                justify="center"
-                            >
-                                <Icon as={FiCamera} color="white" boxSize={4} />
-                            </Flex>
-                        }
-                        _hover={{
-                            bg: "green.600",
-                            transform: "translateY(-1px)",
-                            boxShadow: "0 4px 14px rgba(34, 197, 94, 0.3)",
-                        }}
-                        transition="all 0.2s"
-                        isLoading={isProcessingImage}
-                        loadingText="Optimizando fotografía..."
-                    >
-                        {hasExistingImage ? "Tomar Nueva Foto (Cámara)" : "Tomar Fotografía (Cámara)"}
-                    </Button>
-                ) : (
-                    <VStack spacing={2} width="100%">
-                        <Button
-                            width="100%"
-                            h="44px"
-                            bg="green.50"
-                            color="green.800"
-                            border="1.5px solid"
-                            borderColor="green.300"
-                            borderRadius="xl"
-                            fontSize="xs"
-                            fontWeight="700"
-                            cursor="pointer"
-                            onClick={handleOpenNativeCamera}
-                            leftIcon={<Icon as={FiRefreshCw} boxSize={3.5} />}
-                            _hover={{ bg: "green.100", borderColor: "green.400" }}
-                            isLoading={isProcessingImage}
-                            loadingText="Procesando..."
+            {/* BOTÓN CON EL DISEÑO ORIGINAL EXACTO (Borde punteado y recuadro blanco) */}
+            <VStack spacing={2} width="100%">
+                <Button
+                    onClick={handleOpenNativeCamera}
+                    bg="gray.50"
+                    color="gray.700"
+                    border="1.5px dashed"
+                    borderColor="gray.300"
+                    width="100%"
+                    h="52px"
+                    borderRadius="xl"
+                    fontSize="sm"
+                    fontWeight="700"
+                    cursor="pointer"
+                    leftIcon={
+                        <Flex
+                            w="30px"
+                            h="30px"
+                            borderRadius="lg"
+                            bg="white"
+                            align="center"
+                            justify="center"
+                            border="1px solid"
+                            borderColor="gray.200"
+                            boxShadow="0 2px 5px rgba(0,0,0,0.05)"
                         >
-                            Retomar Fotografía (Cámara)
-                        </Button>
+                            <Icon as={FiCamera} color="gray.600" boxSize={4} />
+                        </Flex>
+                    }
+                    _hover={{
+                        bg: "gray.100",
+                        borderColor: "green.500",
+                        color: "green.800",
+                        transform: "translateY(-1px)",
+                    }}
+                    transition="all 0.2s"
+                    isLoading={isProcessingImage}
+                    loadingText="Procesando..."
+                >
+                    {image
+                        ? "Cambiar Fotografía"
+                        : hasExistingImage
+                        ? "Actualizar Fotografía"
+                        : "Tomar / Subir Fotografía"}
+                </Button>
 
-                        {onResetImage && (
-                            <Button
-                                size="xs"
-                                variant="ghost"
-                                colorScheme="red"
-                                onClick={onResetImage}
-                                leftIcon={<Icon as={FiTrash2} boxSize={3} />}
-                            >
-                                Quitar fotografía seleccionada
-                            </Button>
-                        )}
-                    </VStack>
+                {imagePreview && onResetImage && (
+                    <Button
+                        size="xs"
+                        variant="ghost"
+                        colorScheme="red"
+                        onClick={onResetImage}
+                        leftIcon={<Icon as={FiTrash2} boxSize={3} />}
+                    >
+                        Quitar fotografía seleccionada
+                    </Button>
                 )}
             </VStack>
 
-            {/* Input nativo de cámara: abre directamente la app de cámara del celular en pantalla completa */}
+            {/* Input nativo de cámara: abre directamente la app de cámara a pantalla completa */}
             <input
                 ref={fileInputRef}
                 key={`cam-${fileInputKey}`}
@@ -278,7 +271,7 @@ export function ImageUploadCard({
                 style={{ display: "none" }}
             />
 
-            {/* Modal para ver imagen ampliada previa si existía en SAP */}
+            {/* Modal para ver imagen ampliada si existía foto previa en SAP */}
             {hasExistingImage && (
                 <Modal isOpen={isOpen} onClose={onClose} size="xl" isCentered>
                     <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(6px)" />
@@ -308,4 +301,5 @@ export function ImageUploadCard({
         </Box>
     );
 }
+
 export default ImageUploadCard;
