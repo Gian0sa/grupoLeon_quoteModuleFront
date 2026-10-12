@@ -84,6 +84,7 @@ export default function VisitLogPage() {
         imagePreview,
         imageInfo,
         isProcessingImage,
+        hasError,
         handleImageChange,
         setDirectImage,
         resetImage,
@@ -136,9 +137,12 @@ export default function VisitLogPage() {
         };
     }, [persistDraft]);
 
+    const [cameraRecoveryFailed, setCameraRecoveryFailed] = useState(false);
+
     useEffect(() => {
         const recovery = consumeCameraRecovery(document.wasDiscarded === true);
         if (!recovery) return;
+        setCameraRecoveryFailed(true);
         void sendDeviceTelemetry("APP_KILLED_BY_OS_OOM", { ...recovery, draftRestored: !!restoredDraft });
         toast({
             title: restoredDraft ? "Datos restaurados" : "La pantalla se reinició",
@@ -264,6 +268,7 @@ export default function VisitLogPage() {
                                 imagePreview={imagePreview}
                                 imageInfo={imageInfo}
                                 isProcessingImage={isProcessingImage}
+                                hasError={hasError || cameraRecoveryFailed}
                                 onImageChange={handleImageChange}
                                 onDirectImage={setDirectImage}
                                 existingImageData={clientImageData}

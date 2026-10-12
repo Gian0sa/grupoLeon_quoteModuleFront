@@ -1,9 +1,42 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react-swc'
 import path from 'path'
+import fs from 'fs'
+
+function autoVersionPlugin() {
+  return {
+    name: 'auto-version-updater',
+    apply: 'build',
+    buildStart() {
+      try {
+        const versionFilePath = path.resolve(__dirname, 'public/version.json');
+        let current = {};
+        if (fs.existsSync(versionFilePath)) {
+          current = JSON.parse(fs.readFileSync(versionFilePath, 'utf-8'));
+        }
+        const now = new Date();
+        const updated = {
+          version: current.version || '2.4.0',
+          buildTime: Date.now(),
+          buildDate: now.toISOString(),
+          title: 'Actualización del Sistema',
+          releaseNotes: current.releaseNotes || [
+            'Optimización de memoria RAM en celulares.',
+            'Solución a errores de almacenamiento en fotos y Check-in.',
+            'Sincronización instantánea de datos y mayor fluidez.'
+          ]
+        };
+        fs.writeFileSync(versionFilePath, JSON.stringify(updated, null, 2), 'utf-8');
+        console.log(`\n📦 [AutoVersion] public/version.json actualizado (buildTime: ${updated.buildTime})\n`);
+      } catch (err) {
+        console.warn('Error al actualizar version.json en build:', err);
+      }
+    }
+  };
+}
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), autoVersionPlugin()],
   resolve: {
     extensions: ['.js', '.jsx', '.ts', '.tsx'],
     alias: {

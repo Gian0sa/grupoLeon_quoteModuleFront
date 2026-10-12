@@ -24,6 +24,7 @@ import {MdLogin, MdLocationOn} from 'react-icons/md';
 import {FiClock, FiCamera} from 'react-icons/fi';
 import {useEntrada} from '../hooks/useEntrada';
 import {useAuthStore} from '../../auth/stores/useAuthStore';
+import {compressImage} from '../../checkinout/utils/deviceUtils';
 
 export const EntradaForm = () => {
     const {
@@ -59,7 +60,11 @@ export const EntradaForm = () => {
             setIsCameraActive(true);
             
             const mediaStream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: "user" }
+                video: {
+                    facingMode: "user",
+                    width: { ideal: 640, max: 1280 },
+                    height: { ideal: 480, max: 720 },
+                }
             });
             setStream(mediaStream);
             
@@ -93,29 +98,65 @@ export const EntradaForm = () => {
     const capturePhoto = () => {
         if (videoRef.current) {
             const video = videoRef.current;
+            const videoW = video.videoWidth || 640;
+            const videoH = video.videoHeight || 480;
+
+            // Limitar dimensiones a 480px máximo para evitar saturar la memoria RAM
+            const maxDim = 480;
+            const scale = Math.min(1, maxDim / Math.max(videoW, videoH));
+            const targetW = Math.max(1, Math.round(videoW * scale));
+            const targetH = Math.max(1, Math.round(videoH * scale));
+
             const canvas = document.createElement("canvas");
-            canvas.width = video.videoWidth || 640;
-            canvas.height = video.videoHeight || 480;
-            const ctx = canvas.getContext("2d");
+            canvas.width = targetW;
+            canvas.height = targetH;
+            const ctx = canvas.getContext("2d", { alpha: false });
             
+            if (!ctx) {
+                toast({
+                    title: "Error de memoria",
+                    description: "No hay suficiente memoria disponible para capturar la selfie.",
+                    status: "error",
+                    duration: 4000,
+                    isClosable: true,
+                    position: "top"
+                });
+                stopCamera();
+                return;
+            }
+
             // Mirror selfie capture
-            ctx.translate(canvas.width, 0);
+            ctx.translate(targetW, 0);
             ctx.scale(-1, 1);
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            ctx.drawImage(video, 0, 0, targetW, targetH);
             ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-            canvas.toBlob((blob) => {
+            canvas.toBlob(async (blob) => {
+                // Liberar canvas de inmediato
+                canvas.width = 0;
+                canvas.height = 0;
+
                 if (blob) {
-                    const file = new File([blob], "selfie.jpg", { type: "image/jpeg" });
-                    setImage(file);
-                    
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                        setImagePreview(reader.result);
-                    };
-                    reader.readAsDataURL(file);
+                    const rawFile = new File([blob], "selfie.jpg", { type: "image/jpeg" });
+                    try {
+                        const compressed = await compressImage(rawFile, { quality: 0.40, maxDimension: 480 });
+                        setImage(compressed);
+                        const previewUrl = URL.createObjectURL(compressed);
+                        setImagePreview((prev) => {
+                            if (prev && prev.startsWith("blob:")) URL.revokeObjectURL(prev);
+                            return previewUrl;
+                        });
+                    } catch (err) {
+                        console.warn("Fallo al comprimir selfie, usando archivo directo:", err);
+                        setImage(rawFile);
+                        const previewUrl = URL.createObjectURL(rawFile);
+                        setImagePreview((prev) => {
+                            if (prev && prev.startsWith("blob:")) URL.revokeObjectURL(prev);
+                            return previewUrl;
+                        });
+                    }
                 }
-            }, "image/jpeg", 0.85);
+            }, "image/jpeg", 0.50);
 
             stopCamera();
         }

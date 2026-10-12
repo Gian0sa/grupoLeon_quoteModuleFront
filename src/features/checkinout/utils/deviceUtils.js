@@ -14,8 +14,14 @@ export const clearCameraPending = () => removeSessionValue(CAMERA_PENDING_KEY);
 export const purgeMemoryBeforeCamera = () => {
     for (const url of previewUrls) URL.revokeObjectURL(url);
     previewUrls.clear();
-    try { queryClient.removeQueries({ type: "inactive" }); }
-    catch (error) { console.warn("Purga de queries previa a cámara falló:", error); }
+    try {
+        queryClient.removeQueries({ type: "inactive" });
+    } catch (error) {
+        console.warn("Purga de queries previa a cámara falló:", error);
+    }
+    if (typeof window !== "undefined" && typeof window.gc === "function") {
+        try { window.gc(); } catch (_) {}
+    }
     writeSessionValue(CAMERA_PENDING_KEY, String(Date.now()));
 };
 export const getDeviceQualityProfile = () => {
@@ -23,14 +29,28 @@ export const getDeviceQualityProfile = () => {
     const cores = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 4 : 4;
     const connection = typeof navigator !== "undefined"
         ? navigator.connection || navigator.mozConnection || navigator.webkitConnection : null;
+    const isUltraLow = deviceMemory <= 1;
     const isLowEnd = deviceMemory <= 2 || cores <= 4 || connection?.saveData === true ||
         ["2g", "slow-2g"].includes(connection?.effectiveType);
+    if (isUltraLow) {
+        return {
+            profile: "ULTRA_LITE",
+            maxDimension: 480,
+            quality: 0.40,
+            label: "Ultra-Ligero (RAM Crítica)",
+            isLowEnd: true,
+            isUltraLow: true,
+            deviceMemory,
+        };
+    }
     return {
         profile: isLowEnd ? "LITE" : "BALANCED",
         maxDimension: isLowEnd ? 640 : 768,
-        quality: isLowEnd ? 0.52 : 0.60,
-        label: isLowEnd ? "Ultra-Ligero (Bajo consumo)" : "Equilibrado",
-        isLowEnd, deviceMemory,
+        quality: isLowEnd ? 0.48 : 0.60,
+        label: isLowEnd ? "Ligero (Bajo consumo)" : "Equilibrado",
+        isLowEnd,
+        isUltraLow: false,
+        deviceMemory,
     };
 };
 export const calculateTargetDimensions = (width, height, maxDimension) => {
@@ -140,12 +160,27 @@ export const compressImage = async (file, customOptions = {}) => {
         const maxDimension = Number.isFinite(options.maxDimension)
             ? Math.max(1, Math.min(768, Math.round(options.maxDimension))) : profile.maxDimension;
         const quality = Number.isFinite(options.quality) ? Math.max(0.1, Math.min(1, options.quality)) : profile.quality;
-        const target = calculateTargetDimensions(original.width, original.height, maxDimension);
-        bitmap = await createImageBitmap(file, {
-            resizeWidth: target.width, resizeHeight: target.height, resizeQuality: "low", imageOrientation: "from-image",
-        });
+        let target = calculateTargetDimensions(original.width, original.height, maxDimension);
+        try {
+            bitmap = await createImageBitmap(file, {
+                resizeWidth: target.width, resizeHeight: target.height, resizeQuality: "low", imageOrientation: "from-image",
+            });
+        } catch (bitmapError) {
+            checkAborted(signal);
+            // Fallback de ultra-emergencia si el decodificador falla por OOM o saturación de RAM
+            const fallbackMax = Math.min(320, maxDimension);
+            const fallbackTarget = calculateTargetDimensions(original.width, original.height, fallbackMax);
+            try {
+                bitmap = await createImageBitmap(file, {
+                    resizeWidth: fallbackTarget.width, resizeHeight: fallbackTarget.height, resizeQuality: "low", imageOrientation: "from-image",
+                });
+                target = fallbackTarget;
+            } catch {
+                throw bitmapError;
+            }
+        }
         checkAborted(signal);
-        if (bitmap.width !== target.width || bitmap.height !== target.height) {
+        if (Math.abs(bitmap.width - target.width) > 2 || Math.abs(bitmap.height - target.height) > 2) {
             throw new Error("El navegador no redujo la foto de forma segura. Actualiza el navegador o toma una foto con menor resolución.");
         }
         canvas = document.createElement("canvas");
@@ -153,7 +188,7 @@ export const compressImage = async (file, customOptions = {}) => {
         canvas.height = target.height;
         const context = canvas.getContext("2d", { alpha: false, desynchronized: true });
         if (!context) throw new Error("No hay memoria disponible para procesar la foto. Intenta nuevamente.");
-        context.drawImage(bitmap, 0, 0);
+        context.drawImage(bitmap, 0, 0, target.width, target.height);
         bitmap.close();
         bitmap = null;
         const blob = await new Promise((resolve, reject) => {

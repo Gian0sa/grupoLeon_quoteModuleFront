@@ -8,6 +8,8 @@ import {
     Button,
     Badge,
     Spinner,
+    Alert,
+    AlertIcon,
     Modal,
     ModalOverlay,
     ModalContent,
@@ -21,6 +23,7 @@ import {
     FiMaximize2,
     FiCheckCircle,
     FiTrash2,
+    FiImage,
 } from "react-icons/fi";
 import { purgeMemoryBeforeCamera } from "../utils/deviceUtils";
 import { sendDeviceTelemetry } from "../services/telemetryService";
@@ -35,6 +38,7 @@ export function ImageUploadCard({
     imagePreview,
     imageInfo,
     isProcessingImage,
+    hasError = false,
     onImageChange,
     existingImageData,
     isLoadingExistingImage,
@@ -48,6 +52,7 @@ export function ImageUploadCard({
     const cardBg = useColorModeValue("white", "gray.800");
     const borderColor = useColorModeValue("gray.100", "gray.700");
     const fileInputRef = useRef(null);
+    const galleryInputRef = useRef(null);
 
     useEffect(() => {
         const input = fileInputRef.current;
@@ -64,6 +69,16 @@ export function ImageUploadCard({
         sendDeviceTelemetry("CAMERA_LAUNCH", { action: "Botón pulsado" });
         if (fileInputRef.current) {
             fileInputRef.current.click();
+        }
+    };
+
+    const handleOpenGallery = () => {
+        if (!galleryInputRef.current || isProcessingImage) return;
+        onBeforeCamera?.();
+        purgeMemoryBeforeCamera();
+        sendDeviceTelemetry("GALLERY_LAUNCH", { action: "Galería pulsada" });
+        if (galleryInputRef.current) {
+            galleryInputRef.current.click();
         }
     };
 
@@ -258,6 +273,38 @@ export function ImageUploadCard({
                         Quitar fotografía seleccionada
                     </Button>
                 )}
+
+                {/* Solo se muestra si ocurrió un error previo o descarte de cámara por RAM */}
+                {hasError && !image && (
+                    <Alert
+                        status="warning"
+                        variant="subtle"
+                        borderRadius="xl"
+                        py={2}
+                        px={3}
+                        alignItems="center"
+                    >
+                        <AlertIcon boxSize={4} />
+                        <Box flex="1" textAlign="left" mr={2}>
+                            <Text fontSize="xs" fontWeight="700" color="orange.800">
+                                ¿Problemas al usar la cámara?
+                            </Text>
+                            <Text fontSize="2xs" color="gray.600">
+                                Puedes seleccionar la foto directamente desde tu galería o archivos.
+                            </Text>
+                        </Box>
+                        <Button
+                            size="xs"
+                            colorScheme="orange"
+                            variant="solid"
+                            onClick={handleOpenGallery}
+                            leftIcon={<Icon as={FiImage} boxSize={3} />}
+                            isLoading={isProcessingImage}
+                        >
+                            Subir de galería
+                        </Button>
+                    </Alert>
+                )}
             </VStack>
 
             {/* Input nativo de cámara: abre directamente la app de cámara a pantalla completa */}
@@ -267,6 +314,16 @@ export function ImageUploadCard({
                 type="file"
                 accept="image/*"
                 capture="environment"
+                onChange={onImageChange}
+                style={{ display: "none" }}
+            />
+
+            {/* Input alternativo sin capture para galería / selector (evita que Android mate Chrome por falta de RAM) */}
+            <input
+                ref={galleryInputRef}
+                key={`gal-${fileInputKey}`}
+                type="file"
+                accept="image/*"
                 onChange={onImageChange}
                 style={{ display: "none" }}
             />

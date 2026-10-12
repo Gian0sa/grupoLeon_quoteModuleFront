@@ -9,6 +9,32 @@ import { SyncQueueProvider } from "../features/checkinout/context/SyncQueueProvi
 import { useQuoteSocket } from "../features/quotes/hooks/useQuoteSocket";
 import { useAuthStore } from "../features/auth/stores/useAuthStore";
 import { usePresenceHeartbeat } from "../features/admin/hooks/usePresenceHeartbeat";
+import { useAppUpdater } from "../hooks/useAppUpdater";
+import { SoftwareUpdateModal } from "../components/SoftwareUpdateModal";
+
+function SoftwareUpdaterListener() {
+  const {
+    isUpdateAvailable,
+    updateInfo,
+    status,
+    progress,
+    currentStep,
+    statusMessage,
+    applyUpdate,
+  } = useAppUpdater();
+
+  return (
+    <SoftwareUpdateModal
+      isOpen={isUpdateAvailable}
+      updateInfo={updateInfo}
+      status={status}
+      progress={progress}
+      currentStep={currentStep}
+      statusMessage={statusMessage}
+      onStartUpdate={applyUpdate}
+    />
+  );
+}
 
 function RealtimeSocketConsumer() {
   useQuoteSocket();
@@ -92,6 +118,7 @@ function App() {
         <ColorModeScript initialColorMode={theme.config.initialColorMode} />
         <QueryClientProvider client={queryClient}>
           <NetworkAutoRefresher />
+          <SoftwareUpdaterListener />
           <RealtimeSocketListener />
           {/* La cola de visitas offline vive aquí para seguir sincronizando
               en cualquier pantalla, no solo en el módulo de registro. */}
