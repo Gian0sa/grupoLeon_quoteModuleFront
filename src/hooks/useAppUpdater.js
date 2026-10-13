@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { socket } from '../shared/lib/socket';
 
 const LOCAL_STORAGE_KEY = 'autopartes_installed_build_time';
 const LOCAL_STORAGE_VERSION_KEY = 'autopartes_installed_version';
@@ -176,6 +177,11 @@ export function useAppUpdater() {
     setCurrentStep(4);
     setStatus('success');
     setStatusMessage('¡Actualización completada! Reiniciando...');
+
+    // Desconectar socket limpiamente antes de reiniciar para evitar error 400 de polling huérfano
+    try {
+      socket.disconnect();
+    } catch (_) {}
 
     // Reinicio forzado limpio
     await new Promise((r) => setTimeout(r, 1200));

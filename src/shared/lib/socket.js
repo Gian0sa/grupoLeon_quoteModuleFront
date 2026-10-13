@@ -47,7 +47,7 @@ const isOnline = () => typeof navigator === "undefined" || navigator.onLine !== 
 
 export const socket = io(SOCKET_URL, {
   path: SOCKET_PATH,
-  transports: ["polling", "websocket"],
+  transports: ["websocket", "polling"],
   upgrade: true,
   autoConnect: isOnline(),
   reconnection: true,
@@ -123,6 +123,12 @@ if (typeof window !== "undefined") {
   window.addEventListener("online", () => {
     console.log("📶 [WS] Conexión a internet restablecida. Reconectando Socket.io en tiempo real...");
     updateSocketAuth();
+  });
+
+  window.addEventListener("beforeunload", () => {
+    try {
+      socket.disconnect();
+    } catch (_) {}
   });
 }
 
