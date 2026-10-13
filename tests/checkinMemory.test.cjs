@@ -136,6 +136,28 @@ test("low memory profile caps dimensions at 640 and numeric quality remains comp
     assert.equal(result.optimizedInfo.profile, "LITE");
     assert.equal(env.canvases[0].quality, 0.35);
 });
+test("ultra low memory profile selects ULTRA_LITE with 480 cap", async () => {
+    const env = device({ navigator: { deviceMemory: 1, hardwareConcurrency: 2 } });
+    const result = await env.api.compressImage(jpeg());
+    assert.equal(result.optimizedInfo.width, 480);
+    assert.equal(result.optimizedInfo.profile, "ULTRA_LITE");
+    assert.equal(env.canvases[0].quality, 0.40);
+});
+test("bitmap decoder OOM failure recovers with 320 fallback", async () => {
+    let attempts = 0;
+    const env = device({
+        createImageBitmap: async (file, options) => {
+            attempts++;
+            if (options.resizeWidth > 320) {
+                throw new Error("Out of memory on initial bitmap decode");
+            }
+            return { width: options.resizeWidth, height: options.resizeHeight, close() {} };
+        },
+    });
+    const result = await env.api.compressImage(jpeg());
+    assert.equal(attempts, 2);
+    assert.equal(result.optimizedInfo.width, 320);
+});
 test("unknown or truncated headers reject without any pixel decoder", async () => {
     const env = device();
     for (const bytes of [[], [0xFF,0xD8,0xFF,0xE1,0,0], [0xFF,0xD8,0xFF,0xC0,0,255], [1,2,3,4]]) {

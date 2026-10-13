@@ -48,8 +48,8 @@ export const useEntrada = () => {
 
     setIsProcessingImage(true);
     try {
-      // Comprimir la imagen a máximo ~350KB (rango KBs liviano con zero-RAM)
-      const compressedFile = await compressImage(file, 0.35);
+      // Comprimir la imagen a dimensiones optimizadas (máx 480px, ahorro de RAM)
+      const compressedFile = await compressImage(file, { quality: 0.40, maxDimension: 480 });
       setImage(compressedFile);
 
       const previewUrl = URL.createObjectURL(compressedFile);

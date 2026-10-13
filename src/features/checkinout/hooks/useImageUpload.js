@@ -8,6 +8,7 @@ export function useImageUpload() {
     const [imagePreview, setImagePreview] = useState(null);
     const [imageInfo, setImageInfo] = useState(null);
     const [isProcessingImage, setIsProcessingImage] = useState(false);
+    const [hasError, setHasError] = useState(false);
     const [fileInputKey, setFileInputKey] = useState(0);
     const mountedRef = useRef(false);
     const imageRef = useRef(null);
@@ -41,6 +42,7 @@ export function useImageUpload() {
         const operation = new AbortController();
         operationRef.current = operation;
         setIsProcessingImage(true);
+        setHasError(false);
         try {
             const file = fileOrBlob instanceof File ? fileOrBlob
                 : new File([fileOrBlob], "foto_checkin.jpg", { type: fileOrBlob.type || "image/jpeg" });
@@ -58,6 +60,7 @@ export function useImageUpload() {
             });
         } catch (error) {
             if (!mountedRef.current || operation.signal.aborted) return;
+            setHasError(true);
             if (imageRef.current && !previewRef.current) {
                 try { replacePreview(imageRef.current); } catch { /* La asignación del preview también puede fallar. */ }
             }
@@ -96,6 +99,7 @@ export function useImageUpload() {
     const resetImage = useCallback(() => {
         operationRef.current?.abort();
         clearCameraPending();
+        setHasError(false);
         imageRef.current = null;
         setImage(null);
         setImageInfo(null);
@@ -103,7 +107,7 @@ export function useImageUpload() {
         setFileInputKey((key) => key + 1);
     }, [replacePreview]);
     return {
-        image, imagePreview, imageInfo, isProcessingImage, handleImageChange,
+        image, imagePreview, imageInfo, isProcessingImage, hasError, handleImageChange,
         setDirectImage: processImage, resetImage, fileInputKey, prepareForCamera, handleCameraCancel,
     };
 }

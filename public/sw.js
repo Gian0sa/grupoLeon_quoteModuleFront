@@ -1,4 +1,21 @@
-const CACHE_NAME = 'autopartes-pwa-v8';
+const CACHE_NAME = 'autopartes-pwa-v9';
+const MAX_STATIC_CACHE_ENTRIES = 30;
+
+async function trimCache(cacheName, maxItems) {
+  try {
+    const cache = await caches.open(cacheName);
+    const keys = await cache.keys();
+    if (keys.length > maxItems) {
+      // FIFO: eliminar las entradas más antiguas para mantener bajo el uso de almacenamiento y RAM
+      const deleteCount = keys.length - maxItems;
+      for (let i = 0; i < deleteCount; i++) {
+        await cache.delete(keys[i]);
+      }
+    }
+  } catch (err) {
+    console.warn('[SW] Error al recortar caché:', err);
+  }
+}
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -12,6 +29,23 @@ self.addEventListener('activate', (event) => {
       )
     ).then(() => self.clients.claim())
   );
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+  if (event.data && event.data.type === 'PURGE_ALL_CACHE') {
+    event.waitUntil(
+      caches.keys().then((keys) =>
+        Promise.all(keys.map((key) => caches.delete(key)))
+      ).then(() => {
+        if (event.ports && event.ports[0]) {
+          event.ports[0].postMessage({ success: true });
+        }
+      })
+    );
+  }
 });
 
 self.addEventListener('fetch', (event) => {
@@ -32,7 +66,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 3. Archivos estáticos inmutables (/assets/* con hash, fuentes, iconos): Cache-First
+  // 3. Archivos estáticos inmutables (/assets/* con hash, fuentes, iconos): Cache-First con límite estricto
   if (
     url.pathname.startsWith('/assets/') ||
     url.pathname.endsWith('.woff2') ||
@@ -46,7 +80,10 @@ self.addEventListener('fetch', (event) => {
         return fetch(request).then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
             const responseToCache = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, responseToCache));
+            caches.open(CACHE_NAME).then(async (cache) => {
+              await cache.put(request, responseToCache);
+              trimCache(CACHE_NAME, MAX_STATIC_CACHE_ENTRIES);
+            });
           }
           return networkResponse;
         });
