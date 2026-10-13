@@ -11,17 +11,24 @@ export const revokeImagePreviewUrl = (url) => {
     if (url && previewUrls.delete(url)) URL.revokeObjectURL(url);
 };
 export const clearCameraPending = () => removeSessionValue(CAMERA_PENDING_KEY);
-export const purgeMemoryBeforeCamera = () => {
+export const purgeMemoryBeforeCamera = async () => {
+    // 1. Revocar todas las URLs de objeto pendientes
     for (const url of previewUrls) URL.revokeObjectURL(url);
     previewUrls.clear();
+    // 2. Eliminar queries inactivas del cache de React Query
     try {
         queryClient.removeQueries({ type: "inactive" });
+        queryClient.clear();
     } catch (error) {
         console.warn("Purga de queries previa a cámara falló:", error);
     }
+    // 3. Sugerencia al GC de Chrome/V8 si está disponible
     if (typeof window !== "undefined" && typeof window.gc === "function") {
         try { window.gc(); } catch (_) {}
     }
+    // 4. Micro-pausa async para que el event loop de Android procese la liberación de RAM
+    //    antes de que el input[capture] abra la cámara nativa (clave para dispositivos con ≤3 GB RAM)
+    await new Promise((resolve) => setTimeout(resolve, 300));
     writeSessionValue(CAMERA_PENDING_KEY, String(Date.now()));
 };
 export const getDeviceQualityProfile = () => {
@@ -30,13 +37,14 @@ export const getDeviceQualityProfile = () => {
     const connection = typeof navigator !== "undefined"
         ? navigator.connection || navigator.mozConnection || navigator.webkitConnection : null;
     const isUltraLow = deviceMemory <= 1;
-    const isLowEnd = deviceMemory <= 2 || cores <= 4 || connection?.saveData === true ||
-        ["2g", "slow-2g"].includes(connection?.effectiveType);
+    // Considerar bajo si tiene ≤3 GB de RAM, ≤4 núcleos, modo de ahorro o red lenta
+    const isLowEnd = deviceMemory <= 3 || cores <= 4 || connection?.saveData === true ||
+        ["2g", "slow-2g", "3g"].includes(connection?.effectiveType);
     if (isUltraLow) {
         return {
             profile: "ULTRA_LITE",
-            maxDimension: 480,
-            quality: 0.40,
+            maxDimension: 320,
+            quality: 0.38,
             label: "Ultra-Ligero (RAM Crítica)",
             isLowEnd: true,
             isUltraLow: true,
@@ -44,9 +52,10 @@ export const getDeviceQualityProfile = () => {
         };
     }
     return {
+        // LITE: máx 480px — BALANCED: máx 600px (reducido de 640/768 para evitar OOM en Android)
         profile: isLowEnd ? "LITE" : "BALANCED",
-        maxDimension: isLowEnd ? 640 : 768,
-        quality: isLowEnd ? 0.48 : 0.60,
+        maxDimension: isLowEnd ? 480 : 600,
+        quality: isLowEnd ? 0.48 : 0.58,
         label: isLowEnd ? "Ligero (Bajo consumo)" : "Equilibrado",
         isLowEnd,
         isUltraLow: false,
@@ -140,9 +149,38 @@ export const getHeaderDimensions = async (file) => {
 const checkAborted = (signal) => {
     if (signal?.aborted) throw new DOMException("Procesamiento cancelado", "AbortError");
 };
+
 /**
- * Solicita un bitmap reducido. El pico interno del decodificador depende del navegador;
- * no se reintenta con Image ni con un bitmap de tamaño completo.
+ * Decodifica usando Image + Canvas (alternativa a createImageBitmap).
+ * Más tolerante en dispositivos de 1 GB RAM porque el navegador planifica el decode
+ * de forma incremental, sin necesitar un bloque contiguo de ~47 MB en RAM.
+ */
+const decodeViaImageElement = (file, targetWidth, targetHeight) => {
+    return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        const cleanup = () => URL.revokeObjectURL(url);
+        img.onload = () => {
+            try {
+                const cv = document.createElement("canvas");
+                cv.width = targetWidth;
+                cv.height = targetHeight;
+                const ctx = cv.getContext("2d", { alpha: false });
+                if (!ctx) { cleanup(); reject(new Error("No hay memoria para el canvas")); return; }
+                ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+                cleanup();
+                resolve(cv);
+            } catch (e) { cleanup(); reject(e); }
+        };
+        img.onerror = () => { cleanup(); reject(new Error("Error al cargar la imagen")); };
+        img.src = url;
+    });
+};
+
+/**
+ * Comprime la imagen según el perfil del dispositivo.
+ * ULTRA_LITE (≤1 GB RAM): usa Image+Canvas para evitar el OOM que genera createImageBitmap
+ * al decodificar la foto completa (~47 MB raw para una foto de 12 MP) antes de redimensionar.
  */
 export const compressImage = async (file, customOptions = {}) => {
     const options = typeof customOptions === "number" ? { quality: customOptions } : customOptions;
@@ -155,32 +193,102 @@ export const compressImage = async (file, customOptions = {}) => {
         const original = await getHeaderDimensions(file);
         checkAborted(signal);
         if (!original) throw new Error("No pudimos leer esta foto de forma segura. Utiliza una imagen JPEG, PNG o WebP con menor resolución.");
-        if (typeof createImageBitmap !== "function") throw new Error("Actualiza tu navegador para procesar fotografías de forma segura.");
+        if (typeof createImageBitmap !== "function" && typeof Image === "undefined") {
+            throw new Error("Actualiza tu navegador para procesar fotografías de forma segura.");
+        }
         const profile = getDeviceQualityProfile();
         const maxDimension = Number.isFinite(options.maxDimension)
             ? Math.max(1, Math.min(768, Math.round(options.maxDimension))) : profile.maxDimension;
         const quality = Number.isFinite(options.quality) ? Math.max(0.1, Math.min(1, options.quality)) : profile.quality;
-        let target = calculateTargetDimensions(original.width, original.height, maxDimension);
+        const target = calculateTargetDimensions(original.width, original.height, maxDimension);
+
+        // ─── Guard de tamaño para dispositivos de 1 GB RAM ────────────────────────
+        // createImageBitmap decodifica la foto COMPLETA a pixels raw (~47 MB para 12 MP)
+        // independientemente del resizeWidth/Height pedido. En 1 GB RAM esto causa OOM.
+        const fileSizeMB = file.size / (1024 * 1024);
+        if (profile.isUltraLow && fileSizeMB > 3.5) {
+            throw new Error(
+                "Esta foto es demasiado grande para tu dispositivo (" + fileSizeMB.toFixed(1) + " MB). " +
+                "Usa el botón 'Subir de galería' y selecciona una foto ya guardada, que suele pesar menos."
+            );
+        }
+
+        // ─── Ruta ULTRA_LITE: Image + Canvas (sin createImageBitmap) ─────────────
+        if (profile.isUltraLow) {
+            checkAborted(signal);
+            try {
+                canvas = await decodeViaImageElement(file, target.width, target.height);
+            } catch {
+                checkAborted(signal);
+                const nanoTarget = calculateTargetDimensions(original.width, original.height, 200);
+                await new Promise((r) => setTimeout(r, 300));
+                canvas = await decodeViaImageElement(file, nanoTarget.width, nanoTarget.height);
+            }
+            const blob = await new Promise((resolve, reject) => {
+                canvas.toBlob(
+                    (v) => v ? resolve(v) : reject(new Error("No se pudo comprimir la foto")),
+                    "image/jpeg", quality
+                );
+            });
+            checkAborted(signal);
+            const fileName = file.name ? file.name.replace(/\.[^/.]+$/, "") + ".jpg" : "foto_checkin.jpg";
+            const result = new File([blob], fileName, { type: "image/jpeg", lastModified: Date.now() });
+            result.optimizedInfo = {
+                profile: profile.profile, profileLabel: profile.label,
+                originalSizeKB: Math.round(file.size / 1024), sizeKB: Math.round(blob.size / 1024),
+                width: target.width, height: target.height,
+            };
+            return result;
+        }
+
+        // ─── Ruta normal: createImageBitmap ───────────────────────────────────────
         try {
             bitmap = await createImageBitmap(file, {
-                resizeWidth: target.width, resizeHeight: target.height, resizeQuality: "low", imageOrientation: "from-image",
+                resizeWidth: target.width, resizeHeight: target.height,
+                resizeQuality: "low", imageOrientation: "from-image",
             });
         } catch (bitmapError) {
             checkAborted(signal);
-            // Fallback de ultra-emergencia si el decodificador falla por OOM o saturación de RAM
-            const fallbackMax = Math.min(320, maxDimension);
-            const fallbackTarget = calculateTargetDimensions(original.width, original.height, fallbackMax);
+            // Fallback 1 — 320px + pausa para liberar el decodificador anterior
+            const fallbackTarget = calculateTargetDimensions(original.width, original.height, 320);
             try {
+                await new Promise((r) => setTimeout(r, 250));
                 bitmap = await createImageBitmap(file, {
-                    resizeWidth: fallbackTarget.width, resizeHeight: fallbackTarget.height, resizeQuality: "low", imageOrientation: "from-image",
+                    resizeWidth: fallbackTarget.width, resizeHeight: fallbackTarget.height,
+                    resizeQuality: "low", imageOrientation: "from-image",
                 });
-                target = fallbackTarget;
             } catch {
-                throw bitmapError;
+                checkAborted(signal);
+                // Fallback 2 — Image+Canvas (evita createImageBitmap completamente)
+                try {
+                    await new Promise((r) => setTimeout(r, 400));
+                    const nanoTarget = calculateTargetDimensions(original.width, original.height, 280);
+                    canvas = await decodeViaImageElement(file, nanoTarget.width, nanoTarget.height);
+                    const blob = await new Promise((resolve, reject) => {
+                        canvas.toBlob(
+                            (v) => v ? resolve(v) : reject(new Error("No se pudo comprimir la foto")),
+                            "image/jpeg", 0.45
+                        );
+                    });
+                    checkAborted(signal);
+                    const fName = file.name ? file.name.replace(/\.[^/.]+$/, "") + ".jpg" : "foto_checkin.jpg";
+                    const result = new File([blob], fName, { type: "image/jpeg", lastModified: Date.now() });
+                    result.optimizedInfo = {
+                        profile: "FALLBACK", profileLabel: "Modo compatibilidad",
+                        originalSizeKB: Math.round(file.size / 1024), sizeKB: Math.round(blob.size / 1024),
+                        width: nanoTarget.width, height: nanoTarget.height,
+                    };
+                    return result;
+                } catch {
+                    throw new Error(
+                        "No hay suficiente memoria libre. Cierra otras apps (TikTok, YouTube, WhatsApp) " +
+                        "y vuelve a intentarlo, o selecciona una foto desde la galería."
+                    );
+                }
             }
         }
         checkAborted(signal);
-        if (Math.abs(bitmap.width - target.width) > 2 || Math.abs(bitmap.height - target.height) > 2) {
+        if (bitmap && (Math.abs(bitmap.width - target.width) > 2 || Math.abs(bitmap.height - target.height) > 2)) {
             throw new Error("El navegador no redujo la foto de forma segura. Actualiza el navegador o toma una foto con menor resolución.");
         }
         canvas = document.createElement("canvas");
@@ -192,7 +300,7 @@ export const compressImage = async (file, customOptions = {}) => {
         bitmap.close();
         bitmap = null;
         const blob = await new Promise((resolve, reject) => {
-            canvas.toBlob((value) => value ? resolve(value) : reject(new Error("No se pudo comprimir la foto")), "image/jpeg", quality);
+            canvas.toBlob((v) => v ? resolve(v) : reject(new Error("No se pudo comprimir la foto")), "image/jpeg", quality);
         });
         checkAborted(signal);
         const fileName = file.name ? file.name.replace(/\.[^/.]+$/, "") + ".jpg" : "foto_checkin.jpg";
@@ -209,6 +317,7 @@ export const compressImage = async (file, customOptions = {}) => {
         clearCameraPending();
     }
 };
+
 // Memoria en sesión para coordenadas recientes válidas (evita demoras en campo)
 const LOCATION_CACHE_KEY = "gl_checkin_location";
 const LOCATION_MAX_AGE_MS = 5 * 60 * 1000;
