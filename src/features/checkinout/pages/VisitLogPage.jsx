@@ -41,6 +41,7 @@ export default function VisitLogPage() {
         queueItems,
         isSyncing,
         syncPending,
+        onSyncAll,
         retryItem,
         removeItem,
         clearAll,
@@ -215,7 +216,7 @@ export default function VisitLogPage() {
                     onDelete={removeItem}
                     onClearAll={clearAll}
                     isSyncing={isSyncing}
-                    onSyncAll={syncPending}
+                    onSyncAll={onSyncAll || syncPending}
                 />
 
                 {isLoadingActiveVisit && (

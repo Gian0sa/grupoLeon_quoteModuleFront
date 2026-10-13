@@ -62,9 +62,11 @@ const EMPTY_QUEUE = {
   queueItems: [],
   isSyncing: false,
   syncPending: () => {},
+  onSyncAll: () => {},
   retryItem: () => {},
   retryGroup: () => {},
   removeItem: () => {},
+  clearAll: () => {},
   refreshQueue: () => {},
 };
 

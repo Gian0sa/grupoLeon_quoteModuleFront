@@ -171,12 +171,15 @@ export const QUEUE_STATUS = {
 export const isUnsynced = (item) => item.status !== QUEUE_STATUS.SYNCED;
 
 const norm = (v) => String(v ?? "").trim().toLowerCase();
+const isValidCode = (c) => c !== null && c !== undefined && String(c).trim() !== "" && String(c).trim() !== "null" && String(c).trim() !== "undefined";
 
 // El vendedor se identifica sin distinguir mayúsculas y aceptando el código SAP
 // como respaldo: al reiniciar sesión el nombre puede volver con otra grafía y
 // antes eso volvía "invisible" su propia cola.
 export const belongsToVendor = (item, vendorName, vendorCode) => {
-  if (vendorCode && item.vendorCode && norm(item.vendorCode) === norm(vendorCode)) return true;
+  if (isValidCode(vendorCode) && isValidCode(item.vendorCode) && norm(item.vendorCode) === norm(vendorCode)) {
+    return true;
+  }
   return !!vendorName && norm(item.vendorName) === norm(vendorName);
 };
 
