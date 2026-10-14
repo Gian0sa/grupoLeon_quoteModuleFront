@@ -11,14 +11,13 @@ export const revokeImagePreviewUrl = (url) => {
     if (url && previewUrls.delete(url)) URL.revokeObjectURL(url);
 };
 export const clearCameraPending = () => removeSessionValue(CAMERA_PENDING_KEY);
-export const purgeMemoryBeforeCamera = async () => {
+export const purgeMemoryBeforeCamera = () => {
     // 1. Revocar todas las URLs de objeto pendientes
     for (const url of previewUrls) URL.revokeObjectURL(url);
     previewUrls.clear();
-    // 2. Eliminar queries inactivas del cache de React Query
+    // 2. Eliminar queries inactivas del cache de React Query (conserva las activas observadas)
     try {
         queryClient.removeQueries({ type: "inactive" });
-        queryClient.clear();
     } catch (error) {
         console.warn("Purga de queries previa a cámara falló:", error);
     }
@@ -26,9 +25,6 @@ export const purgeMemoryBeforeCamera = async () => {
     if (typeof window !== "undefined" && typeof window.gc === "function") {
         try { window.gc(); } catch (_) {}
     }
-    // 4. Micro-pausa async para que el event loop de Android procese la liberación de RAM
-    //    antes de que el input[capture] abra la cámara nativa (clave para dispositivos con ≤3 GB RAM)
-    await new Promise((resolve) => setTimeout(resolve, 300));
     writeSessionValue(CAMERA_PENDING_KEY, String(Date.now()));
 };
 export const getDeviceQualityProfile = () => {

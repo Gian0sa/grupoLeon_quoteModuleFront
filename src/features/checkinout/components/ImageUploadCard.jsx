@@ -61,21 +61,21 @@ export function ImageUploadCard({
         return () => input?.removeEventListener("cancel", handleCancel);
     }, [fileInputKey, onCameraCancel]);
 
-    const handleOpenNativeCamera = async () => {
+    const handleOpenNativeCamera = () => {
         if (!fileInputRef.current || isProcessingImage) return;
         onBeforeCamera?.();
-        // Purga preventiva de memoria (async: espera 300ms para que Android libere RAM)
-        await purgeMemoryBeforeCamera();
+        // Purga preventiva de memoria síncrona para no perder la activación por gesto del usuario
+        purgeMemoryBeforeCamera();
         sendDeviceTelemetry("CAMERA_LAUNCH", { action: "Botón pulsado" });
         if (fileInputRef.current) {
             fileInputRef.current.click();
         }
     };
 
-    const handleOpenGallery = async () => {
+    const handleOpenGallery = () => {
         if (!galleryInputRef.current || isProcessingImage) return;
         onBeforeCamera?.();
-        await purgeMemoryBeforeCamera();
+        purgeMemoryBeforeCamera();
         sendDeviceTelemetry("GALLERY_LAUNCH", { action: "Galería pulsada" });
         if (galleryInputRef.current) {
             galleryInputRef.current.click();
