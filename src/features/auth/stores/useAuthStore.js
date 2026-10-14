@@ -20,7 +20,7 @@ const getSafeJsonValue = (key) => {
   }
 };
 
-const SESSION_MAX_DURATION_MS = 5 * 60 * 60 * 1000; // 5 horas exactas
+const SESSION_MAX_DURATION_MS = 1 * 60 * 60 * 1000; // 1 hora exacta
 
 const isSessionExpired = () => {
   const loginTime = Number(getSafeValue('sessionLoginTime') || 0);
