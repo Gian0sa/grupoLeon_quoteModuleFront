@@ -244,18 +244,24 @@ export function useQuoteSocket() {
 
     // 6. Escuchar actualizaciones en vivo del sistema o avisos globales de mantenimiento
     const handleSystemUpdate = (data) => {
-      console.log("⚡ [WS EVENT] system:update recibido:", data);
-      const toastId = `ws-sys-${data?.id || Date.now()}`;
-      if (!toast.isActive(toastId)) {
-        toast({
-          id: toastId,
-          title: data?.title || "🚀 Nueva Actualización del Sistema",
-          description: data?.message || "Se han aplicado mejoras en el sistema. Puedes seguir trabajando con total normalidad.",
-          status: data?.type || "info",
-          duration: 9000,
-          isClosable: true,
-          position: "top-right",
-        });
+      console.log("⚡ [WS EVENT] system:update / app:update_available recibido:", data);
+      // Notificar de inmediato al gestor de auto-refresh inteligente
+      window.dispatchEvent(new CustomEvent("app:check_updates_now", { detail: data }));
+    };
+
+    // 7. Expulsión inmediata por desactivación de cuenta de usuario en tiempo real
+    const handleForceLogout = (data) => {
+      console.warn("🔒 [WS EVENT] auth:force_logout recibido:", data);
+      const activeUserId = useAuthStore.getState().userId;
+      const targetUserId = data?.userId;
+
+      if (!targetUserId || String(targetUserId) === String(activeUserId)) {
+        console.warn("⛔ Tu cuenta ha sido desactivada por el administrador. Cerrando sesión de inmediato...");
+        try {
+          sessionStorage.setItem("logoutReason", data?.message || "Tu cuenta ha sido desactivada por el administrador.");
+        } catch (_) {}
+        useAuthStore.getState().logout();
+        window.location.href = "/?reason=deactivated";
       }
     };
 
@@ -265,6 +271,8 @@ export function useQuoteSocket() {
     socket.on("notification:new", handleNewNotification);
     socket.on("user:permissions:updated", handlePermissionsUpdated);
     socket.on("system:update", handleSystemUpdate);
+    socket.on("app:update_available", handleSystemUpdate);
+    socket.on("auth:force_logout", handleForceLogout);
 
     return () => {
       if (refreshTimer) window.clearTimeout(refreshTimer);
@@ -274,6 +282,8 @@ export function useQuoteSocket() {
       socket.off("notification:new", handleNewNotification);
       socket.off("user:permissions:updated", handlePermissionsUpdated);
       socket.off("system:update", handleSystemUpdate);
+      socket.off("app:update_available", handleSystemUpdate);
+      socket.off("auth:force_logout", handleForceLogout);
     };
   }, [queryClient, toast]);
 }

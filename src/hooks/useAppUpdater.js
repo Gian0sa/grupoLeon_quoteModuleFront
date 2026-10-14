@@ -1,62 +1,96 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { socket } from '../shared/lib/socket';
 
 const LOCAL_STORAGE_KEY = 'autopartes_installed_build_time';
 const LOCAL_STORAGE_VERSION_KEY = 'autopartes_installed_version';
+const CHECK_INTERVAL_MS = 2.5 * 60 * 1000; // Verificación periódica cada 2.5 minutos
 
 /**
- * Detecta si el usuario está en un dispositivo móvil o usando la app instalada (PWA).
- * En computadoras de escritorio devolverá false para no interrumpir su flujo.
+ * Hook para Auto-Refresh Inteligente (100% Automático y Seguro)
+ * Sin ningún modal ni botón para evitar problemas con fuentes gigantes de Android.
+ * 
+ * Criterios de actualización inteligente:
+ * 1. Si está en el Login ('/' o '/login'): Se recarga de inmediato de forma transparente.
+ * 2. Si el vendedor bloquea el teléfono o minimiza la app: Al volver a desbloquearla
+ *    (visibilitychange: visible), se refresca sola con la última versión limpia sin interrumpirle nada.
+ * 3. Si está navegando o cambiando de menú: Se aplica el refresh al cambiar de página
+ *    para que nunca le corte una cotización ni formulario en progreso.
  */
-export function isMobileOrPWA() {
-  if (typeof window === 'undefined') return false;
-
-  // 1. App instalada en la pantalla de inicio (PWA Standalone)
-  const isStandalone =
-    window.matchMedia('(display-mode: standalone)').matches ||
-    window.navigator.standalone === true ||
-    document.referrer.includes('android-app://');
-
-  // 2. Dispositivo móvil por User Agent
-  const userAgent = navigator.userAgent || navigator.vendor || window.opera || '';
-  const isMobileUA = /android|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile/i.test(userAgent);
-
-  // 3. Pantalla táctil o tamaño móvil (<= 768px)
-  const isSmallScreen = window.innerWidth <= 768;
-  const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-
-  return isStandalone || (isMobileUA && (isSmallScreen || hasTouch));
-}
-
 export function useAppUpdater() {
-  const [isUpdateAvailable, setIsUpdateAvailable] = useState(false);
-  const [updateInfo, setUpdateInfo] = useState({
-    version: '2.4.0',
-    title: 'Actualización del Sistema',
-    releaseNotes: [
-      'Optimización de memoria RAM en celulares.',
-      'Solución a errores de almacenamiento en fotos y Check-in.',
-      'Sincronización instantánea de datos.'
-    ]
-  });
+  const location = useLocation();
+  const locationRef = useRef(location.pathname);
+  locationRef.current = location.pathname;
 
-  const [status, setStatus] = useState('idle'); // 'idle' | 'updating' | 'success'
-  const [progress, setProgress] = useState(0);
-  const [currentStep, setCurrentStep] = useState(1); // 1: Integridad, 2: Descargando, 3: Limpieza, 4: Listo
-  const [statusMessage, setStatusMessage] = useState('Preparando actualización...');
-
+  const prevPathRef = useRef(location.pathname);
+  const pendingUpdateRef = useRef(null);
+  const isReloadingRef = useRef(false);
   const checkingRef = useRef(false);
+  const justResumedRef = useRef(false);
+  const resumeTimerRef = useRef(null);
+
+  /**
+   * Ejecuta la purga total de caché y recarga limpia de la aplicación
+   */
+  const performCleanReload = useCallback(async (remoteData) => {
+    if (isReloadingRef.current) return;
+    isReloadingRef.current = true;
+
+    console.log('🔄 [AutoUpdater] Ejecutando refresh limpio y automático hacia versión:', remoteData?.version);
+
+    try {
+      // 1. Guardar la nueva versión en localStorage PRIMERO para evitar bucle de recarga
+      if (remoteData?.buildTime) {
+        localStorage.setItem(LOCAL_STORAGE_KEY, String(remoteData.buildTime));
+      } else {
+        localStorage.setItem(LOCAL_STORAGE_KEY, String(Date.now()));
+      }
+      if (remoteData?.version) {
+        localStorage.setItem(LOCAL_STORAGE_VERSION_KEY, String(remoteData.version));
+      }
+
+      // 2. Limpiar Service Worker y cachés de red del navegador
+      if (typeof window !== 'undefined' && 'caches' in window) {
+        const cacheKeys = await caches.keys();
+        await Promise.all(cacheKeys.map((key) => caches.delete(key)));
+        console.log('🧹 [AutoUpdater] Cachés de navegador purgadas.');
+      }
+
+      if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const reg of registrations) {
+          if (reg.waiting) {
+            reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+          }
+          if (reg.active) {
+            reg.active.postMessage({ type: 'PURGE_ALL_CACHE' });
+            reg.active.postMessage({ type: 'SKIP_WAITING' });
+          }
+          await reg.update().catch(() => {});
+        }
+      }
+
+      // 3. Desconectar socket limpiamente para evitar polling huérfano con error 400
+      try {
+        socket.disconnect();
+      } catch (_) {}
+
+    } catch (err) {
+      console.warn('⚠️ [AutoUpdater] Error durante la purga preliminar:', err);
+    }
+
+    // 4. Recarga limpia del navegador sin modal ni botones
+    if (typeof window !== 'undefined') {
+      window.location.reload();
+    }
+  }, []);
 
   /**
    * Consulta el archivo /version.json sin usar caché de red
    */
-  const checkForUpdates = useCallback(async (forcePrompt = false) => {
+  const checkForUpdates = useCallback(async () => {
     if (checkingRef.current) return;
-    
-    // Si NO es móvil ni PWA y no es forzado explícitamente, no hacemos nada
-    if (!isMobileOrPWA() && !forcePrompt) {
-      return;
-    }
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
 
     checkingRef.current = true;
     try {
@@ -74,168 +108,138 @@ export function useAppUpdater() {
       const installedBuildTime = localStorage.getItem(LOCAL_STORAGE_KEY);
       const installedVersion = localStorage.getItem(LOCAL_STORAGE_VERSION_KEY);
 
-      // Si es la primera vez que se abre en este celular, registramos la versión actual
+      // Si es la primera vez que abre la app en este celular/navegador, registramos su versión actual
       if (!installedBuildTime) {
         localStorage.setItem(LOCAL_STORAGE_KEY, String(remoteData.buildTime || Date.now()));
         localStorage.setItem(LOCAL_STORAGE_VERSION_KEY, remoteData.version || '2.4.0');
         return;
       }
 
-      // Si hay una versión más nueva en el servidor
       const isNewerBuild = remoteData.buildTime && Number(remoteData.buildTime) > Number(installedBuildTime);
-      const isNewerVersion = remoteData.version && remoteData.version !== installedVersion;
+      const isNewerVersion = remoteData.version && installedVersion && remoteData.version !== installedVersion;
 
-      if (isNewerBuild || isNewerVersion || forcePrompt) {
-        console.log('🚀 [AppUpdater] Nueva versión detectada en servidor:', remoteData.version);
-        setUpdateInfo({
-          version: remoteData.version || '2.4.0',
-          title: remoteData.title || 'Actualización del Sistema',
-          releaseNotes: remoteData.releaseNotes || [
-            'Optimización de memoria RAM en celulares.',
-            'Solución a errores de almacenamiento en fotos y Check-in.',
-            'Sincronización instantánea de datos.'
-          ],
-          buildTime: remoteData.buildTime
-        });
-        setIsUpdateAvailable(true);
+      if (isNewerBuild || isNewerVersion) {
+        console.log('🚀 [AutoUpdater] Nueva versión detectada en servidor:', remoteData.version);
+
+        const currentPath = locationRef.current;
+        const isLoginPage = currentPath === '/' || currentPath === '/login';
+
+        // 🟢 Criterio 1: Si está en el Login, recarga inmediata y transparente
+        if (isLoginPage) {
+          console.log('🟢 [AutoUpdater] En pantalla de Login. Aplicando refresh transparente de inmediato...');
+          performCleanReload(remoteData);
+          return;
+        }
+
+        // 🟢 Criterio 2: Si el usuario acaba de desbloquear el teléfono o volver a la app
+        if (justResumedRef.current) {
+          console.log('🟢 [AutoUpdater] Teléfono desbloqueado / app restaurada. Aplicando refresh limpio...');
+          performCleanReload(remoteData);
+          return;
+        }
+
+        // 🟢 Criterio 3: En cualquier otra vista activa (ej: cotización en progreso),
+        // guardamos la actualización pendiente para aplicarla al cambiar de página
+        console.log('⏳ [AutoUpdater] Cotización o pantalla activa. Actualización pospuesta hasta cambio de menú o bloqueo de pantalla.');
+        pendingUpdateRef.current = remoteData;
       }
     } catch (err) {
-      console.warn('⚠️ [AppUpdater] No se pudo verificar version.json:', err);
+      console.warn('⚠️ [AutoUpdater] No se pudo verificar version.json:', err);
     } finally {
       checkingRef.current = false;
     }
-  }, []);
+  }, [performCleanReload]);
 
   /**
-   * Ejecuta el proceso de actualización visual y purga real de memoria caché
+   * Criterio 3: Detección de navegación o cambio de menú
    */
-  const applyUpdate = useCallback(async () => {
-    setStatus('updating');
-    setProgress(5);
-    setCurrentStep(1);
-    setStatusMessage('Comprobando integridad de la aplicación...');
-
-    // Fase 1: Integridad (0% a 30%)
-    await new Promise((r) => setTimeout(r, 600));
-    setProgress(28);
-    setStatusMessage('Verificando firmas y seguridad de paquetes...');
-
-    // Fase 2: Descarga de nuevos módulos (30% a 70%)
-    await new Promise((r) => setTimeout(r, 700));
-    setCurrentStep(2);
-    setProgress(52);
-    setStatusMessage('Descargando módulos actualizados...');
-
-    await new Promise((r) => setTimeout(r, 800));
-    setProgress(72);
-    setStatusMessage('Descarga completada al 100%...');
-
-    // Fase 3: Purga total de memoria caché y Service Worker (70% a 95%)
-    await new Promise((r) => setTimeout(r, 500));
-    setCurrentStep(3);
-    setProgress(85);
-    setStatusMessage('Liberando memoria caché y almacenamiento del celular...');
-
-    try {
-      // 1. Borrar todas las cachés del navegador
-      if ('caches' in window) {
-        const keys = await caches.keys();
-        await Promise.all(keys.map((key) => caches.delete(key)));
-        console.log('🧹 [AppUpdater] Todas las cachés de Service Worker eliminadas.');
-      }
-
-      // 2. Enviar señal de Skip Waiting y Purga al Service Worker activo
-      if (navigator.serviceWorker) {
-        const registrations = await navigator.serviceWorker.getRegistrations();
-        for (const reg of registrations) {
-          if (reg.waiting) {
-            reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-          }
-          if (reg.active) {
-            reg.active.postMessage({ type: 'PURGE_ALL_CACHE' });
-            reg.active.postMessage({ type: 'SKIP_WAITING' });
-          }
-          await reg.update().catch(() => {});
-        }
-      }
-
-      // 3. Actualizar la versión guardada en localStorage
-      if (updateInfo.buildTime) {
-        localStorage.setItem(LOCAL_STORAGE_KEY, String(updateInfo.buildTime));
-      } else {
-        localStorage.setItem(LOCAL_STORAGE_KEY, String(Date.now()));
-      }
-      localStorage.setItem(LOCAL_STORAGE_VERSION_KEY, updateInfo.version);
-
-    } catch (err) {
-      console.warn('⚠️ [AppUpdater] Error durante la purga de caché:', err);
-    }
-
-    // Fase 4: Finalización (100%)
-    await new Promise((r) => setTimeout(r, 700));
-    setProgress(100);
-    setCurrentStep(4);
-    setStatus('success');
-    setStatusMessage('¡Actualización completada! Reiniciando...');
-
-    // Desconectar socket limpiamente antes de reiniciar para evitar error 400 de polling huérfano
-    try {
-      socket.disconnect();
-    } catch (_) {}
-
-    // Reinicio forzado limpio
-    await new Promise((r) => setTimeout(r, 1200));
-    window.location.reload(true);
-  }, [updateInfo]);
-
   useEffect(() => {
-    // Si no es móvil ni PWA, no ejecutamos monitoreo de actualización
-    if (!isMobileOrPWA()) return;
+    if (prevPathRef.current !== location.pathname) {
+      const from = prevPathRef.current;
+      const to = location.pathname;
+      prevPathRef.current = to;
 
-    // Chequeo inicial
+      if (pendingUpdateRef.current) {
+        console.log(`🚀 [AutoUpdater] Navegando de "${from}" a "${to}". Aplicando refresh automático con última versión...`);
+        const updateToApply = pendingUpdateRef.current;
+        pendingUpdateRef.current = null;
+        performCleanReload(updateToApply);
+      }
+    }
+  }, [location.pathname, performCleanReload]);
+
+  /**
+   * Monitoreo de eventos: visibilidad, periodicidad y WebSocket
+   */
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+
+    // 1. Verificación inicial al cargar
     checkForUpdates();
 
-    // Chequeo periódico cada 4 minutos
+    // 2. Verificación periódica en segundo plano
     const interval = setInterval(() => {
-      checkForUpdates();
-    }, 4 * 60 * 1000);
+      if (typeof navigator !== 'undefined' && navigator.onLine) {
+        checkForUpdates();
+      }
+    }, CHECK_INTERVAL_MS);
 
-    // Chequeo al volver a la app o desbloquear pantalla
+    // 3. Criterio 2: Evento visibilitychange (bloquear/desbloquear o minimizar/volver)
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        checkForUpdates();
+        // Si ya teníamos una actualización pendiente detectada mientras trabajaba
+        if (pendingUpdateRef.current) {
+          console.log('🟢 [AutoUpdater] Pantalla desbloqueada con actualización pendiente. Aplicando refresh limpio...');
+          const updateToApply = pendingUpdateRef.current;
+          pendingUpdateRef.current = null;
+          performCleanReload(updateToApply);
+          return;
+        }
+
+        // Si no había pendiente, marcamos bandera temporal y comprobamos en servidor
+        justResumedRef.current = true;
+        if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
+        resumeTimerRef.current = setTimeout(() => {
+          justResumedRef.current = false;
+        }, 10000); // 10 segundos de ventana de desbloqueo seguro
+
+        if (typeof navigator !== 'undefined' && navigator.onLine) {
+          checkForUpdates();
+        }
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Escuchar actualizaciones de Service Worker nativas
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        // Nuevo controller tomó el mando
-      });
-    }
+    // 4. Señal remota por WebSocket
+    const handleRemoteSignal = () => {
+      console.log('⚡ [AutoUpdater] Señal de actualización remota recibida.');
+      checkForUpdates();
+    };
+    window.addEventListener('app:check_updates_now', handleRemoteSignal);
 
-    // Exponer función de prueba en consola para desarrollo
-    window.__triggerAppUpdateMock = () => {
-      setIsUpdateAvailable(true);
+    // 5. Utilidad de prueba para la consola de desarrollo
+    window.__triggerAppUpdateMock = (newVersion = '2.5.0-mock') => {
+      const mockData = { version: newVersion, buildTime: Date.now() + 100000 };
+      if (locationRef.current === '/' || locationRef.current === '/login' || justResumedRef.current) {
+        performCleanReload(mockData);
+      } else {
+        pendingUpdateRef.current = mockData;
+        console.log('🧪 [AutoUpdater Mock] Actualización pendiente registrada. Cambia de menú o bloquea/desbloquea la pantalla para ver el refresh.');
+      }
     };
 
     return () => {
       clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('app:check_updates_now', handleRemoteSignal);
+      if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
       delete window.__triggerAppUpdateMock;
     };
-  }, [checkForUpdates]);
+  }, [checkForUpdates, performCleanReload]);
 
   return {
-    isUpdateAvailable,
-    updateInfo,
-    status,
-    progress,
-    currentStep,
-    statusMessage,
-    applyUpdate,
-    dismissUpdate: () => setIsUpdateAvailable(false),
-    isMobile: isMobileOrPWA()
+    checkForUpdates,
+    performCleanReload,
+    isUpdateAvailable: false,
   };
 }
