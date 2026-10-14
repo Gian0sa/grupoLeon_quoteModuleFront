@@ -10,30 +10,10 @@ import { useQuoteSocket } from "../features/quotes/hooks/useQuoteSocket";
 import { useAuthStore } from "../features/auth/stores/useAuthStore";
 import { usePresenceHeartbeat } from "../features/admin/hooks/usePresenceHeartbeat";
 import { useAppUpdater } from "../hooks/useAppUpdater";
-import { SoftwareUpdateModal } from "../components/SoftwareUpdateModal";
 
 function SoftwareUpdaterListener() {
-  const {
-    isUpdateAvailable,
-    updateInfo,
-    status,
-    progress,
-    currentStep,
-    statusMessage,
-    applyUpdate,
-  } = useAppUpdater();
-
-  return (
-    <SoftwareUpdateModal
-      isOpen={isUpdateAvailable}
-      updateInfo={updateInfo}
-      status={status}
-      progress={progress}
-      currentStep={currentStep}
-      statusMessage={statusMessage}
-      onStartUpdate={applyUpdate}
-    />
-  );
+  useAppUpdater();
+  return null;
 }
 
 function RealtimeSocketConsumer() {
