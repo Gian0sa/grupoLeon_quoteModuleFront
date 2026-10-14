@@ -1,11 +1,3 @@
 {
-  "version": "2.4.0",
-  "buildTime": 1791996026206,
-  "buildDate": "2026-10-14T16:40:26.206Z",
-  "title": "Actualización del Sistema",
-  "releaseNotes": [
-    "Optimización de memoria RAM en celulares.",
-    "Solución a errores de almacenamiento en fotos y Check-in.",
-    "Sincronización instantánea de datos y mayor fluidez."
-  ]
+  "buildTime": 1792002869976
 }

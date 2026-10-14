@@ -51,6 +51,24 @@ axiosInstance.interceptors.response.use((res) => res, async (error) => {
     );
     const authStore = useAuthStore.getState();
 
+    // Mitigacion: Si el backend indica que la cuenta fue desactivada (403)
+    const isDeactivated = status === 403 && (
+        error.response?.data?.deactivated ||
+        /inactive|inactiv/i.test(String(error.response?.data?.message || ''))
+    );
+    if (isDeactivated) {
+        console.warn("⛔ Cuenta desactivada detectada en petición HTTP (403). Expulsando de inmediato...");
+        try {
+            sessionStorage.setItem("logoutReason", "Tu cuenta ha sido desactivada por el administrador.");
+            await logoutUser();
+        } catch (_) {}
+        authStore.logout();
+        if (typeof window !== "undefined" && window.location.pathname !== "/") {
+            window.location.href = "/?reason=deactivated";
+        }
+        return Promise.reject(error);
+    }
+
     // 🔹 Manejo de JWT expirada (solo en línea)
     if (isJwtAuthError && !originalRequest._retry && !isAuthRoute) {
         originalRequest._retry = true;
@@ -79,7 +97,11 @@ axiosInstance.interceptors.response.use((res) => res, async (error) => {
                 }
                 authStore.logout(); // limpia Zustand + localStorage
                 if (typeof window !== "undefined" && window.location.pathname !== "/") {
-                    window.location.href = "/";
+                    const isDeact = refreshStatus === 403 && (err?.response?.data?.deactivated || /inactive|inactiv/i.test(String(err?.response?.data?.message || '')));
+                    if (isDeact) {
+                        try { sessionStorage.setItem("logoutReason", "Tu cuenta ha sido desactivada por el administrador."); } catch (_) {}
+                    }
+                    window.location.href = isDeact ? "/?reason=deactivated" : "/";
                 }
             }
 

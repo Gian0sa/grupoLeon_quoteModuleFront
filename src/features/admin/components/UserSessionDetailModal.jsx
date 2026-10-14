@@ -29,6 +29,33 @@ import { getUserSessions } from "../services/presenceService";
  * - Sección LO QUE MÁS USA con barras de progreso verdes
  * - Timeline cronológico de navegación por sesiones
  */
+const formatEventTime = (timestamp, fallback) => {
+  if (!timestamp) return fallback || "00:00";
+  try {
+    const d = new Date(timestamp);
+    if (isNaN(d.getTime())) return fallback || "00:00";
+    return d.toLocaleTimeString("es-PE", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone: "America/Lima",
+    });
+  } catch {
+    return fallback || "00:00";
+  }
+};
+
+const formatTimeRange = (session) => {
+  if (!session) return "";
+  if (session.startedAt) {
+    const start = formatEventTime(session.startedAt, session.startStr);
+    const end = session.isLive ? formatEventTime(Date.now(), session.endStr) : formatEventTime(session.endedAt, session.endStr);
+    const date = session.dateLabel || "Hoy";
+    return `${date} · ${start} → ${end}`;
+  }
+  return session.timeRangeText || "";
+};
+
 export function UserSessionDetailModal({ isOpen, onClose, user }) {
   const [sessionData, setSessionData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -302,7 +329,7 @@ export function UserSessionDetailModal({ isOpen, onClose, user }) {
                         >
                           <HStack spacing={2.5} align="center" wrap="wrap">
                             <Text fontSize="13px" fontWeight="700" color="gray.900">
-                              {session.timeRangeText}
+                              {formatTimeRange(session)}
                             </Text>
                             <Text fontSize="12.5px" fontWeight="600" color="gray.500">
                               {session.durationText}
@@ -357,7 +384,7 @@ export function UserSessionDetailModal({ isOpen, onClose, user }) {
                                     flexShrink={0}
                                     pt={0.5}
                                   >
-                                    {evt.time}
+                                    {formatEventTime(evt.timestamp, evt.time)}
                                   </Text>
 
                                   <Box

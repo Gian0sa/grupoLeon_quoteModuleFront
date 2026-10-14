@@ -111,6 +111,40 @@ export function Login() {
     };
   }, [toast]);
 
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const reason = params.get("reason");
+      const updated = params.get("updated");
+      const logoutReason = sessionStorage.getItem("logoutReason");
+
+      if (reason === "deactivated" || logoutReason) {
+        toast({
+          id: "account-deactivated-toast",
+          title: "Acceso Revocado",
+          description: logoutReason || "Tu cuenta ha sido desactivada por el administrador. Comunícate con soporte.",
+          status: "error",
+          duration: 9000,
+          isClosable: true,
+          position: "top",
+        });
+        sessionStorage.removeItem("logoutReason");
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } else if (updated === "true") {
+        toast({
+          id: "app-updated-toast",
+          title: "Sistema Actualizado",
+          description: "Se instaló la versión más reciente del sistema con éxito. Por favor inicia sesión.",
+          status: "success",
+          duration: 6000,
+          isClosable: true,
+          position: "top",
+        });
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    } catch (_) {}
+  }, [toast]);
+
   const handleInstallApp = async () => {
     // 1. Android / Chrome / Edge / PC: Disparar la instalación nativa del navegador directamente
     const promptEvent = deferredPrompt || window.deferredPwaPrompt;

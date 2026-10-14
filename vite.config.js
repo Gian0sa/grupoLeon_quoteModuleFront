@@ -3,6 +3,11 @@ import react from '@vitejs/plugin-react-swc'
 import path from 'path'
 import fs from 'fs'
 
+/**
+ * Plugin silencioso: registra únicamente la marca de tiempo (timestamp) en cada build
+ * para que el Auto-Refresh Inteligente sepa cuándo hay una nueva versión.
+ * NO contiene títulos, textos ni releaseNotes de modales.
+ */
 function autoVersionPlugin() {
   return {
     name: 'auto-version-updater',
@@ -10,24 +15,10 @@ function autoVersionPlugin() {
     buildStart() {
       try {
         const versionFilePath = path.resolve(__dirname, 'public/version.json');
-        let current = {};
-        if (fs.existsSync(versionFilePath)) {
-          current = JSON.parse(fs.readFileSync(versionFilePath, 'utf-8'));
-        }
-        const now = new Date();
         const updated = {
-          version: current.version || '2.4.0',
-          buildTime: Date.now(),
-          buildDate: now.toISOString(),
-          title: 'Actualización del Sistema',
-          releaseNotes: current.releaseNotes || [
-            'Optimización de memoria RAM en celulares.',
-            'Solución a errores de almacenamiento en fotos y Check-in.',
-            'Sincronización instantánea de datos y mayor fluidez.'
-          ]
+          buildTime: Date.now()
         };
         fs.writeFileSync(versionFilePath, JSON.stringify(updated, null, 2), 'utf-8');
-        console.log(`\n📦 [AutoVersion] public/version.json actualizado (buildTime: ${updated.buildTime})\n`);
       } catch (err) {
         console.warn('Error al actualizar version.json en build:', err);
       }
@@ -61,13 +52,9 @@ export default defineConfig({
             if (id.includes('recharts')) return 'vendor-charts';
             if (id.includes('tesseract.js')) return 'vendor-ocr';
             if (id.includes('socket.io-client')) return 'vendor-socket';
-            return 'vendor';
           }
         }
       }
-    },
-    // Subir límite de advertencia de chunk (los vendor bundles necesitan más espacio)
-    chunkSizeWarningLimit: 600,
+    }
   }
 })
-
