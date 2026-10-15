@@ -1073,6 +1073,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         salesEmployeeCode: resolvedSlp,
         deliveryForm: effectiveQuote.deliveryForm || effectiveQuote.selectedDeliveryForm,
         deliveryPoint: effectiveQuote.deliveryPoint || effectiveQuote.selectedPoint,
+        shipToCode: effectiveQuote.deliveryPoint?.AddressName || effectiveQuote.selectedPoint?.AddressName || effectiveQuote.shipToCode || effectiveQuote.ShipToCode || undefined,
         transport: effectiveQuote.transport || effectiveQuote.selectedTransport || effectiveQuote.U_TQC_TRANSPOR,
         deliveryDate: effectiveQuote.deliveryDate || effectiveQuote.docDueDate,
         paymentType: effectiveQuote.paymentType || effectiveQuote.selectedPaymentType,
