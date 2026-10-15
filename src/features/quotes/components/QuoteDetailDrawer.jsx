@@ -1085,7 +1085,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         U_VS_AFEDET: effectiveQuote.U_VS_AFEDET || "N",
         U_VS_BANCO: effectiveQuote.bankAccount || effectiveQuote.U_VS_BANCO || null,
         saleCondition: effectiveQuote.saleCondition || effectiveQuote.totals?.saleCondition,
-        documentType: effectiveQuote.documentType || effectiveQuote.totals?.documentType,
+        documentType: effectiveQuote.documentType || effectiveQuote.totals?.documentType || (String(effectiveQuote.clientDocument || effectiveQuote.clientRuc || effectiveQuote.client?.LicTradNum || "").replace(/\D/g, "").length === 11 ? "FACTURA" : "BOLETA"),
         creditTerm: effectiveQuote.creditTerm || effectiveQuote.totals?.creditTerm,
         isLetra: effectiveQuote.isLetra !== undefined ? effectiveQuote.isLetra : effectiveQuote.totals?.isLetra,
         opNum: effectiveQuote.opNum || effectiveQuote.totals?.opNum,
@@ -2164,7 +2164,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
               // 2. Comprobante & SUNAT
               const cleanDigits = String(currentQuote.clientDocument || currentQuote.clientRuc || currentQuote.client?.FederalTaxID || currentQuote.client?.LicTradNum || "").replace(/\D/g, "");
               const isJuridica = cleanDigits.startsWith("20") || /\b(S\.?A\.?C\.?|S\.?R\.?L\.?|E\.?I\.?R\.?L\.?|S\.?A\.?|S\.?A\.?A\.?|SOCIEDAD|CONSORCIO|EMPRESA|CORPORACION|DISTRIBUIDORA)\b/i.test(currentQuote.clientName || currentQuote.client?.CardName || "");
-              const docTypeVal = currentQuote.documentType || currentQuote.U_VS_COMPROBANTE || (isJuridica || cleanDigits.length === 11 ? "FACTURA" : "BOLETA");
+              const docTypeVal = currentQuote.documentType || currentQuote.totals?.documentType || currentQuote.U_VS_COMPROBANTE || (isJuridica || cleanDigits.length === 11 ? "FACTURA" : "BOLETA");
               const sunatType = formatSunatOp(currentQuote.sunatOpType || currentQuote.U_VS_TIPO_FACT || currentQuote.U_VS_TIPOPER);
 
               // 3. Váucher / Operación (Si se adjuntó comprobante prepago)
