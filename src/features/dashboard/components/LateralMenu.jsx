@@ -298,7 +298,7 @@ export function LateralMenu() {
                 left={0}
                 right={0}
                 bottom={0}
-                bgImage="url('/assets/header-brand-bg.png')"
+                bgImage="url('/assets/header-brand-bg.webp')"
                 bgPosition="center center"
                 bgSize="cover"
                 bgRepeat="no-repeat"

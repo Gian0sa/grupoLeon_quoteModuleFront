@@ -10,7 +10,7 @@ import Login from "../features/auth/pages/Login.jsx";
 import { DashboardPage } from "../features/dashboard/pages/DashboardPage.jsx";
 import ClienteBusquedaPage from "../features/clients/pages/ClienteBusquedaPage.jsx";
 import VisitLogPage from "../features/checkinout/pages/VisitLogPage.jsx";
-import MyVisitsPage from "../features/checkinout/pages/MyVisitsPage.jsx";
+const MyVisitsPage         = lazy(() => import("../features/checkinout/pages/MyVisitsPage.jsx"));
 
 // ─── Lazy imports ── cada página privada descarga su propio chunk solo cuando se visita
 const Register             = lazy(() => import("../features/auth/pages/Register.jsx").then(m => ({ default: m.Register })));

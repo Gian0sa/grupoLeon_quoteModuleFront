@@ -22,7 +22,7 @@ import { useNotifications } from "../features/quotes/hooks/queries/quotesQueries
 import { useIsAdmin } from "../shared/utils/permissions";
 import { QUERY_KEYS } from "../shared/utils/queryKeys";
 
-export const HEADER_BRAND_IMAGE = "/assets/header-brand-bg.png";
+export const HEADER_BRAND_IMAGE = "/assets/header-brand-bg.webp";
 export const HEADER_MAIN_BG = "linear-gradient(135deg, #0e572b 0%, #126C36 50%, #0b4a24 100%)";
 
 // Panel "vidrio esmerilado" para envolver contenido (buscadores, filtros) dentro del header,

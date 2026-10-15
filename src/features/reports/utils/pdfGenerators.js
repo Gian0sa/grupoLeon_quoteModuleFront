@@ -1,6 +1,13 @@
 // src/utils/pdfGenerators.js
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+// jspdf + autotable pesan ~600 KB: se cargan solo al generar un PDF, no al abrir la app.
+let jsPDF = null;
+let autoTable = null;
+const loadPdfLibs = async () => {
+  if (jsPDF) return;
+  const [jspdfModule, autoTableModule] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
+  jsPDF = jspdfModule.default;
+  autoTable = autoTableModule.default;
+};
 
 // Convierte imagen a base64 con transparencia PNG
 export const getImageDataURL = (img) => {
@@ -42,6 +49,7 @@ const addLogo = async (doc) => {
 
 export const generateOrderPDF = async (ordenDetalle) => {
   if (!ordenDetalle) return;
+  await loadPdfLibs();
   const doc = new jsPDF();
   doc.setFont("helvetica", "normal");
 
@@ -122,6 +130,7 @@ export const generateDeliveryPDF = async (entregaDetalle) => {
     console.error("No se encontraron datos de la entrega");
     return;
   }
+  await loadPdfLibs();
   const doc = new jsPDF();
   doc.setFont("helvetica", "normal");
 

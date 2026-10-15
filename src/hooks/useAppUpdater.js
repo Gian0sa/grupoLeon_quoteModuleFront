@@ -1,10 +1,26 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { socket } from '../shared/lib/socket';
+import { CAMERA_PENDING_KEY } from '../features/checkinout/utils/checkinSession';
 
 const LOCAL_STORAGE_KEY = 'autopartes_installed_build_time';
 const LOCAL_STORAGE_VERSION_KEY = 'autopartes_installed_version';
 const CHECK_INTERVAL_MS = 2.5 * 60 * 1000; // Verificación periódica cada 2.5 minutos
+// Pantallas donde recargar destruye trabajo que vive solo en memoria (foto recién tomada).
+const PROTECTED_PATHS = ['/visitlog'];
+
+/**
+ * Al volver de la cámara nativa el navegador dispara visibilitychange con la RAM al mínimo.
+ * Recargar en ese instante pierde la foto y obliga a re-descargar todo el bundle,
+ * que es lo que en equipos de 4 GB termina en "memoria insuficiente".
+ */
+const isReloadUnsafe = (path) => {
+  try {
+    if (sessionStorage.getItem(CAMERA_PENDING_KEY)) return true;
+  } catch (_) { /* Storage bloqueado: decidir solo por la ruta. */ }
+  const normalized = String(path || '').toLowerCase();
+  return PROTECTED_PATHS.some((p) => normalized === p || normalized.startsWith(p + '/'));
+};
 
 /**
  * Hook para Auto-Refresh Inteligente (100% Automático y Seguro)
@@ -49,13 +65,8 @@ export function useAppUpdater() {
         localStorage.setItem(LOCAL_STORAGE_VERSION_KEY, String(remoteData.version));
       }
 
-      // 2. Limpiar Service Worker y cachés de red del navegador
-      if (typeof window !== 'undefined' && 'caches' in window) {
-        const cacheKeys = await caches.keys();
-        await Promise.all(cacheKeys.map((key) => caches.delete(key)));
-        console.log('🧹 [AutoUpdater] Cachés de navegador purgadas.');
-      }
-
+      // 2. Activar el Service Worker nuevo. No se purgan las cachés: los chunks llevan hash
+      // y el HTML es network-first, así que borrarlas solo forzaba a re-descargar todo en cada deploy.
       if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
         const registrations = await navigator.serviceWorker.getRegistrations();
         for (const reg of registrations) {
@@ -63,7 +74,6 @@ export function useAppUpdater() {
             reg.waiting.postMessage({ type: 'SKIP_WAITING' });
           }
           if (reg.active) {
-            reg.active.postMessage({ type: 'PURGE_ALL_CACHE' });
             reg.active.postMessage({ type: 'SKIP_WAITING' });
           }
           await reg.update().catch(() => {});
@@ -132,7 +142,8 @@ export function useAppUpdater() {
         }
 
         // 🟢 Criterio 2: Si el usuario acaba de desbloquear el teléfono o volver a la app
-        if (justResumedRef.current) {
+        // (salvo que vuelva de la cámara o esté en el check-in: ahí se pospone)
+        if (justResumedRef.current && !isReloadUnsafe(currentPath)) {
           console.log('🟢 [AutoUpdater] Teléfono desbloqueado / app restaurada. Aplicando refresh limpio...');
           performCleanReload(remoteData);
           return;
@@ -159,7 +170,7 @@ export function useAppUpdater() {
       const to = location.pathname;
       prevPathRef.current = to;
 
-      if (pendingUpdateRef.current) {
+      if (pendingUpdateRef.current && !isReloadUnsafe(to)) {
         console.log(`🚀 [AutoUpdater] Navegando de "${from}" a "${to}". Aplicando refresh automático con última versión...`);
         const updateToApply = pendingUpdateRef.current;
         pendingUpdateRef.current = null;
@@ -189,6 +200,8 @@ export function useAppUpdater() {
       if (document.visibilityState === 'visible') {
         // Si ya teníamos una actualización pendiente detectada mientras trabajaba
         if (pendingUpdateRef.current) {
+          // Volver de la cámara también dispara este evento: no recargar encima de la foto.
+          if (isReloadUnsafe(locationRef.current)) return;
           console.log('🟢 [AutoUpdater] Pantalla desbloqueada con actualización pendiente. Aplicando refresh limpio...');
           const updateToApply = pendingUpdateRef.current;
           pendingUpdateRef.current = null;

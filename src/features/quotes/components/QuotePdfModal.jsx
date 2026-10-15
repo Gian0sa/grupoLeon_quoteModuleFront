@@ -1,6 +1,4 @@
 import React, { useRef, useState, useEffect } from "react";
-import jsPDF from "jspdf";
-import html2canvas from "html2canvas";
 import {
   Modal,
   ModalOverlay,
@@ -75,6 +73,12 @@ export default function QuotePdfModal({ isOpen, onClose, quote }) {
       element.style.minHeight = "1130px";
       element.style.boxShadow = "none";
 
+      // jspdf + html2canvas (~600 KB) se descargan solo al pedir el PDF: este modal
+      // cuelga del header (notificaciones) y antes los arrastraba al arranque de la app.
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+        import("html2canvas"),
+        import("jspdf"),
+      ]);
       const canvas = await html2canvas(element, {
         scale: 3.5, // 300+ DPI Ultra High Definition
         useCORS: true,

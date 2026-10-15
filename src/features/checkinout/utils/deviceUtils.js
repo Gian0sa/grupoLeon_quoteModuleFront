@@ -173,6 +173,40 @@ const decodeViaImageElement = (file, targetWidth, targetHeight) => {
     });
 };
 
+const isMemoryError = (error) => {
+    const text = String(error?.name || "") + " " + String(error?.message || "");
+    return /memory|memoria|allocat|RangeError|QuotaExceeded/i.test(text);
+};
+
+/**
+ * Antes cualquier fallo de decodificación se reportaba como "memoria insuficiente",
+ * aunque la causa fuera un formato no soportado (HEIC) o un archivo dañado.
+ * Ahora el mensaje refleja la causa y el error original viaja en `cause` para la telemetría.
+ */
+const buildDecodeError = (file, firstError, lastError) => {
+    const type = String(file?.type || "").toLowerCase();
+    const name = String(file?.name || "").toLowerCase();
+    let message;
+    let reason;
+    if (/hei[cf]/.test(type) || /\.hei[cf]$/.test(name)) {
+        reason = "UNSUPPORTED_FORMAT";
+        message = "Tu cámara guardó la foto en formato HEIC, que el navegador no puede leer. " +
+            "En los ajustes de la cámara cambia el formato a JPG (\"Más compatible\") o sube la foto desde la galería.";
+    } else if (isMemoryError(firstError) || isMemoryError(lastError)) {
+        reason = "OUT_OF_MEMORY";
+        message = "No hay suficiente memoria libre. Cierra otras apps (TikTok, YouTube, WhatsApp) " +
+            "y vuelve a intentarlo, o selecciona una foto desde la galería.";
+    } else {
+        reason = "DECODE_FAILED";
+        message = "No se pudo leer la foto. Vuelve a tomarla o selecciónala desde la galería.";
+    }
+    const error = new Error(message);
+    error.reason = reason;
+    error.cause = lastError || firstError;
+    error.firstCause = firstError;
+    return error;
+};
+
 /**
  * Comprime la imagen según el perfil del dispositivo.
  * ULTRA_LITE (≤1 GB RAM): usa Image+Canvas para evitar el OOM que genera createImageBitmap
@@ -183,11 +217,13 @@ export const compressImage = async (file, customOptions = {}) => {
     const signal = options.signal;
     let bitmap = null;
     let canvas = null;
+    let firstDecodeError = null;
     try {
         if (!file) throw new Error("No se proporcionó ningún archivo");
         checkAborted(signal);
         const original = await getHeaderDimensions(file);
         checkAborted(signal);
+        if (!original && /hei[cf]/i.test(String(file.type) + String(file.name))) throw buildDecodeError(file, null, null);
         if (!original) throw new Error("No pudimos leer esta foto de forma segura. Utiliza una imagen JPEG, PNG o WebP con menor resolución.");
         if (typeof createImageBitmap !== "function" && typeof Image === "undefined") {
             throw new Error("Actualiza tu navegador para procesar fotografías de forma segura.");
@@ -245,6 +281,7 @@ export const compressImage = async (file, customOptions = {}) => {
             });
         } catch (bitmapError) {
             checkAborted(signal);
+            firstDecodeError = bitmapError;
             // Fallback 1 — 320px + pausa para liberar el decodificador anterior
             const fallbackTarget = calculateTargetDimensions(original.width, original.height, 320);
             try {
@@ -275,11 +312,9 @@ export const compressImage = async (file, customOptions = {}) => {
                         width: nanoTarget.width, height: nanoTarget.height,
                     };
                     return result;
-                } catch {
-                    throw new Error(
-                        "No hay suficiente memoria libre. Cierra otras apps (TikTok, YouTube, WhatsApp) " +
-                        "y vuelve a intentarlo, o selecciona una foto desde la galería."
-                    );
+                } catch (fallbackError) {
+                    if (fallbackError?.name === "AbortError") throw fallbackError;
+                    throw buildDecodeError(file, firstDecodeError, fallbackError);
                 }
             }
         }

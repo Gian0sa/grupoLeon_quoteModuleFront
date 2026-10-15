@@ -66,7 +66,14 @@ export function useImageUpload() {
             }
             void sendDeviceTelemetry("IMAGE_PROCESSING_ERROR", {
                 errorMessage: error?.message || "Error al procesar",
+                reason: error?.reason || null,
+                // Error real del navegador: permite distinguir OOM de formato no soportado.
+                causeName: error?.cause?.name || null,
+                causeMessage: error?.cause?.message || null,
+                firstCauseMessage: error?.firstCause?.message || null,
+                fileType: fileOrBlob.type || null,
                 originalSizeKB: Math.round(fileOrBlob.size / 1024),
+                deviceMemory: typeof navigator !== "undefined" ? navigator.deviceMemory ?? null : null,
             });
             toast({
                 title: "Error al procesar imagen", description: error.message || "Intenta con otra foto",
