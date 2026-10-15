@@ -45,7 +45,13 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           // Vendor: librerías externas en chunk consolidado libre de dependencias circulares
+          // Helpers internos de Vite/Rollup: si caen en vendor-pdf o vendor-charts, esos
+          // chunks pesados se vuelven dependencia del arranque.
+          if (id.includes('vite/preload-helper') || id.includes('commonjsHelpers')) return 'vendor-react';
           if (id.includes('node_modules')) {
+            // React va en su propio chunk: si no, Rollup lo mete dentro de vendor-charts
+            // (recharts depende de él) y la app descarga y parsea recharts en cada arranque.
+            if (/[\\/]node_modules[\\/](react|react-dom|scheduler|react-is)[\\/]/.test(id)) return 'vendor-react';
             if (id.includes('xlsx') || id.includes('exceljs')) return 'vendor-excel';
             if (id.includes('html2canvas') || id.includes('jspdf')) return 'vendor-pdf';
             if (id.includes('leaflet')) return 'vendor-maps';

@@ -23,15 +23,14 @@ import {
     FiMaximize2,
     FiCheckCircle,
     FiTrash2,
-    FiImage,
 } from "react-icons/fi";
 import { purgeMemoryBeforeCamera } from "../utils/deviceUtils";
 import { sendDeviceTelemetry } from "../services/telemetryService";
 
 /**
  * ImageUploadCard
- * Componente con el diseño visual original exacto (borde punteado y recuadro blanco).
- * Dispara la cámara del dispositivo con purga preventiva de RAM para evitar "Memoria insuficiente".
+ * Componente exclusivo de Cámara en vivo (Check-In) con optimización universal de memoria.
+ * Requiere toma de fotografía en tiempo real para validar la presencia del vendedor en el cliente.
  */
 export function ImageUploadCard({
     image,
@@ -39,6 +38,7 @@ export function ImageUploadCard({
     imageInfo,
     isProcessingImage,
     hasError = false,
+    cameraRecoveryFailed = false,
     onImageChange,
     existingImageData,
     isLoadingExistingImage,
@@ -52,7 +52,6 @@ export function ImageUploadCard({
     const cardBg = useColorModeValue("white", "gray.800");
     const borderColor = useColorModeValue("gray.100", "gray.700");
     const fileInputRef = useRef(null);
-    const galleryInputRef = useRef(null);
 
     useEffect(() => {
         const input = fileInputRef.current;
@@ -69,16 +68,6 @@ export function ImageUploadCard({
         sendDeviceTelemetry("CAMERA_LAUNCH", { action: "Botón pulsado" });
         if (fileInputRef.current) {
             fileInputRef.current.click();
-        }
-    };
-
-    const handleOpenGallery = () => {
-        if (!galleryInputRef.current || isProcessingImage) return;
-        onBeforeCamera?.();
-        purgeMemoryBeforeCamera();
-        sendDeviceTelemetry("GALLERY_LAUNCH", { action: "Galería pulsada" });
-        if (galleryInputRef.current) {
-            galleryInputRef.current.click();
         }
     };
 
@@ -216,8 +205,8 @@ export function ImageUploadCard({
                 </Box>
             )}
 
-            {/* BOTÓN CON EL DISEÑO ORIGINAL EXACTO (Borde punteado y recuadro blanco) */}
-            <VStack spacing={2} width="100%">
+            {/* BOTÓN DE CAPTURA EXCLUSIVA CON CÁMARA EN VIVO */}
+            <VStack spacing={2.5} width="100%">
                 <Button
                     onClick={handleOpenNativeCamera}
                     bg="gray.50"
@@ -253,13 +242,13 @@ export function ImageUploadCard({
                     }}
                     transition="all 0.2s"
                     isLoading={isProcessingImage}
-                    loadingText="Procesando..."
+                    loadingText="Procesando foto..."
                 >
                     {image
-                        ? "Cambiar Fotografía"
+                        ? "Tomar otra con Cámara"
                         : hasExistingImage
-                        ? "Actualizar Fotografía"
-                        : "Tomar / Subir Fotografía"}
+                        ? "Actualizar con Cámara"
+                        : "Tomar Fotografía (Cámara en vivo)"}
                 </Button>
 
                 {imagePreview && onResetImage && (
@@ -274,56 +263,36 @@ export function ImageUploadCard({
                     </Button>
                 )}
 
-                {/* Solo se muestra si ocurrió un error previo o descarte de cámara por RAM */}
-                {hasError && !image && (
+                {/* Alerta si el SO cerró la cámara por RAM */}
+                {(cameraRecoveryFailed || (hasError && !image)) && (
                     <Alert
                         status="warning"
                         variant="subtle"
                         borderRadius="xl"
-                        py={2}
-                        px={3}
-                        alignItems="center"
+                        py={2.5}
+                        px={3.5}
+                        alignItems="flex-start"
                     >
-                        <AlertIcon boxSize={4} />
+                        <AlertIcon boxSize={4} mt={0.5} />
                         <Box flex="1" textAlign="left" mr={2}>
                             <Text fontSize="xs" fontWeight="700" color="orange.800">
-                                ¿Problemas al usar la cámara?
+                                Aviso de memoria en tu celular
                             </Text>
-                            <Text fontSize="2xs" color="gray.600">
-                                Puedes seleccionar la foto directamente desde tu galería o archivos.
+                            <Text fontSize="2xs" color="gray.600" mt={0.5}>
+                                Tu teléfono liberó memoria al abrir la cámara. Te sugerimos <strong>cerrar aplicaciones en segundo plano</strong> (TikTok, YouTube, WhatsApp) y volver a presionar <strong>Tomar Fotografía</strong>.
                             </Text>
                         </Box>
-                        <Button
-                            size="xs"
-                            colorScheme="orange"
-                            variant="solid"
-                            onClick={handleOpenGallery}
-                            leftIcon={<Icon as={FiImage} boxSize={3} />}
-                            isLoading={isProcessingImage}
-                        >
-                            Subir de galería
-                        </Button>
                     </Alert>
                 )}
             </VStack>
 
-            {/* Input nativo de cámara: abre directamente la app de cámara a pantalla completa */}
+            {/* Input nativo de cámara: abre exclusivamente la app de cámara en vivo a pantalla completa */}
             <input
                 ref={fileInputRef}
                 key={`cam-${fileInputKey}`}
                 type="file"
                 accept="image/*"
                 capture="environment"
-                onChange={onImageChange}
-                style={{ display: "none" }}
-            />
-
-            {/* Input alternativo sin capture para galería / selector (evita que Android mate Chrome por falta de RAM) */}
-            <input
-                ref={galleryInputRef}
-                key={`gal-${fileInputKey}`}
-                type="file"
-                accept="image/*"
                 onChange={onImageChange}
                 style={{ display: "none" }}
             />

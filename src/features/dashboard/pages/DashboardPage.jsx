@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, lazy, Suspense } from "react";
 import { useNavigate } from "react-router-dom";
 import { 
   Box, 
@@ -38,9 +38,13 @@ import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
 import { QuickActions } from "../components/QuickActions";
 import { SalesSummary } from "../components/SalesSummary";
 import { SalesStats } from "../components/SalesStats";
-import { SurfaceChartCard } from "../components/SurfaceChartCard";
 import { DashboardCommercialPanel } from "../components/DashboardCommercialPanel";
 import SellerSelect from "../../../components/SellerSelect";
+
+// recharts (~500 KB) se descarga solo cuando la gráfica se muestra, no en cada arranque de la app.
+const SurfaceChartCard = lazy(() =>
+  import("../components/SurfaceChartCard").then((m) => ({ default: m.SurfaceChartCard }))
+);
 
 const MONTH_NAMES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -586,7 +590,7 @@ export function DashboardPage() {
             >
               <SalesSummary data={resumenData} />
               <SalesStats data={resumenData} />
-              <SurfaceChartCard data={resumenData} isCurrentMonth={isCurrentMonthView} />
+              <Suspense fallback={null}><SurfaceChartCard data={resumenData} isCurrentMonth={isCurrentMonthView} /></Suspense>
             </SimpleGrid>
 
             {/* VISTA MÓVIL (Carrusel deslizable asistido con flechas y dots) */}
@@ -612,7 +616,7 @@ export function DashboardPage() {
                   <SalesStats data={resumenData} />
                 </Box>
                 <Box flexShrink={0} w="84vw" maxW="335px" scrollSnapAlign="center">
-                  <SurfaceChartCard data={resumenData} isCurrentMonth={isCurrentMonthView} />
+                  <Suspense fallback={null}><SurfaceChartCard data={resumenData} isCurrentMonth={isCurrentMonthView} /></Suspense>
                 </Box>
               </Flex>
 

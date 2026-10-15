@@ -28,34 +28,18 @@ export const purgeMemoryBeforeCamera = () => {
     writeSessionValue(CAMERA_PENDING_KEY, String(Date.now()));
 };
 export const getDeviceQualityProfile = () => {
-    const deviceMemory = typeof navigator !== "undefined" ? navigator.deviceMemory || 4 : 4;
-    const cores = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 4 : 4;
-    const connection = typeof navigator !== "undefined"
-        ? navigator.connection || navigator.mozConnection || navigator.webkitConnection : null;
-    const isUltraLow = deviceMemory <= 1;
-    // Considerar bajo si tiene ≤3 GB de RAM, ≤4 núcleos, modo de ahorro o red lenta
-    const isLowEnd = deviceMemory <= 3 || cores <= 4 || connection?.saveData === true ||
-        ["2g", "slow-2g", "3g"].includes(connection?.effectiveType);
-    if (isUltraLow) {
-        return {
-            profile: "ULTRA_LITE",
-            maxDimension: 320,
-            quality: 0.38,
-            label: "Ultra-Ligero (RAM Crítica)",
-            isLowEnd: true,
-            isUltraLow: true,
-            deviceMemory,
-        };
-    }
+    // ─── Optimización Universal Estándar para TODOS los Dispositivos ───
+    // Aplica el mismo perfil ultra-ligero y probado a todos sin categorizaciones complejas:
+    // - maxDimension: 480px (suficiente para ver tienda, fachada y letrero comercial)
+    // - quality: 0.50 (pesa ~35 KB, subida en menos de 1 segundo en la calle con 3G/4G)
+    // - RAM mínima: evita que el teléfono colapse al procesar fotos de 50 MP
     return {
-        // LITE: máx 480px — BALANCED: máx 600px (reducido de 640/768 para evitar OOM en Android)
-        profile: isLowEnd ? "LITE" : "BALANCED",
-        maxDimension: isLowEnd ? 480 : 600,
-        quality: isLowEnd ? 0.48 : 0.58,
-        label: isLowEnd ? "Ligero (Bajo consumo)" : "Equilibrado",
-        isLowEnd,
+        profile: "UNIVERSAL_OPTIMIZED",
+        maxDimension: 480,
+        quality: 0.50,
+        label: "Universal Optimizado",
+        isLowEnd: true,
         isUltraLow: false,
-        deviceMemory,
     };
 };
 export const calculateTargetDimensions = (width, height, maxDimension) => {
@@ -173,6 +157,40 @@ const decodeViaImageElement = (file, targetWidth, targetHeight) => {
     });
 };
 
+const isMemoryError = (error) => {
+    const text = String(error?.name || "") + " " + String(error?.message || "");
+    return /memory|memoria|allocat|RangeError|QuotaExceeded/i.test(text);
+};
+
+/**
+ * Antes cualquier fallo de decodificación se reportaba como "memoria insuficiente",
+ * aunque la causa fuera un formato no soportado (HEIC) o un archivo dañado.
+ * Ahora el mensaje refleja la causa y el error original viaja en `cause` para la telemetría.
+ */
+const buildDecodeError = (file, firstError, lastError) => {
+    const type = String(file?.type || "").toLowerCase();
+    const name = String(file?.name || "").toLowerCase();
+    let message;
+    let reason;
+    if (/hei[cf]/.test(type) || /\.hei[cf]$/.test(name)) {
+        reason = "UNSUPPORTED_FORMAT";
+        message = "Tu cámara guardó la foto en formato HEIC, que el navegador no puede leer. " +
+            "En los ajustes de la cámara cambia el formato a JPG (\"Más compatible\") y vuelve a tomar la foto.";
+    } else if (isMemoryError(firstError) || isMemoryError(lastError)) {
+        reason = "OUT_OF_MEMORY";
+        message = "No hay suficiente memoria libre en el celular. Cierra otras apps (TikTok, YouTube, WhatsApp) " +
+            "y vuelve a presionar Tomar Fotografía.";
+    } else {
+        reason = "DECODE_FAILED";
+        message = "No se pudo leer la foto. Vuelve a tomarla con la cámara.";
+    }
+    const error = new Error(message);
+    error.reason = reason;
+    error.cause = lastError || firstError;
+    error.firstCause = firstError;
+    return error;
+};
+
 /**
  * Comprime la imagen según el perfil del dispositivo.
  * ULTRA_LITE (≤1 GB RAM): usa Image+Canvas para evitar el OOM que genera createImageBitmap
@@ -183,11 +201,13 @@ export const compressImage = async (file, customOptions = {}) => {
     const signal = options.signal;
     let bitmap = null;
     let canvas = null;
+    let firstDecodeError = null;
     try {
         if (!file) throw new Error("No se proporcionó ningún archivo");
         checkAborted(signal);
         const original = await getHeaderDimensions(file);
         checkAborted(signal);
+        if (!original && /hei[cf]/i.test(String(file.type) + String(file.name))) throw buildDecodeError(file, null, null);
         if (!original) throw new Error("No pudimos leer esta foto de forma segura. Utiliza una imagen JPEG, PNG o WebP con menor resolución.");
         if (typeof createImageBitmap !== "function" && typeof Image === "undefined") {
             throw new Error("Actualiza tu navegador para procesar fotografías de forma segura.");
@@ -198,26 +218,18 @@ export const compressImage = async (file, customOptions = {}) => {
         const quality = Number.isFinite(options.quality) ? Math.max(0.1, Math.min(1, options.quality)) : profile.quality;
         const target = calculateTargetDimensions(original.width, original.height, maxDimension);
 
-        // ─── Guard de tamaño para dispositivos de 1 GB RAM ────────────────────────
-        // createImageBitmap decodifica la foto COMPLETA a pixels raw (~47 MB para 12 MP)
-        // independientemente del resizeWidth/Height pedido. En 1 GB RAM esto causa OOM.
+        // ─── Decodificación Segura Universal para evitar picos de 200 MB en RAM ───
+        // Si el archivo pesa más de 1.5 MB (típico de fotos de 12 MP a 50 MP de celulares como Honor X6b, Xiaomi o Samsung),
+        // usamos decodeViaImageElement que redimensiona directo al canvas sin cargar el bitmap completo de 200 MB en RAM.
         const fileSizeMB = file.size / (1024 * 1024);
-        if (profile.isUltraLow && fileSizeMB > 3.5) {
-            throw new Error(
-                "Esta foto es demasiado grande para tu dispositivo (" + fileSizeMB.toFixed(1) + " MB). " +
-                "Usa el botón 'Subir de galería' y selecciona una foto ya guardada, que suele pesar menos."
-            );
-        }
-
-        // ─── Ruta ULTRA_LITE: Image + Canvas (sin createImageBitmap) ─────────────
-        if (profile.isUltraLow) {
+        if (fileSizeMB > 1.5 || typeof createImageBitmap !== "function") {
             checkAborted(signal);
             try {
                 canvas = await decodeViaImageElement(file, target.width, target.height);
             } catch {
                 checkAborted(signal);
-                const nanoTarget = calculateTargetDimensions(original.width, original.height, 200);
-                await new Promise((r) => setTimeout(r, 300));
+                const nanoTarget = calculateTargetDimensions(original.width, original.height, 360);
+                await new Promise((r) => setTimeout(r, 200));
                 canvas = await decodeViaImageElement(file, nanoTarget.width, nanoTarget.height);
             }
             const blob = await new Promise((resolve, reject) => {
@@ -230,14 +242,14 @@ export const compressImage = async (file, customOptions = {}) => {
             const fileName = file.name ? file.name.replace(/\.[^/.]+$/, "") + ".jpg" : "foto_checkin.jpg";
             const result = new File([blob], fileName, { type: "image/jpeg", lastModified: Date.now() });
             result.optimizedInfo = {
-                profile: profile.profile, profileLabel: profile.label,
+                profile: "UNIVERSAL_OPTIMIZED", profileLabel: "Universal Optimizado",
                 originalSizeKB: Math.round(file.size / 1024), sizeKB: Math.round(blob.size / 1024),
                 width: target.width, height: target.height,
             };
             return result;
         }
 
-        // ─── Ruta normal: createImageBitmap ───────────────────────────────────────
+        // ─── Ruta normal para archivos pequeños: createImageBitmap ────────────────
         try {
             bitmap = await createImageBitmap(file, {
                 resizeWidth: target.width, resizeHeight: target.height,
@@ -245,6 +257,7 @@ export const compressImage = async (file, customOptions = {}) => {
             });
         } catch (bitmapError) {
             checkAborted(signal);
+            firstDecodeError = bitmapError;
             // Fallback 1 — 320px + pausa para liberar el decodificador anterior
             const fallbackTarget = calculateTargetDimensions(original.width, original.height, 320);
             try {
@@ -275,11 +288,9 @@ export const compressImage = async (file, customOptions = {}) => {
                         width: nanoTarget.width, height: nanoTarget.height,
                     };
                     return result;
-                } catch {
-                    throw new Error(
-                        "No hay suficiente memoria libre. Cierra otras apps (TikTok, YouTube, WhatsApp) " +
-                        "y vuelve a intentarlo, o selecciona una foto desde la galería."
-                    );
+                } catch (fallbackError) {
+                    if (fallbackError?.name === "AbortError") throw fallbackError;
+                    throw buildDecodeError(file, firstDecodeError, fallbackError);
                 }
             }
         }

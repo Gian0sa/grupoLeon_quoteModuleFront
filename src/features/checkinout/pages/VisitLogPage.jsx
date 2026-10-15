@@ -270,6 +270,7 @@ export default function VisitLogPage() {
                                 imageInfo={imageInfo}
                                 isProcessingImage={isProcessingImage}
                                 hasError={hasError || cameraRecoveryFailed}
+                                cameraRecoveryFailed={cameraRecoveryFailed}
                                 onImageChange={handleImageChange}
                                 onDirectImage={setDirectImage}
                                 existingImageData={clientImageData}

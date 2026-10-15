@@ -1,5 +1,12 @@
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+// jspdf + autotable pesan ~600 KB: se cargan solo al generar un PDF, no al abrir la app.
+let jsPDF = null;
+let autoTable = null;
+const loadPdfLibs = async () => {
+  if (jsPDF) return;
+  const [jspdfModule, autoTableModule] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
+  jsPDF = jspdfModule.default;
+  autoTable = autoTableModule.default;
+};
 
 // ─── HELPER LOGO ───
 const addLogo = async (doc, { x = 170, y = 5, width = 25, height = 25 } = {}) => {
@@ -429,6 +436,8 @@ export const generateReceivablePDF = async (debt, { filename, autoDownload = tru
 
   const defaultFilename = `Cuenta-Por-Cobrar-${safeText(debt?.ruc || debt?.clientCode, "Sin-RUC")}.pdf`;
 
+  await loadPdfLibs();
+
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
   await addLogo(doc, { x: 170, y: 5, width: 25, height: 25 });
   addHeader(doc);
@@ -447,6 +456,7 @@ export const generateReceivablePDF = async (debt, { filename, autoDownload = tru
 // ============================================================================
 
 export const generateAccountStatementPDF = async (debt, { filename, autoDownload = true } = {}) => {
+  await loadPdfLibs();
   const doc = new jsPDF({
     orientation: "portrait",
     unit: "mm",
