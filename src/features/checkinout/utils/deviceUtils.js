@@ -70,11 +70,36 @@ const readExifOrientation = (view, start, end) => {
     } catch { /* EXIF incompleto: conservar la orientación por defecto. */ }
     return 1;
 };
-/** Lee como máximo 64 KiB de cabecera; nunca decodifica píxeles para medirlos. */
+/** Lee la cabecera de la imagen sin decodificar píxeles en memoria.
+ * Inicia leyendo 64 KiB y se expande dinámicamente si los metadatos EXIF/XMP de la cámara son extensos.
+ */
 export const getHeaderDimensions = async (file) => {
-    if (!file || typeof file.slice !== "function") return null;
-    const view = new DataView(await file.slice(0, 65536).arrayBuffer());
-    const size = view.byteLength;
+    if (!file || typeof file.slice !== "function" || (Number.isFinite(file.size) && file.size < 4)) return null;
+    const totalSize = Number.isFinite(file.size) ? file.size : 65536;
+    let sliceSize = Math.min(totalSize, 65536);
+    let view = new DataView(await file.slice(0, sliceSize).arrayBuffer());
+    let size = view.byteLength;
+
+    // Detección de contenedor HEIC / HEIF / AVIF por cabecera ISO BMFF (ftyp)
+    if (size >= 12 && view.getUint32(4) === 0x66747970) {
+        const majorBrand = view.getUint32(8);
+        const isHeicBrand = [
+            0x68656963, // heic
+            0x68656978, // heix
+            0x68657663, // hevc
+            0x68657678, // hevx
+            0x6D696631, // mif1
+            0x6D736631, // msf1
+            0x6865696D, // heim
+            0x68656973  // heis
+        ].includes(majorBrand);
+        if (isHeicBrand) {
+            const err = new Error("HEIC_FORMAT");
+            err.isHeic = true;
+            throw err;
+        }
+    }
+
     if (size >= 4 && view.getUint16(0) === 0xFFD8) {
         const sofMarkers = new Set([0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF]);
         let offset = 2;
@@ -83,13 +108,39 @@ export const getHeaderDimensions = async (file) => {
         while (offset + 1 < size) {
             if (view.getUint8(offset++) !== 0xFF) return null;
             while (offset < size && view.getUint8(offset) === 0xFF) offset++;
-            if (offset >= size) break;
+            if (offset >= size) {
+                if (size < totalSize && size < 524288) {
+                    sliceSize = Math.min(totalSize, size + 131072);
+                    view = new DataView(await file.slice(0, sliceSize).arrayBuffer());
+                    size = view.byteLength;
+                    continue;
+                }
+                break;
+            }
             const marker = view.getUint8(offset++);
             if (marker === 0xDA || marker === 0xD9) break;
             if (marker === 0x01 || (marker >= 0xD0 && marker <= 0xD8)) continue;
-            if (offset + 2 > size) break;
+            if (offset + 2 > size) {
+                if (size < totalSize && size < 524288) {
+                    sliceSize = Math.min(totalSize, size + 131072);
+                    view = new DataView(await file.slice(0, sliceSize).arrayBuffer());
+                    size = view.byteLength;
+                    offset -= 2;
+                    continue;
+                }
+                break;
+            }
             const length = view.getUint16(offset);
-            if (length < 2 || offset + length > size) break;
+            if (length < 2) break;
+            if (offset + length > size) {
+                if (size < totalSize && size < 524288) {
+                    sliceSize = Math.min(totalSize, offset + length + 65536);
+                    view = new DataView(await file.slice(0, sliceSize).arrayBuffer());
+                    size = view.byteLength;
+                } else {
+                    break;
+                }
+            }
             if (marker === 0xE1 && length >= 8 && view.getUint32(offset + 2) === 0x45786966) {
                 orientation = readExifOrientation(view, offset + 2, offset + length);
             }
@@ -157,6 +208,44 @@ const decodeViaImageElement = (file, targetWidth, targetHeight) => {
     });
 };
 
+/**
+ * Medición de rescate para imágenes válidas cuyas cabeceras binarias
+ * no pudieron ser leídas de forma estándar (ej. formatos atípicos de app de cámara).
+ * Carga sólo los metadatos visuales sin dibujar la imagen a un canvas completo.
+ */
+const measureViaImageElement = (file) => {
+    return new Promise((resolve) => {
+        try {
+            if (typeof Image === "undefined" || !file || (Number.isFinite(file.size) && file.size < 100)) {
+                return resolve(null);
+            }
+            const url = URL.createObjectURL(file);
+            const img = new Image();
+            let cleaned = false;
+            const cleanup = () => {
+                if (!cleaned) {
+                    cleaned = true;
+                    URL.revokeObjectURL(url);
+                }
+            };
+            img.onload = () => {
+                const width = img.naturalWidth || img.width;
+                const height = img.naturalHeight || img.height;
+                cleanup();
+                if (width > 0 && height > 0) resolve({ width, height });
+                else resolve(null);
+            };
+            img.onerror = () => {
+                cleanup();
+                resolve(null);
+            };
+            img.src = url;
+        } catch {
+            resolve(null);
+        }
+    });
+};
+
 const isMemoryError = (error) => {
     const text = String(error?.name || "") + " " + String(error?.message || "");
     return /memory|memoria|allocat|RangeError|QuotaExceeded/i.test(text);
@@ -172,7 +261,7 @@ const buildDecodeError = (file, firstError, lastError) => {
     const name = String(file?.name || "").toLowerCase();
     let message;
     let reason;
-    if (/hei[cf]/.test(type) || /\.hei[cf]$/.test(name)) {
+    if (/hei[cf]/.test(type) || /\.hei[cf]$/.test(name) || firstError?.isHeic || lastError?.isHeic) {
         reason = "UNSUPPORTED_FORMAT";
         message = "Tu cámara guardó la foto en formato HEIC, que el navegador no puede leer. " +
             "En los ajustes de la cámara cambia el formato a JPG (\"Más compatible\") y vuelve a tomar la foto.";
@@ -205,9 +294,22 @@ export const compressImage = async (file, customOptions = {}) => {
     try {
         if (!file) throw new Error("No se proporcionó ningún archivo");
         checkAborted(signal);
-        const original = await getHeaderDimensions(file);
+        let original = null;
+        let isHeic = false;
+        try {
+            original = await getHeaderDimensions(file);
+        } catch (headerErr) {
+            if (headerErr?.isHeic) isHeic = true;
+        }
         checkAborted(signal);
-        if (!original && /hei[cf]/i.test(String(file.type) + String(file.name))) throw buildDecodeError(file, null, null);
+        if (!original && (isHeic || /hei[cf]/i.test(String(file.type) + String(file.name)))) {
+            throw buildDecodeError(file, { isHeic: true }, null);
+        }
+        if (!original) {
+            // Medición de rescate para fotos con cabeceras no convencionales
+            original = await measureViaImageElement(file);
+        }
+        checkAborted(signal);
         if (!original) throw new Error("No pudimos leer esta foto de forma segura. Utiliza una imagen JPEG, PNG o WebP con menor resolución.");
         if (typeof createImageBitmap !== "function" && typeof Image === "undefined") {
             throw new Error("Actualiza tu navegador para procesar fotografías de forma segura.");
