@@ -247,8 +247,8 @@ export function ImageUploadCard({
                     {image
                         ? "Tomar otra con Cámara"
                         : hasExistingImage
-                        ? "Actualizar con Cámara"
-                        : "Tomar Fotografía (Cámara en vivo)"}
+                            ? "Actualizar con Cámara"
+                            : "Tomar Fotografía"}
                 </Button>
 
                 {imagePreview && onResetImage && (
@@ -264,7 +264,7 @@ export function ImageUploadCard({
                 )}
 
                 {/* Alerta si el SO cerró la cámara por RAM */}
-                {(cameraRecoveryFailed || (hasError && !image)) && (
+                {cameraRecoveryFailed && (
                     <Alert
                         status="warning"
                         variant="subtle"

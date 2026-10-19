@@ -707,13 +707,16 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     }
 
     const activeDocNumber = quoteId || docNumber;
+    const clientDocDigits = String(client?.FederalTaxID || client?.clientDocument || client?.documentNumber || client?.LicTradNum || client?.CardCode || "").replace(/\D/g, "");
+    const effectiveDocType = String(documentType || "").trim() || (clientDocDigits.length === 11 ? "FACTURA" : "BOLETA");
+
     const finalTotals = {
       ...totals,
       grandTotal: totals?.grandTotalUSD || 0,
       contactPerson,
       refNumber,
       saleCondition,
-      documentType,
+      documentType: effectiveDocType,
       isLetra,
       creditTerm,
       whsCode: "014"
@@ -815,7 +818,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       contactPerson,
       refNumber,
       saleCondition,
-      documentType,
+      documentType: effectiveDocType,
       isLetra,
       creditTerm,
       docDate,
@@ -896,7 +899,10 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
           const persistedDoc = {
             ...newDoc,
             id: res?.id || assignedNumber,
-            docNumber: assignedNumber
+            docNumber: assignedNumber,
+            status: currentStatus,
+            state: currentStatus,
+            approvalStatus: currentStatus,
           };
           cleaned.unshift(persistedDoc);
           localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(cleaned));
