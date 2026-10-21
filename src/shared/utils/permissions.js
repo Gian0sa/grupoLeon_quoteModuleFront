@@ -35,16 +35,16 @@ export function useIsAdmin() {
   const role = useAuthStore((state) => state.role);
   const salesEmployeeCode = useAuthStore((state) => state.salesEmployeeCode);
 
+  const roleUpper = String(role || localStorage.getItem("role") || "").toUpperCase();
+  if (roleUpper === "ADMIN" || roleUpper === "ADMINISTRADOR" || roleUpper.startsWith("ADMIN")) {
+    return true;
+  }
+
   // 🛡️ Si el usuario tiene asignado un código de vendedor comercial en SAP (≠ 20 Oficina Admin),
   // es estrictamente un VENDEDOR, nunca administrador maestro
   const slpNum = Number(salesEmployeeCode);
   if (salesEmployeeCode && !isNaN(slpNum) && slpNum > 0 && slpNum !== 20) {
     return false;
-  }
-
-  const roleUpper = String(role || "").toUpperCase();
-  if (roleUpper === "ADMIN") {
-    return true;
   }
 
   return checkIsAdmin(endpoints, username);

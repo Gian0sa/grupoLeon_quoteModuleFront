@@ -54,6 +54,16 @@ const CancelledOrderModal = ({ isOpen, onClose, order }) => {
     montoUsd: order?.DocTotalUSD || 0,
   };
 
+  const orderCurrency = String(order?.MoneyDocument || order?.DocCurrency || "USD").toUpperCase();
+  const isUSD = orderCurrency === "USD";
+  const rawTotal = isUSD
+    ? Number(order?.DocTotalFc || order?.DocTotalUSD || (Number(order?.DocRate) > 0 ? Number(order?.DocTotal) / Number(order?.DocRate) : Number(order?.DocTotal)) || 0)
+    : Number(order?.DocTotal || order?.OrderAmount || order?.DocTotalUSD || 0);
+
+  const displayTotal = isUSD
+    ? `$${rawTotal.toFixed(2)} USD`
+    : `S/ ${rawTotal.toFixed(2)} SOL`;
+
   const clienteData = {
     nombre: order?.clientName || order?.CardName || "",
     codigo: order?.CardCode || "",
@@ -239,7 +249,7 @@ const CancelledOrderModal = ({ isOpen, onClose, order }) => {
               )}
             </Box>
 
-            {ordenData.montoUsd > 0 && (
+            {rawTotal > 0 && (
               <Box
                 bg={bgSection}
                 p={4}
@@ -252,7 +262,7 @@ const CancelledOrderModal = ({ isOpen, onClose, order }) => {
                     Monto total:
                   </Text>
                   <Text fontSize="lg" fontWeight="bold" color="red.600">
-                    ${ordenData.montoUsd.toFixed(2)} USD
+                    {displayTotal}
                   </Text>
                 </HStack>
               </Box>

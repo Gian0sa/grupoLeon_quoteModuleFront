@@ -35,6 +35,7 @@ export const HEADER_GLASS_PANEL_PROPS = {
 
 export function TopHeaderBanner({
   title,
+  titleExtra,
   subtitle,
   showBack = true,
   backTo = "/dashboard",
@@ -111,7 +112,7 @@ export function TopHeaderBanner({
         const statusUpper = (n.status || "").trim().toUpperCase();
         if (statusUpper === "EMITIDO" || statusUpper === "ANULADO" || statusUpper === "CANCELADO") return false;
         const titleLower = (n.title || "").toLowerCase();
-        if (titleLower.includes("orden sap") || titleLower.includes("pedido emitido") || titleLower.includes("cotización enviada a validación")) return false;
+        if (titleLower.includes("orden sap") || titleLower.includes("pedido emitido") || titleLower.includes("orden de venta") || titleLower.includes("orden emitida") || titleLower.includes("cotización enviada a validación")) return false;
         return true;
       } else {
         if (targetRoleUpper !== "VENDEDOR" && targetRoleUpper !== "SELLER") return false;
@@ -395,17 +396,20 @@ export function TopHeaderBanner({
           <Box w="full" maxW="100%" mb={children ? { base: 2.5, md: 3.5 } : 0}>
             <VStack align="start" spacing={0.5} maxW="100%">
               {title && (
-                <Text
-                  fontSize={{ base: "xl", sm: "2xl", md: "3xl", lg: "32px" }}
-                  fontWeight="800"
-                  color="white"
-                  letterSpacing="tight"
-                  lineHeight="1.2"
-                  maxW="100%"
-                  overflowWrap="anywhere"
-                >
-                  {title}
-                </Text>
+                <Flex align="center" gap={{ base: 2, md: 3 }} wrap="wrap">
+                  <Text
+                    fontSize={{ base: "xl", sm: "2xl", md: "3xl", lg: "32px" }}
+                    fontWeight="800"
+                    color="white"
+                    letterSpacing="tight"
+                    lineHeight="1.2"
+                    maxW="100%"
+                    overflowWrap="anywhere"
+                  >
+                    {title}
+                  </Text>
+                  {titleExtra}
+                </Flex>
               )}
               {subtitle && (
                 <Text

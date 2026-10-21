@@ -304,8 +304,41 @@ export const formatSunatOp = (sunatOp) => {
   return str;
 };
 
+export const SALES_PERSONS_MAP = {
+  1: { code: 1, prefix: "062", name: "Gerardo Phun" },
+  2: { code: 2, prefix: "432", name: "Carlos Paz" },
+  3: { code: 3, prefix: "535", name: "Wilson Ramirez" },
+  4: { code: 4, prefix: "005", name: "Guillermo Alcas" },
+  5: { code: 5, prefix: "439", name: "Rene Villanueva" },
+  6: { code: 6, prefix: "552", name: "Richard Talavera" },
+  7: { code: 7, prefix: "541", name: "Manuel Zapata" },
+  8: { code: 8, prefix: "520", name: "Benny Borja" },
+  9: { code: 9, prefix: "540", name: "Eric Acuña" },
+  10: { code: 10, prefix: "032", name: "Alberto Chamorro" },
+  11: { code: 11, prefix: "548", name: "Daniel Capuñay" },
+  12: { code: 12, prefix: "711", name: "Manuel Villalta" },
+  13: { code: 13, prefix: "727", name: "Pedro Pazos" },
+  14: { code: 14, prefix: "417", name: "Gleen Rodriguez" },
+  15: { code: 15, prefix: "723", name: "Arturo Jeri" },
+  16: { code: 16, prefix: "725", name: "Luis Perez" },
+  19: { code: 19, prefix: "719", name: "Rafael Nolasco" },
+  20: { code: 20, prefix: "001", name: "Ofic Administración" },
+  21: { code: 21, prefix: "551", name: "León Autos" },
+  30: { code: 30, prefix: "", name: "Eder Vargas" },
+  31: { code: 31, prefix: "", name: "Luis Espinar" },
+  33: { code: 33, prefix: "", name: "Julio Flores" },
+  34: { code: 34, prefix: "", name: "Willy Ambrosio" },
+  35: { code: 35, prefix: "", name: "Josepham Ruiz" },
+  40: { code: 40, prefix: "", name: "Roger Vasquez" },
+  41: { code: 41, prefix: "", name: "Sara Benavides" },
+  42: { code: 42, prefix: "", name: "Jaime Flores" },
+  43: { code: 43, prefix: "", name: "Ronald Lavado" },
+  46: { code: 46, prefix: "741", name: "Yordy Sosa" },
+  744: { code: 744, prefix: "", name: "usuario asdtest cambio" },
+};
+
 export const cleanSellerName = (seller) => {
-  if (!seller) return "Vendedor Autorizado";
+  if (!seller) return "001.Ofic Administración";
   const s = String(seller).trim();
   const upper = s.toUpperCase();
   if (
@@ -315,11 +348,93 @@ export const cleanSellerName = (seller) => {
     upper === "-1" ||
     upper === "0" ||
     upper === "NULL" ||
-    upper === "UNDEFINED"
+    upper === "UNDEFINED" ||
+    upper === "VENDEDOR AUTORIZADO" ||
+    upper === "VENDEDOR" ||
+    upper === "VENDEDOR SAP" ||
+    upper === "SIN VENDEDOR"
   ) {
-    return "Venta Directa / Mostrador";
+    return "001.Ofic Administración";
   }
   return s;
+};
+
+export const formatQuoteSellerName = (q, sellersList = []) => {
+  if (!q) return "001.Ofic Administración";
+  if (typeof q === "string") return cleanSellerName(q);
+
+  // 1. Extraer código de vendedor numérico (SlpCode, salesPersonCode, salesEmployeeCode)
+  const rawCode =
+    q.SlpCode ??
+    q.slpCode ??
+    q.salesPersonCode ??
+    q.SalesPersonCode ??
+    q.salesEmployeeCode ??
+    q.SalesEmployeeCode ??
+    q.sellerCode ??
+    q.totals?.SlpCode ??
+    q.totals?.slpCode ??
+    q.totals?.salesPersonCode ??
+    q.totals?.salesEmployeeCode;
+
+  const numCode = rawCode !== null && rawCode !== undefined && !isNaN(Number(rawCode)) ? Number(rawCode) : null;
+
+  // Si tiene código 20 (Oficina / Admin)
+  if (numCode === 20) {
+    return "001.Ofic Administración";
+  }
+
+  // Buscar por código en sellersList de SAP
+  if (numCode && numCode > 0 && Array.isArray(sellersList) && sellersList.length > 0) {
+    const found = sellersList.find(s => Number(s.SalesEmployeeCode ?? s.value ?? s.code) === numCode);
+    if (found?.label || found?.SalesEmployeeName) {
+      return cleanSellerName(found.label || found.SalesEmployeeName);
+    }
+  }
+
+  // Buscar por código en SALES_PERSONS_MAP estático
+  if (numCode && numCode > 0 && SALES_PERSONS_MAP[numCode]) {
+    const sp = SALES_PERSONS_MAP[numCode];
+    return sp.prefix ? `${sp.prefix}.${sp.name}` : sp.name;
+  }
+
+  // 2. Extraer nombre directo si no es genérico
+  const directName = String(q.sellerName || q.SlpName || q.salesPersonName || "").trim();
+  const isGeneric = !directName ||
+    /^(vendedor\s*autorizado|vendedor\s*sap|vendedor|sin\s*vendedor|no\s*asignado|ning[uú]n\s*empleado)$/i.test(directName);
+
+  if (directName && !isGeneric) {
+    return cleanSellerName(directName);
+  }
+
+  // 3. Buscar por creador (createdByUsername)
+  const creator = String(q.createdByUsername || q.user?.username || q.user || "").trim();
+  if (creator && !/^(vendedor|admin|root|null|undefined)$/i.test(creator)) {
+    if (Array.isArray(sellersList) && sellersList.length > 0) {
+      const cleanCreator = creator.toLowerCase();
+      const found = sellersList.find(s => {
+        const sName = String(s.label || s.SalesEmployeeName || "").toLowerCase();
+        return sName.includes(cleanCreator) || cleanCreator.includes(sName);
+      });
+      if (found?.label || found?.SalesEmployeeName) {
+        return cleanSellerName(found.label || found.SalesEmployeeName);
+      }
+    }
+    return cleanSellerName(creator);
+  }
+
+  // 4. Si el cliente tiene vendedor asignado en la entidad cliente
+  if (q.client?.SlpCode || q.client?.SalesPersonCode) {
+    const cSlp = Number(q.client.SlpCode || q.client.SalesPersonCode);
+    if (cSlp === 20) return "001.Ofic Administración";
+    if (cSlp && SALES_PERSONS_MAP[cSlp]) {
+      const sp = SALES_PERSONS_MAP[cSlp];
+      return sp.prefix ? `${sp.prefix}.${sp.name}` : sp.name;
+    }
+  }
+
+  // 5. Fallback oficial Autopartes
+  return "001.Ofic Administración";
 };
 
 export const cleanClientName = (q) => {
@@ -372,4 +487,73 @@ export const formatCheckBank = (val) => {
     return "—";
   }
   return clean;
+};
+
+/**
+ * Obtiene la fecha actual en la zona horaria oficial del negocio (Perú: America/Lima, UTC-5)
+ * en formato YYYY-MM-DD.
+ */
+export const getTodayPeruDateString = () => {
+  try {
+    return new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" });
+  } catch {
+    return new Date().toISOString().split("T")[0];
+  }
+};
+
+/**
+ * Obtiene la fecha representativa de un documento o cotización en formato YYYY-MM-DD
+ * respetando la zona horaria de Perú si viene como ISO timestamp.
+ */
+export const getQuoteDateString = (q) => {
+  if (!q) return "";
+  const rawDate = q.docDate || q.DocDate || q.createdAt || q.updatedAt || "";
+  if (!rawDate) return "";
+  const str = String(rawDate).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return str;
+  }
+  try {
+    const d = new Date(str);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString("en-CA", { timeZone: "America/Lima" });
+    }
+  } catch {}
+  return str.split("T")[0] || "";
+};
+
+/**
+ * Suma o resta días a una fecha en formato YYYY-MM-DD de forma exacta,
+ * manejando automáticamente meses de 31, 30, 28/29 días y años bisiestos.
+ */
+export const addDaysToDateString = (dateStr, days) => {
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return "";
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  const year = dt.getUTCFullYear();
+  const month = String(dt.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(dt.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+/**
+ * Formatea una fecha YYYY-MM-DD para visualización ejecutiva en español (Perú)
+ * Ej: "Lun, 19 oct 2026"
+ */
+export const formatDateDisplayPeru = (dateStr) => {
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr || "";
+  try {
+    const [y, m, d] = dateStr.split("-").map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+    return dt.toLocaleDateString("es-PE", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+  } catch {
+    return dateStr;
+  }
 };

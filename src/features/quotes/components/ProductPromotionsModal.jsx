@@ -46,6 +46,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useGetPromotions } from "../hooks/queries/quotesQueries";
 import { savePromotion, deletePromotion } from "../services/promotionService";
 import ItemAutocomplete from "./ItemAutocomplete";
+import { formatThousands } from "../../../shared/utils/quoteCalculator";
 
 // ── UTILIDADES DE FECHAS ──────────────────────────────────────────
 const getTodayIso = () => {
@@ -435,7 +436,7 @@ export function ProductPromotionsModal({ isOpen, onClose }) {
                             {selectedItem.name}
                           </Text>
                           <Text fontSize="xs" color="#166534" fontWeight="700" fontFamily="mono" mt={0.5}>
-                            SKU: {selectedItem.id || selectedItem.productCode} • P. Lista: ${Number(selectedItem.price || 0).toFixed(2)} USD
+                            SKU: {selectedItem.id || selectedItem.productCode} • P. Lista: ${formatThousands(selectedItem.price || 0)} USD
                           </Text>
                         </Box>
                         <Button

@@ -24,6 +24,7 @@ export function useAuthMutations() {
         userId: res.userId,
         username: res.username,
         salesEmployeeCode: res.salesEmployeeCode,
+        role: res.role,
         endpoints: res.endpoints,
       });
     },

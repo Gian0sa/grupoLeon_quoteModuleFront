@@ -7,8 +7,19 @@ import {
     getDeliveryForms,
     getWarehouses,
     getNotifications,
+    getSapStatusService,
 } from "../../services/quoteService"
 import { useQuery } from "@tanstack/react-query"
+
+export const useSapStatus = (options = {}) => {
+    return useQuery({
+        queryKey: ["sapStatus"],
+        queryFn: getSapStatusService,
+        staleTime: 30000,
+        refetchOnWindowFocus: true,
+        ...options,
+    });
+};
 
 export const useGetQuotes = (filters = {}) => {
     const query = useQuery({

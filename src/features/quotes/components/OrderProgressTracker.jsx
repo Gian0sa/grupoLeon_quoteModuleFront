@@ -25,6 +25,12 @@ import {
   Layers,
   Sparkles
 } from "lucide-react";
+import {
+  formatDeliveryForm,
+  formatTransportName,
+  formatDeliveryPoint,
+  isPickupInStoreForm,
+} from "../../../shared/utils/quoteLogisticsFormatters";
 
 /**
  * Línea de Tiempo en Tiempo Real de la Solicitud de Pedido (Diseño Imagen 1)
@@ -311,10 +317,12 @@ export function OrderChecklist({
   products = [],
   saleCondition = "CONTADO",
   creditTerm = "",
+  selectedDeliveryForm,
+  deliveryForm,
   selectedTransport,
+  transport,
   selectedPoint,
-  opNum,
-  paymentImg,
+  deliveryPoint,
   approvalStatus = "GENERADO",
 }) {
   const isDraft = !approvalStatus || ["GENERADO", "BORRADOR", "DRAFT", "draft"].includes(approvalStatus);
@@ -325,10 +333,45 @@ export function OrderChecklist({
   const hasClient = Boolean(client && (client.CardCode || client.CardName || client.name));
   const hasProducts = Boolean(Array.isArray(products) && products.length > 0);
   const hasConditions = Boolean(saleCondition && (creditTerm || saleCondition === "CONTADO"));
-  const hasTransport = Boolean(selectedTransport || selectedPoint || client?.Address || client?.address);
-  const hasPayment = Boolean(saleCondition === "CREDITO" || opNum || paymentImg);
 
-  // Lista de Pasos Estilo Flujo Oficial
+  const effectiveDeliveryForm = selectedDeliveryForm || deliveryForm;
+  const effectiveTransport = selectedTransport || transport;
+  const effectivePoint = selectedPoint || deliveryPoint;
+
+  const isPickup = isPickupInStoreForm(effectiveDeliveryForm);
+  const formattedForm = formatDeliveryForm(effectiveDeliveryForm);
+  const formattedTransport = formatTransportName(effectiveTransport, effectiveDeliveryForm);
+  const clientAddr = client?.Address || client?.address || "";
+  const formattedPoint = formatDeliveryPoint(effectivePoint, clientAddr);
+
+  const hasTransport = Boolean(
+    isPickup ||
+    (effectiveDeliveryForm && (effectiveTransport || effectivePoint || clientAddr)) ||
+    effectiveTransport ||
+    effectivePoint
+  );
+
+  let transportDetail = "Pendiente de configurar";
+  if (isPickup) {
+    transportDetail = "Recojo en Tienda • Almacén 014";
+  } else if (hasTransport) {
+    const parts = [];
+    if (formattedTransport && formattedTransport !== "Sin asignar / Por coordinar") {
+      parts.push(formattedTransport);
+    } else if (formattedForm && formattedForm !== "Despacho Regular") {
+      parts.push(formattedForm);
+    }
+
+    if (formattedPoint && formattedPoint !== "Dirección Principal" && formattedPoint !== "-") {
+      parts.push(`Destino: ${formattedPoint}`);
+    } else if (clientAddr) {
+      parts.push(`Destino: ${clientAddr}`);
+    }
+
+    transportDetail = parts.length > 0 ? parts.join(" • ") : (formattedForm || "Transporte y destino configurados");
+  }
+
+  // Lista de Pasos Estilo Flujo Oficial (7 pasos secuenciales)
   const steps = [
     {
       id: 1,
@@ -340,7 +383,7 @@ export function OrderChecklist({
       id: 2,
       label: "Solicitud de ofertas y selección de artículos",
       isDone: hasProducts,
-      detail: hasProducts ? `${products.length} artículos en cotización` : "Agregar artículos"
+      detail: hasProducts ? `${products.length} ${products.length === 1 ? 'artículo en cotización' : 'artículos en cotización'}` : "Agregar artículos"
     },
     {
       id: 3,
@@ -352,28 +395,22 @@ export function OrderChecklist({
       id: 4,
       label: "Preparación de pedido y logística de transporte",
       isDone: hasTransport,
-      detail: hasTransport ? "Transporte y destino configurados" : "Configurar agencia"
+      detail: hasTransport ? transportDetail : "Configurar agencia y destino"
     },
     {
       id: 5,
-      label: "Autorización de abono / comprobante de pago",
-      isDone: hasPayment,
-      detail: hasPayment ? (opNum ? `Operación: ${opNum}` : "Crédito aprobado") : "Ingresar comprobante o crédito"
-    },
-    {
-      id: 6,
       label: "Emisión y envío de solicitud de pedido",
       isDone: isSubmitted,
       detail: isSubmitted ? "Enviada a facturación" : "Pendiente de envío"
     },
     {
-      id: 7,
+      id: 6,
       label: "Revisión y validación por Facturación / Administración",
       isDone: isReviewedOrApproved,
       detail: isReviewedOrApproved ? "Control comercial aprobado" : "Pendiente de revisión"
     },
     {
-      id: 8,
+      id: 7,
       label: "Emisión de pedido oficial en SAP B1",
       isDone: isFullyEmitted,
       detail: isFullyEmitted ? "Orden de Venta emitida en SAP" : "Pendiente de emisión SAP"

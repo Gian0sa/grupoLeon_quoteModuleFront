@@ -12,7 +12,10 @@ import {
 
 const money = (val) => {
   const num = Number(val || 0);
-  return num.toFixed(2);
+  return num.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 };
 
 const extractProducts = (q) => {
@@ -48,10 +51,19 @@ const normalizeItem = (item) => {
   const promoDisc = Math.max(0, Math.min(100, isNaN(rawPromoDisc) ? 0 : rawPromoDisc));
   const addDisc = Math.max(0, Math.min(100, isNaN(rawAddDisc) ? 0 : rawAddDisc));
 
+  const isOutOfStock = Boolean(
+    item.isAgotado === true ||
+    (item.stockChecked && typeof item.stock === "number" && item.stock <= 0) ||
+    (item.stock !== undefined && item.stock !== null && Number(item.stock) === 0)
+  );
+
   let finalUnitPrice = 0;
   let lineTotalNum = 0;
 
-  if (item.discountedUnitPrice && Number(item.discountedUnitPrice) > 0) {
+  if (isOutOfStock) {
+    finalUnitPrice = 0;
+    lineTotalNum = 0;
+  } else if (item.discountedUnitPrice && Number(item.discountedUnitPrice) > 0) {
     finalUnitPrice = Number(Number(item.discountedUnitPrice).toFixed(2));
     lineTotalNum = item.lineTotal && Number(item.lineTotal) > 0
       ? Number(Number(item.lineTotal).toFixed(2))
@@ -87,6 +99,7 @@ const normalizeItem = (item) => {
     desc: `${baseName}${discTag}`.trim(),
     finalUnitPrice,
     lineTotalNum,
+    isOutOfStock,
   };
 };
 
@@ -530,8 +543,8 @@ export const QuotePdfDocument = React.forwardRef(({ quote, isPrintMode = false }
                     const itemNum = idx + 1;
                     const qty = item ? item.qty : "";
                     const name = item ? item.desc : "";
-                    const price = item && item.finalUnitPrice ? `${currencySymbol.trim()}${money(item.finalUnitPrice)}` : "";
-                    const lineTotal = item && item.lineTotalNum ? `${currencySymbol.trim()}${money(item.lineTotalNum)}` : "";
+                    const price = item && item.isOutOfStock ? "Sin Stock" : (item && item.finalUnitPrice ? `${currencySymbol.trim()}${money(item.finalUnitPrice)}` : "");
+                    const lineTotal = item && item.isOutOfStock ? "Back Order" : (item && item.lineTotalNum ? `${currencySymbol.trim()}${money(item.lineTotalNum)}` : "");
                     const descStyle = getItemDescStyle(name);
                     const priceStyle = getPriceStyle(price);
                     const lineTotalStyle = getPriceStyle(lineTotal);
@@ -585,8 +598,8 @@ export const QuotePdfDocument = React.forwardRef(({ quote, isPrintMode = false }
                     const itemNum = idx + 16;
                     const qty = item ? item.qty : "";
                     const name = item ? item.desc : "";
-                    const price = item && item.finalUnitPrice ? `${currencySymbol.trim()}${money(item.finalUnitPrice)}` : "";
-                    const lineTotal = item && item.lineTotalNum ? `${currencySymbol.trim()}${money(item.lineTotalNum)}` : "";
+                    const price = item && item.isOutOfStock ? "Sin Stock" : (item && item.finalUnitPrice ? `${currencySymbol.trim()}${money(item.finalUnitPrice)}` : "");
+                    const lineTotal = item && item.isOutOfStock ? "Back Order" : (item && item.lineTotalNum ? `${currencySymbol.trim()}${money(item.lineTotalNum)}` : "");
                     const descStyle = getItemDescStyle(name);
                     const priceStyle = getPriceStyle(price);
                     const lineTotalStyle = getPriceStyle(lineTotal);

@@ -21,6 +21,7 @@ import {
 import { Trash2, Plus, Minus, ArrowRight, ShoppingBag, Zap, CheckCircle2 } from "lucide-react";
 import { useQuoteStore } from "../stores/quoteStore";
 import { useNavigate } from "react-router-dom";
+import { formatThousands } from "../../../shared/utils/quoteCalculator";
 
 export function PreQuoteDrawer({ isOpen, onClose }) {
   const { products, updateProduct, removeProduct, getTotals, clear } = useQuoteStore();
@@ -193,10 +194,10 @@ export function PreQuoteDrawer({ isOpen, onClose }) {
                       {/* PRECIO UNITARIO Y TOTAL */}
                       <Box textAlign="right">
                         <Text fontSize="10px" color="gray.500">
-                          S/ {unitPrice.toFixed(2)} c/u
+                          S/ {formatThousands(unitPrice)} c/u
                         </Text>
                         <Text fontSize="xs" fontWeight="800" color="green.700">
-                          S/ {lineTotal.toFixed(2)}
+                          S/ {formatThousands(lineTotal)}
                         </Text>
                       </Box>
                     </Flex>
@@ -213,16 +214,16 @@ export function PreQuoteDrawer({ isOpen, onClose }) {
             <VStack w="full" spacing={1.5} align="stretch">
               <Flex justify="space-between" fontSize="xs" color="gray.600">
                 <Text>Subtotal (sin IGV):</Text>
-                <Text fontWeight="600">S/ {totals.subtotal.toFixed(2)}</Text>
+                <Text fontWeight="600">S/ {formatThousands(totals.subtotal)}</Text>
               </Flex>
               <Flex justify="space-between" fontSize="xs" color="gray.600">
                 <Text>IGV (18%):</Text>
-                <Text fontWeight="600">S/ {totals.taxTotal.toFixed(2)}</Text>
+                <Text fontWeight="600">S/ {formatThousands(totals.taxTotal)}</Text>
               </Flex>
               <Divider my={1} />
               <Flex justify="space-between" fontSize="md" fontWeight="800" color="gray.900">
                 <Text>Total Estimado:</Text>
-                <Text color="green.700">S/ {totals.docTotal.toFixed(2)}</Text>
+                <Text color="green.700">S/ {formatThousands(totals.docTotal)}</Text>
               </Flex>
             </VStack>
 

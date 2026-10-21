@@ -6,8 +6,8 @@ import { CAMERA_PENDING_KEY } from '../features/checkinout/utils/checkinSession'
 const LOCAL_STORAGE_KEY = 'autopartes_installed_build_time';
 const LOCAL_STORAGE_VERSION_KEY = 'autopartes_installed_version';
 const CHECK_INTERVAL_MS = 2.5 * 60 * 1000; // Verificación periódica cada 2.5 minutos
-// Pantallas donde recargar destruye trabajo que vive solo en memoria (foto recién tomada).
-const PROTECTED_PATHS = ['/visitlog'];
+// Pantallas donde recargar destruye trabajo que vive solo en memoria (foto recién tomada o cotización en redacción).
+const PROTECTED_PATHS = ['/visitlog', '/newquotes'];
 
 /**
  * Al volver de la cámara nativa el navegador dispara visibilitychange con la RAM al mínimo.

@@ -13,6 +13,7 @@ import { useHasAccess, useIsAdmin } from "../../../shared/utils/permissions";
 import { useGetPromotions } from "../hooks/queries/quotesQueries";
 import { ProductPromotionsModal } from "../components/ProductPromotionsModal";
 import { SapQuoteDocumentModal } from "../components/SapQuoteDocumentModal";
+import { SapEnvironmentBadge } from "../components/SapEnvironmentBadge";
 import { QuoteApprovalPage } from "./QuoteApprovalPage";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -124,6 +125,7 @@ export function HistoryQuotesPage() {
     <Box w="full" minH="100vh" bg="gray.50" pb="100px">
       <TopHeaderBanner
         title="Gestión de Cotizaciones"
+        titleExtra={<SapEnvironmentBadge />}
         subtitle={`Centro Unificado de Creación, Historial y Aprobaciones • ${today.charAt(0).toUpperCase() + today.slice(1)}`}
         showBack={true}
         showExchangeRate={false}

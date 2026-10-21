@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchPurchaseOrdersImportacion } from "../services/importService";
+import { fetchPurchaseOrdersImportacion, fetchBackOrderDemands } from "../services/importService";
 
 export function usePurchaseOrdersImportacion() {
   const { data, isLoading, error, refetch } = useQuery({
@@ -11,8 +11,6 @@ export function usePurchaseOrdersImportacion() {
     retryDelay: 1000,
     staleTime: 5 * 60 * 1000,
   });
-
-  console.log(data);
   
   return {
     dataPurchaseOrdersImportacion: data,
@@ -21,3 +19,23 @@ export function usePurchaseOrdersImportacion() {
     refetchPurchaseOrdersImportacion: refetch,
   };
 }
+
+export function useBackOrderDemands(filters = {}) {
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
+    queryKey: ['backOrderDemands', filters],
+    queryFn: () => fetchBackOrderDemands(filters),
+    enabled: true,
+    refetchOnWindowFocus: false,
+    retry: 1,
+    staleTime: 60 * 1000,
+  });
+
+  return {
+    backOrdersData: data,
+    isLoadingBackOrders: isLoading,
+    isFetchingBackOrders: isFetching,
+    errorBackOrders: error,
+    refetchBackOrders: refetch,
+  };
+}
+

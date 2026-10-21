@@ -23,6 +23,7 @@ import {
   useGetCompareOrderAndDeliveryNote,
   useGetDeliveryNoteByCode,
   useGetInvoiceByCode,
+  useGetOrderByCode,
   useGetSeguimientoAlmacen,
 } from "../hooks/queries/reportQueries";
 import {
@@ -75,8 +76,14 @@ export default function TrackingPage({ orden, data }) {
     if (!facturaId) return;
     setLoadingFactura(true);
     try {
-      const invoiceData = await getInvoiceByCode(facturaId);
-      const referenceCode = invoiceData?.numAtCard || invoiceData?.NumAtCard;
+      let referenceCode =
+        facturaDetalle?.numAtCard ||
+        facturaDetalle?.NumAtCard ||
+        facturas[0]?.numAtCard;
+      if (!referenceCode) {
+        const invoiceData = await getInvoiceByCode(facturaId);
+        referenceCode = invoiceData?.numAtCard || invoiceData?.NumAtCard;
+      }
       if (referenceCode) {
         await downloadInvoicePDFdirectly(referenceCode);
       } else {
@@ -84,7 +91,7 @@ export default function TrackingPage({ orden, data }) {
       }
     } catch (err) {
       console.error("Error al descargar factura:", err);
-      alert("No se pudo descargar la factura.");
+      alert(`No se pudo descargar la factura: ${err.message || "Error desconocido"}`);
     } finally {
       setLoadingFactura(false);
     }
@@ -98,14 +105,54 @@ export default function TrackingPage({ orden, data }) {
   const textBase = useColorModeValue("gray.800", "white");
   const pendingRowBg = useColorModeValue("amber.50", "orange.950");
 
+  // Extraer moneda y tipo de cambio oficial
+  const orderCurrency = String(
+    orden?.currency ||
+    orden?.MoneyDocument ||
+    orden?.DocCurrency ||
+    (orden?.totals?.grandTotalUSD ? "USD" : "USD")
+  ).toUpperCase();
+  const isUSD = orderCurrency === "USD";
+  const docRate = Number(orden?.DocRate || orden?.totals?.tc || 3.49);
+
+  // Extraer monto USD asegurando matemáticamente que nunca tome un monto en Soles (ej: 11,154.14) como USD
+  const extractUsdAmount = () => {
+    if (orden?.totals?.grandTotalUSD && Number(orden.totals.grandTotalUSD) > 0) {
+      return Number(orden.totals.grandTotalUSD);
+    }
+    if (orden?.DocTotalFc && Number(orden.DocTotalFc) > 0) {
+      return Number(orden.DocTotalFc);
+    }
+    if (orden?.DocTotalSys && Number(orden.DocTotalSys) > 0) {
+      return Number(orden.DocTotalSys);
+    }
+    const rawTotal = Number(orden?.DocTotal || orden?.OrderAmount || 0);
+    if (isUSD && rawTotal > 0) {
+      if (docRate > 1.2) {
+        return Number((rawTotal / docRate).toFixed(2));
+      }
+      return rawTotal;
+    }
+    if (orden?.DocTotalUSD && Number(orden.DocTotalUSD) > 0) {
+      const dUSD = Number(orden.DocTotalUSD);
+      if (rawTotal > 0 && Math.abs(dUSD - rawTotal) < 0.05 && docRate > 1.2) {
+        return Number((rawTotal / docRate).toFixed(2));
+      }
+      return dUSD;
+    }
+    return 0;
+  };
+
+  const calculatedUsd = extractUsdAmount();
+
   // Mapear datos de la orden
   const ordenData = {
-    id: orden?.DocEntry || orden?.orden?.id,
-    numero: orden?.DocNum || orden?.orden?.numero,
+    id: orden?.DocEntry || orden?.orden?.id || orden?.sapDocNum || orden?.DocNum,
+    numero: orden?.DocNum || orden?.orden?.numero || orden?.sapDocNum || orden?.docNumber,
     fechaCreacion: orden?.DocDate
       ? new Date(orden.DocDate + "T00:00:00").toLocaleDateString("es-ES")
-      : "",
-    montoUsd: orden?.DocTotalUSD || orden?.DocTotalUSD || 0,
+      : (orden?.docDate ? String(orden.docDate).split("T")[0] : ""),
+    montoUsd: calculatedUsd,
   };
 
   const clienteData = {
@@ -123,6 +170,7 @@ export default function TrackingPage({ orden, data }) {
     ? [
         {
           id: seguimientoData.DELIVERY_ENTRY,
+          docNum: seguimientoData.DELIVERY_DOC_NUM,
           fecha: new Date(seguimientoData.DELIVERY_DATE).toLocaleDateString(
             "es-ES"
           ),
@@ -134,6 +182,8 @@ export default function TrackingPage({ orden, data }) {
     ? [
         {
           id: seguimientoData.INVOICE_ENTRY,
+          numAtCard: seguimientoData.INVOICE_NUM_AT_CARD,
+          docNum: seguimientoData.INVOICE_DOC_NUM,
           fecha: new Date(seguimientoData.INVOICE_DATE).toLocaleDateString(
             "es-ES"
           ),
@@ -147,15 +197,38 @@ export default function TrackingPage({ orden, data }) {
   const entregaId = entregas[0]?.id;
   const facturaId = facturas[0]?.id;
 
+  const { data: orderDetail } = useGetOrderByCode(orderId, Boolean(orderId));
+
+  const resolvedCurrency = String(orderDetail?.currency || orderCurrency).toUpperCase();
+  const resolvedIsUSD = resolvedCurrency === "USD";
+
+  const resolvedOrderTotal = orderDetail?.total != null
+    ? Number(orderDetail.total)
+    : (resolvedIsUSD
+        ? (calculatedUsd > 0
+            ? calculatedUsd
+            : Number(orden?.totals?.grandTotalUSD || orden?.DocTotalFc || (docRate > 1.2 && Number(orden?.DocTotal) > 0 ? Number(orden.DocTotal) / docRate : orden?.DocTotalUSD) || 0))
+        : Number(orden?.totals?.grandTotalSOL || orden?.DocTotal || orden?.OrderAmount || 0));
+
+  const displayOrderTotal = resolvedOrderTotal > 0
+    ? (resolvedIsUSD
+        ? `$${resolvedOrderTotal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`
+        : `S/ ${resolvedOrderTotal.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SOL`)
+    : (ordenData?.montoUsd && resolvedIsUSD
+        ? `$${Number(ordenData.montoUsd).toFixed(2)} USD`
+        : (orden?.DocTotal
+            ? `S/ ${Number(orden.DocTotal).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SOL`
+            : "--"));
+
   const { data: comparisonData, isLoading } =
     useGetCompareOrderAndDeliveryNote(orderId, entregaId, {
       enabled: Boolean(orderId),
     });
 
-  const { data: entregaDetalle } =
+  const { data: entregaDetalle, isLoading: loadingEntregaDetalle } =
     useGetDeliveryNoteByCode(entregaId, Boolean(entregaId));
 
-  const { data: facturaDetalle } =
+  const { data: facturaDetalle, isLoading: loadingFacturaDetalle } =
     useGetInvoiceByCode(facturaId, Boolean(facturaId));
 
   // Paso 4: salida física desde almacén (SAP no la registra; la registra el WMS)
@@ -315,11 +388,7 @@ export default function TrackingPage({ orden, data }) {
                   Monto total de orden:
                 </Text>
                 <Text fontSize="14px" fontWeight="800" color="gray.800">
-                  {ordenData?.montoUsd
-                    ? `$${Number(ordenData.montoUsd).toFixed(2)} USD`
-                    : orden?.ordenData?.total
-                    ? `$${Number(orden.ordenData.total).toFixed(2)} USD`
-                    : "--"}
+                  {displayOrderTotal}
                 </Text>
               </Flex>
             </Box>
@@ -351,7 +420,13 @@ export default function TrackingPage({ orden, data }) {
                     <Flex justify="space-between" align="center">
                       <Text fontSize="13px" color="gray.600">N° de Entrega (Guía):</Text>
                       <Badge colorScheme="green" fontSize="12.5px" px={2.5} py={0.5} borderRadius="md" fontWeight="800">
-                        #{entregaDetalle?.docNum || e.id}
+                        {entregaDetalle?.docNum 
+                          ? `#${entregaDetalle.docNum}` 
+                          : e.docNum 
+                          ? `#${e.docNum}` 
+                          : loadingEntregaDetalle 
+                          ? <Spinner size="xs" color="green.600" /> 
+                          : `#${e.id}`}
                       </Badge>
                     </Flex>
                     <Flex justify="space-between" align="center">
@@ -408,7 +483,12 @@ export default function TrackingPage({ orden, data }) {
                     <Flex justify="space-between" align="center">
                       <Text fontSize="13px" color="gray.600">N° Factura:</Text>
                       <Badge colorScheme="purple" fontSize="12.5px" px={2.5} py={0.5} borderRadius="md" fontWeight="800">
-                        {facturaDetalle?.numAtCard || (facturaDetalle?.docNum ? `#${facturaDetalle.docNum}` : `#${f.id}`)}
+                        {facturaDetalle?.numAtCard 
+                          ? facturaDetalle.numAtCard 
+                          : f.numAtCard 
+                          ? f.numAtCard 
+                          : (facturaDetalle?.docNum ? `#${facturaDetalle.docNum}` : f.docNum ? `#${f.docNum}` : null) 
+                          || (loadingFacturaDetalle ? <Spinner size="xs" color="purple.600" /> : `#${f.id}`)}
                       </Badge>
                     </Flex>
                     <Flex justify="space-between" align="center">

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef } from "react";
 import { Box, Text, HStack, Badge, Flex } from "@chakra-ui/react";
 import Select from "react-select";
 import { useProductsPriceList } from "../../products/hooks/queries/productQueries";
@@ -6,7 +6,7 @@ import { useGetPromotions } from "../hooks/queries/quotesQueries";
 import { useDebounce } from "../../../shared/hooks/useDebounce";
 
 const MIN_CHARS = 2;
-const DEBOUNCE_MS = 450;
+const DEBOUNCE_MS = 200;
 
 /** Un término que contiene dígitos o guiones se evalúa con búsqueda inteligente de código y nombre. */
 function isLikelyItemCode(term) {
@@ -25,30 +25,62 @@ function normalizeString(str) {
 
 /**
  * Autocompletado inteligente de artículos contra SAP con soporte para Ofertas del Mes.
+ * Incluye búsqueda instantánea al presionar Enter o pegar, y debounce ágil de 200ms.
  */
 export default function ItemAutocomplete({ onSelect, isDisabled = false, placeholder }) {
   const [inputValue, setInputValue] = useState("");
+  const [immediateTerm, setImmediateTerm] = useState("");
   const debouncedTerm = useDebounce(inputValue, DEBOUNCE_MS);
   const { promotionsMap } = useGetPromotions();
+  const selectRef = useRef(null);
 
-  const term = debouncedTerm.trim();
+  // El término activo es inmediato (Enter/Pegar) o por debounce ágil (200ms)
+  const term = (immediateTerm || debouncedTerm).trim();
   const shouldSearch = term.length >= MIN_CHARS;
-  const asCode = isLikelyItemCode(term);
 
   const { data, isFetching } = useProductsPriceList({
-    itemCode: asCode ? term : term,
-    itemName: asCode ? term : term,
+    itemCode: term,
+    itemName: term,
+    stock: "N",
     enabled: shouldSearch,
   });
 
   const handleInputChange = (newVal, actionMeta) => {
-    // Solo actualizar el término cuando el usuario está escribiendo o limpiando explícitamente
     if (actionMeta.action === "input-change") {
-      setInputValue(newVal);
+      setImmediateTerm("");
+      setInputValue(newVal.replace(/[\r\n\t]+/g, " "));
     } else if (actionMeta.action === "clear") {
+      setImmediateTerm("");
       setInputValue("");
     }
-    // Ignoramos "input-blur" y "menu-close" para que al tocar otra parte de la pantalla (móvil) NO se borre la búsqueda
+  };
+
+  const handlePaste = (e) => {
+    // ⚡ Soporta pegar desde cualquier SO (Ctrl+V, Cmd+V o Clic derecho) y busca INMEDIATAMENTE (0ms)
+    const pastedText = e.clipboardData?.getData("text");
+    if (pastedText) {
+      e.preventDefault();
+      const clean = pastedText.replace(/[\r\n\t]+/g, " ").trim();
+      setInputValue(clean);
+      setImmediateTerm(clean);
+      if (selectRef.current) {
+        selectRef.current.focus();
+      }
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    // ⚡ Si el usuario presiona Enter, dispara la consulta de inmediato sin esperar el debounce
+    if (e.key === "Enter" && inputValue.trim().length >= MIN_CHARS) {
+      setImmediateTerm(inputValue.trim());
+    }
+  };
+
+  const handleContextMenu = () => {
+    // Asegurar foco nativo en el input al hacer clic derecho para desplegar el menú de edición (Pegar/Copiar)
+    if (selectRef.current) {
+      selectRef.current.focus();
+    }
   };
 
   const options = useMemo(() => {
@@ -95,6 +127,7 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
 
   const handleChange = (option, actionMeta) => {
     if (actionMeta?.action === "clear") {
+      setImmediateTerm("");
       setInputValue("");
       return;
     }
@@ -128,6 +161,7 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
       raw: r,
     });
 
+    setImmediateTerm("");
     setInputValue("");
   };
 
@@ -138,10 +172,16 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
   };
 
   return (
-    <Box w="full">
+    <Box
+      w="full"
+      onPaste={handlePaste}
+      onContextMenu={handleContextMenu}
+    >
       <Select
+        ref={selectRef}
         inputValue={inputValue}
         onInputChange={handleInputChange}
+        onKeyDown={handleKeyDown}
         onBlurResetsInput={false}
         closeMenuOnSelect={true}
         openMenuOnClick={true}
@@ -198,17 +238,26 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
             borderColor: "#cbd5e1",
             boxShadow: "none",
             "&:hover": { borderColor: "#10b981" },
+            cursor: "text",
           }),
           valueContainer: (base) => ({
             ...base,
             height: "38px",
             padding: "0 8px",
+            cursor: "text",
           }),
           input: (base) => ({
             ...base,
             margin: "0px",
             padding: "0px",
-            fontSize: "0.8rem",
+            color: "#1e293b",
+            fontSize: "0.85rem",
+            fontWeight: "600",
+            "& input": {
+              color: "#1e293b !important",
+              fontFamily: "inherit",
+              cursor: "text !important",
+            },
           }),
           placeholder: (base) => ({
             ...base,
@@ -218,6 +267,8 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
             textOverflow: "ellipsis",
             color: "#64748b",
             margin: 0,
+            pointerEvents: "none",
+            userSelect: "none",
           }),
           indicatorsContainer: (base) => ({
             ...base,

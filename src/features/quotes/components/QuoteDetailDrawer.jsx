@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   Drawer,
   DrawerOverlay,
@@ -54,6 +54,7 @@ import {
   FileText,
   User,
   Clock,
+  Eye,
   CheckCircle2,
   XCircle,
   AlertTriangle,
@@ -80,6 +81,7 @@ import {
   Truck,
   Receipt,
   Package,
+  Unlock,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useQuoteStore } from "../stores/quoteStore";
@@ -87,7 +89,8 @@ import { RejectReasonModal } from "./RejectReasonModal";
 import { ObserveReasonModal } from "./ObserveReasonModal";
 import QuotePdfModal from "./QuotePdfModal";
 import { SapPayloadJsonModal } from "./SapPayloadJsonModal";
-import { calculateQuoteTotals } from "../../../shared/utils/quoteCalculator";
+import { resolveUserProfileTitle, acquireQuoteLock, releaseQuoteLock, checkQuoteLock, forceUnlockQuote } from "../services/quoteLockService";
+import { calculateQuoteTotals, formatThousands } from "../../../shared/utils/quoteCalculator";
 import { useAuthStore } from "../../../features/auth/stores/useAuthStore";
 import { useGetQuoteById } from "../hooks/queries/quotesQueries";
 import { useQueryClient } from "@tanstack/react-query";
@@ -101,14 +104,26 @@ import {
   formatPaymentTerms,
   formatSunatOp,
   cleanSellerName,
+  formatQuoteSellerName,
   cleanClientName
 } from "../../../shared/utils/quoteLogisticsFormatters";
+import { useSellersData } from "../../auth/hooks/queries/authQueries";
+import { updateQuote } from "../services/quoteService";
 
 export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDeleteQuote }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { data: sellersResponse } = useSellersData();
+  const sellersList = useMemo(() => {
+    if (!sellersResponse) return [];
+    if (Array.isArray(sellersResponse)) return sellersResponse;
+    if (Array.isArray(sellersResponse.sellers)) return sellersResponse.sellers;
+    if (Array.isArray(sellersResponse.data)) return sellersResponse.data;
+    return [];
+  }, [sellersResponse]);
   const { username: authUsername, role: authRole, salesEmployeeCode: authSalesCode } = useAuthStore();
   const isAdminHook = useIsAdmin();
+  const hasAccess = useHasAccess();
   const isSellerUser = Boolean(authSalesCode && Number(authSalesCode) > 0 && Number(authSalesCode) !== 20);
   const isAdminUser =
     !isSellerUser && (
@@ -119,6 +134,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
       hasAccess("POST /quotes/approval") ||
       hasAccess("POST /quotations/approve")
     );
+  const isRealAdmin = Boolean(isAdminHook || (!isSellerUser && String(authRole).toUpperCase() === "ADMIN"));
   const activeRole = isAdminUser ? "ADMIN" : "SELLER";
   const adminUsername = authUsername || "Administrador";
 
@@ -461,16 +477,100 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
     };
   }, [isOpen, stockCodesKey]);
 
+  const status = effectiveQuote?.approvalStatus || effectiveQuote?.state || effectiveQuote?.status || quote?.approvalStatus || quote?.status || "GENERADO";
+  const products = effectiveQuote?.products || effectiveQuote?.items || [];
+
+  const lockedQuoteIdRef = React.useRef(null);
+  const [drawerLockCheck, setDrawerLockCheck] = React.useState(() =>
+    checkQuoteLock(quoteId, useAuthStore.getState().userId, authUsername)
+  );
+
+  React.useEffect(() => {
+    const updateLock = () => {
+      setDrawerLockCheck(checkQuoteLock(quoteId, useAuthStore.getState().userId, authUsername));
+    };
+    updateLock();
+    window.addEventListener("quoteLocksUpdated", updateLock);
+    return () => window.removeEventListener("quoteLocksUpdated", updateLock);
+  }, [quoteId, authUsername]);
+
+  // Concurrencia de Digitación: Adquirir candado de revisión activa SOLO si quien lo abre es evaluador administrativo
+  React.useEffect(() => {
+    const isPendingDoc = status === "ENVIADO" || status === "EN_PROCESO" || status === "PENDIENTE_APROBACION" || status === "PENDIENTE_FACTURACION";
+    const secId = quote?.id && String(quote.id) !== String(quoteId) ? quote.id : null;
+
+    if (isOpen && quoteId && isAdminUser && isPendingDoc) {
+      if (lockedQuoteIdRef.current !== quoteId) {
+        acquireQuoteLock(quoteId, {
+          id: useAuthStore.getState().userId,
+          username: authUsername,
+          role: authRole,
+          endpoints: useAuthStore.getState().endpoints,
+          salesEmployeeCode: authSalesCode,
+          isAdmin: isAdminUser
+        }, secId);
+        lockedQuoteIdRef.current = quoteId;
+        setDrawerLockCheck(checkQuoteLock(quoteId, useAuthStore.getState().userId, authUsername));
+      }
+
+      const handleBeforeUnload = () => {
+        if (lockedQuoteIdRef.current) {
+          releaseQuoteLock(lockedQuoteIdRef.current, useAuthStore.getState().userId, secId);
+          lockedQuoteIdRef.current = null;
+        }
+      };
+      window.addEventListener("beforeunload", handleBeforeUnload);
+
+      return () => {
+        window.removeEventListener("beforeunload", handleBeforeUnload);
+        if (lockedQuoteIdRef.current) {
+          releaseQuoteLock(lockedQuoteIdRef.current, useAuthStore.getState().userId, secId);
+          lockedQuoteIdRef.current = null;
+        }
+      };
+    } else if (!isOpen && lockedQuoteIdRef.current) {
+      releaseQuoteLock(lockedQuoteIdRef.current, useAuthStore.getState().userId, secId);
+      lockedQuoteIdRef.current = null;
+    }
+  }, [isOpen, quoteId, isAdminUser, status, authUsername, authRole, authSalesCode]);
+
+  // Registro de primera visualización por parte de Administración
+  const hasMarkedViewRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!isOpen) {
+      hasMarkedViewRef.current = false;
+      return;
+    }
+    if (isAdminUser && quoteId && !hasMarkedViewRef.current && effectiveQuote && !effectiveQuote.viewedByAdmin && !effectiveQuote.totals?.viewedByAdmin) {
+      hasMarkedViewRef.current = true;
+      const nowIso = new Date().toISOString();
+      const viewer = authUsername || "Administrador";
+      const docKey = effectiveQuote.docNumber || quoteId;
+      const currentLogs = Array.isArray(effectiveQuote.historyLog) ? effectiveQuote.historyLog : [];
+      const newLog = { status: "VISTO", timestamp: nowIso, user: viewer, note: `👁️ Solicitud abierta y leída por ${viewer}` };
+
+      axiosInstance.put(`/quoteModule/quotes/${docKey}`, {
+        id: effectiveQuote.id,
+        docNumber: effectiveQuote.docNumber || quoteId,
+        viewedByAdmin: true,
+        viewedAt: nowIso,
+        historyLog: [newLog, ...currentLogs]
+      }).then(() => {
+        queryClient.invalidateQueries({ queryKey: ["quotes"] });
+      }).catch(() => {});
+    }
+  }, [isOpen, quoteId, isAdminUser, effectiveQuote, authUsername, queryClient]);
+
   if (!effectiveQuote) return null;
 
   const client = effectiveQuote.client || {};
   const clientName = cleanClientName(effectiveQuote);
   const clientRuc = effectiveQuote.clientRuc || effectiveQuote.clientDocument || client.LicTradNum || client.FederalTaxID || client.clientRuc || client.CardCode || "—";
   const clientAddress = effectiveQuote.clientAddress || client.Address || client.address || "—";
-  const sellerName = cleanSellerName(effectiveQuote.sellerName || effectiveQuote.SlpName || effectiveQuote.createdByUsername);
-  const products = effectiveQuote.products || effectiveQuote.items || [];
-  const status = effectiveQuote.approvalStatus || effectiveQuote.state || effectiveQuote.status || "GENERADO";
+  const sellerName = formatQuoteSellerName(effectiveQuote, sellersList);
   const isApprovedQuote = ["APROBADO", "APROBADO_COMERCIAL", "EMITIDO", "EMITIDO_SAP", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO"].includes(String(status).toUpperCase());
+  const isPendingQuote = ["ENVIADO", "PENDIENTE_APROBACION", "EN_PROCESO", "PENDIENTE_FACTURACION"].includes(String(status).toUpperCase());
+  const isDrawerLockedByOther = Boolean(drawerLockCheck.isLocked);
 
   const getItemStockInfo = (item) => {
     const codeKey = String(item.itemCode || item.code || item.productCode || item.id || "").trim().toUpperCase();
@@ -489,10 +589,134 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
     };
   };
   
-  // Mapear historial
-  const historyLog = effectiveQuote.historyLog || [
-    { status: "GENERADO", timestamp: effectiveQuote.createdAt || new Date().toISOString(), user: sellerName, note: "Cotización creada en aplicativo" }
-  ];
+  // Helper seguro para formatear fechas de auditoría/logs
+  const formatLogTime = React.useCallback((ts) => {
+    if (!ts) return "—";
+    try {
+      const d = new Date(ts);
+      if (isNaN(d.getTime())) return String(ts);
+      return d.toLocaleString("es-PE", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true
+      });
+    } catch {
+      return String(ts);
+    }
+  }, []);
+
+  // Mapear historial y asegurar que siempre exista una línea de tiempo visible
+  const historyLog = React.useMemo(() => {
+    let raw = effectiveQuote.historyLog;
+    if (typeof raw === "string") {
+      try {
+        raw = JSON.parse(raw);
+      } catch {
+        raw = [];
+      }
+    }
+
+    let logs = Array.isArray(raw) ? [...raw] : [];
+
+    // Si no existen logs en BD (ej. cotizaciones históricas o sincronizadas directas de SAP),
+    // reconstruir el ciclo de vida del documento a partir de los datos registrados
+    if (logs.length === 0) {
+      const createdTime = effectiveQuote.createdAt || (effectiveQuote.docDate ? `${effectiveQuote.docDate}T09:00:00.000Z` : new Date().toISOString());
+      logs.push({
+        status: "GENERADO",
+        timestamp: createdTime,
+        user: sellerName || "Vendedor",
+        note: "Cotización registrada en aplicativo"
+      });
+
+      const currentRawStatus = String(effectiveQuote.approvalStatus || effectiveQuote.status || effectiveQuote.state || "").toUpperCase().trim();
+
+      if (currentRawStatus !== "BORRADOR" && currentRawStatus !== "DRAFT") {
+        logs.push({
+          status: "ENVIADO",
+          timestamp: effectiveQuote.sentAt || createdTime,
+          user: sellerName || "Vendedor",
+          note: "Cotización enviada a evaluación comercial"
+        });
+      }
+
+      if (effectiveQuote.viewedByAdmin || effectiveQuote.viewedAt || effectiveQuote.totals?.viewedByAdmin) {
+        logs.push({
+          status: "VISTO",
+          timestamp: effectiveQuote.viewedAt || effectiveQuote.lastViewedAt || createdTime,
+          user: effectiveQuote.evaluatedBy || "Administración",
+          note: "👁️ Solicitud abierta y leída por Administración"
+        });
+      }
+
+      if (effectiveQuote.rejectionReason || currentRawStatus === "OBSERVADO" || currentRawStatus === "RECHAZADO" || currentRawStatus === "EN_EDICION") {
+        logs.push({
+          status: currentRawStatus === "RECHAZADO" ? "RECHAZADO" : "OBSERVADO",
+          timestamp: effectiveQuote.observedAt || effectiveQuote.evaluatedAt || effectiveQuote.updatedAt || createdTime,
+          user: effectiveQuote.evaluatedBy || "Administrador",
+          note: effectiveQuote.rejectionReason
+            ? `⚠️ Observación: ${effectiveQuote.rejectionReason}`
+            : "Cotización observada para corrección"
+        });
+      }
+
+      if (["APROBADO", "APROBADO_COMERCIAL", "EMITIDO", "EMITIDO_SAP", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO"].includes(currentRawStatus) || effectiveQuote.approvedBy || effectiveQuote.sapDocNum || effectiveQuote.DocNum) {
+        logs.push({
+          status: "APROBADO",
+          timestamp: effectiveQuote.approvedAt || effectiveQuote.evaluatedAt || effectiveQuote.updatedAt || createdTime,
+          user: effectiveQuote.approvedBy || effectiveQuote.evaluatedBy || "Administración",
+          note: "Aprobada por administración"
+        });
+      }
+
+      const sapNum = effectiveQuote.sapDocNum || (effectiveQuote.isSapDirect ? (effectiveQuote.DocNum || effectiveQuote.docNumber) : null);
+      if (sapNum && !["BORRADOR", "ENVIADO", "OBSERVADO", "RECHAZADO"].includes(currentRawStatus)) {
+        logs.push({
+          status: "EMITIDO",
+          timestamp: effectiveQuote.sapSyncDate || effectiveQuote.updatedAt || createdTime,
+          user: "SAP Service Layer",
+          note: `✅ Emitida en SAP Business One (DocNum: #${sapNum})`
+        });
+      }
+    }
+
+    return logs.map((item, index) => {
+      let ts = item.timestamp || item.date || item.createdAt;
+      return {
+        id: item.id || index,
+        status: String(item.status || "EVENTO").toUpperCase(),
+        timestamp: ts,
+        user: item.user || item.username || item.author || "Sistema",
+        note: item.note || item.comment || item.message || item.description || "Actualización de cotización"
+      };
+    });
+  }, [
+    effectiveQuote.historyLog,
+    effectiveQuote.createdAt,
+    effectiveQuote.sentAt,
+    effectiveQuote.viewedByAdmin,
+    effectiveQuote.viewedAt,
+    effectiveQuote.lastViewedAt,
+    effectiveQuote.approvalStatus,
+    effectiveQuote.status,
+    effectiveQuote.state,
+    effectiveQuote.rejectionReason,
+    effectiveQuote.observedAt,
+    effectiveQuote.evaluatedAt,
+    effectiveQuote.approvedAt,
+    effectiveQuote.approvedBy,
+    effectiveQuote.evaluatedBy,
+    effectiveQuote.updatedAt,
+    effectiveQuote.sapDocNum,
+    effectiveQuote.DocNum,
+    effectiveQuote.docDate,
+    effectiveQuote.isSapDirect,
+    effectiveQuote.docNumber,
+    sellerName
+  ]);
 
   // Calcular Totales unificados con calculadora global
   const tcVal = Number(effectiveQuote.totals?.tc || effectiveQuote.totals?.exchangeRate || effectiveQuote.exchangeRate) || 3.76;
@@ -643,8 +867,8 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
           titleColor: "emerald.900",
           iconColor: "emerald.600",
           icon: CheckCircle2,
-          title: "Pedido Emitido Oficial en SAP ✓",
-          subtitle: "ETAPA FINAL: PEDIDO EMITIDO EN SAP B1",
+          title: "Orden de Venta Emitida en SAP ✓",
+          subtitle: "ETAPA FINAL: ORDEN DE VENTA EMITIDA EN SAP B1",
           desc: `Orden de venta procesada y registrada en SAP Business One con DocNum: #${effectiveQuote.sapDocNum || effectiveQuote.DocNum || "—"}.`,
           subdesc: "Documento oficial generado exitosamente en el sistema central.",
           timeInStage: "Emitido en SAP"
@@ -788,7 +1012,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
     const nextStatus = isCommercial ? "APROBADO_COMERCIAL" : "APROBADO";
     const note = isCommercial 
       ? `Aprobado Comercial por ${adminUsername || "Admin"}` 
-      : `Pedido Aprobado y Concluido por ${adminUsername || "Facturación"}`;
+      : `Orden de Venta Aprobada y Concluida por ${adminUsername || "Facturación"}`;
 
     if (onUpdateStatus) {
       onUpdateStatus(quote.id || quote.docNumber, nextStatus, note);
@@ -804,10 +1028,10 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
       fromUsername: adminUsername || "admin", // ← del admin logueado
       quoteId: quote.docNumber || quote.id,
       quoteObj: { ...quote, approvalStatus: nextStatus, status: nextStatus },
-      title: isCommercial ? `📢 Cotización Aprobada por Administrador` : `✅ Pedido Aprobado (Aplicativo)`,
+      title: isCommercial ? `📢 Cotización Aprobada por Administrador` : `✅ Orden Aprobada (Aplicativo)`,
       description: isCommercial 
         ? `Cotización ${quote.docNumber || quote.id} aprobada y validada por el administrador. Lista para atención.`
-        : `El pedido ${quote.docNumber || quote.id} fue aprobado y concluido exitosamente en el aplicativo. Listo para sincronizar con SAP.`,
+        : `La orden ${quote.docNumber || quote.id} fue aprobada y concluida exitosamente en el aplicativo. Lista para sincronizar con SAP.`,
       status: nextStatus,
       createdAt: new Date().toISOString(),
       timestamp: new Date().toISOString(),
@@ -817,10 +1041,10 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
     window.dispatchEvent(new Event("localNotificationsUpdated"));
 
     toast({
-      title: isCommercial ? "✅ Cotización Aprobada" : "✅ Pedido Aprobado",
+      title: isCommercial ? "✅ Cotización Aprobada" : "✅ Orden Aprobada",
       description: isCommercial 
         ? `Se validó y aprobó la cotización del vendedor ${sellerUsername || ""}.`
-        : `Cotización aprobada y concluida con éxito. Lista para enviar a SAP cuando desees.`,
+        : `Cotización aprobada y concluida como orden con éxito. Lista para enviar a SAP cuando desees.`,
       status: "success",
       duration: 4000,
       isClosable: true,
@@ -1093,7 +1317,16 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         contactPerson: effectiveQuote.contactPerson || effectiveQuote.totals?.contactPerson || effectiveQuote.ContactPerson || null,
         whsCode: effectiveQuote.whsCode || effectiveQuote.totals?.whsCode || "014",
         observations: effectiveQuote.observations || effectiveQuote.totals?.observations || null,
-        products: sanitizedProducts,
+        products: sanitizedProducts.filter(p => {
+          const isAgotado = p.isAgotado === true || p.isAgotado === 1 || p.isAgotado === "true" || p.isAgotado === "Y";
+          const stk = p.stock !== undefined && p.stock !== null ? Number(p.stock) : (p.stockChecked ? 0 : 1);
+          return !isAgotado && stk > 0;
+        }),
+        backOrderProducts: sanitizedProducts.filter(p => {
+          const isAgotado = p.isAgotado === true || p.isAgotado === 1 || p.isAgotado === "true" || p.isAgotado === "Y";
+          const stk = p.stock !== undefined && p.stock !== null ? Number(p.stock) : (p.stockChecked ? 0 : 1);
+          return isAgotado || stk <= 0;
+        }),
         comment: (() => {
           const raw = [
             effectiveQuote.comment,
@@ -1171,28 +1404,89 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
       });
       setIsSapSuccessModalOpen(true);
 
-      // ─── Post-Emisión Oficial a SAP: Purgar de localStorage y de la tabla de aprobaciones ───
+      // ─── Post-Emisión Oficial a SAP: Purgar de localStorage y sincronizar estado oficial en backend ───
       if (sapDocNum) {
         const targetDocNum = String(quotePayload.docNumber || effectiveQuote.docNumber || "");
         const targetId = String(quotePayload.id || effectiveQuote.id || "");
+        const officialDocNumber = `COT-${String(sapDocNum).padStart(6, "0")}`;
 
         try {
           const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
           const updatedSaved = saved.filter(q => {
             const qDoc = String(q.docNumber || "");
             const qId = String(q.id || "");
-            return qDoc !== targetDocNum && qId !== targetId && qDoc !== targetId && qId !== targetDocNum;
+            return qDoc !== targetDocNum && qId !== targetId && qDoc !== targetId && qId !== targetDocNum && qDoc !== officialDocNumber && qId !== officialDocNumber;
           });
           localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updatedSaved));
           window.dispatchEvent(new Event("localQuotesUpdated"));
         } catch (e) {}
+
+        // Sincronizar en Backend con estado oficial EMITIDO y sapDocNum
+        try {
+          await updateQuote({
+            ...effectiveQuote,
+            ...quotePayload,
+            id: officialDocNumber,
+            docNumber: officialDocNumber,
+            originalDocNumber: (targetDocNum && targetDocNum !== officialDocNumber) ? targetDocNum : undefined,
+            state: "EMITIDO",
+            status: "EMITIDO",
+            approvalStatus: "EMITIDO",
+            sapDocNum: Number(sapDocNum),
+            DocNum: Number(sapDocNum),
+            DocEntry: Number(sapDocEntry),
+            isSapDirect: true,
+          });
+        } catch (e) {
+          console.warn("⚠️ Aviso sincronizando estado emitido en servidor:", e.message);
+        }
+
+        // Notificar en tiempo real al Asesor de Ventas
+        try {
+          const sellerUsername = quotePayload.sellerName || quotePayload.createdByUsername || effectiveQuote.sellerName;
+          const nowIso = new Date().toISOString();
+          const existingNotifs = JSON.parse(localStorage.getItem("grupoLeon_notifications") || "[]");
+          const newNotif = {
+            id: `NOTIF-${Date.now()}`,
+            targetRole: "VENDEDOR",
+            targetUsername: sellerUsername,
+            fromUsername: adminUsername || "Administrador",
+            quoteId: officialDocNumber,
+            quoteObj: {
+              ...effectiveQuote,
+              ...quotePayload,
+              docNumber: officialDocNumber,
+              state: "EMITIDO",
+              status: "EMITIDO",
+              approvalStatus: "EMITIDO",
+              sapDocNum: Number(sapDocNum),
+              isSapDirect: true,
+            },
+            title: `🎉 ¡Cotización ${officialDocNumber} Aprobada y Emitida a SAP!`,
+            description: `Tu cotización fue aprobada directamente por ${adminUsername || "Administración"} y se generó la Orden Oficial SAP #${sapDocNum}.`,
+            status: "EMITIDO",
+            createdAt: nowIso,
+            timestamp: nowIso,
+            read: false
+          };
+          const cleanedNotifs = existingNotifs.filter(n => 
+            String(n.quoteId || n.id) !== targetDocNum && 
+            String(n.quoteId || n.id) !== targetId && 
+            String(n.quoteId || n.id) !== officialDocNumber
+          );
+          cleanedNotifs.unshift(newNotif);
+          localStorage.setItem("grupoLeon_notifications", JSON.stringify(cleanedNotifs));
+          window.dispatchEvent(new Event("localNotificationsUpdated"));
+        } catch (notifErr) {
+          console.error("Error actualizando notificaciones locales:", notifErr);
+        }
 
         // Notificar al componente padre para que la elimine de la pantalla de cotizaciones pendientes
         if (onDeleteQuote) {
           onDeleteQuote(targetDocNum || targetId, "EMITIDO");
         }
 
-        // Limpiar React Query Cache para que desaparezca inmediatamente
+        // Limpiar React Query Cache para que desaparezca de la cola de pendientes inmediatamente
         queryClient.setQueriesData({ queryKey: ["quotes"] }, (old) => {
           if (!Array.isArray(old)) return [];
           return old.filter(q => {
@@ -1202,6 +1496,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
           });
         });
         queryClient.invalidateQueries({ queryKey: ["quotes"] });
+        queryClient.invalidateQueries({ queryKey: ["notifications"] });
       }
 
       const isAlreadySynced = Boolean(res.data?.alreadySynced || sapData.alreadySynced);
@@ -1233,11 +1528,16 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         || err.message 
         || "No se pudo registrar la cotización en SAP.";
 
+      const isRateError = typeof sapErrMsg === "string" && (
+        sapErrMsg.toLowerCase().includes("tipo de cambio") || 
+        sapErrMsg.toLowerCase().includes("exchange rate")
+      );
+
       toast({
-        title: "Error al sincronizar con SAP",
+        title: isRateError ? "⚠️ Tipo de Cambio Requerido en SAP" : "Error al sincronizar con SAP",
         description: typeof sapErrMsg === "string" ? sapErrMsg : JSON.stringify(sapErrMsg),
-        status: "error",
-        duration: 8000,
+        status: isRateError ? "warning" : "error",
+        duration: 9000,
         isClosable: true,
         position: "top-right",
       });
@@ -1284,6 +1584,28 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                         🏛️ SAP DocNum: #{syncedDocNum}
                       </Badge>
                     )}
+                    {drawerLockCheck.hasActiveLock && !drawerLockCheck.isOwnLock && (
+                      <Badge
+                        bg="#fef3c7"
+                        color="#92400e"
+                        border="1.5px solid"
+                        borderColor="#fcd34d"
+                        fontSize="10.5px"
+                        px={2.5}
+                        py={0.5}
+                        borderRadius="full"
+                        fontWeight="900"
+                        display="inline-flex"
+                        alignItems="center"
+                        gap={1}
+                        boxShadow="xs"
+                      >
+                        <Lock className="w-3 h-3 flex-shrink-0" />
+                        <Text as="span">
+                          {`EN REVISIÓN (${(drawerLockCheck.lockInfo?.lockedByUsername || "FACTURACIÓN").toUpperCase()}) 🔒`}
+                        </Text>
+                      </Badge>
+                    )}
                   </HStack>
                   <Text fontSize={{ base: "11px", md: "xs" }} color="emerald.100" fontWeight="500">
                     Seguimiento Comercial y Control de Calidad
@@ -1317,6 +1639,60 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
               "&::-webkit-scrollbar-thumb": { bg: "gray.300", borderRadius: "full" }
             }}
           >
+            {/* 🔒 BANNER DE CONTROL DE CONCURRENCIA / LLAVECITA ACTIVA (SOLO LECTURA SI OTRO USUARIO LO TIENE BLOQUEADO) */}
+            {drawerLockCheck.hasActiveLock && !drawerLockCheck.isOwnLock && (status === "ENVIADO" || status === "EN_PROCESO" || status === "PENDIENTE_APROBACION" || status === "PENDIENTE_FACTURACION") && (
+              <Box bg="#fffbeb" p={3.5} borderRadius="xl" border="1.5px solid #fcd34d" boxShadow="xs" mb={4}>
+                <Flex align="center" justify="space-between" wrap="wrap" gap={2}>
+                  <HStack spacing={3}>
+                    <Flex w="34px" h="34px" borderRadius="full" bg="#d97706" align="center" justify="center" color="white" flexShrink={0}>
+                      <Lock className="w-4 h-4" />
+                    </Flex>
+                    <Box>
+                      <HStack spacing={2} align="center">
+                        <Text fontSize="xs" fontWeight="900" color="#92400e" textTransform="uppercase" letterSpacing="wide">
+                          🔒 Cotización en Revisión por {drawerLockCheck.lockInfo?.lockedByUsername || "Facturación"}
+                        </Text>
+                        <Badge colorScheme="amber" variant="solid" fontSize="10px" borderRadius="full" px={2}>
+                          Solo Lectura
+                        </Badge>
+                      </HStack>
+                      <Text fontSize="11px" color="#78350f" fontWeight="600" mt={0.5}>
+                        Facturación está revisando esta cotización en este momento. Los botones de modificación están temporalmente deshabilitados.
+                      </Text>
+                    </Box>
+                  </HStack>
+                  {isAdminUser && (
+                    <Button
+                      size="xs"
+                      colorScheme="amber"
+                      variant="outline"
+                      leftIcon={<Unlock className="w-3.5 h-3.5" />}
+                      onClick={() => {
+                        forceUnlockQuote(quoteId);
+                        acquireQuoteLock(quoteId, {
+                          id: useAuthStore.getState().userId,
+                          username: authUsername,
+                          role: authRole,
+                          endpoints: useAuthStore.getState().endpoints,
+                          salesEmployeeCode: authSalesCode,
+                          isAdmin: true
+                        }, quote?.id && String(quote.id) !== String(quoteId) ? quote.id : null);
+                        toast({
+                          title: "🔓 Control Tomado",
+                          description: "Has tomado el control exclusivo de la cotización.",
+                          status: "info",
+                          duration: 3000
+                        });
+                      }}
+                      fontWeight="800"
+                    >
+                      Tomar Control
+                    </Button>
+                  )}
+                </Flex>
+              </Box>
+            )}
+
             {/* PANEL DE ACCIONES SEGÚN EL ROL AUTENTICADO Y ESTADO DE LA COTIZACIÓN */}
             {(status === "OBSERVADO" || status === "EN_EDICION") ? (
               /* ── Panel de Observación (Vendedor + Administrador + Observado) ── */
@@ -1447,7 +1823,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                         </Flex>
                         <Box>
                           <Text fontSize="xs" fontWeight="900" color={sapDoc ? "teal.900" : "emerald.900"} textTransform="uppercase">
-                            {sapDoc ? `🔒 4. Oferta / Pedido SAP Registrado (DocNum: #${syncedDocNum || ""})` : "✅ 4. Pedido Aprobado (Interno)"}
+                            {sapDoc ? `🔒 4. Orden de Venta SAP Registrada (DocNum: #${syncedDocNum || ""})` : "✅ 4. Orden Aprobada (Interna)"}
                           </Text>
                           <Text fontSize="11px" color={sapDoc ? "teal.800" : "emerald.800"} fontWeight="600">
                             {sapDoc
@@ -1551,7 +1927,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                           </>
                         )}
                         <Badge colorScheme={sapDoc ? "teal" : "green"} variant="solid" px={3} py={1} borderRadius="full" fontSize="xs">
-                          {sapDoc ? "EMITIDO EN SAP" : "PEDIDO APROBADO"}
+                          {sapDoc ? "ORDEN DE VENTA EMITIDA EN SAP" : "ORDEN APROBADA"}
                         </Badge>
                       </HStack>
                     </Flex>
@@ -1639,7 +2015,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                   </Button>
                 </Flex>
               </Box>
-            ) : ((status === "ENVIADO" || status === "EN_PROCESO" || status === "PENDIENTE_FACTURACION") && isAdminUser) ? (
+            ) : ((status === "ENVIADO" || status === "EN_PROCESO" || status === "PENDIENTE_APROBACION" || status === "PENDIENTE_FACTURACION") && isAdminUser) ? (
               <Box bg="#f0fdf4" p={{ base: 3.5, md: 4 }} borderRadius="xl" border="1.5px solid" borderColor="#86efac" boxShadow="sm" mb={4}>
                 <Flex direction={{ base: "column", md: "row" }} align={{ base: "stretch", md: "center" }} justify="space-between" gap={3}>
                   <HStack spacing={3} align="flex-start" flex="1" minW="0">
@@ -1653,11 +2029,27 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                       <Text fontSize="11px" color="gray.700" fontWeight="600" mt={0.5}>
                         {status === "PENDIENTE_FACTURACION"
                           ? `Valida el voucher y depósito ingresados por ${sellerName} antes de emitir en SAP.`
-                          : `Cotización enviada por ${sellerName}. Puedes aprobarla, devolverla con observaciones o rechazarla.`}
+                          : `Cotización enviada por ${sellerName}. Abre el formulario para revisarla, aprobar y emitir a SAP o devolver con observaciones.`}
                       </Text>
+                      {drawerLockCheck.hasActiveLock && !drawerLockCheck.isOwnLock && (
+                        <Badge
+                          bg="#fef3c7"
+                          color="#92400e"
+                          border="1px solid"
+                          borderColor="#fcd34d"
+                          mt={1.5}
+                          fontSize="10px"
+                          px={2}
+                          py={0.5}
+                          borderRadius="md"
+                          fontWeight="800"
+                        >
+                          🔒 En revisión por {drawerLockCheck.lockInfo?.lockedByUsername} ({drawerLockCheck.lockInfo?.lockedByProfile || "Facturación"})
+                        </Badge>
+                      )}
                     </Box>
                   </HStack>
-                  <Box flexShrink={0} alignSelf={{ base: "stretch", md: "center" }}>
+                  <HStack spacing={2} flexShrink={0} alignSelf={{ base: "stretch", md: "center" }} wrap="wrap">
                     <Button
                       size="sm"
                       colorScheme="teal"
@@ -1665,7 +2057,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                       _hover={{ bg: "#115e59" }}
                       leftIcon={<Edit3 className="w-4 h-4" />}
                       whiteSpace="nowrap"
-                      w={{ base: "full", md: "auto" }}
+                      isDisabled={isDrawerLockedByOther && !isAdminUser}
                       onClick={() => {
                         onClose();
                         const quoteToLoad = effectiveQuote || quote;
@@ -1685,7 +2077,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                     >
                       ✏️ Revisar Formulario
                     </Button>
-                  </Box>
+                  </HStack>
                 </Flex>
               </Box>
             ) : (status === "EMITIDO" || status === "EMITIDO_SAP" || isAlreadySyncedToSap) ? (
@@ -2087,8 +2479,10 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                         const approvalLog = Array.isArray(historyLog)
                           ? historyLog.find(l => ["APROBADO", "APROBADO_COMERCIAL", "EMITIDO", "RECHAZADO", "OBSERVADO"].includes(l.status))
                           : null;
-                        return effectiveQuote.approvedBy || approvalLog?.user || (Array.isArray(historyLog) && historyLog[0]?.user) || adminUsername || "Administrador";
-                      })()} (Admin Facturación)</Text>
+                        const name = effectiveQuote.approvedBy || effectiveQuote.evaluatedBy || approvalLog?.user || (Array.isArray(historyLog) && historyLog[0]?.user) || adminUsername || "Administrador";
+                        const profile = effectiveQuote.approvedByRole || effectiveQuote.evaluatedByRole || approvalLog?.role || approvalLog?.userProfile || resolveUserProfileTitle(authRole, useAuthStore.getState().endpoints, name);
+                        return `${name} (${profile})`;
+                      })()}</Text>
                     </Box>
                     <Box>
                       <Text fontSize="9px" fontWeight="700" color="gray.500" textTransform="uppercase">Estado Comercial</Text>
@@ -2185,7 +2579,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
               return (
                 <>
-                  <Grid templateColumns={{ base: "1fr", md: "repeat(3, 1fr)" }} gap={3.5} mb={3.5}>
+                  <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)" }} gap={3.5} mb={3.5}>
                     {/* CUADRILLA 1: FINANZAS Y CONDICIONES */}
                     <Box p={3.5} bg="white" borderRadius="2xl" border="1.5px solid" borderColor="#e2e8f0" boxShadow="xs">
                       <Flex align="center" justify="space-between" mb={2}>
@@ -2203,12 +2597,6 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                         <Flex justify="space-between">
                           <Text color="gray.500" fontWeight="700">Término:</Text>
                           <Text fontWeight="800" color="gray.800" textAlign="right" isTruncated maxW="190px" title={paymentLabel}>{paymentLabel}</Text>
-                        </Flex>
-                        <Flex justify="space-between" align="center">
-                          <Text color="gray.500" fontWeight="700">Comprobante:</Text>
-                          <Badge colorScheme={docTypeVal === "FACTURA" ? "purple" : "blue"} variant="subtle" fontSize="9px" px={1.5} py={0.5} borderRadius="md">
-                            {docTypeVal}
-                          </Badge>
                         </Flex>
 
                         {Boolean(opNumber) && (
@@ -2272,77 +2660,6 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                         <Text fontWeight="800" color="emerald.700" fontSize="10px" textAlign="right" isTruncated maxW="190px" title={sunatType}>{sunatType}</Text>
                       </Flex>
                     </VStack>
-                  </Box>
-
-                  {/* CUADRILLA 3: COMPROBANTE DE PAGO / VÁUCHER / ANEXOS */}
-                  <Box p={3.5} bg={voucherImage ? "emerald.50/40" : "gray.50"} borderRadius="2xl" border="1.5px solid" borderColor={voucherImage ? "emerald.200" : "#e2e8f0"} boxShadow="xs">
-                    <Flex align="center" justify="space-between" mb={2}>
-                      <HStack spacing={2}>
-                        <Text fontSize="15px">{voucherImage ? "📸" : isCredit ? "📑" : "📎"}</Text>
-                        <Text fontSize="11px" fontWeight="900" color="gray.800" textTransform="uppercase">
-                          {voucherImage ? "Constancia de Pago" : isCredit ? "Resguardo Crédito" : "Comprobante / Anexo"}
-                        </Text>
-                      </HStack>
-                      {voucherImage && (
-                        <Badge colorScheme="green" variant="solid" fontSize="8px">ADJUNTADO</Badge>
-                      )}
-                    </Flex>
-
-                    {voucherImage ? (
-                      <HStack spacing={3} align="center">
-                        <Box w="60px" h="60px" borderRadius="lg" overflow="hidden" border="1px solid #cbd5e1" flexShrink={0} bg="white">
-                          <img
-                            src={
-                              typeof voucherImage === 'string' && voucherImage.startsWith('blob:')
-                                ? voucherImage
-                                : `${import.meta.env.VITE_API_URL || ''}/quoteModule/${voucherImage}`
-                            }
-                            alt="Comprobante de pago"
-                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                          />
-                        </Box>
-                        <VStack align="flex-start" spacing={1} flex="1" minW="0">
-                          <Text fontSize="10px" fontWeight="800" color="emerald.900" isTruncated>
-                            Constancia de Abono / Depósito
-                          </Text>
-                          {opNumber && (
-                            <Text fontSize="9px" fontWeight="700" color="gray.600">
-                              Op: {opNumber}
-                            </Text>
-                          )}
-                          <Button
-                            size="xs"
-                            colorScheme="teal"
-                            variant="outline"
-                            fontSize="9px"
-                            h="22px"
-                            onClick={() => {
-                              const url = typeof voucherImage === 'string' && voucherImage.startsWith('blob:')
-                                ? voucherImage
-                                : `${import.meta.env.VITE_API_URL || ''}/quoteModule/${voucherImage}`;
-                              window.open(url, "_blank");
-                            }}
-                          >
-                            🔍 Ver Foto Completa
-                          </Button>
-                        </VStack>
-                      </HStack>
-                    ) : isCredit ? (
-                      <VStack align="flex-start" spacing={1} fontSize="xs">
-                        <Text fontSize="10px" fontWeight="800" color="purple.900">
-                          🛡️ Resguardo a Plazo Comercial
-                        </Text>
-                        <Text fontSize="10px" color="gray.600">
-                          {quoteAttachments.length > 0 ? `${quoteAttachments.length} Anexo(s) OC cargados` : "Sin OC adjunta. Venta autorizada por línea de crédito."}
-                        </Text>
-                      </VStack>
-                    ) : (
-                      <VStack align="flex-start" spacing={1} fontSize="xs">
-                        <Text fontSize="10px" fontWeight="700" color="gray.500" fontStyle="italic">
-                          No se adjuntó constancia o comprobante de abono para esta cotización.
-                        </Text>
-                      </VStack>
-                    )}
                   </Box>
                 </Grid>
               </>
@@ -2483,447 +2800,800 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
               );
             })()}
 
-            <Grid templateColumns={{ base: "1fr", lg: "1.2fr 1fr" }} gap={5}>
-              {/* Columna Izquierda: Artículos Cotizados */}
-              <GridItem>
-                <VStack align="stretch" spacing={4}>
-                  <Box bg="white" p={{ base: 3, md: 4 }} borderRadius="2xl" border="1px solid" borderColor="gray.200" boxShadow="sm" overflow="hidden">
-                    <Flex justify="space-between" align="center" mb={3} gap={2}>
-                      <Text fontSize={{ base: "13px", md: "xs" }} fontWeight="800" color="gray.800" textTransform="uppercase">
-                        Artículos Cotizados
+            {/* SECCIÓN 1: ARTÍCULOS COTIZADOS (DOS TABLAS SEPARADAS: CON STOCK Y DEMANDA BACK ORDER DEBAJO) */}
+            {(() => {
+              const inStockProducts = displayProducts.filter(it => !getItemStockInfo(it).isOutOfStock);
+              const outOfStockProducts = displayProducts.filter(it => getItemStockInfo(it).isOutOfStock);
+
+              return (
+                <Box bg="white" p={{ base: 3, md: 4 }} borderRadius="2xl" border="1px solid" borderColor="gray.200" boxShadow="sm" overflow="hidden" mb={5}>
+                  {/* CABECERA GENERAL */}
+                  <Flex justify="space-between" align="center" mb={3} gap={2} wrap="wrap">
+                    <HStack spacing={2}>
+                      <Text fontSize={{ base: "13px", md: "xs" }} fontWeight="900" color="gray.800" textTransform="uppercase" letterSpacing="wide">
+                        ARTÍCULOS COTIZADOS
                       </Text>
-                      <Badge colorScheme="teal" variant="solid" borderRadius="full" fontSize="10px" px={2.5} flexShrink={0}>
-                        {products.length} Items
+                      <Badge colorScheme="blue" variant="solid" borderRadius="full" fontSize="10px" px={2.5}>
+                        {displayProducts.length} {displayProducts.length === 1 ? "Item" : "Items"}
                       </Badge>
-                    </Flex>
+                      {outOfStockProducts.length > 0 && (
+                        <Badge colorScheme="red" bg="#fee2e2" color="#991b1b" border="1px solid #fca5a5" borderRadius="full" fontSize="10px" px={2.5} py={0.5} fontWeight="900">
+                          ⚠️ {outOfStockProducts.length} Sin Stock (Back Order)
+                        </Badge>
+                      )}
+                    </HStack>
+                  </Flex>
 
-                    {displayProducts.some(it => getItemStockInfo(it).isOutOfStock) && (
-                      <Box p={2.5} bg="red.50" border="1px solid" borderColor="red.200" borderRadius="xl" mb={3}>
-                        <HStack spacing={2}>
-                          <Badge colorScheme="red" variant="solid" fontSize="10px" px={2} py={0.5} borderRadius="full">
-                            ⚠️ CÓDIGOS SIN STOCK
-                          </Badge>
-                          <Text fontSize="11px" fontWeight="700" color="red.800">
-                            Contiene artículos sin stock disponible en SAP (Pendientes a Importación).
-                          </Text>
-                        </HStack>
-                      </Box>
-                    )}
+                  {/* TABLA 1: ARTÍCULOS COTIZADOS CON STOCK DISPONIBLE */}
+                  {inStockProducts.length === 0 ? (
+                    <Box p={4} textAlign="center" bg="gray.50" borderRadius="xl" border="1px dashed" borderColor="gray.300" mb={3}>
+                      <Text fontSize="xs" color="gray.500" fontWeight="700">
+                        Esta cotización no contiene artículos con stock físico disponible para facturación inmediata.
+                      </Text>
+                    </Box>
+                  ) : (
+                    <Box mb={outOfStockProducts.length > 0 ? 3 : 0}>
+                      {/* Vista Móvil Tabla 1 */}
+                      <Box display={{ base: "block", md: "none" }}>
+                        <VStack align="stretch" spacing={3}>
+                          {inStockProducts.map((item, idx) => {
+                            const qty = Number(item.quantity ?? 1);
+                            const sapDisc = Number(item.sapDiscount ?? item.discount ?? 0);
+                            const promoDisc = Number(item.promoDiscount ?? 0);
+                            let addDisc = Number(item.lineDiscount ?? 0);
+                            const maxAllowedCeiling = qty > 100 ? 65 : 55;
+                            const totalDisc = Number(item.discountPercent ?? Math.min(maxAllowedCeiling, Math.max(0, sapDisc + promoDisc + addDisc)));
+                            if (addDisc === 0 && (sapDisc + promoDisc) > 0 && Math.abs(totalDisc - (sapDisc + promoDisc)) > 0.01) {
+                              addDisc = Number((totalDisc - (sapDisc + promoDisc)).toFixed(2));
+                            }
+                            const isVolume = qty > 100 && totalDisc > 55;
+                            const reqAppr = totalDisc > 50.009 || isVolume;
+                            const isHigherMargin = addDisc < 0;
 
-                    {/* VISTA MÓVIL DE PRODUCTOS (TARJETAS) */}
-                    <Box display={{ base: "block", md: "none" }}>
-                      <VStack align="stretch" spacing={3}>
-                        {displayProducts.map((item, idx) => {
-                          const qty = Number(item.quantity ?? 1);
-                          const sapDisc = Number(item.sapDiscount ?? item.discount ?? 0);
-                          const promoDisc = Number(item.promoDiscount ?? 0);
-                          let addDisc = Number(item.lineDiscount ?? 0);
-                          const maxAllowedCeiling = qty > 100 ? 65 : 55;
-                          const totalDisc = Number(item.discountPercent ?? Math.min(maxAllowedCeiling, Math.max(0, sapDisc + promoDisc + addDisc)));
-                          if (addDisc === 0 && (sapDisc + promoDisc) > 0 && Math.abs(totalDisc - (sapDisc + promoDisc)) > 0.01) {
-                            addDisc = Number((totalDisc - (sapDisc + promoDisc)).toFixed(2));
-                          }
-                          const isVolume = qty > 100 && totalDisc > 55;
-                          const reqAppr = totalDisc > 50.009 || isVolume;
-                          const isHigherMargin = addDisc < 0;
-                          const { isOutOfStock } = getItemStockInfo(item);
-
-                          return (
-                            <Box
-                              key={idx}
-                              p={3}
-                              bg="gray.50"
-                              borderRadius="xl"
-                              border="1px solid"
-                              borderColor={isVolume ? "orange.300" : promoDisc > 0 ? "amber.300" : "gray.200"}
-                            >
-                              <Flex justify="space-between" align="start" gap={2} mb={1}>
-                                <Badge colorScheme="blue" variant="solid" fontSize="10px" borderRadius="md" px={1.5} fontFamily="mono">
-                                  {item.itemCode || item.code || item.id || "ART"}
-                                </Badge>
-                                <Text fontSize="xs" fontWeight="900" color="emerald.900" fontFamily="mono">
-                                  ${item.lineTotal.toFixed(2)}
-                                </Text>
-                              </Flex>
-                              <VStack align="start" spacing={1} mb={1.5}>
-                                <Text fontSize="12px" fontWeight="700" color="gray.900">
-                                  {item.description || item.ItemDescription || item.name || "Artículo"}
-                                </Text>
-                                {promoDisc > 0 && (
-                                  <Badge bg="amber.400" color="amber.950" fontSize="9px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
-                                    🏷️ {(item.campaignName || "OFERTA DEL MES").toUpperCase()}: -{promoDisc}% EXTRA
+                            return (
+                              <Box
+                                key={`m-in-${idx}`}
+                                p={3}
+                                bg="gray.50"
+                                borderRadius="xl"
+                                border="1px solid"
+                                borderColor={isVolume ? "orange.300" : promoDisc > 0 ? "amber.300" : "gray.200"}
+                              >
+                                <Flex justify="space-between" align="start" gap={2} mb={1}>
+                                  <Badge colorScheme="blue" variant="solid" fontSize="10px" borderRadius="md" px={1.5} fontFamily="mono">
+                                    {item.itemCode || item.code || item.id || "ART"}
                                   </Badge>
-                                )}
-                                {isVolume && (
-                                  <Badge bg="#ea580c" color="white" fontSize="9px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
-                                    🔥 MAYOREO ESPECIAL ({totalDisc}%)
-                                  </Badge>
-                                )}
-                                {isOutOfStock && (
-                                  <Badge colorScheme="red" bg="#fee2e2" color="#991b1b" border="1px solid" borderColor="#fca5a5" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="800">
-                                    ⚠️ SIN STOCK DISPONIBLE (Pendiente a Importación)
-                                  </Badge>
-                                )}
-                              </VStack>
+                                  <Text fontSize="xs" fontWeight="900" color="emerald.900" fontFamily="mono">
+                                    ${formatThousands(item.lineTotal)}
+                                  </Text>
+                                </Flex>
+                                <VStack align="start" spacing={1} mb={1.5}>
+                                  <Text fontSize="12px" fontWeight="700" color="gray.900">
+                                    {item.description || item.ItemDescription || item.name || "Artículo"}
+                                  </Text>
+                                  {promoDisc > 0 && (
+                                    <Badge bg="amber.400" color="amber.950" fontSize="9px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
+                                      🏷️ {(item.campaignName || "OFERTA DEL MES").toUpperCase()}: -{promoDisc}% EXTRA
+                                    </Badge>
+                                  )}
+                                  {isVolume && (
+                                    <Badge bg="#ea580c" color="white" fontSize="9px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
+                                      🔥 MAYOREO ESPECIAL ({totalDisc}%)
+                                    </Badge>
+                                  )}
+                                </VStack>
 
-                              <Grid templateColumns={promoDisc > 0 ? "repeat(4, 1fr)" : "repeat(3, 1fr)"} gap={1} fontSize="10px" bg="white" p={2} borderRadius="lg" border="1px solid" borderColor="gray.200" mb={1.5}>
-                                <Box textAlign="center">
-                                  <Text color="gray.500" fontWeight="700">Desc. SAP</Text>
-                                  <Badge colorScheme="green" fontSize="9px">{sapDisc}%</Badge>
-                                </Box>
-                                {promoDisc > 0 && (
-                                  <Box textAlign="center" borderLeft="1px solid" borderColor="gray.200">
-                                    <Text color="gray.500" fontWeight="700">Promo</Text>
-                                    <Badge colorScheme="amber" bg="amber.100" color="amber.900" fontSize="9px">-{promoDisc}%</Badge>
+                                <Grid templateColumns={promoDisc > 0 ? "repeat(4, 1fr)" : "repeat(3, 1fr)"} gap={1} fontSize="10px" bg="white" p={2} borderRadius="lg" border="1px solid" borderColor="gray.200" mb={1.5}>
+                                  <Box textAlign="center">
+                                    <Text color="gray.500" fontWeight="700">Desc. SAP</Text>
+                                    <Badge colorScheme="green" fontSize="9px">{sapDisc}%</Badge>
                                   </Box>
-                                )}
-                                <Box textAlign="center" borderLeft="1px solid" borderRight="1px solid" borderColor="gray.200">
-                                  <Text color="gray.500" fontWeight="700">
-                                    {addDisc < 0 ? "Margen" : "Desc. Adic."}
+                                  {promoDisc > 0 && (
+                                    <Box textAlign="center" borderLeft="1px solid" borderColor="gray.200">
+                                      <Text color="gray.500" fontWeight="700">Promo</Text>
+                                      <Badge colorScheme="amber" bg="amber.100" color="amber.900" fontSize="9px">-{promoDisc}%</Badge>
+                                    </Box>
+                                  )}
+                                  <Box textAlign="center" borderLeft="1px solid" borderRight="1px solid" borderColor="gray.200">
+                                    <Text color="gray.500" fontWeight="700">
+                                      {addDisc < 0 ? "Margen" : "Desc. Adic."}
+                                    </Text>
+                                    <Badge
+                                      colorScheme={addDisc > 0 ? "purple" : addDisc < 0 ? "green" : "gray"}
+                                      bg={addDisc < 0 ? "emerald.100" : undefined}
+                                      color={addDisc < 0 ? "emerald.900" : undefined}
+                                      fontSize="9px"
+                                    >
+                                      {addDisc > 0 ? `+${addDisc}%` : addDisc < 0 ? `${addDisc}%` : "0%"}
+                                    </Badge>
+                                  </Box>
+                                  <Box textAlign="center">
+                                    <Text color="gray.500" fontWeight="700">Desc. Total</Text>
+                                    <Badge colorScheme={isVolume ? "orange" : "blue"} fontSize="9px" fontWeight="900">{totalDisc}%</Badge>
+                                  </Box>
+                                </Grid>
+
+                                <Flex justify="space-between" align="center" fontSize="11px" color="gray.600" pt={1.5} borderTop="1px dashed" borderColor="gray.200" wrap="wrap" gap={1}>
+                                  <Text>Cant: <Text as="span" fontWeight="800" color="gray.900">{item.quantity} uds</Text></Text>
+                                  <Text>
+                                    P. Unit:{" "}
+                                    {totalDisc > 0 ? (
+                                      <Text as="span">
+                                        <Text as="s" color="gray.400" fontSize="10px" mr={1}>${formatThousands(item.price)}</Text>
+                                        <Text as="span" fontWeight="950" color="#047857">
+                                          ${formatThousands(Number(item.discountedUnitPrice ?? (item.price * (1 - totalDisc / 100))))}
+                                        </Text>
+                                        <Text as="span" fontSize="9px" color="gray.500" fontWeight="700"> /u</Text>
+                                      </Text>
+                                    ) : (
+                                      <Text as="span" fontWeight="800" color="gray.900">${formatThousands(item.price)} /u</Text>
+                                    )}
                                   </Text>
                                   <Badge
-                                    colorScheme={addDisc > 0 ? "purple" : addDisc < 0 ? "green" : "gray"}
-                                    bg={addDisc < 0 ? "emerald.100" : undefined}
-                                    color={addDisc < 0 ? "emerald.900" : undefined}
-                                    fontSize="9px"
-                                  >
-                                    {addDisc > 0 ? `+${addDisc}%` : addDisc < 0 ? `${addDisc}%` : "0%"}
-                                  </Badge>
-                                </Box>
-                                <Box textAlign="center">
-                                  <Text color="gray.500" fontWeight="700">Desc. Total</Text>
-                                  <Badge colorScheme={isVolume ? "orange" : "blue"} fontSize="9px" fontWeight="900">{totalDisc}%</Badge>
-                                </Box>
-                              </Grid>
-
-                              <Flex justify="space-between" align="center" fontSize="11px" color="gray.600" pt={1.5} borderTop="1px dashed" borderColor="gray.200">
-                                <Text>Cant: <Text as="span" fontWeight="800" color="gray.900">{item.quantity} uds</Text></Text>
-                                <Text>P. Lista: <Text as="span" fontWeight="800" color="gray.900">${item.price.toFixed(2)}</Text></Text>
-                                <Badge
-                                  colorScheme={
-                                    isQuoteApproved
-                                      ? "green"
-                                      : isFinalRejected
-                                      ? (reqAppr ? "red" : "gray")
-                                      : isObserved
-                                      ? (reqAppr ? "yellow" : "gray")
-                                      : isVolume
-                                      ? "orange"
-                                      : reqAppr
-                                      ? "orange"
-                                      : "green"
-                                  }
-                                  fontSize="9px"
-                                  px={1.5}
-                                  borderRadius="md"
-                                  fontWeight="800"
-                                >
-                                  {isQuoteApproved
-                                    ? (reqAppr ? "✅ Aprobado" : "🟢 Estándar")
-                                    : isFinalRejected
-                                    ? (reqAppr ? "❌ Rechazado" : "⚪ Estándar")
-                                    : isObserved
-                                    ? (reqAppr ? "⚠️ Observado" : "🟢 Estándar")
-                                    : isVolume
-                                    ? "🔥 Mayoreo (hasta 65%)"
-                                    : reqAppr
-                                    ? "⚠️ Req. Aprobación"
-                                    : isHigherMargin
-                                    ? "✨ Mayor Margen"
-                                    : "🟢 Estándar"}
-                                </Badge>
-                              </Flex>
-                            </Box>
-                          );
-                        })}
-                      </VStack>
-                    </Box>
-
-                    {/* VISTA ESCRITORIO DE PRODUCTOS (TABLA CLÁSICA CON DESCUENTOS AUDITABLES) */}
-                    <Box display={{ base: "none", md: "block" }}>
-                      <TableContainer border="1px solid" borderColor="gray.200" borderRadius="lg" overflowX="auto">
-                        <Table variant="simple" size="sm">
-                          <Thead bg="gray.50">
-                            <Tr>
-                              <Th fontSize="10px" color="gray.600" px={2.5}>Código</Th>
-                              <Th fontSize="10px" color="gray.600" px={2.5}>Descripción</Th>
-                              <Th fontSize="10px" textAlign="right" color="gray.600" px={2}>Cant.</Th>
-                              <Th fontSize="10px" textAlign="right" color="gray.600" px={2}>P. Lista</Th>
-                              <Th fontSize="10px" textAlign="center" color="gray.600" px={2}>Desc. SAP</Th>
-                              <Th fontSize="10px" textAlign="center" color="gray.600" px={2}>Desc. Adic.</Th>
-                              <Th fontSize="10px" textAlign="center" color="gray.600" px={2}>Desc. Total</Th>
-                              <Th fontSize="10px" textAlign="center" color="gray.600" px={2}>¿Aprobación?</Th>
-                              <Th fontSize="10px" textAlign="right" color="gray.600" px={2.5}>Total (USD)</Th>
-                            </Tr>
-                          </Thead>
-                          <Tbody fontSize="xs">
-                            {displayProducts.map((item, idx) => {
-                              const qty = Number(item.quantity ?? 1);
-                              const sapDisc = Number(item.sapDiscount ?? item.discount ?? 0);
-                              const promoDisc = Number(item.promoDiscount ?? 0);
-                              let addDisc = Number(item.lineDiscount ?? 0);
-                              const maxAllowedCeiling = qty > 100 ? 65 : 55;
-                              const totalDisc = Number(item.discountPercent ?? Math.min(maxAllowedCeiling, Math.max(0, sapDisc + promoDisc + addDisc)));
-                              if (addDisc === 0 && (sapDisc + promoDisc) > 0 && Math.abs(totalDisc - (sapDisc + promoDisc)) > 0.01) {
-                                addDisc = Number((totalDisc - (sapDisc + promoDisc)).toFixed(2));
-                              }
-                              const isVolume = qty > 100 && totalDisc > 55;
-                              const reqAppr = totalDisc > 50.009 || isVolume;
-                              const isHigherMargin = addDisc < 0;
-                              const { isOutOfStock } = getItemStockInfo(item);
-
-                              return (
-                                <Tr key={idx} _hover={{ bg: "gray.50" }}>
-                                  <Td fontWeight="800" color="gray.700" fontFamily="mono" px={2.5}>{item.itemCode || item.code || item.id || "ART"}</Td>
-                                  <Td fontWeight="600" color="gray.900" px={2.5} minW="160px" whiteSpace="normal">
-                                    <VStack align="start" spacing={1}>
-                                      <Text>{item.description || item.ItemDescription || item.name || "Artículo"}</Text>
-                                      {promoDisc > 0 && (
-                                        <Badge bg="amber.400" color="amber.950" fontSize="9px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
-                                          🏷️ {(item.campaignName || "OFERTA DEL MES").toUpperCase()}: -{promoDisc}% EXTRA
-                                        </Badge>
-                                      )}
-                                      {isVolume && (
-                                        <Badge bg="#ea580c" color="white" fontSize="9px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
-                                          🔥 MAYOREO ESPECIAL ({totalDisc}%)
-                                        </Badge>
-                                      )}
-                                      {isOutOfStock && (
-                                        <Badge colorScheme="red" bg="#fee2e2" color="#991b1b" border="1px solid" borderColor="#fca5a5" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="800">
-                                          ⚠️ SIN STOCK DISPONIBLE (Pendiente a Importación)
-                                        </Badge>
-                                      )}
-                                    </VStack>
-                                  </Td>
-                                  <Td textAlign="right" fontWeight="800" px={2}>{item.quantity}</Td>
-                                  <Td textAlign="right" fontWeight="600" px={2}>${item.price.toFixed(2)}</Td>
-                                  <Td textAlign="center" px={2}>
-                                    <Badge colorScheme="green" fontSize="10px" px={1.5}>{sapDisc}%</Badge>
-                                  </Td>
-                                  <Td textAlign="center" px={2}>
-                                    <VStack spacing={0.5}>
-                                      {promoDisc > 0 && (
-                                        <Badge colorScheme="amber" bg="amber.100" color="amber.900" fontSize="9px" px={1.5}>
-                                          Promo -{promoDisc}%
-                                        </Badge>
-                                      )}
-                                      <Badge
-                                        colorScheme={addDisc > 0 ? "purple" : addDisc < 0 ? "green" : "gray"}
-                                        fontSize="10px"
-                                        px={1.5}
-                                        py={0.5}
-                                        borderRadius="md"
-                                        title={addDisc < 0 ? `Mayor margen comercial (${addDisc}%).` : undefined}
-                                      >
-                                        {addDisc > 0 ? `+${addDisc}%` : addDisc < 0 ? `${addDisc}%` : "0%"}
-                                      </Badge>
-                                    </VStack>
-                                  </Td>
-                                  <Td textAlign="center" fontWeight="900" px={2}>
-                                    <Badge colorScheme={isVolume ? "orange" : "blue"} fontSize="10px" px={1.5} fontWeight="900">
-                                      {totalDisc}%
-                                    </Badge>
-                                  </Td>
-                                  <Td textAlign="center" px={2}>
-                                    <Badge
-                                      colorScheme={
-                                        isQuoteApproved
-                                          ? "green"
-                                          : isFinalRejected
-                                          ? (reqAppr ? "red" : "gray")
-                                          : isObserved
-                                          ? (reqAppr ? "yellow" : "gray")
-                                          : isVolume
-                                          ? "orange"
-                                          : reqAppr
-                                          ? "orange"
-                                          : "green"
-                                      }
-                                      fontSize="10px"
-                                      px={2}
-                                      py={0.5}
-                                      borderRadius="full"
-                                      fontWeight="800"
-                                    >
-                                      {isQuoteApproved
-                                        ? (reqAppr ? "✅ APROBADO" : "🟢 NO")
+                                    colorScheme={
+                                      isQuoteApproved
+                                        ? "green"
                                         : isFinalRejected
-                                        ? (reqAppr ? "❌ RECHAZADO" : "⚪ NO")
+                                        ? (reqAppr ? "red" : "gray")
                                         : isObserved
-                                        ? (reqAppr ? "⚠️ OBSERVADO" : "🟢 NO")
+                                        ? (reqAppr ? "yellow" : "gray")
                                         : isVolume
-                                        ? "🔥 MAYOREO (HASTA 65%)"
+                                        ? "orange"
                                         : reqAppr
-                                        ? "⚠️ REQUIERE"
-                                        : "🟢 NO"}
-                                    </Badge>
-                                  </Td>
-                                  <Td textAlign="right" fontWeight="850" color="emerald.900" fontFamily="mono" px={2.5}>${item.lineTotal.toFixed(2)}</Td>
-                                </Tr>
-                              );
-                            })}
-                          </Tbody>
-                        </Table>
-                      </TableContainer>
-                    </Box>
+                                        ? "orange"
+                                        : "green"
+                                    }
+                                    fontSize="9px"
+                                    px={1.5}
+                                    borderRadius="md"
+                                    fontWeight="800"
+                                  >
+                                    {isQuoteApproved
+                                      ? (reqAppr ? "✅ Aprobado" : "🟢 Estándar")
+                                      : isFinalRejected
+                                      ? (reqAppr ? "❌ Rechazado" : "⚪ Estándar")
+                                      : isObserved
+                                      ? (reqAppr ? "⚠️ Observado" : "🟢 Estándar")
+                                      : isVolume
+                                      ? "🔥 Mayoreo"
+                                      : reqAppr
+                                      ? "⚠️ Req. Aprobación"
+                                      : isHigherMargin
+                                      ? "✨ Mayor Margen"
+                                      : "🟢 Estándar"}
+                                  </Badge>
+                                </Flex>
+                              </Box>
+                            );
+                          })}
+                        </VStack>
+                      </Box>
 
-                    {/* Totales integrados al pie de artículos */}
-                    <Box bg="#0f2e22" color="white" p={4} borderRadius="xl" mt={4} boxShadow="sm">
-                      <VStack align="stretch" spacing={2} fontSize="xs">
-                        <Flex justify="space-between" color="emerald.100">
-                          <Text>Subtotal Neto:</Text>
-                          <Text fontFamily="mono" fontWeight="700">${subtotalUSD.toFixed(2)}</Text>
-                        </Flex>
-                        <Flex justify="space-between" color="emerald.100">
-                          <Text>I.G.V. (18%):</Text>
-                          <Text fontFamily="mono" fontWeight="700">${igvUSD.toFixed(2)}</Text>
-                        </Flex>
-                        <Divider borderColor="whiteAlpha.300" my={1} />
-                        <Flex justify="space-between" align="center">
-                          <Text fontWeight="900" fontSize="xs">TOTAL COTIZACIÓN (USD):</Text>
-                          <Text fontFamily="mono" fontWeight="950" fontSize="md" color="#6ee7b7">${grandTotalUSD.toFixed(2)}</Text>
-                        </Flex>
-                      </VStack>
-                    </Box>
-                  </Box>
-                </VStack>
-              </GridItem>
+                      {/* Vista Escritorio Tabla 1 */}
+                      <Box display={{ base: "none", md: "block" }}>
+                        <TableContainer border="1px solid" borderColor="gray.200" borderRadius="lg" overflowX="auto">
+                          <Table variant="simple" size="sm">
+                            <Thead bg="gray.50">
+                              <Tr>
+                                <Th fontSize="10px" color="gray.600" px={2.5}>Código</Th>
+                                <Th fontSize="10px" color="gray.600" px={2.5}>Descripción</Th>
+                                <Th fontSize="10px" textAlign="right" color="gray.600" px={2}>Cant.</Th>
+                                <Th fontSize="10px" textAlign="right" color="gray.600" px={2}>Precio Unitario</Th>
+                                <Th fontSize="10px" textAlign="center" color="gray.600" px={2}>Desc. SAP</Th>
+                                <Th fontSize="10px" textAlign="center" color="gray.600" px={2}>Desc. Adic.</Th>
+                                <Th fontSize="10px" textAlign="center" color="gray.600" px={2}>Desc. Total</Th>
+                                <Th fontSize="10px" textAlign="center" color="gray.600" px={2}>¿Aprobación?</Th>
+                                <Th fontSize="10px" textAlign="right" color="gray.600" px={2.5}>Total (USD)</Th>
+                              </Tr>
+                            </Thead>
+                            <Tbody fontSize="xs">
+                              {inStockProducts.map((item, idx) => {
+                                const qty = Number(item.quantity ?? 1);
+                                const sapDisc = Number(item.sapDiscount ?? item.discount ?? 0);
+                                const promoDisc = Number(item.promoDiscount ?? 0);
+                                let addDisc = Number(item.lineDiscount ?? 0);
+                                const maxAllowedCeiling = qty > 100 ? 65 : 55;
+                                const totalDisc = Number(item.discountPercent ?? Math.min(maxAllowedCeiling, Math.max(0, sapDisc + promoDisc + addDisc)));
+                                if (addDisc === 0 && (sapDisc + promoDisc) > 0 && Math.abs(totalDisc - (sapDisc + promoDisc)) > 0.01) {
+                                  addDisc = Number((totalDisc - (sapDisc + promoDisc)).toFixed(2));
+                                }
+                                const isVolume = qty > 100 && totalDisc > 55;
+                                const reqAppr = totalDisc > 50.009 || isVolume;
+                                const isHigherMargin = addDisc < 0;
 
-              {/* Columna Derecha: Historial de Actividad y Comprobantes */}
-              <GridItem>
-                <VStack align="stretch" spacing={4}>
-                  {/* Comprobante de Abono Bancario y Anexos */}
-                  {Boolean(quote?.opNum || quote?.U_VS_OPNUM || quote?.pathImg || quote?.paymentImg || quote?.voucherUrl || (quote?.attachments && quote?.attachments.length > 0)) && (
-                    <Box p={4} borderRadius="2xl" border="1.5px solid" borderColor="purple.200" bg="purple.50" boxShadow="xs">
-                      <Flex justify="space-between" align="center" mb={2.5}>
-                        <HStack spacing={2}>
-                          <Text fontSize="16px">💳</Text>
-                          <Text fontSize="xs" fontWeight="900" color="purple.900" textTransform="uppercase">
-                            Comprobante / Constancia de Pago
-                          </Text>
-                        </HStack>
-                        {(quote?.opNum || quote?.U_VS_OPNUM) && (
-                          <Badge colorScheme="purple" variant="solid" fontSize="10px" px={2} py={0.5} borderRadius="md" fontWeight="900">
-                            OP: {quote?.opNum || quote?.U_VS_OPNUM}
-                          </Badge>
-                        )}
-                      </Flex>
-
-                      {(quote?.pathImg || quote?.paymentImg || quote?.voucherUrl) && (
-                        <Box mt={2} p={2} bg="white" borderRadius="xl" border="1px solid" borderColor="purple.200">
-                          <img
-                            src={
-                              typeof (quote.pathImg || quote.paymentImg || quote.voucherUrl) === 'string' && (quote.pathImg || quote.paymentImg || quote.voucherUrl).startsWith('blob:')
-                                ? (quote.pathImg || quote.paymentImg || quote.voucherUrl)
-                                : `${import.meta.env.VITE_API_URL || ''}/quoteModule/${quote.pathImg || quote.paymentImg || quote.voucherUrl}`
-                            }
-                            alt="Comprobante de pago"
-                            style={{ maxHeight: "180px", width: "100%", objectFit: "contain", borderRadius: "8px" }}
-                          />
-                        </Box>
-                      )}
-
-                      {quote?.attachments && quote?.attachments.length > 0 && (
-                        <Box mt={3}>
-                          <Text fontSize="10px" fontWeight="800" color="purple.800" textTransform="uppercase" mb={1.5}>
-                            📎 Anexos de Resguardo ({quote.attachments.length}):
-                          </Text>
-                          <VStack align="stretch" spacing={1}>
-                            {quote.attachments.map((att, aIdx) => (
-                              <HStack key={aIdx} p={1.5} bg="white" borderRadius="md" border="1px solid" borderColor="purple.200" justify="space-between">
-                                <Text fontSize="xs" fontWeight="600" color="gray.700" isTruncated>{att.name}</Text>
-                                {att.size && <Badge fontSize="9px">{att.size}</Badge>}
-                              </HStack>
-                            ))}
-                          </VStack>
-                        </Box>
-                      )}
+                                return (
+                                  <Tr key={`in-${idx}`} _hover={{ bg: "gray.50" }}>
+                                    <Td fontWeight="800" color="gray.700" fontFamily="mono" px={2.5}>{item.itemCode || item.code || item.id || "ART"}</Td>
+                                    <Td fontWeight="600" color="gray.900" px={2.5} minW="160px" whiteSpace="normal">
+                                      <VStack align="start" spacing={1}>
+                                        <Text>{item.description || item.ItemDescription || item.name || "Artículo"}</Text>
+                                        {promoDisc > 0 && (
+                                          <Badge bg="amber.400" color="amber.950" fontSize="9px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
+                                            🏷️ {(item.campaignName || "OFERTA DEL MES").toUpperCase()}: -{promoDisc}% EXTRA
+                                          </Badge>
+                                        )}
+                                        {isVolume && (
+                                          <Badge bg="#ea580c" color="white" fontSize="9px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
+                                            🔥 MAYOREO ESPECIAL ({totalDisc}%)
+                                          </Badge>
+                                        )}
+                                      </VStack>
+                                    </Td>
+                                    <Td textAlign="right" fontWeight="800" px={2}>{item.quantity}</Td>
+                                    <Td textAlign="right" px={2}>
+                                      {totalDisc > 0 ? (
+                                        <VStack align="flex-end" spacing={0}>
+                                          <HStack spacing={1} justify="flex-end">
+                                            <Text fontSize="9px" color="gray.400" fontWeight="600">Antes:</Text>
+                                            <Text as="s" fontSize="10px" color="gray.400" fontWeight="600" title="Precio original de lista SAP">
+                                              ${formatThousands(item.price)}
+                                            </Text>
+                                          </HStack>
+                                          <HStack spacing={0.5} align="baseline" justify="flex-end">
+                                            <Text fontWeight="950" fontSize="12px" color="#047857" title="Precio neto unitario con descuento">
+                                              ${formatThousands(Number(item.discountedUnitPrice ?? (item.price * (1 - totalDisc / 100))))}
+                                            </Text>
+                                            <Text fontSize="9px" color="gray.500" fontWeight="700">
+                                              /u
+                                            </Text>
+                                          </HStack>
+                                        </VStack>
+                                      ) : (
+                                        <HStack spacing={0.5} justify="flex-end" align="baseline">
+                                          <Text fontWeight="800" fontSize="xs" color="gray.800">
+                                            ${formatThousands(item.price)}
+                                          </Text>
+                                          <Text fontSize="9px" color="gray.500" fontWeight="700">
+                                            /u
+                                          </Text>
+                                        </HStack>
+                                      )}
+                                    </Td>
+                                    <Td textAlign="center" px={2}>
+                                      <Badge colorScheme="green" fontSize="10px" px={1.5}>{sapDisc}%</Badge>
+                                    </Td>
+                                    <Td textAlign="center" px={2}>
+                                      <VStack spacing={0.5}>
+                                        {promoDisc > 0 && (
+                                          <Badge colorScheme="amber" bg="amber.100" color="amber.900" fontSize="9px" px={1.5}>
+                                            Promo -{promoDisc}%
+                                          </Badge>
+                                        )}
+                                        <Badge
+                                          colorScheme={addDisc > 0 ? "purple" : addDisc < 0 ? "green" : "gray"}
+                                          fontSize="10px"
+                                          px={1.5}
+                                          py={0.5}
+                                          borderRadius="md"
+                                          title={addDisc < 0 ? `Mayor margen comercial (${addDisc}%).` : undefined}
+                                        >
+                                          {addDisc > 0 ? `+${addDisc}%` : addDisc < 0 ? `${addDisc}%` : "0%"}
+                                        </Badge>
+                                      </VStack>
+                                    </Td>
+                                    <Td textAlign="center" fontWeight="900" px={2}>
+                                      <Badge colorScheme={isVolume ? "orange" : "blue"} fontSize="10px" px={1.5} fontWeight="900">
+                                        {totalDisc}%
+                                      </Badge>
+                                    </Td>
+                                    <Td textAlign="center" px={2}>
+                                      <Badge
+                                        colorScheme={
+                                          isQuoteApproved
+                                            ? "green"
+                                            : isFinalRejected
+                                            ? (reqAppr ? "red" : "gray")
+                                            : isObserved
+                                            ? (reqAppr ? "yellow" : "gray")
+                                            : isVolume
+                                            ? "orange"
+                                            : reqAppr
+                                            ? "orange"
+                                            : "green"
+                                        }
+                                        fontSize="10px"
+                                        px={2}
+                                        py={0.5}
+                                        borderRadius="full"
+                                        fontWeight="800"
+                                      >
+                                        {isQuoteApproved
+                                          ? (reqAppr ? "✅ APROBADO" : "🟢 NO")
+                                          : isFinalRejected
+                                          ? (reqAppr ? "❌ RECHAZADO" : "⚪ NO")
+                                          : isObserved
+                                          ? (reqAppr ? "⚠️ OBSERVADO" : "🟢 NO")
+                                          : isVolume
+                                          ? "🔥 MAYOREO (HASTA 65%)"
+                                          : reqAppr
+                                          ? "⚠️ REQUIERE"
+                                          : "🟢 NO"}
+                                      </Badge>
+                                    </Td>
+                                    <Td textAlign="right" fontWeight="850" color="emerald.900" fontFamily="mono" px={2.5}>
+                                      ${formatThousands(item.lineTotal)}
+                                    </Td>
+                                  </Tr>
+                                );
+                              })}
+                            </Tbody>
+                          </Table>
+                        </TableContainer>
+                      </Box>
                     </Box>
                   )}
 
-                  <Box bg="white" p={4} borderRadius="2xl" border="1px solid" borderColor="gray.200" boxShadow="sm" h="full">
-                    <Flex justify="space-between" align="center" mb={4}>
-                      <HStack spacing={2}>
-                        <History className="w-4 h-4 text-emerald-800" />
-                        <Text fontSize="xs" fontWeight="800" color="gray.800" textTransform="uppercase">
-                          Historial de Actividad
-                        </Text>
-                      </HStack>
-                      <Badge colorScheme="gray" fontSize="xs" px={2} borderRadius="full">{historyLog.length} Registros</Badge>
-                    </Flex>
-
-                  <VStack align="stretch" spacing={4} position="relative" pl={2}>
-                    <Box position="absolute" top="10px" bottom="20px" left="17px" w="2px" bg="gray.100" />
-
-                    {historyLog.map((log, idx) => {
-                      let dotColor = "orange.500";
-                      let bgCircle = "orange.50";
-                      let tagText = log.status || "EVENTO";
-                      let tagScheme = "orange";
-                      
-                      if (log.status === "APROBADO") {
-                        dotColor = "emerald.600";
-                        bgCircle = "emerald.50";
-                        tagScheme = "green";
-                      } else if (log.status === "RECHAZADO") {
-                        dotColor = "red.500";
-                        bgCircle = "red.50";
-                        tagScheme = "red";
-                      } else if (log.status === "VISTO") {
-                        dotColor = "purple.500";
-                        bgCircle = "purple.50";
-                        tagScheme = "purple";
-                      } else if (log.status === "ENVIADO") {
-                        dotColor = "blue.500";
-                        bgCircle = "blue.50";
-                        tagScheme = "blue";
-                      } else if (log.status === "GENERADO") {
-                        dotColor = "gray.500";
-                        bgCircle = "gray.100";
-                        tagScheme = "gray";
-                      }
-
-                      return (
-                        <Flex key={idx} align="flex-start" gap={3.5} zIndex={1} position="relative">
-                          <Flex
-                            w="20px"
-                            h="20px"
-                            borderRadius="full"
-                            bg={bgCircle}
-                            border="2px solid"
-                            borderColor={dotColor}
-                            align="center"
-                            justify="center"
-                            flexShrink={0}
-                            mt={0.5}
-                          >
-                            <Box w="6px" h="6px" borderRadius="full" bg={dotColor} />
-                          </Flex>
-
-                          <Box flex="1" minW={0} bg="gray.50" p={3} borderRadius="lg" border="1px solid" borderColor="gray.150">
-                            <Flex align="center" justify="space-between" mb={1} wrap="wrap" gap={1}>
-                              <Badge colorScheme={tagScheme} fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="800">
-                                {tagText}
-                              </Badge>
-                              <Text fontSize={{ base: "10px", md: "9px" }} color="gray.500" fontWeight="600">
-                                ⏰ {new Date(log.timestamp).toLocaleString()}
-                              </Text>
-                            </Flex>
-                            <Text fontWeight="800" color="gray.800" fontSize={{ base: "13px", md: "xs" }} mt={0.5} overflowWrap="anywhere">
-                              {log.note || "Cambio de estado comercial"}
-                            </Text>
-                            <Text fontSize={{ base: "11px", md: "10px" }} color="gray.600" mt={1.5} fontWeight="600" overflowWrap="anywhere">
-                              👤 Registrado por: {log.user || "Usuario Sistema"}
-                            </Text>
-                          </Box>
+                  {/* TABLA 2: ARTÍCULOS SIN STOCK (DEMANDA BACK ORDER) - SEPARADA DEBAJO NOMÁS */}
+                  {outOfStockProducts.length > 0 && (
+                    <Box mt={4} pt={1}>
+                      {/* CABECERA DE DEMANDA BACK ORDER (Diseño Responsivo Antidesbordamiento) */}
+                      <Box mb={2} p={{ base: 2.5, md: 2 }} bg="#fff5f5" borderRadius="lg" border="1px solid #fecaca">
+                        <Flex justify="space-between" align="center" wrap="wrap" gap={2} mb={1}>
+                          <Badge colorScheme="red" variant="solid" bg="#dc2626" color="white" fontSize="10px" px={2.5} py={0.5} borderRadius="full" fontWeight="900">
+                            ⚠️ CÓDIGOS SIN STOCK (DEMANDA BACK ORDER)
+                          </Badge>
+                          <Badge colorScheme="red" bg="#fee2e2" color="#991b1b" border="1px solid #fca5a5" fontSize="10px" fontWeight="900" px={2.5} py={0.5} borderRadius="full">
+                            {outOfStockProducts.length} {outOfStockProducts.length === 1 ? "artículo" : "artículos"}
+                          </Badge>
                         </Flex>
-                      );
-                    })}
-                    </VStack>
-                  </Box>
-                </VStack>
-              </GridItem>
-            </Grid>
+                        <Text fontSize={{ base: "11px", md: "11.5px" }} color="#991b1b" fontWeight="600" lineHeight="1.4">
+                          Almacén 014 • Registrados para Importaciones (no se facturan ni suman al total de la cotización)
+                        </Text>
+                      </Box>
+
+                      {/* Vista Móvil Tabla 2 */}
+                      <Box display={{ base: "block", md: "none" }}>
+                        <VStack align="stretch" spacing={2.5}>
+                          {outOfStockProducts.map((p, idx) => {
+                            const pCode = p.itemCode || p.code || p.id || p.productCode || "ART";
+                            const pName = p.description || p.ItemDescription || p.name || p.productName || "Artículo Sin Stock";
+                            const qty = Number(p.quantity ?? 1);
+
+                            return (
+                              <Box key={`m-out-${idx}`} p={3} bg="#fff5f5" borderRadius="xl" border="1px solid #fecaca" boxShadow="xs">
+                                <Flex justify="space-between" align="center" mb={1}>
+                                  <Badge fontFamily="mono" fontSize="10px" fontWeight="900" colorScheme="red">
+                                    {pCode}
+                                  </Badge>
+                                  <Badge colorScheme="red" variant="solid" bg="#dc2626" fontSize="9px" px={2} py={0.5} borderRadius="md">
+                                    BACK ORDER
+                                  </Badge>
+                                </Flex>
+                                <Text fontSize="xs" fontWeight="800" color="gray.900" mb={2}>
+                                  {pName}
+                                </Text>
+                                <Flex justify="space-between" align="center" pt={1.5} borderTop="1px dashed #fecaca" fontSize="11px">
+                                  <Text color="gray.600">Cant: <Text as="span" fontWeight="900" color="gray.900">{qty} uds</Text></Text>
+                                  <Badge colorScheme="red" bg="#fee2e2" color="#991b1b" fontSize="9px">
+                                    Sin Stock (Alm. 014)
+                                  </Badge>
+                                </Flex>
+                              </Box>
+                            );
+                          })}
+                        </VStack>
+                      </Box>
+
+                      {/* Vista Escritorio Tabla 2 */}
+                      <Box display={{ base: "none", md: "block" }}>
+                        <TableContainer border="1.5px solid" borderColor="#fecaca" borderRadius="lg" bg="white" overflowX="auto">
+                          <Table variant="simple" size="sm">
+                            <Thead bg="#fee2e2">
+                              <Tr>
+                                <Th fontSize="10px" color="#991b1b" fontWeight="900" px={2.5}>Código</Th>
+                                <Th fontSize="10px" color="#991b1b" fontWeight="900" px={2.5}>Descripción</Th>
+                                <Th fontSize="10px" color="#991b1b" fontWeight="900" textAlign="center" px={2}>Cant. Solicitada</Th>
+                                <Th fontSize="10px" color="#991b1b" fontWeight="900" textAlign="center" px={2}>Estado Almacén</Th>
+                                <Th fontSize="10px" color="#991b1b" fontWeight="900" textAlign="right" px={2.5}>Destino Operativo</Th>
+                              </Tr>
+                            </Thead>
+                            <Tbody fontSize="xs">
+                              {outOfStockProducts.map((p, idx) => {
+                                const pCode = p.itemCode || p.code || p.id || p.productCode || "ART";
+                                const pName = p.description || p.ItemDescription || p.name || p.productName || "Artículo Sin Stock";
+                                const qty = Number(p.quantity ?? 1);
+                                const pSigla = p.sigla || p.Sigla || p.marca || "";
+
+                                return (
+                                  <Tr key={`backorder-t2-${idx}`} _hover={{ bg: "#fff5f5" }} borderBottom="1px solid #fee2e2">
+                                    <Td fontWeight="900" color="#991b1b" fontFamily="mono" px={2.5}>
+                                      {pCode}
+                                    </Td>
+                                    <Td fontWeight="600" color="gray.900" px={2.5} minW="160px" whiteSpace="normal">
+                                      <VStack align="start" spacing={1}>
+                                        <Text>{pName}</Text>
+                                        <HStack spacing={1} wrap="wrap">
+                                          <Badge colorScheme="red" bg="#fee2e2" color="#991b1b" border="1px solid #fca5a5" fontSize="9px" px={1.5} py={0.2} borderRadius="md" fontWeight="800">
+                                            ⚠️ SIN STOCK DISPONIBLE (PENDIENTE A IMPORTACIÓN)
+                                          </Badge>
+                                          {pSigla && (
+                                            <Badge colorScheme="blue" variant="subtle" fontSize="9px" px={1.5} py={0.2} borderRadius="md" fontWeight="800">
+                                              {pSigla}
+                                            </Badge>
+                                          )}
+                                        </HStack>
+                                      </VStack>
+                                    </Td>
+                                    <Td textAlign="center" fontWeight="900" px={2}>
+                                      <Badge colorScheme="gray" bg="gray.100" color="gray.800" fontSize="11px" px={2} py={0.5} borderRadius="md" fontWeight="900">
+                                        {qty} {qty === 1 ? "ud" : "uds"}
+                                      </Badge>
+                                    </Td>
+                                    <Td textAlign="center" px={2}>
+                                      <Badge colorScheme="red" variant="solid" bg="#dc2626" color="white" fontSize="10px" fontWeight="900" px={2} py={0.5} borderRadius="md">
+                                        ⚠️ STK: 0 (Sin Stock)
+                                      </Badge>
+                                    </Td>
+                                    <Td textAlign="right" px={2.5}>
+                                      <Badge colorScheme="red" bg="#fee2e2" color="#991b1b" border="1px solid #fca5a5" fontSize="10px" fontWeight="900" px={2.5} py={0.5} borderRadius="full">
+                                        📦 Demanda Back Order (Importaciones)
+                                      </Badge>
+                                    </Td>
+                                  </Tr>
+                                );
+                              })}
+                            </Tbody>
+                          </Table>
+                        </TableContainer>
+                      </Box>
+                    </Box>
+                  )}
+
+                  {/* BLOQUE INFERIOR: HISTORIAL DE ACTIVIDAD (A SU COSTADO EN DESKTOP) Y RESUMEN DEL DOCUMENTO */}
+                  {(() => {
+                    const computedGrossUSD = inStockProducts.reduce((acc, it) => acc + (Number(it.quantity || 1) * Number(it.price || 0)), 0);
+                    const computedNetUSD = inStockProducts.reduce((acc, it) => acc + (Number(it.lineTotal || 0)), 0);
+                    const grossUSD = computedGrossUSD > 0 ? computedGrossUSD : (calcRes.grossSubtotalUSD || subtotalUSD);
+                    const netUSD = computedNetUSD > 0 ? computedNetUSD : subtotalUSD;
+                    const discountUSD = Math.max(0, Number((grossUSD - netUSD).toFixed(2)));
+                    const discountPct = grossUSD > 0 ? Number(((discountUSD / grossUSD) * 100).toFixed(1)) : 0;
+
+                    const currentQuote = effectiveQuote || quote || {};
+                    const hasVoucherData = Boolean(
+                      currentQuote?.opNum || currentQuote?.U_VS_OPNUM || currentQuote?.pathImg || currentQuote?.paymentImg || currentQuote?.voucherUrl ||
+                      (currentQuote?.attachments && currentQuote?.attachments.length > 0)
+                    );
+
+                    return (
+                      <Grid
+                        templateColumns={{ base: "1fr", lg: "1fr 380px" }}
+                        gap={4}
+                        mt={5}
+                        alignItems="start"
+                      >
+                        {/* COLUMNA IZQUIERDA: Comprobante de pago (si existe) + Historial de Actividad */}
+                        <GridItem order={{ base: 2, lg: 1 }} minW="0">
+                          <VStack align="stretch" spacing={3.5}>
+                            {/* Comprobante de Pago y Anexos (si existe) */}
+                            {hasVoucherData && (
+                              <Box p={3.5} borderRadius="xl" border="1.5px solid" borderColor="purple.200" bg="purple.50" boxShadow="xs">
+                                <Flex justify="space-between" align="center" mb={2}>
+                                  <HStack spacing={2}>
+                                    <Text fontSize="15px">💳</Text>
+                                    <Text fontSize="xs" fontWeight="900" color="purple.900" textTransform="uppercase">
+                                      Comprobante / Constancia de Pago
+                                    </Text>
+                                  </HStack>
+                                  {(currentQuote?.opNum || currentQuote?.U_VS_OPNUM) && (
+                                    <Badge colorScheme="purple" variant="solid" fontSize="10px" px={2} py={0.5} borderRadius="md" fontWeight="900">
+                                      OP: {currentQuote?.opNum || currentQuote?.U_VS_OPNUM}
+                                    </Badge>
+                                  )}
+                                </Flex>
+
+                                {(currentQuote?.pathImg || currentQuote?.paymentImg || currentQuote?.voucherUrl) && (
+                                  <Box mt={1.5} p={2} bg="white" borderRadius="lg" border="1px solid" borderColor="purple.200">
+                                    <img
+                                      src={
+                                        typeof (currentQuote.pathImg || currentQuote.paymentImg || currentQuote.voucherUrl) === 'string' && (currentQuote.pathImg || currentQuote.paymentImg || currentQuote.voucherUrl).startsWith('blob:')
+                                          ? (currentQuote.pathImg || currentQuote.paymentImg || currentQuote.voucherUrl)
+                                          : `${import.meta.env.VITE_API_URL || ''}/quoteModule/${currentQuote.pathImg || currentQuote.paymentImg || currentQuote.voucherUrl}`
+                                      }
+                                      alt="Comprobante de pago"
+                                      style={{ maxHeight: "160px", width: "100%", objectFit: "contain", borderRadius: "6px" }}
+                                    />
+                                  </Box>
+                                )}
+
+                                {currentQuote?.attachments && currentQuote?.attachments.length > 0 && (
+                                  <Box mt={2}>
+                                    <Text fontSize="10px" fontWeight="800" color="purple.800" textTransform="uppercase" mb={1}>
+                                      📎 Anexos de Resguardo ({currentQuote.attachments.length}):
+                                    </Text>
+                                    <VStack align="stretch" spacing={1}>
+                                      {currentQuote.attachments.map((att, aIdx) => (
+                                        <HStack key={aIdx} p={1.5} bg="white" borderRadius="md" border="1px solid" borderColor="purple.200" justify="space-between">
+                                          <Text fontSize="xs" fontWeight="600" color="gray.700" isTruncated>{att.name}</Text>
+                                          {att.size && <Badge fontSize="9px">{att.size}</Badge>}
+                                        </HStack>
+                                      ))}
+                                    </VStack>
+                                  </Box>
+                                )}
+                              </Box>
+                            )}
+
+                            {/* Historial de Actividad Comercial */}
+                            <Box bg="white" p={{ base: 3, md: 3.5 }} borderRadius="xl" border="1.5px solid" borderColor="gray.200" boxShadow="xs">
+                              <Flex justify="space-between" align="center" mb={2} pb={2} borderBottom="1px solid" borderColor="gray.100" wrap="wrap" gap={2}>
+                                <HStack spacing={2}>
+                                  <Flex w="24px" h="24px" borderRadius="md" bg="emerald.50" color="#126C36" align="center" justify="center" flexShrink={0}>
+                                    <History className="w-3.5 h-3.5 stroke-[2.5]" />
+                                  </Flex>
+                                  <Text fontSize="11px" fontWeight="900" color="gray.700" textTransform="uppercase" letterSpacing="wider">
+                                    Historial de Actividad
+                                  </Text>
+                                  <Badge colorScheme="emerald" variant="subtle" fontSize="10px" px={2} py={0.2} borderRadius="full" fontWeight="800">
+                                    {historyLog.length} {historyLog.length === 1 ? "registro" : "registros"}
+                                  </Badge>
+                                </HStack>
+                              </Flex>
+
+                              <Box
+                                maxH="220px"
+                                overflowY="auto"
+                                pr={1}
+                                sx={{
+                                  scrollbarWidth: "thin",
+                                  "&::-webkit-scrollbar": { width: "4px" },
+                                  "&::-webkit-scrollbar-thumb": { bg: "gray.300", borderRadius: "full" }
+                                }}
+                              >
+                                {historyLog.length === 0 ? (
+                                  <Box p={3} textAlign="center" bg="gray.50" borderRadius="lg" border="1px dashed" borderColor="gray.200">
+                                    <Text fontSize="xs" color="gray.500" fontWeight="600">
+                                      No hay registros de actividad disponibles.
+                                    </Text>
+                                  </Box>
+                                ) : (
+                                  <VStack align="stretch" spacing={1} position="relative" pl={1}>
+                                    <Box position="absolute" top="10px" bottom="10px" left="13px" w="1.5px" bg="gray.200" zIndex={0} />
+
+                                    {historyLog.map((log, idx) => {
+                                      let dotColor = "#ea580c";
+                                      let bgCircle = "#fff7ed";
+                                      let tagText = log.status || "EVENTO";
+                                      let tagScheme = "orange";
+                                      let NodeIconComponent = Clock;
+
+                                      if (log.status === "APROBADO" || log.status === "APROBADO_COMERCIAL") {
+                                        dotColor = "#059669";
+                                        bgCircle = "#ecfdf5";
+                                        tagScheme = "green";
+                                        tagText = "APROBADO";
+                                        NodeIconComponent = CheckCircle2;
+                                      } else if (log.status === "EMITIDO" || log.status === "EMITIDO_SAP" || log.status === "FACTURADO" || log.status === "PEDIDO_EMITIDO") {
+                                        dotColor = "#0284c7";
+                                        bgCircle = "#f0f9ff";
+                                        tagScheme = "blue";
+                                        tagText = "EMITIDO SAP";
+                                        NodeIconComponent = Zap;
+                                      } else if (log.status === "RECHAZADO") {
+                                        dotColor = "#dc2626";
+                                        bgCircle = "#fef2f2";
+                                        tagScheme = "red";
+                                        tagText = "RECHAZADO";
+                                        NodeIconComponent = XCircle;
+                                      } else if (log.status === "OBSERVADO" || log.status === "EN_EDICION") {
+                                        dotColor = "#d97706";
+                                        bgCircle = "#fffbeb";
+                                        tagScheme = "orange";
+                                        tagText = "OBSERVADO";
+                                        NodeIconComponent = AlertTriangle;
+                                      } else if (log.status === "VISTO") {
+                                        dotColor = "#7c3aed";
+                                        bgCircle = "#f5f3ff";
+                                        tagScheme = "purple";
+                                        tagText = "VISTO";
+                                        NodeIconComponent = Eye;
+                                      } else if (log.status === "ENVIADO") {
+                                        dotColor = "#2563eb";
+                                        bgCircle = "#eff6ff";
+                                        tagScheme = "blue";
+                                        tagText = "ENVIADO";
+                                        NodeIconComponent = Send;
+                                      } else if (log.status === "GENERADO" || log.status === "BORRADOR" || log.status === "DRAFT") {
+                                        dotColor = "#64748b";
+                                        bgCircle = "#f8fafc";
+                                        tagScheme = "gray";
+                                        tagText = "BORRADOR";
+                                        NodeIconComponent = FileText;
+                                      }
+
+                                      const rawNote = String(log.note || "Cambio de estado comercial");
+                                      let cleanNote = rawNote.replace(/^[👁️⚠️✅❌📝⚡🚀🏛️]\s*/u, "").trim();
+                                      let detailNote = null;
+
+                                      if (cleanNote.startsWith("Observación:")) {
+                                        detailNote = cleanNote.replace(/^Observación:\s*/, "").trim();
+                                        cleanNote = "Cotización devuelta con observación";
+                                      } else if (cleanNote.startsWith("Rechazo:")) {
+                                        detailNote = cleanNote.replace(/^Rechazo:\s*/, "").trim();
+                                        cleanNote = "Cotización rechazada";
+                                      }
+
+                                      return (
+                                        <Flex
+                                          key={idx}
+                                          align="start"
+                                          gap={2.5}
+                                          zIndex={1}
+                                          position="relative"
+                                          py={1.5}
+                                          px={2}
+                                          borderRadius="md"
+                                          _hover={{ bg: "gray.50" }}
+                                          transition="background 0.15s ease"
+                                        >
+                                          <Flex
+                                            w="18px"
+                                            h="18px"
+                                            borderRadius="full"
+                                            bg={bgCircle}
+                                            border="1.5px solid"
+                                            borderColor={dotColor}
+                                            color={dotColor}
+                                            align="center"
+                                            justify="center"
+                                            flexShrink={0}
+                                            boxShadow="xs"
+                                            mt={0.5}
+                                          >
+                                            <NodeIconComponent className="w-2.5 h-2.5" />
+                                          </Flex>
+
+                                          <Box flex="1" minW="0">
+                                            <Flex align="center" justify="space-between" wrap="wrap" gap={1.5}>
+                                              <HStack spacing={2} minW="0" flex="1" wrap="wrap">
+                                                <Badge
+                                                  colorScheme={tagScheme}
+                                                  fontSize="9.5px"
+                                                  px={1.5}
+                                                  py={0.2}
+                                                  borderRadius="md"
+                                                  fontWeight="800"
+                                                  flexShrink={0}
+                                                >
+                                                  {tagText}
+                                                </Badge>
+                                                <Text fontSize="12px" fontWeight="700" color="gray.800" isTruncated title={cleanNote}>
+                                                  {cleanNote}
+                                                </Text>
+                                                {log.user && (
+                                                  <Text as="span" fontSize="11px" color="gray.500" fontWeight="500" flexShrink={0}>
+                                                    • {log.user}
+                                                  </Text>
+                                                )}
+                                              </HStack>
+
+                                              <HStack spacing={1} color="gray.400" fontSize="10.5px" fontWeight="600" flexShrink={0}>
+                                                <Clock className="w-3 h-3 text-gray-400" />
+                                                <Text whiteSpace="nowrap">{formatLogTime(log.timestamp)}</Text>
+                                              </HStack>
+                                            </Flex>
+
+                                            {detailNote && (
+                                              <Box mt={1} p={1.5} px={2} bg="#fffbeb" borderLeft="2.5px solid #f59e0b" borderRadius="sm">
+                                                <Text fontSize="11px" color="#92400e" fontWeight="600">
+                                                  {detailNote}
+                                                </Text>
+                                              </Box>
+                                            )}
+                                          </Box>
+                                        </Flex>
+                                      );
+                                    })}
+                                  </VStack>
+                                )}
+                              </Box>
+                            </Box>
+                          </VStack>
+                        </GridItem>
+
+                        {/* COLUMNA DERECHA: RESUMEN DEL DOCUMENTO (Exacto a SapQuotationForm) */}
+                        <GridItem order={{ base: 1, lg: 2 }} minW="0">
+                          <Box
+                            bg="linear-gradient(135deg, #064e3b 0%, #0f5132 100%)"
+                            color="#ffffff"
+                            p={{ base: 4, sm: 5 }}
+                            borderRadius="xl"
+                            boxShadow="0 4px 20px -2px rgba(15, 81, 50, 0.35)"
+                            border="1px solid"
+                            borderColor="rgba(255,255,255,0.15)"
+                            w="100%"
+                            alignSelf="start"
+                          >
+                            <Text fontSize="xs" fontWeight="800" textTransform="uppercase" letterSpacing="wider" color="#a7f3d0" mb={3}>
+                              RESUMEN DEL DOCUMENTO
+                            </Text>
+
+                            <VStack align="stretch" spacing={2} fontSize="xs">
+                              {/* Subtotal Productos (Suma de precios de lista con stock) */}
+                              <Flex justify="space-between" align="center" color="#ecfdf5">
+                                <Text fontWeight="600">
+                                  Subtotal ({inStockProducts.length} {inStockProducts.length === 1 ? 'ítem con stock' : 'ítems con stock'})
+                                </Text>
+                                <Text fontWeight="800" fontFamily="mono">
+                                  USD {formatThousands(grossUSD)}
+                                </Text>
+                              </Flex>
+
+                              {/* Back Order row */}
+                              {outOfStockProducts.length > 0 && (
+                                <Flex justify="space-between" align="center" bg="rgba(239, 68, 68, 0.25)" px={2} py={1} borderRadius="md" border="1px solid rgba(248, 113, 113, 0.4)">
+                                  <Text fontSize="10px" fontWeight="700" color="#fecaca">
+                                    📦 Sin Stock ({outOfStockProducts.length} {outOfStockProducts.length === 1 ? 'ítem' : 'ítems'}):
+                                  </Text>
+                                  <Badge colorScheme="red" bg="#dc2626" color="white" fontSize="9px" px={1.5} py={0.2} borderRadius="sm" fontWeight="800">
+                                    BACK ORDER
+                                  </Badge>
+                                </Flex>
+                              )}
+
+                              {/* Descuento si aplica */}
+                              {discountUSD > 0 && (
+                                <Flex justify="space-between" align="center" color="#fca5a5">
+                                  <Text fontWeight="600">Descuento ({discountPct}%)</Text>
+                                  <Text fontWeight="700" fontFamily="mono">
+                                    -USD {formatThousands(discountUSD)}
+                                  </Text>
+                                </Flex>
+                              )}
+
+                              {/* Valor Venta Neto tras descuento */}
+                              {discountUSD > 0 && (
+                                <Flex justify="space-between" align="center" color="#ecfdf5">
+                                  <Text fontWeight="600">Valor Venta Neto</Text>
+                                  <Text fontWeight="700" fontFamily="mono">
+                                    USD {formatThousands(netUSD)}
+                                  </Text>
+                                </Flex>
+                              )}
+
+                              {/* I.G.V. 18% oficial */}
+                              <Flex justify="space-between" align="center" color="#a7f3d0">
+                                <Text fontWeight="700">I.G.V. (18%)</Text>
+                                <Text fontWeight="800" fontFamily="mono">
+                                  +USD {formatThousands(igvUSD)}
+                                </Text>
+                              </Flex>
+
+                              <Divider borderColor="rgba(255,255,255,0.25)" my={0.5} />
+
+                              {/* TOTAL A PAGAR */}
+                              <Flex justify="space-between" align="center" pt={1.5} gap={2} wrap="nowrap">
+                                <Text
+                                  fontSize={{ base: "xs", sm: "sm" }}
+                                  fontWeight="900"
+                                  color="#e6f4ea"
+                                  textTransform="uppercase"
+                                  letterSpacing="tight"
+                                  whiteSpace="nowrap"
+                                  flexShrink={0}
+                                >
+                                  TOTAL A PAGAR
+                                </Text>
+                                <Text
+                                  fontSize={{ base: "xl", sm: "2xl" }}
+                                  fontWeight="950"
+                                  color="#fef08a"
+                                  fontFamily="mono"
+                                  textShadow="0 2px 8px rgba(0,0,0,0.3)"
+                                  whiteSpace="nowrap"
+                                  textAlign="right"
+                                >
+                                  USD {formatThousands(grandTotalUSD)}
+                                </Text>
+                              </Flex>
+                            </VStack>
+                          </Box>
+                        </GridItem>
+                      </Grid>
+                    );
+                  })()}
+                </Box>
+              );
+            })()}
           </DrawerBody>
           <DrawerFooter bg="gray.50" borderTop="1px solid" borderColor="gray.200" py={3} px={{ base: 4, md: 6 }}>
             <Flex justify="space-between" align="center" w="100%" flexWrap="wrap" gap={3}>
@@ -2955,12 +3625,12 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                     color="white"
                     leftIcon={<Zap className="w-4 h-4" />}
                     isLoading={isSyncingSap}
-                    loadingText="Sincronizando con SAP..."
+                    loadingText="Emitiendo a SAP..."
                     onClick={handleSyncToSap}
                     fontWeight="800"
                     boxShadow="0 2px 6px rgba(18,108,54,0.3)"
                   >
-                    ⚡ Enviar / Sincronizar con SAP
+                    ⚡ Aprobar y Sincronizar con SAP
                   </Button>
                 )}
 
@@ -2982,26 +3652,28 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                 )}
 
 
-                {/* Botón para Descargar PDF */}
-                <Button
-                  colorScheme="teal"
-                  variant="outline"
-                  size="sm"
-                  leftIcon={<Download className="w-4 h-4 text-teal-600" />}
-                  onClick={() =>
-                    setPdfQuote({
-                      ...effectiveQuote,
-                      products: displayProducts,
-                      totals: { ...effectiveQuote.totals, ...calcRes },
-                    })
-                  }
-                  fontWeight="800"
-                >
-                  Descargar PDF
-                </Button>
+                {/* Botón para Descargar PDF: SOLO SI YA ESTÁ APROBADO */}
+                {!isUnapprovedDoc && (isFinalApproved || Boolean(syncedDocNum) || Boolean(effectiveQuote.sapDocNum) || Boolean(effectiveQuote.DocNum && !String(effectiveQuote.DocNum).startsWith("COT-"))) && (
+                  <Button
+                    colorScheme="teal"
+                    variant="outline"
+                    size="sm"
+                    leftIcon={<Download className="w-4 h-4 text-teal-600" />}
+                    onClick={() =>
+                      setPdfQuote({
+                        ...effectiveQuote,
+                        products: displayProducts,
+                        totals: { ...effectiveQuote.totals, ...calcRes },
+                      })
+                    }
+                    fontWeight="800"
+                  >
+                    Descargar PDF
+                  </Button>
+                )}
 
                 {/* Botón exclusivo para Administrador: Ver Trama JSON SAP */}
-                {isAdminUser && (
+                {isRealAdmin && (
                   <Button
                     colorScheme="purple"
                     variant="outline"
@@ -3030,7 +3702,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
       />
 
       {/* Modal Inspector Técnico JSON SAP (Solo Administrador) */}
-      {isAdminUser && (
+      {isRealAdmin && (
         <SapPayloadJsonModal
           isOpen={isJsonModalOpen}
           onClose={() => setIsJsonModalOpen(false)}
@@ -3408,7 +4080,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                   <Box p={2.5} bg="#ecfdf5" borderRadius="lg" border="1px solid" borderColor="#a7f3d0">
                     <Text fontSize="10.5px" fontWeight="700" color="#065f46" textTransform="uppercase">Importe Total SAP</Text>
                     <Text fontSize="md" fontWeight="900" color="#064e3b" fontFamily="mono">
-                      ${Number(sapSyncResult?.docTotalUSD ?? sapSyncResult?.docTotal ?? effectiveQuote?.totals?.grandTotalUSD ?? 0).toFixed(2)} USD
+                      ${formatThousands(Number(sapSyncResult?.docTotalUSD ?? sapSyncResult?.docTotal ?? effectiveQuote?.totals?.grandTotalUSD ?? 0))} USD
                     </Text>
                   </Box>
 
@@ -3456,7 +4128,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                 >
                   Ver Comprobante PDF
                 </Button>
-                {isAdminUser && (
+                {isRealAdmin && (
                   <Button
                     variant="outline"
                     colorScheme="purple"

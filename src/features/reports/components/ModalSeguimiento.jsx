@@ -13,10 +13,10 @@ import TrackingPage from "./SalesReportDetail";
 import { useGetInvoiceDeliveryNoteperOrder } from "../hooks/queries/reportQueries";
 
 export default function ModalSeguimiento({ isOpen, onClose, orden }) {
-  const docEntry = orden?.DocEntry || orden?.orden?.id;
+  const docEntry = orden?.DocEntry || orden?.orden?.id || orden?.sapDocNum || orden?.DocNum;
 
   const { data, isLoading, isError, error } =
-    useGetInvoiceDeliveryNoteperOrder({ docEntry, enabled: isOpen });
+    useGetInvoiceDeliveryNoteperOrder({ docEntry, enabled: isOpen && Boolean(docEntry) });
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="6xl">

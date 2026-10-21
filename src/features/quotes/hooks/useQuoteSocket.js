@@ -9,6 +9,7 @@ export function useQuoteSocket() {
   const queryClient = useQueryClient();
   const toast = useToast();
   const displayedToastIdsRef = useRef(new Set());
+  const lastPermissionProcessedAtRef = useRef(0);
 
   useEffect(() => {
     if (!socket) return;
@@ -132,7 +133,15 @@ export function useQuoteSocket() {
         if (targetRoleUpper === "FACTURACION" || targetRoleUpper === "ADMIN") {
           const statusUpper = String(notif.status || "").trim().toUpperCase();
           const titleLower = String(notif.title || "").toLowerCase();
-          if (statusUpper !== "EMITIDO" && statusUpper !== "ANULADO" && statusUpper !== "CANCELADO" && !titleLower.includes("orden sap") && !titleLower.includes("pedido emitido")) {
+          if (
+            statusUpper !== "EMITIDO" &&
+            statusUpper !== "ANULADO" &&
+            statusUpper !== "CANCELADO" &&
+            !titleLower.includes("orden sap") &&
+            !titleLower.includes("pedido emitido") &&
+            !titleLower.includes("orden de venta") &&
+            !titleLower.includes("orden emitida")
+          ) {
             isForMe = true;
           }
         }
@@ -181,6 +190,12 @@ export function useQuoteSocket() {
         return;
       }
 
+      const titleLower = String(notif.title || "").toLowerCase();
+      // Silenciar toasts invasivos para confirmaciones ordinarias de envío ("Cotización Enviada a Validación")
+      if (titleLower.includes("enviada a validación") || titleLower.includes("enviada a validacion")) {
+        return;
+      }
+
       if (isForMe && notif.title) {
         const toastId = `ws-notif-${notif.quoteId || notif.id}-${notif.status || 'new'}`;
         
@@ -215,31 +230,47 @@ export function useQuoteSocket() {
 
       const isTargetUser =
         (data.userId && String(data.userId) === String(activeUserId)) ||
-        (data.username && activeUsername && data.username.toLowerCase() === activeUsername.toLowerCase());
+        (data.username && activeUsername && String(data.username).trim().toLowerCase() === String(activeUsername).trim().toLowerCase());
 
       if (isTargetUser && Array.isArray(data.endpoints)) {
-        console.log("🔑 [WS PERMISSIONS] Aplicando nuevos permisos en vivo al usuario actual:", data.endpoints);
+        const now = Date.now();
+        // 🛡️ Blindaje estricto contra lluvia de toasts: ignorar ráfagas dentro de 4 segundos
+        const isDuplicateBurst = (now - lastPermissionProcessedAtRef.current) < 4000;
+        lastPermissionProcessedAtRef.current = now;
+
+        console.log("🔑 [WS PERMISSIONS] Aplicando nuevos permisos y rol en vivo al usuario actual:", data.endpoints, data.role);
         useAuthStore.getState().updateEndpoints(data.endpoints);
-        window.dispatchEvent(new Event("permissionsUpdated"));
-
-        const toastId = `ws-perm-${Date.now()}`;
-        if (!toast.isActive(toastId)) {
-          toast({
-            id: toastId,
-            title: "🔑 Accesos y Permisos Actualizados",
-            description: `Tus accesos han sido actualizados en tiempo real (${data.endpoints.length} permisos activos). No requieres cerrar sesión.`,
-            status: "success",
-            duration: 6000,
-            isClosable: true,
-            position: "top-right",
-          });
+        if (data.role) {
+          useAuthStore.getState().updateRole(data.role);
         }
-      }
+        window.dispatchEvent(new Event("permissionsUpdated"));
+        window.dispatchEvent(new CustomEvent("permissionsUpdated", { detail: data }));
 
-      // Refrescar consultas de usuarios y servicios en cualquier panel de administración abierto
-      queryClient.invalidateQueries({ queryKey: ["adminUsers"] });
-      queryClient.invalidateQueries({ queryKey: ["allUsersAdmin"] });
-      queryClient.invalidateQueries({ queryKey: ["Services"] });
+        if (!isDuplicateBurst) {
+          // Refrescar consultas de permisos de forma segura
+          queryClient.invalidateQueries({ queryKey: ["adminUsers"] });
+          queryClient.invalidateQueries({ queryKey: ["allUsersAdmin"] });
+          queryClient.invalidateQueries({ queryKey: ["Services"] });
+
+          const toastId = "ws-user-permissions-updated-toast";
+          if (!toast.isActive(toastId)) {
+            toast({
+              id: toastId,
+              title: "🔑 Accesos y Permisos Actualizados",
+              description: `Tus accesos han sido actualizados en tiempo real (${data.endpoints.length} permisos activos). Ya puedes acceder a tus nuevas funciones sin recargar.`,
+              status: "success",
+              duration: 5000,
+              isClosable: true,
+              position: "top-right",
+            });
+          }
+        }
+      } else {
+        // Refrescar consultas de usuarios y servicios en cualquier panel de administración abierto
+        queryClient.invalidateQueries({ queryKey: ["adminUsers"] });
+        queryClient.invalidateQueries({ queryKey: ["allUsersAdmin"] });
+        queryClient.invalidateQueries({ queryKey: ["Services"] });
+      }
     };
 
     // 6. Escuchar actualizaciones en vivo del sistema o avisos globales de mantenimiento

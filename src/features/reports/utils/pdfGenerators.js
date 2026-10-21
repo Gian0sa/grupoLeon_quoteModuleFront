@@ -194,19 +194,39 @@ export const generateDeliveryPDF = async (entregaDetalle) => {
   doc.save(`Guia-Salida-${entregaDetalle.docNum}.pdf`);
 };
 
+export const normalizeInvoiceRefCode = (code) => {
+  if (!code) return "";
+  const cleaned = String(code).trim().replace(/[\/\s]/g, "");
+  // Formato completo con o sin guión: 01-F003-00037204, 01F003-00037204, 01-F003-37204
+  const matchFull = cleaned.match(/^(\d{2})-?([A-Z0-9]{4})-?(\d+)$/i);
+  if (matchFull) {
+    return `${matchFull[1]}${matchFull[2].toUpperCase()}-${matchFull[3].padStart(8, "0")}`;
+  }
+  // Formato sin tipo: F003-00037204, B003-00037204
+  const matchShort = cleaned.match(/^([A-Z0-9]{4})-?(\d+)$/i);
+  if (matchShort) {
+    const serie = matchShort[1].toUpperCase();
+    const tipo = serie.startsWith("B") ? "03" : "01";
+    return `${tipo}${serie}-${matchShort[2].padStart(8, "0")}`;
+  }
+  return cleaned;
+};
+
 export const downloadInvoicePDF = async (invoiceDetalle) => {
   if (!invoiceDetalle?.numAtCard) {
-    console.error("❌ No se recibió numAtCard en invoiceDetalle");
+    console.error("No se encontró el número de referencia para descargar la factura");
+    alert("No se encontró el número de referencia para descargar la factura");
     return;
   }
 
-  const url = `${import.meta.env.VITE_API_URL}/reportModule/pdf/${invoiceDetalle.numAtCard}`;
+  const cleanCode = normalizeInvoiceRefCode(invoiceDetalle.numAtCard);
+  const url = `${import.meta.env.VITE_API_URL}/reportModule/pdf/${cleanCode}`;
   
   try {
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        "Accept": "application/pdf",
+        "Accept": "application/pdf, application/json",
       },
       credentials: "include",
     });
@@ -216,16 +236,28 @@ export const downloadInvoicePDF = async (invoiceDetalle) => {
       throw new Error(`Error ${response.status}: ${text}`);
     }
 
-    const blob = await response.blob();
-    const blobUrl = window.URL.createObjectURL(blob);
+    const rawBlob = await response.blob();
+    if (!rawBlob || rawBlob.size === 0) {
+      throw new Error("El documento PDF recibido está vacío o no contiene datos.");
+    }
+
+    const pdfBlob = new Blob([rawBlob], { type: "application/pdf" });
+    const blobUrl = window.URL.createObjectURL(pdfBlob);
 
     const link = document.createElement("a");
     link.href = blobUrl;
-    link.download = `Factura_${invoiceDetalle.numAtCard}.pdf`;
+    link.download = `Factura_${cleanCode}.pdf`;
     document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(blobUrl);
+
+    setTimeout(() => {
+      try {
+        if (document.body.contains(link)) {
+          document.body.removeChild(link);
+        }
+        window.URL.revokeObjectURL(blobUrl);
+      } catch (_) {}
+    }, 10000);
 
   } catch (err) {
     console.error("❌ No se pudo descargar el archivo:", err);
@@ -238,7 +270,8 @@ export const downloadInvoicePDFdirectly = async (referenceCode) => {
     throw new Error("No se proporcionó un código de referencia válido.");
   }
 
-  const url = `${import.meta.env.VITE_API_URL}/reportModule/pdf/${referenceCode}`;
+  const cleanCode = normalizeInvoiceRefCode(referenceCode);
+  const url = `${import.meta.env.VITE_API_URL}/reportModule/pdf/${cleanCode}`;
 
   const response = await fetch(url, {
     method: "GET",
@@ -267,17 +300,26 @@ export const downloadInvoicePDFdirectly = async (referenceCode) => {
     throw new Error("La respuesta del servidor no corresponde a un documento PDF válido.");
   }
 
-  const blob = await response.blob();
-  if (!blob || blob.size === 0) {
+  const rawBlob = await response.blob();
+  if (!rawBlob || rawBlob.size === 0) {
     throw new Error("El documento PDF recibido está vacío o no contiene datos.");
   }
 
-  const blobUrl = window.URL.createObjectURL(blob);
+  const pdfBlob = new Blob([rawBlob], { type: "application/pdf" });
+  const blobUrl = window.URL.createObjectURL(pdfBlob);
+
   const link = document.createElement("a");
   link.href = blobUrl;
-  link.download = `Factura_${referenceCode}.pdf`;
+  link.download = `Factura_${cleanCode}.pdf`;
   document.body.appendChild(link);
   link.click();
-  document.body.removeChild(link);
-  window.URL.revokeObjectURL(blobUrl);
+
+  setTimeout(() => {
+    try {
+      if (document.body.contains(link)) {
+        document.body.removeChild(link);
+      }
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (_) {}
+  }, 10000);
 };

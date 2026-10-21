@@ -64,20 +64,62 @@ class RouteErrorBoundary extends Component {
   }
   render() {
     if (this.state.hasError) {
+      const isChunkLoadError = 
+        this.state.error?.name === 'ChunkLoadError' ||
+        String(this.state.error?.message || '').toLowerCase().includes('failed to fetch dynamically imported module');
+
       return (
         <Flex direction="column" align="center" justify="center" minH="100vh" p={6} textAlign="center" bg="gray.50">
-          <Text fontSize="xl" fontWeight="bold" color="green.700" mb={2}>
-            Pantalla no disponible sin conexión
+          <Text fontSize="3xl" mb={2}>⚠️</Text>
+          <Text fontSize="xl" fontWeight="bold" color="emerald.900" mb={2}>
+            {isChunkLoadError ? "Actualización de pantalla disponible" : "Inconveniente temporal en la pantalla"}
           </Text>
-          <Text color="gray.600" mb={4} maxW="400px">
-            Esta pantalla requiere conexión a internet para descargarse. Puedes volver a Registro de Visitas para continuar con tu operación.
+          <Text color="gray.600" mb={5} maxW="460px" fontSize="sm">
+            {isChunkLoadError
+              ? "Se ha publicado una nueva versión o hubo una interrupción breve de conexión. Pulsa para recargar esta misma pantalla con la versión más reciente."
+              : "Ocurrió un problema temporal al cargar este módulo. Puedes reintentar para recargar la página actual sin perder tu ubicación."}
           </Text>
-          <Flex gap={3}>
-            <Button colorScheme="green" onClick={() => { this.setState({ hasError: false, error: null }); window.location.href = "/visitLog"; }}>
-              Ir a Registro de Visitas
+          <Flex gap={3} wrap="wrap" justify="center">
+            <Button
+              colorScheme="green"
+              bg="#126C36"
+              _hover={{ bg: "#0e572b" }}
+              fontWeight="800"
+              onClick={() => {
+                this.setState({ hasError: false, error: null });
+                window.location.reload();
+              }}
+            >
+              🔄 Reintentar / Recargar esta pantalla
             </Button>
-            <Button variant="outline" colorScheme="green" onClick={() => { this.setState({ hasError: false, error: null }); window.location.href = "/dashboard"; }}>
-              Ir al Inicio
+            <Button
+              variant="outline"
+              colorScheme="green"
+              fontWeight="700"
+              onClick={() => {
+                this.setState({ hasError: false, error: null });
+                if (window.history.length > 1) {
+                  window.history.back();
+                } else {
+                  const last = localStorage.getItem("lastRoute");
+                  const current = window.location.pathname;
+                  const target = (last && last !== current && last !== "/" && last !== "/login" && last !== "/register") ? last : "/dashboard";
+                  window.location.href = target;
+                }
+              }}
+            >
+              ⬅️ Volver a la pantalla anterior
+            </Button>
+            <Button
+              variant="ghost"
+              colorScheme="gray"
+              fontWeight="600"
+              onClick={() => {
+                this.setState({ hasError: false, error: null });
+                window.location.href = "/dashboard";
+              }}
+            >
+              🏠 Ir al Inicio
             </Button>
           </Flex>
         </Flex>

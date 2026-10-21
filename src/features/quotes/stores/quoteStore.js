@@ -269,7 +269,23 @@ export const useQuoteStore = create((set, get) => {
   return {
     ...getInitialStateWithDraft(),
 
-    setClient: (clientData) => customSet({ client: normalizeQuoteClient(clientData) }),
+    setClient: (clientData) => {
+      const normalizedClient = normalizeQuoteClient(clientData);
+      const docDigits = String(
+        normalizedClient?.FederalTaxID || 
+        normalizedClient?.clientDocument || 
+        normalizedClient?.documentNumber || 
+        normalizedClient?.LicTradNum || 
+        normalizedClient?.CardCode || 
+        ""
+      ).replace(/\D/g, "");
+      const autoDocType = docDigits.length === 8 ? "BOLETA" : "FACTURA";
+
+      customSet({ 
+        client: normalizedClient,
+        documentType: autoDocType 
+      });
+    },
     setQuoteId: (id) => customSet({ quoteId: id }),
     setApprovalStatus: (status) => customSet({ approvalStatus: status }),
 

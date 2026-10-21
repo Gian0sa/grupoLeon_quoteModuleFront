@@ -252,4 +252,14 @@ export const getSapRelationshipMap = async (docNum) => {
   }
 };
 
+export const getSapStatusService = async () => {
+  try {
+    const response = await axiosInstance.get('/quoteModule/sap-status');
+    return response.data;
+  } catch (err) {
+    console.warn("⚠️ [SAP Status] No se pudo obtener ambiente SAP:", err?.message);
+    return { success: false, companyDB: "SBO", environment: "PRUEBAS", isProd: false };
+  }
+};
+
   

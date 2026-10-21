@@ -25,12 +25,18 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
     PRECIO_LISTA,
     DESCUENTO_PCT,
     PRECIO_DESCUENTO,
+    PRECIO_LISTA_CON_IGV,
+    PRECIO_DESCUENTO_CON_IGV,
     STOCK_DISPONIBLE,
     ROTACION
   } = product;
 
+  // En Lista de Precios de Productos (Catálogo), los precios mostrados incluyen IGV
+  const precioListaConIgv = Number(PRECIO_LISTA_CON_IGV ?? (PRECIO_LISTA > 0 ? (PRECIO_LISTA * 1.18).toFixed(2) : 0));
+  const precioDescConIgv = Number(PRECIO_DESCUENTO_CON_IGV ?? (PRECIO_DESCUENTO > 0 ? (PRECIO_DESCUENTO * 1.18).toFixed(2) : 0));
+
   const hasDiscount = DESCUENTO_PCT > 0;
-  const finalPrice = hasDiscount ? PRECIO_DESCUENTO : PRECIO_LISTA;
+  const finalPriceConIgv = hasDiscount ? precioDescConIgv : precioListaConIgv;
 
   const formatNumber = (num, decimals = 0) =>
     num?.toLocaleString("es-PE", {
@@ -177,10 +183,10 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
                   px={4}
                   py={2}
                   borderRadius="full"
-                  fontWeight="medium"
-                  color="gray.800"
+                  fontWeight="bold"
+                  color="gray.900"
                 >
-                  Precio Listado: $ {PRECIO_LISTA?.toFixed(2) || "0.00"}
+                  Precio Listado: $ {precioListaConIgv?.toFixed(2) || "0.00"}
                 </Box>
                 {hasDiscount && (
                   <Box
@@ -190,25 +196,26 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
                     px={4}
                     py={2}
                     borderRadius="full"
-                    fontWeight="medium"
+                    fontWeight="bold"
                   >
                     Descuento: {DESCUENTO_PCT}%
                   </Box>
                 )}
               </Flex>
 
-              {/* Precio Final */}
+              {/* Precio Final (Con IGV) */}
               <Box
                 bg="green.700"
                 color="white"
                 fontSize="lg"
-                fontWeight="bold"
+                fontWeight="extrabold"
                 py={3}
                 px={4}
                 borderRadius="full"
                 textAlign="center"
+                boxShadow="sm"
               >
-                Precio Final: $ {finalPrice?.toFixed(2) || "0.00"}
+                Precio Final: $ {finalPriceConIgv?.toFixed(2) || "0.00"} (Inc. IGV)
               </Box>
             </VStack>
 

@@ -86,11 +86,10 @@ export const getVisitLogById = async (id) => {
 
 export const getActiveVisitByVendor = async (vendorName) => {
   try {
+    const encoded = encodeURIComponent(String(vendorName || "").trim());
     const response = await axiosInstance.get(
-      `/reportModule/visit-logs/active/${vendorName}`
+      `/reportModule/visit-logs/active/${encoded}`
     );
-
-    console.log(response.data);
 
     return response.data;
   } catch (error) {

@@ -585,6 +585,24 @@ export function NewSellTerms({
     }
   }, [client, allPaymentTypes, selectedPaymentType]);
 
+  // Auto-deducir internamente si es BOLETA o FACTURA según documento del cliente (DNI 8 dígitos -> BOLETA, RUC/Empresa -> FACTURA)
+  useEffect(() => {
+    if (setDocumentType) {
+      const clientDocDigits = String(
+        client?.FederalTaxID || 
+        client?.clientDocument || 
+        client?.documentNumber || 
+        client?.LicTradNum || 
+        client?.CardCode || 
+        ""
+      ).replace(/\D/g, "");
+      const autoDocType = clientDocDigits.length === 8 ? "BOLETA" : "FACTURA";
+      if (documentType !== autoDocType) {
+        setDocumentType(autoDocType);
+      }
+    }
+  }, [client, documentType, setDocumentType]);
+
   return (
     <VStack align="stretch" spacing={5} py={2}>
       {clientAdapted ? (
@@ -841,21 +859,25 @@ export function NewSellTerms({
                                       saleCondition === "CREDITO";
 
             const clientDocDigits = String(client?.FederalTaxID || client?.clientDocument || client?.documentNumber || client?.LicTradNum || client?.CardCode || "").replace(/\D/g, "");
-            const isLikelyRuc = clientDocDigits.length === 11;
             const isLikelyDni = clientDocDigits.length === 8;
-            const effectiveDocType = documentType || (isLikelyRuc ? "FACTURA" : "BOLETA");
+            const effectiveDocType = isLikelyDni ? "BOLETA" : "FACTURA";
 
             return (
               <VStack align="stretch" spacing={4}>
-                <Grid templateColumns={{ base: "1fr", md: "1.4fr 1fr" }} gap={3.5}>
+                <Box>
                   <FormControl>
                     <Flex justify="space-between" align="center" mb={1.5}>
                       <FormLabel fontSize="xs" fontWeight="800" color="gray.700" mb={0}>
                         Tipo de Pago / Condición Comercial (Tabla OCTG - SAP B1) {isFinanceLocked && "🔒"}
                       </FormLabel>
-                      <Badge colorScheme={isCreditCondition ? "purple" : "green"} fontSize="9px" px={1.5} py={0.2} borderRadius="sm" fontWeight="800">
-                        {isCreditCondition ? "CRÉDITO" : "CONTADO"}
-                      </Badge>
+                      <HStack spacing={2}>
+                        <Badge colorScheme={effectiveDocType === "FACTURA" ? "blue" : "teal"} fontSize="10px" px={2} py={0.5} borderRadius="md" fontWeight="800">
+                          {effectiveDocType === "FACTURA" ? "📄 FACTURA (RUC)" : "🧾 BOLETA (DNI)"}
+                        </Badge>
+                        <Badge colorScheme={isCreditCondition ? "purple" : "green"} fontSize="10px" px={2} py={0.5} borderRadius="md" fontWeight="800">
+                          {isCreditCondition ? "CRÉDITO" : "CONTADO"}
+                        </Badge>
+                      </HStack>
                     </Flex>
                     <CreatableSelect
                       isDisabled={isFinanceLocked}
@@ -875,53 +897,7 @@ export function NewSellTerms({
                       </Text>
                     )}
                   </FormControl>
-
-                  {/* Selector de Comprobante Fiscal (FACTURA / BOLETA) */}
-                  <FormControl>
-                    <Flex justify="space-between" align="center" mb={1.5}>
-                      <FormLabel fontSize="xs" fontWeight="800" color="gray.700" mb={0}>
-                        Tipo de Comprobante Fiscal {isFinanceLocked && "🔒"}
-                      </FormLabel>
-                      <Badge colorScheme={effectiveDocType === "FACTURA" ? "blue" : "teal"} fontSize="9px" px={1.5} py={0.2} borderRadius="sm" fontWeight="800">
-                        {isLikelyRuc ? "RUC DETECTADO" : isLikelyDni ? "DNI DETECTADO" : "AUTO"}
-                      </Badge>
-                    </Flex>
-                    <HStack spacing={2}>
-                      <Button
-                        size="sm"
-                        variant={effectiveDocType === "FACTURA" ? "solid" : "outline"}
-                        colorScheme="blue"
-                        onClick={() => {
-                          if (!isFinanceLocked && setDocumentType) setDocumentType("FACTURA");
-                        }}
-                        isDisabled={isFinanceLocked}
-                        fontSize="xs"
-                        fontWeight="800"
-                        borderRadius="lg"
-                        h="40px"
-                        flex="1"
-                      >
-                        📄 FACTURA {isLikelyRuc && "(RUC)"}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={effectiveDocType === "BOLETA" ? "solid" : "outline"}
-                        colorScheme="teal"
-                        onClick={() => {
-                          if (!isFinanceLocked && setDocumentType) setDocumentType("BOLETA");
-                        }}
-                        isDisabled={isFinanceLocked}
-                        fontSize="xs"
-                        fontWeight="800"
-                        borderRadius="lg"
-                        h="40px"
-                        flex="1"
-                      >
-                        🧾 BOLETA {isLikelyDni && "(DNI)"}
-                      </Button>
-                    </HStack>
-                  </FormControl>
-                </Grid>
+                </Box>
 
                 {/* Si es CRÉDITO: Plazo Pactado y Letra de Cambio */}
                 {isCreditCondition && (

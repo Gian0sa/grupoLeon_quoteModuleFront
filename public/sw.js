@@ -1,4 +1,4 @@
-const CACHE_NAME = 'autopartes-pwa-v9';
+const CACHE_NAME = 'autopartes-pwa-v10';
 const MAX_STATIC_CACHE_ENTRIES = 30;
 
 async function trimCache(cacheName, maxItems) {
@@ -66,6 +66,19 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // 2.1 Ignorar en desarrollo (Vite HMR, recargas locales de módulos y depuración)
+  if (
+    url.hostname === 'localhost' ||
+    url.hostname === '127.0.0.1' ||
+    url.pathname.startsWith('/@') ||
+    url.pathname.startsWith('/src/') ||
+    url.pathname.startsWith('/node_modules/') ||
+    url.search.includes('t=') ||
+    url.search.includes('import')
+  ) {
+    return;
+  }
+
   // 3. Archivos estáticos inmutables (/assets/* con hash, fuentes, iconos): Cache-First con límite estricto
   if (
     url.pathname.startsWith('/assets/') ||
@@ -75,19 +88,27 @@ self.addEventListener('fetch', (event) => {
     url.pathname.endsWith('.ico')
   ) {
     event.respondWith(
-      caches.match(request).then((cachedResponse) => {
-        if (cachedResponse) return cachedResponse;
-        return fetch(request).then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
-            const responseToCache = networkResponse.clone();
-            caches.open(CACHE_NAME).then(async (cache) => {
-              await cache.put(request, responseToCache);
-              trimCache(CACHE_NAME, MAX_STATIC_CACHE_ENTRIES);
-            });
-          }
-          return networkResponse;
-        });
-      })
+      caches.match(request)
+        .then((cachedResponse) => {
+          if (cachedResponse) return cachedResponse;
+          return fetch(request).then((networkResponse) => {
+            if (networkResponse && networkResponse.status === 200) {
+              const responseToCache = networkResponse.clone();
+              caches.open(CACHE_NAME).then(async (cache) => {
+                await cache.put(request, responseToCache);
+                trimCache(CACHE_NAME, MAX_STATIC_CACHE_ENTRIES);
+              });
+            }
+            return networkResponse;
+          });
+        })
+        .catch(async () => {
+          // Si el fetch falla (offline o error de red), intentar devolver caché existente
+          const fallbackCache = await caches.match(request);
+          if (fallbackCache) return fallbackCache;
+          // Retornar una Response válida para evitar TypeError: Failed to convert value to 'Response'
+          return new Response(null, { status: 404, statusText: 'Not Found' });
+        })
     );
     return;
   }
@@ -103,7 +124,17 @@ self.addEventListener('fetch', (event) => {
           }
           return networkResponse;
         })
-        .catch(() => caches.match('/index.html') || caches.match(request))
+        .catch(async () => {
+          const cachedHtml = (await caches.match('/index.html')) || (await caches.match(request));
+          if (cachedHtml) return cachedHtml;
+          return new Response(
+            '<!DOCTYPE html><html><body><h2>Sin conexión a la red</h2><p>Por favor reconéctese a internet para continuar.</p></body></html>',
+            {
+              status: 503,
+              headers: { 'Content-Type': 'text/html; charset=utf-8' }
+            }
+          );
+        })
     );
   }
 });

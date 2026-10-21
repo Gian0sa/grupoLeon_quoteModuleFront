@@ -35,6 +35,8 @@ import {
 import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
 import SellerSelect from "../../../components/SellerSelect";
 import PermissionsTreeView from "../../admin/components/PermissionsTreeView";
+import RoleSelectorMenu, { AVAILABLE_ROLES } from "../../admin/components/RoleSelectorMenu";
+import { getPresetServiceIds } from "../../admin/utils/permissionTreeHelper";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { useAuthStore } from "../stores/useAuthStore";
@@ -84,7 +86,7 @@ export function Register() {
     formState: { errors },
   } = useForm({
     defaultValues: {
-      role: "SELLER",
+      role: "ASESOR_VENTAS",
       name: "",
       email: "",
       password: "",
@@ -97,6 +99,7 @@ export function Register() {
 
   const role = watch("role");
   const permittedServices = watch("permittedServices") || [];
+  const isSellerRole = role === "ASESOR_VENTAS" || role === "SELLER";
 
   const { data: sellers, isLoading: isLoadingSellers } = useSellersData();
   const { data: services, isLoading: isLoadingServices } = useGetServices();
@@ -111,6 +114,33 @@ export function Register() {
     }
   }, [selectedSeller, setValue]);
 
+  const handleApplyPreset = (presetKey) => {
+    const ids = getPresetServiceIds(presetKey, services || []);
+    if (ids.length > 0) {
+      setValue("permittedServices", ids);
+      toast({
+        title: "Permisos sugeridos aplicados",
+        description: "Se han preseleccionado los permisos recomendados en el árbol inferior.",
+        status: "info",
+        duration: 3000,
+        isClosable: true,
+        position: "top-right",
+      });
+    }
+  };
+
+  const handleSelectRole = (newRoleKey) => {
+    setValue("role", newRoleKey);
+    const currentPerms = watch("permittedServices") || [];
+    const roleCfg = AVAILABLE_ROLES.find((r) => r.key === newRoleKey);
+    if (roleCfg?.presetKey && currentPerms.length === 0) {
+      const ids = getPresetServiceIds(roleCfg.presetKey, services || []);
+      if (ids.length > 0) {
+        setValue("permittedServices", ids);
+      }
+    }
+  };
+
   const onSubmit = (data) => {
     if (data.password !== data.confirmPassword) {
       setError("confirmPassword", {
@@ -120,7 +150,7 @@ export function Register() {
       return;
     }
 
-    if (data.role === "SELLER" && !data.salesPerson?.value && !selectedSeller?.value) {
+    if (isSellerRole && !data.salesPerson?.value && !selectedSeller?.value) {
       toast({
         title: "Vendedor SAP requerido",
         description: "Por favor selecciona el asesor de ventas SAP correspondiente.",
@@ -132,11 +162,11 @@ export function Register() {
     }
 
     const userPayload = {
-      role: data.role,
+      role: data.role || "ASESOR_VENTAS",
       username: data.name,
       email: data.email,
       password: data.password,
-      salesEmployeeCode: data.role === "SELLER" ? (data.salesPerson?.value || selectedSeller?.value) : null,
+      salesEmployeeCode: isSellerRole ? (data.salesPerson?.value || selectedSeller?.value) : null,
       permittedServices: data.permittedServices || [],
     };
 
@@ -169,75 +199,19 @@ export function Register() {
           boxShadow="sm"
         >
           <VStack spacing={6} align="stretch">
-            {/* 1. SELECCIÓN DE ROL */}
-            <Box>
-              <Text fontSize="xs" fontWeight="900" color="gray.700" textTransform="uppercase" letterSpacing="wider" mb={3}>
-                1. Tipo de Cuenta y Rol en el Sistema
-              </Text>
-              <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3.5}>
-                {[
-                  {
-                    id: "SUPERVISOR",
-                    title: "Supervisor",
-                    desc: "Revisión comercial, reportes y supervisión de pedidos",
-                    icon: UserCheck,
-                  },
-                  {
-                    id: "SELLER",
-                    title: "Vendedor",
-                    desc: "Gestión de pedidos en campo, cotizaciones y clientes",
-                    icon: Briefcase,
-                  },
-                ].map((r) => {
-                  const isSelected = role === r.id;
-                  const IconComp = r.icon;
-                  return (
-                    <Box
-                      key={r.id}
-                      p={4}
-                      borderRadius="xl"
-                      border="2px solid"
-                      borderColor={isSelected ? "#16a34a" : "gray.200"}
-                      bg={isSelected ? "#f0fdf4" : "white"}
-                      cursor="pointer"
-                      onClick={() => setValue("role", r.id)}
-                      transition="all 0.15s ease-in-out"
-                      _hover={{ borderColor: isSelected ? "#16a34a" : "gray.300", transform: "translateY(-1px)" }}
-                    >
-                      <HStack justify="space-between" mb={2}>
-                        <Flex
-                          w="32px"
-                          h="32px"
-                          borderRadius="lg"
-                          bg={isSelected ? "#16a34a" : "gray.100"}
-                          color={isSelected ? "white" : "gray.600"}
-                          align="center"
-                          justify="center"
-                        >
-                          <IconComp className="w-4 h-4" />
-                        </Flex>
-                        {isSelected && (
-                          <Badge colorScheme="green" fontSize="10px" borderRadius="full" px={2} py={0.5}>
-                            SELECCIONADO
-                          </Badge>
-                        )}
-                      </HStack>
-                      <Text fontWeight="800" fontSize="sm" color={isSelected ? "emerald.900" : "gray.800"}>
-                        {r.title}
-                      </Text>
-                      <Text fontSize="xs" color="gray.500" mt={0.5} lineHeight="shorter">
-                        {r.desc}
-                      </Text>
-                    </Box>
-                  );
-                })}
-              </SimpleGrid>
-            </Box>
+            {/* 1. SELECCIÓN DE CARGO OFICIAL (COMPACTO TIPO HAMBURGUESA) */}
+            <RoleSelectorMenu
+              role={role}
+              onSelectRole={handleSelectRole}
+              onApplyRolePreset={handleApplyPreset}
+              stepNumber="1."
+              title="Tipo de Cuenta y Cargo Oficial en el Sistema"
+              subtitle="Define el puesto en la empresa. Se mostrará en su perfil y menú lateral de forma independiente a los permisos técnicos que le actives."
+              mb={2}
+            />
 
-            <Divider />
-
-            {/* 2. VINCULACIÓN SAP (SI ES VENDEDOR) */}
-            {role === "SELLER" && (
+            {/* 2. VINCULACIÓN SAP (SI ES ASESOR DE VENTAS) */}
+            {isSellerRole && (
               <Box bg="#f8fafc" p={4} borderRadius="xl" border="1px solid" borderColor="#e2e8f0">
                 <Text fontSize="xs" fontWeight="900" color="gray.700" textTransform="uppercase" letterSpacing="wider" mb={2}>
                   2. Asignación de Vendedor SAP Oficial
@@ -256,7 +230,7 @@ export function Register() {
             {/* 3. DATOS DE ACCESO */}
             <Box>
               <Text fontSize="xs" fontWeight="900" color="gray.700" textTransform="uppercase" letterSpacing="wider" mb={3}>
-                {role === "SELLER" ? "3. Credenciales y Datos de Acceso" : "2. Credenciales y Datos de Acceso"}
+                {isSellerRole ? "3. Credenciales y Datos de Acceso" : "2. Credenciales y Datos de Acceso"}
               </Text>
               <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
                 {/* Nombre de Usuario */}
@@ -375,7 +349,7 @@ export function Register() {
             {/* 4. ÁRBOL JERÁRQUICO DE PERMISOS */}
             <Box>
               <Text fontSize="xs" fontWeight="900" color="gray.700" textTransform="uppercase" letterSpacing="wider" mb={2}>
-                {role === "SELLER" ? "4. Permisos del Sistema y Módulos Autorizados" : "3. Permisos del Sistema y Módulos Autorizados"}
+                {isSellerRole ? "4. Permisos del Sistema y Módulos Autorizados" : "3. Permisos del Sistema y Módulos Autorizados"}
               </Text>
               {isLoadingServices ? (
                 <Center py={8}>

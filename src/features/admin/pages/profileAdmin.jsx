@@ -65,12 +65,37 @@ import { useGetAllUsersAdmin } from "../hooks/queries/authAdminQueries";
 import { useAuthAdminMutations } from "../hooks/mutations/authAdminMutations";
 import { useGetServices } from "../../auth/hooks/queries/authQueries";
 import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
-import { checkIsAdmin } from "../../../shared/utils/permissions";
+import { checkIsAdmin, useIsAdmin, useHasAccess } from "../../../shared/utils/permissions";
 import PermissionsTreeView from "../components/PermissionsTreeView";
 import UserBasicFields from "../components/UserBasicFields";
+import { getPresetServiceIds } from "../utils/permissionTreeHelper";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { socket } from "../../../shared/lib/socket";
+
+// Helper oficial para resolver la etiqueta visual y colores del cargo del usuario
+export const getUserRoleBadge = (user) => {
+  const norm = String(user?.role || "").toUpperCase().trim();
+  if (norm === "ADMINISTRADOR" || norm === "ADMIN") {
+    return { label: "Administrador", bg: "#fee2e2", color: "#b91c1c", border: "#fca5a5" };
+  }
+  if (norm === "FACTURACION" || norm === "CREDITOS") {
+    return { label: "Facturación y Créditos", bg: "#e0f2fe", color: "#0369a1", border: "#bae6fd" };
+  }
+  if (norm === "SUPERVISOR") {
+    return { label: "Supervisor Comercial", bg: "#f3e8ff", color: "#7e22ce", border: "#e9d5ff" };
+  }
+  if (norm === "ALMACEN" || norm === "LOGISTICA") {
+    return { label: "Logística / Despacho", bg: "#ffedd5", color: "#c2410c", border: "#fed7aa" };
+  }
+  if (norm === "ASESOR_VENTAS" || norm === "VENDEDOR" || norm === "ASESOR") {
+    return { label: "Asesor de Ventas", bg: "#dcfce7", color: "#15803d", border: "#bbf7d0" };
+  }
+  if (isUserMasterAdmin(user)) {
+    return { label: "Administrador", bg: "#fee2e2", color: "#b91c1c", border: "#fca5a5" };
+  }
+  return { label: "Asesor de Ventas", bg: "#dcfce7", color: "#15803d", border: "#bbf7d0" };
+};
 
 // Helper para verificar si un usuario está bloqueado por intentos fallidos
 export const isUserBlocked = (user) => {
@@ -126,7 +151,7 @@ function UserMobileCard({ user, onEdit, onUnlock, isUnlocking }) {
                 <Text fontWeight="800" fontSize="sm" color="gray.900">
                   {user.username}
                 </Text>
-                {isAdmin && (
+                {isAdmin && user?.role !== "ADMINISTRADOR" && (
                   <Badge
                     bg="#fee2e2"
                     color="#991b1b"
@@ -137,14 +162,35 @@ function UserMobileCard({ user, onEdit, onUnlock, isUnlocking }) {
                     py={0.2}
                     borderRadius="sm"
                     letterSpacing="wider"
+                    title="Usuario con privilegios maestros de administración técnica"
                   >
-                    🛡️ ADMIN
+                    🛡️ ACCESO MASTER
                   </Badge>
                 )}
               </HStack>
-              <Text fontSize="11px" color="gray.500">
-                {user.email}
-              </Text>
+              <HStack spacing={1.5} align="center" mt={0.5}>
+                {(() => {
+                  const rb = getUserRoleBadge(user);
+                  return (
+                    <Badge
+                      bg={rb.bg}
+                      color={rb.color}
+                      border="1px solid"
+                      borderColor={rb.border}
+                      fontSize="9px"
+                      fontWeight="800"
+                      px={1.5}
+                      py={0.2}
+                      borderRadius="md"
+                    >
+                      {rb.label}
+                    </Badge>
+                  );
+                })()}
+                <Text fontSize="11px" color="gray.500">
+                  • {user.email}
+                </Text>
+              </HStack>
             </Box>
           </HStack>
           {blocked ? (
@@ -346,6 +392,10 @@ function ModernPagination({ currentPage, totalPages, onPageChange, pageSize, onP
 
 export function ProfileAdmin() {
   const navigate = useNavigate();
+  const isAdmin = useIsAdmin();
+  const hasAccess = useHasAccess();
+  const canManageProfiles = isAdmin || hasAccess("PUT /profile/admin/:userId");
+
   const { data: users, isLoading, refetch: refetchUsers } = useGetAllUsersAdmin();
   const { data: services, isLoading: isLoadingServices } = useGetServices();
   const { updateProfileAdmin, unlockUser } = useAuthAdminMutations();
@@ -362,6 +412,7 @@ export function ProfileAdmin() {
     username: "",
     email: "",
     salesEmployeeCode: "",
+    role: "ASESOR_VENTAS",
     newPassword: "",
     permittedServices: [],
     active: true,
@@ -502,6 +553,7 @@ export function ProfileAdmin() {
         user.salesEmployeeCode === null || user.salesEmployeeCode === undefined
           ? null
           : Number(user.salesEmployeeCode),
+      role: user.role || (isUserMasterAdmin(user) ? "ADMINISTRADOR" : (user.salesEmployeeCode ? "ASESOR_VENTAS" : "ASESOR_VENTAS")),
       newPassword: "",
       permittedServices: userPermissions,
       active: Boolean(user.active),
@@ -517,6 +569,7 @@ export function ProfileAdmin() {
       username: "",
       email: "",
       salesEmployeeCode: "",
+      role: "ASESOR_VENTAS",
       newPassword: "",
       permittedServices: [],
       active: true,
@@ -600,6 +653,7 @@ export function ProfileAdmin() {
             username: payload.username,
             endpoints: updatedEndpoints,
             permittedServices: payload.permittedServices,
+            role: payload.role,
           });
         }
 
@@ -627,6 +681,35 @@ export function ProfileAdmin() {
       },
     });
   };
+
+  if (!canManageProfiles) {
+    return (
+      <Box w="full" minH="100vh" bg="gray.50">
+        <TopHeaderBanner
+          title="Gestión de Usuarios"
+          subtitle="Acceso Restringido"
+          showBack={true}
+          backTo="/dashboard"
+        />
+        <Center py={20}>
+          <Card bg="white" p={8} borderRadius="2xl" border="1px solid" borderColor="red.200" maxW="md" textAlign="center" boxShadow="sm">
+            <VStack spacing={4}>
+              <Box bg="red.50" p={4} borderRadius="full" color="red.500">
+                <Lock className="w-10 h-10" />
+              </Box>
+              <Heading size="md" color="gray.800">Acceso Restringido</Heading>
+              <Text fontSize="sm" color="gray.600">
+                Esta sección está reservada para administradores del sistema. No cuentas con permisos para gestionar usuarios ni credenciales.
+              </Text>
+              <Button colorScheme="green" bg="#126C36" _hover={{ bg: "#0e572b" }} onClick={() => navigate("/dashboard")}>
+                Volver al Panel Principal
+              </Button>
+            </VStack>
+          </Card>
+        </Center>
+      </Box>
+    );
+  }
 
   if (isLoading || isLoadingServices) {
     return (
@@ -924,7 +1007,7 @@ export function ProfileAdmin() {
                                     <Text fontWeight="800" fontSize="12.5px" color="gray.900">
                                       {user.username}
                                     </Text>
-                                    {isUserMasterAdmin(user) && (
+                                    {isUserMasterAdmin(user) && user?.role !== "ADMINISTRADOR" && (
                                       <Badge
                                         bg="#fee2e2"
                                         color="#991b1b"
@@ -935,10 +1018,33 @@ export function ProfileAdmin() {
                                         py={0.2}
                                         borderRadius="sm"
                                         letterSpacing="wider"
+                                        title="Usuario con privilegios maestros de administración técnica"
                                       >
-                                        🛡️ ADMIN
+                                        🛡️ ACCESO MASTER
                                       </Badge>
                                     )}
+                                  </HStack>
+                                  {/* Badge de Cargo Oficial */}
+                                  <HStack spacing={1.5} align="center" mt={0.5}>
+                                    {(() => {
+                                      const rb = getUserRoleBadge(user);
+                                      return (
+                                        <Badge
+                                          bg={rb.bg}
+                                          color={rb.color}
+                                          border="1px solid"
+                                          borderColor={rb.border}
+                                          fontSize="9.5px"
+                                          fontWeight="800"
+                                          px={1.5}
+                                          py={0.2}
+                                          borderRadius="md"
+                                          letterSpacing="wide"
+                                        >
+                                          {rb.label}
+                                        </Badge>
+                                      );
+                                    })()}
                                   </HStack>
                                 </Box>
                               </HStack>
@@ -1150,6 +1256,20 @@ export function ProfileAdmin() {
                   selectedUser={selectedUser}
                   onUnlock={(id) => unlockUser.mutate(id)}
                   isUnlocking={unlockUser.isPending && unlockUser.variables === selectedUser?.id}
+                  onApplyRolePreset={(presetKey) => {
+                    const ids = getPresetServiceIds(presetKey, services || []);
+                    if (ids.length > 0) {
+                      setFormData((prev) => ({ ...prev, permittedServices: ids }));
+                      toast({
+                        title: "Permisos sugeridos aplicados",
+                        description: "Se han preseleccionado los permisos recomendados en el árbol inferior. Puedes agregar o quitar los que desees.",
+                        status: "info",
+                        duration: 3000,
+                        isClosable: true,
+                        position: "top-right"
+                      });
+                    }
+                  }}
                   onToggleMasterAdmin={(enable) => {
                     setFormData((prev) => {
                       const current = new Set((prev.permittedServices || []).map((id) => Number(id)));
@@ -1159,7 +1279,11 @@ export function ProfileAdmin() {
                       } else {
                         ADMIN_SERVICES.forEach((id) => current.delete(id));
                       }
-                      return { ...prev, permittedServices: Array.from(current) };
+                      return { 
+                        ...prev, 
+                        permittedServices: Array.from(current),
+                        role: enable ? "ADMINISTRADOR" : (prev.role === "ADMINISTRADOR" ? "ASESOR_VENTAS" : prev.role)
+                      };
                     });
                   }}
                 />
