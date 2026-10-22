@@ -30,7 +30,7 @@ import { calculateQuoteTotals, formatThousands } from "../../../shared/utils/quo
 import { useNavigate } from "react-router-dom";
 import QuoteSubmitConfirmModal from "./QuoteSubmitConfirmModal";
 import { isPickupInStoreForm } from "./NewSellTerms";
-import { useIsAdmin, useHasAccess } from "../../../shared/utils/permissions";
+import { useIsAdmin, useHasAccess, checkIsAdmin } from "../../../shared/utils/permissions";
 import { useSellersData, useGetProfileData } from "../../auth/hooks/queries/authQueries";
 import { useGetAccountsReceivable } from "../../receivable/hooks/receivableQueries";
 import { useClientPointsDelivery } from "../../clients/hooks/queries/clientQueries";
@@ -130,11 +130,18 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   );
 
   const localRole = (localStorage.getItem("role") || "").toUpperCase();
+  const roleUpper = String(role || localRole || "").toUpperCase();
 
   // 🛡️ Privilegios de Administrador Maestro:
   // Si posee permisos de administrador, SIEMPRE tiene facultades de Administrador
   // para emitir cotizaciones por cuenta de cualquier asesor comercial o por la propia Administración
-  const isAdmin = Boolean(isAdminHook || String(role || "").toUpperCase() === "ADMIN" || localRole === "ADMIN");
+  const isAdmin = Boolean(
+    isAdminHook ||
+    roleUpper === "ADMIN" ||
+    roleUpper === "ADMINISTRADOR" ||
+    roleUpper.startsWith("ADMIN") ||
+    checkIsAdmin(endpoints, sessionUsername || username)
+  );
 
   // El selector con la lista completa de vendedores le sale al Administrador
   const canSelectSeller = isAdmin;
@@ -143,7 +150,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   const isSeller = !isAdmin && Boolean(effectiveSessionSalesCode > 0 && effectiveSessionSalesCode !== 20);
 
   // 🛡️ Permisos operativos para áreas financieras/logísticas (Facturación y Supervisión)
-  const canManageFinance = isAdmin || role === "FACTURACION" || role === "SUPERVISOR";
+  const canManageFinance = isAdmin || roleUpper === "FACTURACION" || roleUpper === "SUPERVISOR";
 
   const localSeller = localStorage.getItem("username") || localStorage.getItem("userId");
 

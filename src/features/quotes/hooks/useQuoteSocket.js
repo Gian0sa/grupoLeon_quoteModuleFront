@@ -121,7 +121,13 @@ export function useQuoteSocket() {
       const currentUsername = (authState.username || "").trim().toLowerCase();
       const currentRole = (authState.role || "").trim().toUpperCase();
       const currentEndpoints = authState.endpoints;
-      const isAdminActive = currentRole === "ADMIN" || currentRole === "FACTURACION" || currentRole === "SUPERVISOR" || checkIsAdmin(currentEndpoints, authState.username);
+      const isAdminActive =
+        currentRole === "ADMIN" ||
+        currentRole === "ADMINISTRADOR" ||
+        currentRole.startsWith("ADMIN") ||
+        currentRole === "FACTURACION" ||
+        currentRole === "SUPERVISOR" ||
+        checkIsAdmin(currentEndpoints, authState.username);
 
       const targetRoleUpper = String(notif.targetRole || "").trim().toUpperCase();
       const targetUser = String(notif.targetUsername || "").trim().toLowerCase();
@@ -130,7 +136,12 @@ export function useQuoteSocket() {
 
       if (isAdminActive) {
         // Facturación / Admin ONLY recibe cotizaciones pendientes de revisión/aprobación
-        if (targetRoleUpper === "FACTURACION" || targetRoleUpper === "ADMIN") {
+        if (
+          targetRoleUpper === "FACTURACION" ||
+          targetRoleUpper === "ADMIN" ||
+          targetRoleUpper === "ADMINISTRADOR" ||
+          targetRoleUpper.startsWith("ADMIN")
+        ) {
           const statusUpper = String(notif.status || "").trim().toUpperCase();
           const titleLower = String(notif.title || "").toLowerCase();
           if (

@@ -124,17 +124,25 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
   const { username: authUsername, role: authRole, salesEmployeeCode: authSalesCode } = useAuthStore();
   const isAdminHook = useIsAdmin();
   const hasAccess = useHasAccess();
-  const isSellerUser = Boolean(authSalesCode && Number(authSalesCode) > 0 && Number(authSalesCode) !== 20);
+  const roleUpper = String(authRole || localStorage.getItem("role") || "").toUpperCase();
+  const isRoleAdmin =
+    roleUpper === "ADMIN" ||
+    roleUpper === "ADMINISTRADOR" ||
+    roleUpper.startsWith("ADMIN") ||
+    isAdminHook ||
+    checkIsAdmin(useAuthStore.getState().endpoints, authUsername);
+
+  const isSellerUser = !isRoleAdmin && Boolean(authSalesCode && Number(authSalesCode) > 0 && Number(authSalesCode) !== 20);
   const isAdminUser =
-    !isSellerUser && (
-      isAdminHook ||
-      authRole === "ADMIN" ||
-      authRole === "FACTURACION" ||
-      authRole === "SUPERVISOR" ||
+    isRoleAdmin ||
+    (!isSellerUser && (
+      roleUpper === "FACTURACION" ||
+      roleUpper === "SUPERVISOR" ||
+      roleUpper === "DIGITACION" ||
       hasAccess("POST /quotes/approval") ||
       hasAccess("POST /quotations/approve")
-    );
-  const isRealAdmin = Boolean(isAdminHook || (!isSellerUser && String(authRole).toUpperCase() === "ADMIN"));
+    ));
+  const isRealAdmin = Boolean(isRoleAdmin || (!isSellerUser && roleUpper.startsWith("ADMIN")));
   const activeRole = isAdminUser ? "ADMIN" : "SELLER";
   const adminUsername = authUsername || "Administrador";
 
@@ -1584,12 +1592,12 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                         🏛️ SAP DocNum: #{syncedDocNum}
                       </Badge>
                     )}
-                    {drawerLockCheck.hasActiveLock && !drawerLockCheck.isOwnLock && (
+                    {drawerLockCheck.hasActiveLock && (
                       <Badge
-                        bg="#fef3c7"
-                        color="#92400e"
+                        bg={drawerLockCheck.isOwnLock ? "#dcfce7" : "#fef3c7"}
+                        color={drawerLockCheck.isOwnLock ? "#166534" : "#92400e"}
                         border="1.5px solid"
-                        borderColor="#fcd34d"
+                        borderColor={drawerLockCheck.isOwnLock ? "#86efac" : "#fcd34d"}
                         fontSize="10.5px"
                         px={2.5}
                         py={0.5}
@@ -1602,7 +1610,9 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                       >
                         <Lock className="w-3 h-3 flex-shrink-0" />
                         <Text as="span">
-                          {`EN REVISIÓN (${(drawerLockCheck.lockInfo?.lockedByUsername || "FACTURACIÓN").toUpperCase()}) 🔒`}
+                          {drawerLockCheck.isOwnLock
+                            ? "EN REVISIÓN (POR TI) 🔒"
+                            : `EN REVISIÓN (${(drawerLockCheck.lockInfo?.lockedByUsername || "FACTURACIÓN").toUpperCase()}) 🔒`}
                         </Text>
                       </Badge>
                     )}
@@ -2031,20 +2041,28 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                           ? `Valida el voucher y depósito ingresados por ${sellerName} antes de emitir en SAP.`
                           : `Cotización enviada por ${sellerName}. Abre el formulario para revisarla, aprobar y emitir a SAP o devolver con observaciones.`}
                       </Text>
-                      {drawerLockCheck.hasActiveLock && !drawerLockCheck.isOwnLock && (
+                      {drawerLockCheck.hasActiveLock && (
                         <Badge
-                          bg="#fef3c7"
-                          color="#92400e"
+                          bg={drawerLockCheck.isOwnLock ? "#dcfce7" : "#fef3c7"}
+                          color={drawerLockCheck.isOwnLock ? "#166534" : "#92400e"}
                           border="1px solid"
-                          borderColor="#fcd34d"
+                          borderColor={drawerLockCheck.isOwnLock ? "#86efac" : "#fcd34d"}
                           mt={1.5}
                           fontSize="10px"
                           px={2}
                           py={0.5}
                           borderRadius="md"
                           fontWeight="800"
+                          display="inline-flex"
+                          alignItems="center"
+                          gap={1}
                         >
-                          🔒 En revisión por {drawerLockCheck.lockInfo?.lockedByUsername} ({drawerLockCheck.lockInfo?.lockedByProfile || "Facturación"})
+                          <Lock className="w-3 h-3 flex-shrink-0" />
+                          <Text as="span">
+                            {drawerLockCheck.isOwnLock
+                              ? "Tienes el candado activo de revisión de esta cotización"
+                              : `En revisión por ${drawerLockCheck.lockInfo?.lockedByUsername} (${drawerLockCheck.lockInfo?.lockedByProfile || "Facturación"})`}
+                          </Text>
                         </Badge>
                       )}
                     </Box>

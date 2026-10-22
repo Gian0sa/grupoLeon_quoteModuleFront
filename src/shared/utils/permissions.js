@@ -59,8 +59,8 @@ export function useHasAccess() {
     if (!endpoint) return true;
 
     // 🛡️ Únicamente el Administrador Maestro posee pase absoluto a nivel de interfaz
-    const roleUpper = String(role || "").toUpperCase();
-    if (roleUpper === "ADMIN" || checkIsAdmin(endpoints, username)) {
+    const roleUpper = String(role || localStorage.getItem("role") || "").toUpperCase();
+    if (roleUpper === "ADMIN" || roleUpper === "ADMINISTRADOR" || roleUpper.startsWith("ADMIN") || checkIsAdmin(endpoints, username)) {
       return true;
     }
 

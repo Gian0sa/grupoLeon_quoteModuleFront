@@ -74,7 +74,7 @@ import { QuoteStepper, getStageIndex } from "../components/QuoteStepper";
 import { QuoteDetailDrawer } from "../components/QuoteDetailDrawer";
 import QuotePdfModal from "../components/QuotePdfModal";
 import { ObserveReasonModal } from "../components/ObserveReasonModal";
-import { checkQuoteLock, acquireQuoteLock, releaseQuoteLock, forceUnlockQuote, getActiveQuoteLocks } from "../services/quoteLockService";
+import { checkQuoteLock, acquireQuoteLock, releaseQuoteLock, forceUnlockQuote, getActiveQuoteLocks, syncActiveLocksFromRest } from "../services/quoteLockService";
 import { calculateQuoteTotals, getQuoteTotalUSD, formatThousands } from "../../../shared/utils/quoteCalculator";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { useQueryClient } from "@tanstack/react-query";
@@ -596,6 +596,7 @@ export function QuoteApprovalPage() {
   const [lockAlertTarget, setLockAlertTarget] = useState(null);
 
   useEffect(() => {
+    syncActiveLocksFromRest();
     const handleLocksUpdate = () => {
       setQuoteLocks(getActiveQuoteLocks());
     };
@@ -1222,7 +1223,7 @@ export function QuoteApprovalPage() {
     const target = quote || quotes.find(q => isMatchingDoc(q, docId)) || saved.find(q => isMatchingDoc(q, docId));
 
     // Regla Estricta: Si ya fue abierta por administración o está en revisión, el vendedor NO puede retirarla
-    const lockCheck = checkQuoteLock(docId, authUserId) || (target?.id ? checkQuoteLock(target.id, authUserId) : { isLocked: false });
+    const lockCheck = checkQuoteLock(docId, authUserId, authUsername) || (target?.id ? checkQuoteLock(target.id, authUserId, authUsername) : { isLocked: false, isOwnLock: false, hasActiveLock: false });
     const isUnderReview = Boolean(lockCheck.isLocked) || Boolean(quoteLocks[String(docId)]) || Boolean(target?.id && quoteLocks[String(target.id)]);
     const hasAdminViewHistory = Array.isArray(target?.historyLog) && target.historyLog.some(h => 
       h.status === "VISTO" || (h.note && (h.note.includes("abierta y leída") || h.note.includes("👁️")))
@@ -2101,7 +2102,7 @@ export function QuoteApprovalPage() {
     const isApprovedOrder = status === "APROBADO" || status === "APROBADO_COMERCIAL" || status === "FACTURADO" || status === "PEDIDO_EMITIDO" || status === "EMITIDO" || status === "EMITIDO_SAP" || status === "COMPLETADO" || Boolean(q.sapDocNum);
     const canShowTrashIcon = false; // 🚫 SOLO BORRADORES PUEDEN ELIMINARSE (manejado arriba en isDraft)
 
-    const lockCheck = checkQuoteLock(docId, authUserId) || (q?.id ? checkQuoteLock(q.id, authUserId) : { isLocked: false });
+    const lockCheck = checkQuoteLock(docId, authUserId, authUsername) || (q?.id ? checkQuoteLock(q.id, authUserId, authUsername) : { isLocked: false, isOwnLock: false, hasActiveLock: false });
     const isLockedByOther = Boolean(lockCheck.isLocked);
     const hasAdminViewHistory = Array.isArray(q?.historyLog) && q.historyLog.some(h => 
       h.status === "VISTO" || (h.note && (h.note.includes("abierta y leída") || h.note.includes("👁️")))

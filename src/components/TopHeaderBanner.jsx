@@ -104,11 +104,24 @@ export function TopHeaderBanner({
       const targetRoleUpper = (n.targetRole || "").trim().toUpperCase();
       const targetUser = (n.targetUsername || "").trim().toLowerCase();
       const userLower = (username || "").trim().toLowerCase();
-      const roleUpper = (role || "").trim().toUpperCase();
-      const isAdminOrMaster = isAdmin || roleUpper === "ADMIN" || roleUpper === "FACTURACION" || roleUpper === "SUPERVISOR";
+      const roleUpper = (role || localStorage.getItem("role") || "").trim().toUpperCase();
+      const isAdminOrMaster =
+        isAdmin ||
+        roleUpper === "ADMIN" ||
+        roleUpper === "ADMINISTRADOR" ||
+        roleUpper.startsWith("ADMIN") ||
+        roleUpper === "FACTURACION" ||
+        roleUpper === "SUPERVISOR";
 
       if (isAdminOrMaster) {
-        if (targetRoleUpper !== "FACTURACION" && targetRoleUpper !== "ADMIN") return false;
+        if (
+          targetRoleUpper !== "FACTURACION" &&
+          targetRoleUpper !== "ADMIN" &&
+          targetRoleUpper !== "ADMINISTRADOR" &&
+          !targetRoleUpper.startsWith("ADMIN")
+        ) {
+          return false;
+        }
         const statusUpper = (n.status || "").trim().toUpperCase();
         if (statusUpper === "EMITIDO" || statusUpper === "ANULADO" || statusUpper === "CANCELADO") return false;
         const titleLower = (n.title || "").toLowerCase();

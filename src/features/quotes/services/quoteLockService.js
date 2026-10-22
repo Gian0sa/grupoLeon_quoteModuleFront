@@ -13,11 +13,9 @@ export function resolveUserProfileTitle(role = "", endpoints = [], username = ""
   const endpointsList = Array.isArray(endpoints) ? endpoints : [];
   const salesCode = Number(salesEmployeeCode || 0);
 
-  if ((salesCode > 0 && salesCode !== 20) || normRole === "SELLER" || normRole === "VENDEDOR" || normRole === "ASESOR_VENTAS" || normRole.includes("VEND") || normRole.includes("ASESOR") || normUser.includes("vendedor") || normUser.includes("asdtest")) {
-    return "Ventas";
-  }
-  if (normRole === "DIGITACION" || normRole.includes("DIGIT") || normUser.includes("digit")) {
-    return "Digitación";
+  // 1. Roles administrativos y de control (Máxima prioridad)
+  if (normRole === "ADMIN" || normRole === "ADMINISTRADOR" || normRole.includes("ADMIN") || checkIsAdmin(endpointsList, normUser)) {
+    return "Administrador";
   }
   if (normRole === "FACTURACION" || normRole.includes("FACTUR") || normUser.includes("factur")) {
     return "Facturación";
@@ -25,12 +23,18 @@ export function resolveUserProfileTitle(role = "", endpoints = [], username = ""
   if (normRole === "SUPERVISOR" || normRole.includes("SUPERVIS")) {
     return "Supervisor";
   }
-  if (normRole === "ADMIN" || normRole.includes("ADMIN") || checkIsAdmin(endpointsList, normUser)) {
-    return "Administrador";
+  if (normRole === "DIGITACION" || normRole.includes("DIGIT") || normUser.includes("digit")) {
+    return "Digitación";
   }
   if (endpointsList.includes("POST /quotes/approval") || endpointsList.includes("POST /quotations/approve") || normUser.includes("enrique")) {
     return "Revisión Comercial";
   }
+
+  // 2. Roles comerciales / ventas
+  if ((salesCode > 0 && salesCode !== 20) || normRole === "SELLER" || normRole === "VENDEDOR" || normRole === "ASESOR_VENTAS" || normRole.includes("VEND") || normRole.includes("ASESOR") || normUser.includes("vendedor") || normUser.includes("asdtest")) {
+    return "Ventas";
+  }
+
   return "Facturación";
 }
 
@@ -44,13 +48,19 @@ export function getActiveQuoteLocks() {
     const now = Date.now();
     let changed = false;
 
-    // Purgar candados vencidos o candados espurios creados por vendedores
+    // Purgar candados vencidos con tolerancia ante diferencias de reloj (clock drift)
     const active = {};
     Object.entries(locks).forEach(([key, info]) => {
-      const isStale = !info || !info.expiresAt || info.expiresAt <= now;
+      const expiresAt = Number(info?.expiresAt || 0);
+      const lockedAtMs = info?.lockedAt ? new Date(info.lockedAt).getTime() : 0;
+      const isExpiredByTtl = expiresAt > 0 && now > expiresAt + (2 * 60 * 1000);
+      const isExpiredByAge = lockedAtMs > 0 && !isNaN(lockedAtMs) && (now - lockedAtMs > LOCK_TTL_MS + (2 * 60 * 1000));
+      const isStale = !info || (isExpiredByTtl && isExpiredByAge);
+
       const profile = String(info?.lockedByProfile || "").toLowerCase();
       const user = String(info?.lockedByUsername || "").toLowerCase();
-      const isSellerLock = profile.includes("ventas") || user.includes("asdtest") || user.includes("vendedor");
+      const isUserAdmin = checkIsAdmin([], user) || profile.includes("admin") || profile.includes("factur") || profile.includes("supervis") || profile.includes("digit") || profile.includes("revis");
+      const isSellerLock = !isUserAdmin && (profile.includes("ventas") || user.includes("asdtest") || user.includes("vendedor"));
 
       if (!isStale && !isSellerLock) {
         active[key] = info;
@@ -92,15 +102,19 @@ export function checkQuoteLock(quoteId, currentUserId, currentUsername = null) {
     return { isLocked: false, isOwnLock: false, hasActiveLock: false, lockInfo: null };
   }
 
-  // Si expiró
-  if (Date.now() > lockInfo.expiresAt) {
+  // Si expiró con margen de tolerancia de reloj
+  const now = Date.now();
+  const expiresAt = Number(lockInfo.expiresAt || 0);
+  const lockedAtMs = lockInfo.lockedAt ? new Date(lockInfo.lockedAt).getTime() : 0;
+  if (expiresAt > 0 && now > expiresAt + 60000 && lockedAtMs > 0 && now - lockedAtMs > LOCK_TTL_MS + 60000) {
     return { isLocked: false, isOwnLock: false, hasActiveLock: false, lockInfo: null };
   }
 
-  // Si el candado pertenece a un vendedor, no es un bloqueo administrativo válido
+  // Si el candado pertenece a un vendedor sin permisos administrativos
   const profile = String(lockInfo.lockedByProfile || "").toLowerCase();
   const username = String(lockInfo.lockedByUsername || "").toLowerCase();
-  if (profile.includes("ventas") || username.includes("asdtest") || username.includes("vendedor")) {
+  const isUserAdmin = checkIsAdmin([], username) || profile.includes("admin") || profile.includes("factur") || profile.includes("supervis") || profile.includes("digit") || profile.includes("revis");
+  if (!isUserAdmin && (profile.includes("ventas") || username.includes("asdtest") || username.includes("vendedor"))) {
     return { isLocked: false, isOwnLock: false, hasActiveLock: false, lockInfo: null };
   }
 
@@ -133,23 +147,24 @@ export function acquireQuoteLock(quoteId, currentUser = {}, secondaryId = null) 
   const endpointsList = Array.isArray(currentUser.endpoints) ? currentUser.endpoints : [];
   const salesCode = Number(currentUser.salesEmployeeCode || 0);
 
-  const isSeller = (salesCode > 0 && salesCode !== 20) || normRole === "SELLER" || normRole === "VENDEDOR" || normRole.includes("VEND") || normUser.includes("vendedor") || normUser.includes("asdtest");
-  const isEvaluator = Boolean(
+  const isAdminOrFact = Boolean(
     currentUser.isAdmin ||
-    (!isSeller && (
-      normRole === "ADMIN" ||
-      normRole.includes("ADMIN") ||
-      normRole === "FACTURACION" ||
-      normRole.includes("FACTUR") ||
-      normRole === "SUPERVISOR" ||
-      normRole.includes("SUPERVIS") ||
-      normRole === "DIGITACION" ||
-      normRole.includes("DIGIT") ||
-      checkIsAdmin(endpointsList, normUser) ||
-      endpointsList.includes("POST /quotes/approval") ||
-      endpointsList.includes("POST /quotations/approve")
-    ))
+    normRole === "ADMIN" ||
+    normRole === "ADMINISTRADOR" ||
+    normRole.includes("ADMIN") ||
+    normRole === "FACTURACION" ||
+    normRole.includes("FACTUR") ||
+    normRole === "SUPERVISOR" ||
+    normRole.includes("SUPERVIS") ||
+    normRole === "DIGITACION" ||
+    normRole.includes("DIGIT") ||
+    checkIsAdmin(endpointsList, normUser) ||
+    endpointsList.includes("POST /quotes/approval") ||
+    endpointsList.includes("POST /quotations/approve")
   );
+
+  const isSeller = !isAdminOrFact && ((salesCode > 0 && salesCode !== 20) || normRole === "SELLER" || normRole === "VENDEDOR" || normRole.includes("VEND") || normUser.includes("vendedor") || normUser.includes("asdtest"));
+  const isEvaluator = isAdminOrFact && !isSeller;
 
   if (!isEvaluator) {
     // Si no es evaluador administrativo, NO adquirir candado (modo solo lectura)
@@ -294,6 +309,24 @@ export function forceUnlockQuote(quoteId) {
 }
 
 /**
+ * Sincroniza candados activos directamente desde el backend vía REST
+ */
+export async function syncActiveLocksFromRest() {
+  try {
+    const { axiosInstance } = await import("../../../shared/lib/axiosInstance");
+    const res = await axiosInstance.get("/quoteModule/quotes/active-locks");
+    if (res?.data?.locks && typeof res.data.locks === "object") {
+      const current = getActiveQuoteLocks();
+      const merged = { ...current, ...res.data.locks };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+      window.dispatchEvent(new CustomEvent("quoteLocksUpdated", { detail: { type: "sync" } }));
+    }
+  } catch (e) {
+    // Falla silenciosa si no hay conexión de red
+  }
+}
+
+/**
  * Inicializa listeners de WebSockets para mantener los candados sincronizados en tiempo real
  */
 export function initQuoteLockSocketListeners() {
@@ -315,13 +348,33 @@ export function initQuoteLockSocketListeners() {
     window.dispatchEvent(new CustomEvent("quoteLocksUpdated", { detail: { quoteId: String(data.quoteId), type: "unlock" } }));
   };
 
+  const handleSocketSync = (serverLocks) => {
+    if (!serverLocks || typeof serverLocks !== "object") return;
+    const current = getActiveQuoteLocks();
+    const merged = { ...current, ...serverLocks };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+    window.dispatchEvent(new CustomEvent("quoteLocksUpdated", { detail: { type: "sync" } }));
+  };
+
   try {
     socket.off("quote:lock", handleSocketLock);
     socket.off("quote:unlock", handleSocketUnlock);
+    socket.off("quote:locks:sync", handleSocketSync);
+
     socket.on("quote:lock", handleSocketLock);
     socket.on("quote:unlock", handleSocketUnlock);
+    socket.on("quote:locks:sync", handleSocketSync);
+
+    // Cuando el socket se conecta o reconecta, sincronizar candados del servidor
+    socket.on("connect", () => {
+      syncActiveLocksFromRest();
+    });
   } catch (e) {}
 }
 
-// Inicializar listeners al cargar el script
+// Inicializar listeners y sincronizar candados al cargar el script
 initQuoteLockSocketListeners();
+if (typeof window !== "undefined") {
+  syncActiveLocksFromRest();
+}
+

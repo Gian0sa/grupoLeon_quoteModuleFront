@@ -48,7 +48,14 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
     };
   }, []);
 
-  const isAdmin = useIsAdmin();
+  const isAdminHook = useIsAdmin();
+  const sessionRoleUpper = String(role || localStorage.getItem("role") || "").trim().toUpperCase();
+  const isAdmin = Boolean(
+    isAdminHook ||
+    sessionRoleUpper === "ADMIN" ||
+    sessionRoleUpper === "ADMINISTRADOR" ||
+    sessionRoleUpper.startsWith("ADMIN")
+  );
   const { data: serverNotifs } = useNotifications(
     isAdmin ? "FACTURACION" : "VENDEDOR",
     username
@@ -58,8 +65,14 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
   const filterForCurrentUser = (notifs) => {
     if (!username && !role) return [];
     const userLower = (username || "").trim().toLowerCase();
-    const roleUpper = (role || "").trim().toUpperCase();
-    const isAdminOrMaster = isAdmin || roleUpper === "ADMIN" || roleUpper === "FACTURACION" || roleUpper === "SUPERVISOR";
+    const roleUpper = (role || localStorage.getItem("role") || "").trim().toUpperCase();
+    const isAdminOrMaster =
+      isAdmin ||
+      roleUpper === "ADMIN" ||
+      roleUpper === "ADMINISTRADOR" ||
+      roleUpper.startsWith("ADMIN") ||
+      roleUpper === "FACTURACION" ||
+      roleUpper === "SUPERVISOR";
 
     return notifs.filter((n) => {
       if (!n || !n.title) return false;
@@ -68,7 +81,12 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
 
       if (isAdminOrMaster) {
         // Facturación / Admin ONLY ve cotizaciones que requieren revisión/aprobación comercial
-        if (targetRoleUpper !== "FACTURACION" && targetRoleUpper !== "ADMIN") {
+        if (
+          targetRoleUpper !== "FACTURACION" &&
+          targetRoleUpper !== "ADMIN" &&
+          targetRoleUpper !== "ADMINISTRADOR" &&
+          !targetRoleUpper.startsWith("ADMIN")
+        ) {
           return false;
         }
         // Facturación NO ve alertas que son exclusivas del vendedor (órdenes SAP emitidas, anuladas, observadas)
@@ -298,7 +316,7 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
 
     // Concurrencia de Digitación: Verificar si otro usuario ya la tiene abierta
     if (targetId) {
-      const lockCheck = checkQuoteLock(targetId, userId);
+      const lockCheck = checkQuoteLock(targetId, userId, username);
       if (lockCheck.isLocked && !isAdmin) {
         setLockAlertTarget({ quoteId: targetId, lockInfo: lockCheck.lockInfo });
         return;
