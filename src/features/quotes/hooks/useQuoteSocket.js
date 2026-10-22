@@ -297,7 +297,7 @@ export function useQuoteSocket() {
       const activeUserId = useAuthStore.getState().userId;
       const targetUserId = data?.userId;
 
-      if (!targetUserId || String(targetUserId) === String(activeUserId)) {
+      if (targetUserId && String(targetUserId) === String(activeUserId)) {
         console.warn("⛔ Tu cuenta ha sido desactivada por el administrador. Cerrando sesión de inmediato...");
         try {
           sessionStorage.setItem("logoutReason", data?.message || "Tu cuenta ha sido desactivada por el administrador.");
