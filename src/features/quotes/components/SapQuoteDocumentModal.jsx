@@ -210,6 +210,7 @@ export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) 
   const [zoomLevel, setZoomLevel] = useState(1);
   const [isJsonModalOpen, setIsJsonModalOpen] = useState(false);
   const isAdminHook = useIsAdmin();
+  const { role } = useAuthStore();
   const roleUpper = String(role || localStorage.getItem("role") || "").toUpperCase();
   const isAdmin = Boolean(isAdminHook || roleUpper === "ADMIN" || roleUpper === "ADMINISTRADOR" || roleUpper.startsWith("ADMIN"));
 
