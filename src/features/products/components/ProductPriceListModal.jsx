@@ -15,6 +15,7 @@ import {
 } from "@chakra-ui/react";
 
 export function ProductPriceListModal({ product, isOpen, onClose }) {
+  if (!isOpen || !product) return null;
   const {
     ITEM_NAME,
     ITEM_CODE,

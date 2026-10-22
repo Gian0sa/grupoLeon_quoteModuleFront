@@ -95,7 +95,7 @@ import { useAuthStore } from "../../../features/auth/stores/useAuthStore";
 import { useGetQuoteById } from "../hooks/queries/quotesQueries";
 import { useQueryClient } from "@tanstack/react-query";
 import { axiosInstance } from "../../../shared/lib/axiosInstance";
-import { useIsAdmin, useHasAccess } from "../../../shared/utils/permissions";
+import { useIsAdmin, useHasAccess, checkIsAdmin } from "../../../shared/utils/permissions";
 import {
   formatDeliveryForm,
   formatTransportName,

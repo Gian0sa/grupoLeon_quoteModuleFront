@@ -25,7 +25,7 @@ import { useNotifications } from "../features/quotes/hooks/queries/quotesQueries
 import { markNotificationAsRead, deleteNotification, clearNotifications, updateQuote, getQuoteById } from "../features/quotes/services/quoteService";
 import { checkQuoteLock, forceUnlockQuote } from "../features/quotes/services/quoteLockService";
 import { Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, ModalCloseButton, Alert, AlertIcon } from "@chakra-ui/react";
-import { Lock } from "lucide-react";
+import { Lock, Eye } from "lucide-react";
 import { useIsAdmin } from "../shared/utils/permissions";
 
 export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
@@ -805,6 +805,30 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
                 ⚠️ Forzar Desbloqueo (Admin)
               </Button>
             )}
+            <Button
+              colorScheme="blue"
+              variant="outline"
+              size="sm"
+              fontWeight="700"
+              leftIcon={<Eye className="w-4 h-4" />}
+              onClick={async () => {
+                const targetId = lockAlertTarget?.quoteId;
+                setLockAlertTarget(null);
+                if (targetId) {
+                  try {
+                    const q = await getQuoteById(targetId);
+                    if (q) {
+                      setSelectedQuoteForDrawer(q);
+                      setIsQuoteDrawerOpen(true);
+                    }
+                  } catch (e) {
+                    console.error("Error cargando cotización para modo solo lectura:", e);
+                  }
+                }
+              }}
+            >
+              👁️ Ver en Modo Solo Lectura
+            </Button>
             <Button colorScheme="gray" size="sm" fontWeight="700" onClick={() => setLockAlertTarget(null)}>
               Entendido / Cerrar
             </Button>
