@@ -483,28 +483,67 @@ export const sortQuotesByPriority = (a, b) => {
   return numB - numA;
 };
 
-export const isMatchingDoc = (q, docIdentifier) => {
-  if (!q || !docIdentifier) return false;
-  const idStr = String(
-    typeof docIdentifier === "object"
-      ? (docIdentifier.docNumber || docIdentifier.id || "")
-      : docIdentifier
-  ).trim();
-  if (!idStr) return false;
+export const isMatchingDoc = (a, b) => {
+  if (!a || !b) return false;
 
-  const qDocNum = String(q.docNumber || "").trim();
-  const qId = String(q.id !== undefined && q.id !== null ? q.id : "").trim();
+  // Si ambos son objetos y comparten el mismo ID numérico de BD o web
+  if (typeof a === "object" && typeof b === "object") {
+    const aId = a.id !== undefined && a.id !== null ? String(a.id).trim() : "";
+    const bId = b.id !== undefined && b.id !== null ? String(b.id).trim() : "";
+    if (aId && bId && aId.toLowerCase() === bId.toLowerCase()) return true;
 
-  if (qDocNum && qDocNum.toLowerCase() === idStr.toLowerCase()) return true;
-  if (qId && qId.toLowerCase() === idStr.toLowerCase()) return true;
-
-  const cleanIdStr = idStr.replace(/^COT-0*/i, "");
-  const cleanQDocNum = qDocNum.replace(/^COT-0*/i, "");
-  const cleanQId = qId.replace(/^COT-0*/i, "");
-
-  if (cleanIdStr && (cleanIdStr === cleanQDocNum || cleanIdStr === cleanQId)) {
-    return true;
+    const aDoc = a.docNumber ? String(a.docNumber).trim() : "";
+    const bDoc = b.docNumber ? String(b.docNumber).trim() : "";
+    if (aDoc && bDoc && aDoc.toLowerCase() === bDoc.toLowerCase()) return true;
   }
+
+  // Extraer todos los identificadores posibles de cualquier entidad
+  const getIdentifiers = (item) => {
+    if (!item) return [];
+    if (typeof item !== "object") {
+      const s = String(item).trim();
+      return s ? [s] : [];
+    }
+    const ids = [];
+    if (item.docNumber) ids.push(String(item.docNumber).trim());
+    if (item.id !== undefined && item.id !== null) ids.push(String(item.id).trim());
+    if (item.sapDocNum) ids.push(String(item.sapDocNum).trim());
+    if (item.DocNum) ids.push(String(item.DocNum).trim());
+    return ids;
+  };
+
+  const aList = getIdentifiers(a);
+  const bList = getIdentifiers(b);
+
+  if (aList.length === 0 || bList.length === 0) return false;
+
+  // Coincidencia directa insensible a mayúsculas
+  for (const aVal of aList) {
+    for (const bVal of bList) {
+      if (aVal.toLowerCase() === bVal.toLowerCase()) return true;
+    }
+  }
+
+  // Normalización de números quitando prefijos ("COT-", "COT-WEB-", ceros a la izquierda)
+  const cleanNum = (str) => {
+    if (!str) return "";
+    return String(str)
+      .replace(/^COT-(?:WEB-)?0*/i, "")
+      .replace(/^0+/, "")
+      .trim();
+  };
+
+  for (const aVal of aList) {
+    const cleanA = cleanNum(aVal);
+    if (!cleanA) continue;
+    for (const bVal of bList) {
+      const cleanB = cleanNum(bVal);
+      if (cleanB && cleanA.toLowerCase() === cleanB.toLowerCase()) {
+        return true;
+      }
+    }
+  }
+
   return false;
 };
 
@@ -808,6 +847,7 @@ export function QuoteApprovalPage() {
             return {
               ...matchedLocal,
               ...sq,
+              docNumber: sq.docNumber || matchedLocal.docNumber || (sq.id ? `COT-WEB-${String(sq.id).padStart(6, '0')}` : null),
               // Estado: usa la fuente más reciente/confiable
               status: finalStatus,
               state: finalStatus,
@@ -864,7 +904,6 @@ export function QuoteApprovalPage() {
           return sq;
         });
 
-        const seen = new Set();
         const merged = [];
         for (const item of [...enrichedServerQuotes, ...localDraftsOnly]) {
           // Admins can see ALL server quotes (including drafts of other users).
@@ -872,9 +911,8 @@ export function QuoteApprovalPage() {
           if (!isAdminUser && !isDraftOwnedByCurrentUser(item, activeCurrentUsername, activeCurrentUserId)) {
             continue;
           }
-          const key = String(item.docNumber || item.id || "");
-          if (key && !seen.has(key)) {
-            seen.add(key);
+          const hasDuplicate = merged.some(m => isMatchingDoc(m, item));
+          if (!hasDuplicate) {
             merged.push(item);
           }
         }
@@ -928,6 +966,7 @@ export function QuoteApprovalPage() {
               return {
                 ...localMatch,
                 ...sq,
+                docNumber: sq.docNumber || localMatch.docNumber || (sq.id ? `COT-WEB-${String(sq.id).padStart(6, '0')}` : null),
                 status: finalStatus,
                 state: finalStatus,
                 approvalStatus: finalStatus,
@@ -968,26 +1007,18 @@ export function QuoteApprovalPage() {
           });
 
           // Agregar docs locales que no estén en servidor (borradores nuevos)
-          const serverDocIds = new Set();
-          serverQuotes.forEach(q => {
-            if (q.docNumber) serverDocIds.add(String(q.docNumber));
-            if (q.id !== undefined && q.id !== null) serverDocIds.add(String(q.id));
-          });
           const unsyncedLocal = local.filter(q => {
-            const docNum = q.docNumber ? String(q.docNumber) : "";
-            const idVal = q.id !== undefined && q.id !== null ? String(q.id) : "";
-            return (!docNum || !serverDocIds.has(docNum)) && (!idVal || !serverDocIds.has(idVal)) && isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId);
+            const notInServer = !serverQuotes.some(sq => isMatchingDoc(sq, q));
+            return notInServer && isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId);
           });
 
-          const seen = new Set();
           const merged = [];
           for (const item of [...mergedWithLocal, ...unsyncedLocal]) {
             if (!isDraftOwnedByCurrentUser(item, activeCurrentUsername, activeCurrentUserId)) {
               continue;
             }
-            const key = String(item.docNumber || item.id || "");
-            if (key && !seen.has(key)) {
-              seen.add(key);
+            const hasDuplicate = merged.some(m => isMatchingDoc(m, item));
+            if (!hasDuplicate) {
               merged.push(item);
             }
           }

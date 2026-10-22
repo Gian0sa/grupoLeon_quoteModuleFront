@@ -826,10 +826,11 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     // Guardar o actualizar en localStorage sin retroceder de estado
     const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
     const isMatchingDoc = (q) => {
-      if (!q) return false;
-      const activeStr = String(activeDocNumber);
-      const qDocNum = q.docNumber ? String(q.docNumber) : "";
-      const qId = q.id !== undefined && q.id !== null ? String(q.id) : "";
+      if (!q || !activeDocNumber) return false;
+      const activeStr = String(activeDocNumber).trim();
+      if (!activeStr) return false;
+      const qDocNum = q.docNumber ? String(q.docNumber).trim() : "";
+      const qId = q.id !== undefined && q.id !== null ? String(q.id).trim() : "";
       return (qDocNum && qDocNum === activeStr) || (qId && qId === activeStr);
     };
 
