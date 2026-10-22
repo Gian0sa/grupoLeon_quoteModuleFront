@@ -1332,6 +1332,9 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
       const quotePayload = {
         ...effectiveQuote,
+        sapDocNum: null,
+        DocNum: null,
+        forceEmit: true,
         clientDocument: effectiveQuote.clientDocument || effectiveQuote.clientRuc || effectiveQuote.client?.CardCode,
         clientName: effectiveQuote.clientName || effectiveQuote.client?.CardName,
         sellerName: resolvedSellerLabel || originalSeller || "Vendedor Autorizado",
