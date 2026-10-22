@@ -184,9 +184,14 @@ export function LateralMenu() {
 
   // Etiqueta oficial de rol priorizando el cargo asignado en la cuenta del usuario
   const userRoleLabel = useMemo(() => {
+    // Si posee permiso maestro de administración de usuarios o endpoint admin, siempre es Administrador
+    if (hasAdminAccess || hasAccess("PUT:/profile/admin/:userId") || hasAccess("PUT /profile/admin/:userId")) {
+      return "Administrador";
+    }
+
     const norm = String(role || "").toUpperCase().trim();
-    if (norm === "ASESOR_VENTAS" || norm === "VENDEDOR" || norm === "ASESOR") {
-      return "Asesor de Ventas";
+    if (norm === "ADMINISTRADOR" || norm === "ADMIN") {
+      return "Administrador";
     }
     if (norm === "FACTURACION" || norm === "CREDITOS") {
       return "Facturación y Créditos";
@@ -194,17 +199,14 @@ export function LateralMenu() {
     if (norm === "SUPERVISOR") {
       return "Supervisor Comercial";
     }
-    if (norm === "ADMINISTRADOR" || norm === "ADMIN") {
-      return "Administrador";
-    }
     if (norm === "ALMACEN" || norm === "LOGISTICA") {
       return "Logística / Despacho";
     }
+    if (norm === "ASESOR_VENTAS" || norm === "VENDEDOR" || norm === "ASESOR") {
+      return "Asesor de Ventas";
+    }
 
     // Fallback inteligente para sesiones previas sin migrar
-    if (hasAccess("PUT:/profile/admin/:userId")) {
-      return "Administrador";
-    }
     if (hasAccess("GET:/AdminQuotesSellers/:slpCode/:month") || (hasAccess("GET:/sellers") && hasAccess("GET:/visit-logs"))) {
       return "Supervisor Comercial";
     }
@@ -212,7 +214,7 @@ export function LateralMenu() {
       return "Facturación y Créditos";
     }
     return "Asesor de Ventas";
-  }, [role, hasAccess]);
+  }, [role, hasAccess, hasAdminAccess]);
 
   const handleLogout = useCallback(() => {
     logout.mutate();

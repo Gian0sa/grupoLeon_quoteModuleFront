@@ -76,7 +76,7 @@ import { socket } from "../../../shared/lib/socket";
 // Helper oficial para resolver la etiqueta visual y colores del cargo del usuario
 export const getUserRoleBadge = (user) => {
   const norm = String(user?.role || "").toUpperCase().trim();
-  if (norm === "ADMINISTRADOR" || norm === "ADMIN") {
+  if (norm === "ADMINISTRADOR" || norm === "ADMIN" || isUserMasterAdmin(user)) {
     return { label: "Administrador", bg: "#fee2e2", color: "#b91c1c", border: "#fca5a5" };
   }
   if (norm === "FACTURACION" || norm === "CREDITOS") {
@@ -90,9 +90,6 @@ export const getUserRoleBadge = (user) => {
   }
   if (norm === "ASESOR_VENTAS" || norm === "VENDEDOR" || norm === "ASESOR") {
     return { label: "Asesor de Ventas", bg: "#dcfce7", color: "#15803d", border: "#bbf7d0" };
-  }
-  if (isUserMasterAdmin(user)) {
-    return { label: "Administrador", bg: "#fee2e2", color: "#b91c1c", border: "#fca5a5" };
   }
   return { label: "Asesor de Ventas", bg: "#dcfce7", color: "#15803d", border: "#bbf7d0" };
 };
