@@ -195,9 +195,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   } = useQuoteStore();
 
   const [selectedSlpCode, setSelectedSlpCode] = useState(() => {
+    if (storeSlpCode && !isNaN(Number(storeSlpCode)) && Number(storeSlpCode) > 0) return Number(storeSlpCode);
+    if (storeSalesEmployeeCode && !isNaN(Number(storeSalesEmployeeCode)) && Number(storeSalesEmployeeCode) > 0) return Number(storeSalesEmployeeCode);
     if (isSeller && effectiveSessionSalesCode) return effectiveSessionSalesCode;
-    if (storeSlpCode && !isNaN(Number(storeSlpCode))) return Number(storeSlpCode);
-    if (storeSalesEmployeeCode && !isNaN(Number(storeSalesEmployeeCode))) return Number(storeSalesEmployeeCode);
     if (salesEmployeeCode && !isNaN(Number(salesEmployeeCode))) return Number(salesEmployeeCode);
     const localSlp = localStorage.getItem("salesEmployeeCode");
     if (localSlp && !isNaN(Number(localSlp))) return Number(localSlp);
@@ -206,19 +206,39 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   });
 
   useEffect(() => {
+    // 1. Si la cotización en store tiene un código de vendedor válido, PRESERVARLO SIEMPRE
+    const quoteSlp = Number(storeSlpCode || storeSalesEmployeeCode);
+    if (!isNaN(quoteSlp) && quoteSlp > 0) {
+      setSelectedSlpCode(quoteSlp);
+      return;
+    }
+
+    // 2. Si no tiene código numérico pero tiene nombre de vendedor, intentar resolverlo desde sellersList
+    const targetSellerStr = (storeSellerName || storeCreatedByUsername || "").trim();
+    if (targetSellerStr && !targetSellerStr.toLowerCase().includes("ofic administración") && sellersList?.length > 0) {
+      const cleanTarget = targetSellerStr.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const matched = sellersList.find((s) => {
+        const cleanL = String(s.label || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        return cleanL.includes(cleanTarget) || cleanTarget.includes(cleanL.replace(/^\d+\./, "").trim());
+      });
+      if (matched && matched.value > 0) {
+        setSelectedSlpCode(Number(matched.value));
+        return;
+      }
+    }
+
+    // 3. Si el usuario actual es un vendedor de campo
     if (isSeller && effectiveSessionSalesCode) {
       setSelectedSlpCode(effectiveSessionSalesCode);
       return;
     }
-    if (storeSlpCode && !isNaN(Number(storeSlpCode))) {
-      setSelectedSlpCode(Number(storeSlpCode));
-    } else if (storeSalesEmployeeCode && !isNaN(Number(storeSalesEmployeeCode))) {
-      setSelectedSlpCode(Number(storeSalesEmployeeCode));
-    } else if (salesEmployeeCode && !isNaN(Number(salesEmployeeCode))) {
+
+    // 4. Fallback de sesión / admin
+    if (salesEmployeeCode && !isNaN(Number(salesEmployeeCode)) && Number(salesEmployeeCode) > 0) {
       setSelectedSlpCode(Number(salesEmployeeCode));
     } else {
       const localSlp = localStorage.getItem("salesEmployeeCode");
-      if (localSlp && !isNaN(Number(localSlp))) {
+      if (localSlp && !isNaN(Number(localSlp)) && Number(localSlp) > 0) {
         setSelectedSlpCode(Number(localSlp));
       } else if (matchedSellerByUsername) {
         setSelectedSlpCode(matchedSellerByUsername.value);
@@ -226,7 +246,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         setSelectedSlpCode(20);
       }
     }
-  }, [isSeller, effectiveSessionSalesCode, storeSlpCode, storeSalesEmployeeCode, salesEmployeeCode, canSelectSeller, matchedSellerByUsername]);
+  }, [isSeller, effectiveSessionSalesCode, storeSlpCode, storeSalesEmployeeCode, storeSellerName, storeCreatedByUsername, salesEmployeeCode, canSelectSeller, matchedSellerByUsername, sellersList]);
 
   const effectiveStoreSeller = (storeSellerName && storeSellerName !== "Vendedor SAP" && storeSellerName !== "Vendedor Autorizado")
     ? storeSellerName
@@ -877,27 +897,38 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       || existingDoc?.slpCode
       || existingDoc?.salesPersonCode
       || existingDoc?.salesEmployeeCode
+      || existingDoc?.totals?.SlpCode
+      || existingDoc?.totals?.slpCode
+      || existingDoc?.totals?.salesPersonCode
+      || existingDoc?.totals?.salesEmployeeCode
       || storeSlpCode
       || storeSalesPersonCode
       || storeSalesEmployeeCode;
 
     const currentLoggedInUsername = String(username || localSeller || "").toLowerCase().trim();
-    const effectiveSlpCode = (selectedSlpCode && !isNaN(Number(selectedSlpCode)))
-      ? Number(selectedSlpCode)
-      : (originalSlpCode && !isNaN(Number(originalSlpCode)))
-        ? Number(originalSlpCode)
-        : (effectiveSessionSalesCode > 0 ? effectiveSessionSalesCode : (isAdmin ? 20 : 20));
+    const effectiveSlpCode = (() => {
+      if (selectedSlpCode && !isNaN(Number(selectedSlpCode)) && Number(selectedSlpCode) !== 20) {
+        return Number(selectedSlpCode);
+      }
+      if (originalSlpCode && !isNaN(Number(originalSlpCode)) && Number(originalSlpCode) > 0 && Number(originalSlpCode) !== 20) {
+        return Number(originalSlpCode);
+      }
+      if (selectedSlpCode && !isNaN(Number(selectedSlpCode))) {
+        return Number(selectedSlpCode);
+      }
+      return effectiveSessionSalesCode > 0 ? effectiveSessionSalesCode : 20;
+    })();
 
     const matchedSlpObj = effectiveSlpCode ? sellersList.find((s) => s.value === Number(effectiveSlpCode)) : null;
     let finalSellerName = matchedSlpObj?.label;
+    if (!finalSellerName && originalSellerName && !/^(vendedor\s*autorizado|vendedor|sin\s*vendedor|001\.ofic administración)$/i.test(originalSellerName)) {
+      finalSellerName = originalSellerName;
+    }
     if (!finalSellerName && Number(effectiveSlpCode) === 20) {
       finalSellerName = "001.Ofic Administración";
     }
     if (!finalSellerName && activeSeller && !/^(vendedor\s*autorizado|vendedor|sin\s*vendedor)$/i.test(activeSeller)) {
       finalSellerName = activeSeller;
-    }
-    if (!finalSellerName && originalSellerName && !/^(vendedor\s*autorizado|vendedor|sin\s*vendedor)$/i.test(originalSellerName)) {
-      finalSellerName = originalSellerName;
     }
     if (!finalSellerName) {
       finalSellerName = "001.Ofic Administración";
@@ -1304,9 +1335,44 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     setValidationLoadingSub(`Emitiendo a SAP Business One para ${activeDocNumber}`);
     setValidationStepText("Construyendo trama técnica para Service Layer...");
 
-    const effectiveSlpCode = (selectedSlpCode && !isNaN(Number(selectedSlpCode)))
-      ? Number(selectedSlpCode)
-      : (currentQuoteObj.SlpCode || (salesEmployeeCode ? Number(salesEmployeeCode) : 20));
+    const originalQuoteSlp = Number(
+      currentQuoteObj.SlpCode ||
+      currentQuoteObj.slpCode ||
+      currentQuoteObj.salesPersonCode ||
+      currentQuoteObj.salesEmployeeCode ||
+      currentQuoteObj.totals?.SlpCode ||
+      currentQuoteObj.totals?.slpCode ||
+      currentQuoteObj.totals?.salesPersonCode ||
+      currentQuoteObj.totals?.salesEmployeeCode ||
+      storeSlpCode ||
+      storeSalesPersonCode ||
+      storeSalesEmployeeCode
+    );
+
+    const effectiveSlpCode = (() => {
+      if (selectedSlpCode && !isNaN(Number(selectedSlpCode)) && Number(selectedSlpCode) !== 20) {
+        return Number(selectedSlpCode);
+      }
+      if (!isNaN(originalQuoteSlp) && originalQuoteSlp > 0 && originalQuoteSlp !== 20) {
+        return originalQuoteSlp;
+      }
+      if (selectedSlpCode && !isNaN(Number(selectedSlpCode))) {
+        return Number(selectedSlpCode);
+      }
+      return 20;
+    })();
+
+    const origSeller = currentQuoteObj.sellerName || currentQuoteObj.totals?.sellerName || storeSellerName;
+    const resolvedSellerName = (() => {
+      if (effectiveSlpCode && sellersList?.length > 0) {
+        const found = sellersList.find((s) => s.value === Number(effectiveSlpCode));
+        if (found && found.label) return found.label;
+      }
+      if (origSeller && !origSeller.toLowerCase().includes("ofic administración")) {
+        return origSeller;
+      }
+      return activeSeller || sellerUsername || "001.Ofic Administración";
+    })();
 
     const clientDocDigits = String(client?.FederalTaxID || client?.clientDocument || client?.documentNumber || client?.LicTradNum || client?.CardCode || "").replace(/\D/g, "");
     const effectiveDocType = clientDocDigits.length === 8 ? "BOLETA" : "FACTURA";
@@ -1365,8 +1431,8 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       docNumber: activeDocNumber,
       clientDocument: client?.CardCode || client?.clientDocument || client?.FederalTaxID || clientDocDigits,
       clientName: client?.CardName || client?.name || client?.clientName,
-      sellerName: activeSeller || sellerUsername,
-      createdByUsername: currentQuoteObj.createdByUsername || sellerUsername,
+      sellerName: resolvedSellerName || activeSeller || sellerUsername,
+      createdByUsername: currentQuoteObj.createdByUsername || origSeller || sellerUsername,
       SlpCode: effectiveSlpCode,
       slpCode: effectiveSlpCode,
       salesPersonCode: effectiveSlpCode,

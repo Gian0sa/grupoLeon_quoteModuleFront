@@ -533,12 +533,12 @@ export const useQuoteStore = create((set, get) => {
         approvalStatus: quoteData.approvalStatus || quoteData.state || quoteData.status || null,
         rejectionReason: quoteData.rejectionReason || quoteData.observations || null,
         observations: quoteData.observations || quoteData.rejectionReason || null,
-        sellerName: quoteData.sellerName || quoteData.createdByUsername || null,
-        createdByUsername: quoteData.createdByUsername || quoteData.sellerName || null,
-        createdByUserId: quoteData.createdByUserId || quoteData.userId || null,
-        SlpCode: quoteData.SlpCode || quoteData.slpCode || quoteData.salesPersonCode || quoteData.salesEmployeeCode || null,
-        salesPersonCode: quoteData.salesPersonCode || quoteData.salesEmployeeCode || quoteData.SlpCode || null,
-        salesEmployeeCode: quoteData.salesEmployeeCode || quoteData.salesPersonCode || quoteData.SlpCode || null,
+        sellerName: quoteData.sellerName || quoteData.totals?.sellerName || quoteData.createdByUsername || null,
+        createdByUsername: quoteData.createdByUsername || quoteData.totals?.createdByUsername || quoteData.sellerName || null,
+        createdByUserId: quoteData.createdByUserId || quoteData.totals?.createdByUserId || quoteData.userId || null,
+        SlpCode: quoteData.SlpCode || quoteData.slpCode || quoteData.salesPersonCode || quoteData.salesEmployeeCode || quoteData.totals?.SlpCode || quoteData.totals?.slpCode || quoteData.totals?.salesPersonCode || quoteData.totals?.salesEmployeeCode || null,
+        salesPersonCode: quoteData.salesPersonCode || quoteData.salesEmployeeCode || quoteData.SlpCode || quoteData.totals?.salesPersonCode || quoteData.totals?.salesEmployeeCode || quoteData.totals?.SlpCode || quoteData.totals?.slpCode || null,
+        salesEmployeeCode: quoteData.salesEmployeeCode || quoteData.salesPersonCode || quoteData.SlpCode || quoteData.totals?.salesEmployeeCode || quoteData.totals?.salesPersonCode || quoteData.totals?.SlpCode || quoteData.totals?.slpCode || null,
         paymentMethod: quoteData.paymentMethod || quoteData.PaymentMethod || quoteData.totals?.paymentMethod || quoteData.totals?.PaymentMethod || "",
         bankAccount: (() => {
           const val = quoteData.bankAccount || quoteData.U_VS_BANCO || quoteData.totals?.bankAccount || quoteData.totals?.U_VS_BANCO || "";

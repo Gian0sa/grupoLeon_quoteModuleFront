@@ -1245,19 +1245,56 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
     try {
       setIsSyncingSap(true);
 
-      const rawSlp = effectiveQuote.SlpCode
+      // 1. Extraer el SlpCode específico de la cotización
+      const quoteOriginalSlp = Number(
+        effectiveQuote.SlpCode
         ?? effectiveQuote.slpCode
         ?? effectiveQuote.salesPersonCode
         ?? effectiveQuote.salesEmployeeCode
         ?? effectiveQuote.totals?.SlpCode
+        ?? effectiveQuote.totals?.slpCode
+        ?? effectiveQuote.totals?.salesPersonCode
         ?? effectiveQuote.totals?.salesEmployeeCode
-        ?? (authSalesCode ?? localStorage.getItem("salesEmployeeCode"))
-        ?? (isAdminUser ? 20 : undefined);
+      );
 
-      const resolvedSlp = (rawSlp && !isNaN(Number(rawSlp))) ? Number(rawSlp) : (isAdminUser ? 20 : undefined);
+      const originalSeller = effectiveQuote.sellerName 
+        || effectiveQuote.totals?.sellerName 
+        || effectiveQuote.createdByUsername 
+        || effectiveQuote.totals?.createdByUsername;
+        
+      const originalCreatedBy = effectiveQuote.createdByUsername 
+        || effectiveQuote.totals?.createdByUsername 
+        || effectiveQuote.sellerName 
+        || effectiveQuote.totals?.sellerName;
 
-      const originalSeller = effectiveQuote.sellerName || effectiveQuote.createdByUsername;
-      const originalCreatedBy = effectiveQuote.createdByUsername || effectiveQuote.sellerName;
+      // Si la cotización tiene un vendedor asignado propio (> 0 y != 20), ESE MANDA.
+      let resolvedSlp = (!isNaN(quoteOriginalSlp) && quoteOriginalSlp > 0 && quoteOriginalSlp !== 20)
+        ? quoteOriginalSlp
+        : undefined;
+
+      let resolvedSellerLabel = null;
+      // Si no tenemos código numérico específico pero tenemos el nombre del vendedor, buscar en caché de vendedores de SAP:
+      if (originalSeller && !originalSeller.toLowerCase().includes("ofic administración")) {
+        try {
+          const cachedSellers = JSON.parse(localStorage.getItem("cached_sap_sellers") || "[]");
+          const cleanTarget = originalSeller.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+          const found = cachedSellers.find(s => {
+            const cleanL = String(s.label || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            return cleanL.includes(cleanTarget) || cleanTarget.includes(cleanL.replace(/^\d+\./, "").trim());
+          });
+          if (found && Number(found.value) > 0) {
+            if (!resolvedSlp) resolvedSlp = Number(found.value);
+            resolvedSellerLabel = found.label;
+          }
+        } catch (e) {}
+      }
+
+      // Si sigue sin resolverse, usar el de la cotización (aunque sea 20) o sesión
+      if (!resolvedSlp) {
+        resolvedSlp = (!isNaN(quoteOriginalSlp) && quoteOriginalSlp > 0)
+          ? quoteOriginalSlp
+          : ((authSalesCode && !isNaN(Number(authSalesCode)) && Number(authSalesCode) > 0) ? Number(authSalesCode) : (isAdminUser ? 20 : 20));
+      }
 
       const sanitizedProducts = (displayProducts || []).map((p) => {
         const itemCode = p.productCode || p.itemCode || p.ItemCode || p.code || (typeof p.id === "string" && isNaN(Number(p.id)) ? p.id : undefined);
@@ -1297,7 +1334,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         ...effectiveQuote,
         clientDocument: effectiveQuote.clientDocument || effectiveQuote.clientRuc || effectiveQuote.client?.CardCode,
         clientName: effectiveQuote.clientName || effectiveQuote.client?.CardName,
-        sellerName: originalSeller || "Vendedor Autorizado",
+        sellerName: resolvedSellerLabel || originalSeller || "Vendedor Autorizado",
         createdByUsername: originalCreatedBy || "vendedor",
         SlpCode: resolvedSlp,
         slpCode: resolvedSlp,
