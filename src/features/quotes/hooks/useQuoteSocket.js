@@ -158,8 +158,16 @@ export function useQuoteSocket() {
         }
       } else {
         // VENDEDOR: ONLY recibe notificaciones para su rol y dirigidas a su nombre de usuario
-        if (targetRoleUpper === "VENDEDOR" || targetRoleUpper === "SELLER") {
-          if (!targetUser || targetUser === currentUsername || currentUsername.includes(targetUser) || targetUser.includes(currentUsername)) {
+        if (targetRoleUpper === "VENDEDOR" || targetRoleUpper === "SELLER" || targetRoleUpper === "ASESOR_VENTAS") {
+          const cleanTarget = targetUser.replace(/^\d+[\.\s-]+/, "").trim();
+          const cleanCurrent = currentUsername.replace(/^\d+[\.\s-]+/, "").trim();
+          if (
+            !targetUser ||
+            targetUser === currentUsername ||
+            (cleanCurrent && cleanTarget && (cleanCurrent === cleanTarget || cleanCurrent.includes(cleanTarget) || cleanTarget.includes(cleanCurrent))) ||
+            currentUsername.includes(targetUser) ||
+            targetUser.includes(currentUsername)
+          ) {
             isForMe = true;
           }
         }

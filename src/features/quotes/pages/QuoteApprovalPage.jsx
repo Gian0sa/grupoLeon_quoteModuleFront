@@ -1377,6 +1377,7 @@ export function QuoteApprovalPage() {
     const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
     const nowIso = new Date().toISOString();
     const adminName = authUsername || "Administrador";
+    const reasonText = typeof reason === "string" && reason.trim() ? reason.trim() : (typeof docIdOrQuote === "string" && docIdOrQuote.trim() ? docIdOrQuote.trim() : "Cotización observada para corrección");
     
     const docId = typeof docIdOrQuote === "object" ? (docIdOrQuote.docNumber || docIdOrQuote.id) : docIdOrQuote;
 
@@ -1394,7 +1395,7 @@ export function QuoteApprovalPage() {
       status: "OBSERVADO",
       timestamp: nowIso,
       user: adminName,
-      note: `💬 Devuelto por ${adminName}: ${reason}`
+      note: `💬 Devuelto por ${adminName}: ${reasonText}`
     };
     const updatedHistory = [newLog, ...prevLogs];
 
@@ -1421,8 +1422,9 @@ export function QuoteApprovalPage() {
       updatedAt: nowIso,
       observedAt: nowIso,
       observedBy: adminName,
-      observationReason: reason,
-      rejectionReason: reason,
+      observationReason: reasonText,
+      rejectionReason: reasonText,
+      observations: reasonText,
       historyLog: updatedHistory
     };
 
@@ -2086,8 +2088,9 @@ export function QuoteApprovalPage() {
           );
         case "OBSERVADO":
           return (
-            <Badge bg="#fef3c7" color="#d97706" border="1.5px solid #fcd34d" px={2.5} py={0.5} borderRadius="full" fontSize="11px" fontWeight="800" textTransform="none" letterSpacing="normal" fontFamily="Arial, sans-serif" whiteSpace="nowrap">
-              Observado 💬
+            <Badge bg="#fff7ed" color="#c2410c" border="1.5px solid #fdba74" px={2.5} py={0.5} borderRadius="full" fontSize="11px" fontWeight="800" textTransform="none" letterSpacing="normal" fontFamily="Arial, sans-serif" whiteSpace="nowrap" display="inline-flex" alignItems="center" gap={1}>
+              <MessageSquare className="w-3 h-3 text-orange-600" />
+              <Text as="span">1. Observado para Corrección 💬</Text>
             </Badge>
           );
         case "EN_EDICION":
@@ -2264,33 +2267,54 @@ export function QuoteApprovalPage() {
                 }
 
                 return (
-                  <Button
-                    size="xs"
-                    h="32px"
-                    bg={isAdminUser && (isPendingApproval || isPendingBilling) ? "#0f766e" : "white"}
-                    color={isAdminUser && (isPendingApproval || isPendingBilling) ? "white" : "#334155"}
-                    variant={isAdminUser && (isPendingApproval || isPendingBilling) ? "solid" : "outline"}
-                    borderColor="#cbd5e1"
-                    _hover={
-                      isAdminUser && (isPendingApproval || isPendingBilling)
-                        ? { bg: "#115e59", transform: "translateY(-1px)", boxShadow: "0 4px 12px rgba(15,118,110,0.3)" }
-                        : { bg: "#f8fafc", borderColor: "#94a3b8", transform: "translateY(-1px)" }
-                    }
-                    _active={{ bg: isAdminUser ? "#134e4a" : "#f1f5f9" }}
-                    leftIcon={<Eye className="w-3.5 h-3.5" />}
-                    onClick={() => {
-                      markAsViewedByAdmin(q);
-                      const freshDoc = quotes.find(item => isMatchingDoc(item, q.docNumber || q.id)) || q;
-                      setSelectedQuote({ ...freshDoc });
-                      setIsDetailOpen(true);
-                    }}
-                    fontWeight="700"
-                    borderRadius="lg"
-                    px={3}
-                    boxShadow="xs"
-                  >
-                    {isAdminUser && (isPendingApproval || isPendingBilling) ? "Verificar" : "Vista"}
-                  </Button>
+                  <>
+                    <Button
+                      size="xs"
+                      h="32px"
+                      bg={isAdminUser && (isPendingApproval || isPendingBilling) ? "#0f766e" : "white"}
+                      color={isAdminUser && (isPendingApproval || isPendingBilling) ? "white" : "#334155"}
+                      variant={isAdminUser && (isPendingApproval || isPendingBilling) ? "solid" : "outline"}
+                      borderColor="#cbd5e1"
+                      _hover={
+                        isAdminUser && (isPendingApproval || isPendingBilling)
+                          ? { bg: "#115e59", transform: "translateY(-1px)", boxShadow: "0 4px 12px rgba(15,118,110,0.3)" }
+                          : { bg: "#f8fafc", borderColor: "#94a3b8", transform: "translateY(-1px)" }
+                      }
+                      _active={{ bg: isAdminUser ? "#134e4a" : "#f1f5f9" }}
+                      leftIcon={<Eye className="w-3.5 h-3.5" />}
+                      onClick={() => {
+                        markAsViewedByAdmin(q);
+                        const freshDoc = quotes.find(item => isMatchingDoc(item, q.docNumber || q.id)) || q;
+                        setSelectedQuote({ ...freshDoc });
+                        setIsDetailOpen(true);
+                      }}
+                      fontWeight="700"
+                      borderRadius="lg"
+                      px={3}
+                      boxShadow="xs"
+                    >
+                      {isAdminUser && (isPendingApproval || isPendingBilling) ? "Verificar" : "Vista"}
+                    </Button>
+                    {isAdminUser && (isPendingApproval || isPendingBilling) && (
+                      <Button
+                        size="xs"
+                        h="32px"
+                        colorScheme="orange"
+                        bg="#fff7ed"
+                        color="#c2410c"
+                        border="1px solid #fdba74"
+                        _hover={{ bg: "#ffedd5", borderColor: "#ea580c" }}
+                        leftIcon={<MessageSquare className="w-3.5 h-3.5 text-orange-600" />}
+                        onClick={() => handleObserveQuote(q)}
+                        fontWeight="700"
+                        borderRadius="lg"
+                        px={2.5}
+                        title="Devolver al vendedor con observación para corrección"
+                      >
+                        Observar
+                      </Button>
+                    )}
+                  </>
                 );
               })()}
 
@@ -2511,6 +2535,43 @@ export function QuoteApprovalPage() {
                 borderRadius="xl"
               >
                 PDF
+              </Button>
+            )}
+
+            {/* Botón Corregir para cotizaciones observadas (Mobile) */}
+            {(status === "OBSERVADO" || status === "EN_EDICION") && (
+              <Button
+                size="sm"
+                h="40px"
+                bg="#ea580c"
+                color="white"
+                _hover={{ bg: "#c2410c" }}
+                leftIcon={<Edit3 className="w-4 h-4" />}
+                onClick={() => handleLoadQuote(q)}
+                fontWeight="800"
+                borderRadius="xl"
+                boxShadow="xs"
+              >
+                ✏️ Corregir
+              </Button>
+            )}
+
+            {/* Administrador: Botón Observar rápido (Mobile) */}
+            {isAdminUser && (isPendingApproval || isPendingBilling) && (
+              <Button
+                size="sm"
+                h="40px"
+                colorScheme="orange"
+                bg="#fff7ed"
+                color="#c2410c"
+                border="1.5px solid #fdba74"
+                _hover={{ bg: "#ffedd5" }}
+                leftIcon={<MessageSquare className="w-4 h-4 text-orange-600" />}
+                onClick={() => handleObserveQuote(q)}
+                fontWeight="800"
+                borderRadius="xl"
+              >
+                Observar
               </Button>
             )}
 

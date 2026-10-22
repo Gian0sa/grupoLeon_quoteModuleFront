@@ -2112,6 +2112,22 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                   <HStack spacing={2} flexShrink={0} alignSelf={{ base: "stretch", md: "center" }} wrap="wrap">
                     <Button
                       size="sm"
+                      colorScheme="orange"
+                      bg="#ea580c"
+                      _hover={{ bg: "#c2410c" }}
+                      leftIcon={<MessageSquare className="w-4 h-4" />}
+                      whiteSpace="nowrap"
+                      onClick={() => setIsObserveModalOpen(true)}
+                      fontWeight="800"
+                      borderRadius="lg"
+                      px={3.5}
+                      h="38px"
+                      boxShadow="xs"
+                    >
+                      💬 Devolver con Observación
+                    </Button>
+                    <Button
+                      size="sm"
                       colorScheme="teal"
                       bg="#0f766e"
                       _hover={{ bg: "#115e59" }}
@@ -3790,13 +3806,14 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         isOpen={isObserveModalOpen}
         onClose={() => setIsObserveModalOpen(false)}
         quote={effectiveQuote}
-        onConfirmObserve={(targetQuote, reason) => {
+        onConfirmObserve={(targetQuoteOrReason, maybeReason) => {
+          const reasonText = typeof maybeReason === "string" ? maybeReason.trim() : (typeof targetQuoteOrReason === "string" ? targetQuoteOrReason.trim() : "Cotización observada para corrección");
           if (onUpdateStatus) {
-            onUpdateStatus(effectiveQuote, "OBSERVADO", reason);
+            onUpdateStatus(effectiveQuote, "OBSERVADO", reasonText);
           }
           toast({
             title: "💬 Cotización Devuelta con Observación",
-            description: `Se notificó al vendedor para que corrija: ${reason}`,
+            description: `Se notificó al vendedor para que corrija: ${reasonText}`,
             status: "warning",
             duration: 5000,
             isClosable: true,

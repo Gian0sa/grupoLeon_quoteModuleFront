@@ -1675,6 +1675,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   };
 
   const handleObserveFromForm = async (quoteOrId, reason) => {
+    const reasonText = typeof reason === "string" && reason.trim() ? reason.trim() : (typeof quoteOrId === "string" && quoteOrId.trim() ? quoteOrId.trim() : "Cotización observada para corrección");
     const activeDocNumber = quoteId || docNumber;
     const nowIso = new Date().toISOString();
     const adminName = username || "Administrador";
@@ -1689,16 +1690,16 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       state: "OBSERVADO",
       approvalStatus: "OBSERVADO",
       observedAt: nowIso,
-      observationReason: reason,
-      observations: reason,
-      rejectionReason: reason,
+      observationReason: reasonText,
+      observations: reasonText,
+      rejectionReason: reasonText,
       updatedAt: nowIso,
       historyLog: [
         {
           status: "OBSERVADO",
           timestamp: nowIso,
           user: adminName,
-          note: `💬 Observada por ${adminName}: ${reason}`
+          note: `💬 Observada por ${adminName}: ${reasonText}`
         },
         ...(existingDoc.historyLog || [])
       ]
@@ -1722,7 +1723,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       quoteId: activeDocNumber,
       quoteObj: updatedObservedDoc,
       title: `💬 Cotización ${activeDocNumber} Observada`,
-      description: `El administrador ${adminName} solicita corrección: "${reason}"`,
+      description: `El administrador ${adminName} solicita corrección: "${reasonText}"`,
       status: "OBSERVADO",
       createdAt: nowIso,
       timestamp: nowIso,
@@ -3123,7 +3124,10 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         isOpen={isObserveModalOpen}
         onClose={() => setIsObserveModalOpen(false)}
         quote={currentQuoteObj}
-        onConfirmObserve={(reason) => handleObserveFromForm(currentQuoteObj, reason)}
+        onConfirmObserve={(quoteOrReason, maybeReason) => {
+          const finalReason = typeof maybeReason === "string" ? maybeReason : (typeof quoteOrReason === "string" ? quoteOrReason : "");
+          handleObserveFromForm(currentQuoteObj, finalReason);
+        }}
       />
 
       {/* Modal de Rechazo para Administrador */}

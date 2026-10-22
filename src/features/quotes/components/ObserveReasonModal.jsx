@@ -62,7 +62,13 @@ export function ObserveReasonModal({ isOpen, onClose, quote, onConfirmObserve })
 
     try {
       setIsSubmitting(true);
-      await onConfirmObserve(quote, finalNote.trim());
+      if (typeof onConfirmObserve === "function") {
+        if (onConfirmObserve.length === 1) {
+          await onConfirmObserve(finalNote.trim());
+        } else {
+          await onConfirmObserve(quote, finalNote.trim());
+        }
+      }
       onClose();
       setSelectedPreset(PREDEFINED_OBSERVATIONS[0]);
       setCustomDetail("");
