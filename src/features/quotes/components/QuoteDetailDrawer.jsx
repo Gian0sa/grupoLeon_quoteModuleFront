@@ -1583,8 +1583,10 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                 <Box minW={0}>
                   <HStack spacing={2} align="center" wrap="wrap">
                     <Heading size="sm" color="white" fontWeight="800" isTruncated>
-                      {effectiveQuote.docNumber && String(effectiveQuote.docNumber).startsWith("COT-0")
-                        ? effectiveQuote.docNumber
+                      {Boolean(syncedDocNum || (effectiveQuote.sapDocNum && Number(effectiveQuote.sapDocNum) > 0) || (status === "EMITIDO" && effectiveQuote.docNumber && !String(effectiveQuote.docNumber).includes("WEB") && !String(effectiveQuote.docNumber).includes("PENDIENTE")))
+                        ? (effectiveQuote.docNumber && String(effectiveQuote.docNumber).startsWith("COT-") && !String(effectiveQuote.docNumber).includes("WEB")
+                            ? effectiveQuote.docNumber
+                            : `COT-${String(syncedDocNum || effectiveQuote.sapDocNum).padStart(6, "0")}`)
                         : "COT-PENDIENTE (Al emitir a SAP)"}
                     </Heading>
                     {syncedDocNum && (

@@ -1275,10 +1275,15 @@ export function QuoteApprovalPage() {
       historyLog: updatedHistory
     };
 
+    const isEmittedToSap = Boolean(target?.sapDocNum || target?.approvalStatus === "EMITIDO" || target?.state === "EMITIDO");
+    const fallbackDocNum = isEmittedToSap
+      ? (target?.docNumber && !String(target.docNumber).includes("WEB") && !String(target.docNumber).includes("PENDIENTE") ? target.docNumber : `COT-${String(target?.sapDocNum || docId).padStart(6, '0')}`)
+      : (target?.docNumber && !String(target.docNumber).match(/^COT-0+\d+$/i) ? target.docNumber : (target?.id ? `COT-WEB-${String(target.id).padStart(6, '0')}` : null));
+
     const fullRecallDoc = {
       ...(target || {}),
       id: target?.id || docId,
-      docNumber: target?.docNumber || (String(docId).startsWith("COT-") ? docId : `COT-${String(docId).padStart(6, '0')}`),
+      docNumber: fallbackDocNum,
       ...recallFields
     };
 
@@ -1362,7 +1367,10 @@ export function QuoteApprovalPage() {
     };
     const updatedHistory = [newLog, ...prevLogs];
 
-    const finalDocNumber = target?.docNumber || (String(docId).startsWith("COT-") ? docId : `COT-${String(docId).padStart(6, '0')}`);
+    const isEmittedToSap = Boolean(target?.sapDocNum || target?.approvalStatus === "EMITIDO" || target?.state === "EMITIDO");
+    const finalDocNumber = isEmittedToSap
+      ? (target?.docNumber && !String(target.docNumber).includes("WEB") && !String(target.docNumber).includes("PENDIENTE") ? target.docNumber : `COT-${String(target?.sapDocNum || docId).padStart(6, '0')}`)
+      : (target?.docNumber && !String(target.docNumber).match(/^COT-0+\d+$/i) ? target.docNumber : (target?.id ? `COT-WEB-${String(target.id).padStart(6, '0')}` : "COT-PENDIENTE"));
 
     setProcessModal({
       isOpen: true,
@@ -1375,7 +1383,7 @@ export function QuoteApprovalPage() {
     const fullObservedDoc = {
       ...(target || {}),
       id: target?.id || docId,
-      docNumber: finalDocNumber,
+      docNumber: isEmittedToSap ? finalDocNumber : (finalDocNumber.startsWith("COT-WEB-") ? finalDocNumber : null),
       status: "OBSERVADO",
       state: "OBSERVADO",
       approvalStatus: "OBSERVADO",
@@ -1474,7 +1482,10 @@ export function QuoteApprovalPage() {
     };
     const updatedHistory = [newLog, ...prevLogs];
 
-    const finalDocNumber = target?.docNumber || (String(docId).startsWith("COT-") ? docId : `COT-${String(docId).padStart(6, '0')}`);
+    const isEmittedToSap = Boolean(target?.sapDocNum || target?.approvalStatus === "EMITIDO" || target?.state === "EMITIDO");
+    const finalDocNumber = isEmittedToSap
+      ? (target?.docNumber && !String(target.docNumber).includes("WEB") && !String(target.docNumber).includes("PENDIENTE") ? target.docNumber : `COT-${String(target?.sapDocNum || docId).padStart(6, '0')}`)
+      : (target?.docNumber && !String(target.docNumber).match(/^COT-0+\d+$/i) ? target.docNumber : (target?.id ? `COT-WEB-${String(target.id).padStart(6, '0')}` : "COT-PENDIENTE"));
 
     setProcessModal({
       isOpen: true,
@@ -1487,7 +1498,7 @@ export function QuoteApprovalPage() {
     const fullRejectedDoc = {
       ...(target || {}),
       id: target?.id || docId,
-      docNumber: finalDocNumber,
+      docNumber: isEmittedToSap ? finalDocNumber : (finalDocNumber.startsWith("COT-WEB-") ? finalDocNumber : null),
       status: "RECHAZADO",
       state: "RECHAZADO",
       approvalStatus: "RECHAZADO",
@@ -1589,7 +1600,10 @@ export function QuoteApprovalPage() {
       note: note || `Estado actualizado a ${nextStatus}`
     };
     const updatedHistory = [newLog, ...prevLogs];
-    const finalDocNumber = target?.docNumber || (String(docId).startsWith("COT-") ? docId : `COT-${String(docId).padStart(6, '0')}`);
+    const isEmittedToSap = Boolean(target?.sapDocNum || target?.approvalStatus === "EMITIDO" || target?.state === "EMITIDO" || nextStatus === "EMITIDO");
+    const finalDocNumber = isEmittedToSap
+      ? (target?.docNumber && !String(target.docNumber).includes("WEB") && !String(target.docNumber).includes("PENDIENTE") ? target.docNumber : `COT-${String(target?.sapDocNum || docId).padStart(6, '0')}`)
+      : (target?.docNumber && !String(target.docNumber).match(/^COT-0+\d+$/i) ? target.docNumber : (target?.id ? `COT-WEB-${String(target.id).padStart(6, '0')}` : "COT-PENDIENTE"));
 
     const isApproval = nextStatus === "APROBADO_COMERCIAL" || nextStatus === "APROBADO" || nextStatus === "EN_FACTURACION";
     setProcessModal({
@@ -1603,7 +1617,7 @@ export function QuoteApprovalPage() {
     const fullDoc = {
       ...(target || {}),
       id: target?.id || docId,
-      docNumber: finalDocNumber,
+      docNumber: isEmittedToSap ? finalDocNumber : (finalDocNumber.startsWith("COT-WEB-") ? finalDocNumber : null),
       status: nextStatus,
       state: nextStatus,
       approvalStatus: nextStatus,
@@ -2716,10 +2730,12 @@ export function QuoteApprovalPage() {
                       <Td py={3} px={4} maxW="0">
                         <VStack align="flex-start" spacing={1} maxW="full" w="full">
                           <HStack spacing={2} align="center" wrap="wrap">
-                            {q.docNumber && String(q.docNumber).startsWith("COT-0") ? (
-                              <Text fontSize="sm" fontWeight="950" color="#0e572b" fontFamily="mono">{q.docNumber}</Text>
+                            {Boolean(sapDocNum || (status === "EMITIDO" && q.docNumber && !String(q.docNumber).includes("WEB") && !String(q.docNumber).includes("PENDIENTE"))) ? (
+                              <Text fontSize="sm" fontWeight="950" color="#0e572b" fontFamily="mono">
+                                {q.docNumber && String(q.docNumber).startsWith("COT-") && !String(q.docNumber).includes("WEB") ? q.docNumber : `COT-${String(sapDocNum).padStart(6, '0')}`}
+                              </Text>
                             ) : (
-                              <Badge colorScheme="orange" variant="subtle" px={2} py={0.5} borderRadius="md" fontSize="xs" fontWeight="900" letterSpacing="wide">
+                              <Badge colorScheme="orange" variant="subtle" px={2} py={0.5} borderRadius="md" fontSize="xs" fontWeight="900" letterSpacing="wide" title={q.id ? `ID Web: #${q.id}` : undefined}>
                                 COT-PENDIENTE
                               </Badge>
                             )}
@@ -2868,10 +2884,12 @@ export function QuoteApprovalPage() {
                   <VStack align="stretch" spacing={3}>
                     <Flex justify="space-between" align="flex-start" gap={2} wrap="wrap">
                       <HStack spacing={1.5} align="center" wrap="wrap">
-                        {q.docNumber && String(q.docNumber).startsWith("COT-0") ? (
-                          <Text fontSize="sm" fontWeight="950" color="#0e572b" fontFamily="mono">{q.docNumber}</Text>
+                        {Boolean(sapDocNum || (status === "EMITIDO" && q.docNumber && !String(q.docNumber).includes("WEB") && !String(q.docNumber).includes("PENDIENTE"))) ? (
+                          <Text fontSize="sm" fontWeight="950" color="#0e572b" fontFamily="mono">
+                            {q.docNumber && String(q.docNumber).startsWith("COT-") && !String(q.docNumber).includes("WEB") ? q.docNumber : `COT-${String(sapDocNum).padStart(6, '0')}`}
+                          </Text>
                         ) : (
-                          <Badge colorScheme="orange" variant="subtle" px={2} py={0.5} borderRadius="md" fontSize="xs" fontWeight="900" letterSpacing="wide">
+                          <Badge colorScheme="orange" variant="subtle" px={2} py={0.5} borderRadius="md" fontSize="xs" fontWeight="900" letterSpacing="wide" title={q.id ? `ID Web: #${q.id}` : undefined}>
                             COT-PENDIENTE
                           </Badge>
                         )}

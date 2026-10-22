@@ -161,7 +161,9 @@ export function BackOrderDemandSection() {
     // 2. Extraer y fusionar items de cotizaciones locales (garantiza sincronización inmediata)
     (localQuotes || []).forEach((q) => {
       if (!q) return;
-      const docNum = q.docNumber || `COT-${String(q.sapDocNum || q.id || "").padStart(6, "0")}`;
+      const docNum = q.sapDocNum 
+        ? `COT-${String(q.sapDocNum).padStart(6, "0")}` 
+        : (q.docNumber && !String(q.docNumber).match(/^COT-0+\d+$/i) ? q.docNumber : `COT-WEB-${String(q.id || "").padStart(6, "0")}`);
       const seller = formatQuoteSellerName(q);
       const clientName = q.clientName || q.client?.CardName || "Cliente General";
       const clientDoc = q.clientDocument || q.clientRuc || q.client?.CardCode || "";
