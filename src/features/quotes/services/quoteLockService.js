@@ -1,5 +1,6 @@
 import { socket } from "../../../shared/lib/socket";
 import { checkIsAdmin } from "../../../shared/utils/permissions";
+import { axiosInstance } from "../../../shared/lib/axiosInstance";
 
 const STORAGE_KEY = "grupoLeon_quote_locks";
 const LOCK_TTL_MS = 10 * 60 * 1000; // 10 minutos de gracia máxima
@@ -313,7 +314,6 @@ export function forceUnlockQuote(quoteId) {
  */
 export async function syncActiveLocksFromRest() {
   try {
-    const { axiosInstance } = await import("../../../shared/lib/axiosInstance");
     const res = await axiosInstance.get("/quoteModule/quotes/active-locks");
     if (res?.data?.locks && typeof res.data.locks === "object") {
       const current = getActiveQuoteLocks();
