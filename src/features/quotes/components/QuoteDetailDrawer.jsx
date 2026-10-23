@@ -1779,29 +1779,59 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                     </Text>
                   </Box>
 
-                  <Button
-                    size={{ base: "md", md: "sm" }}
-                    w={{ base: "full", sm: "auto" }}
-                    alignSelf={{ base: "stretch", sm: "flex-start" }}
-                    colorScheme="orange"
-                    bg="#ea580c"
-                    _hover={{ bg: "#c2410c" }}
-                    leftIcon={<Edit3 className="w-4 h-4" />}
-                    onClick={() => {
-                      onClose();
-                      const quoteToLoad = effectiveQuote || quote;
-                      if (typeof useQuoteStore.getState().loadQuote === "function") {
-                        useQuoteStore.getState().loadQuote(quoteToLoad);
-                      } else if (typeof useQuoteStore.getState().setQuoteData === "function") {
-                        useQuoteStore.getState().setQuoteData(quoteToLoad);
-                      }
-                      navigate("/newquotes");
-                    }}
-                    fontWeight="800"
-                    boxShadow="sm"
-                  >
-                    ✏️ Abrir y Corregir en Formulario
-                  </Button>
+                  {!isAdminUser ? (
+                    <Button
+                      size={{ base: "md", md: "sm" }}
+                      w={{ base: "full", sm: "auto" }}
+                      alignSelf={{ base: "stretch", sm: "flex-start" }}
+                      colorScheme="orange"
+                      bg="#ea580c"
+                      _hover={{ bg: "#c2410c" }}
+                      leftIcon={<Edit3 className="w-4 h-4" />}
+                      onClick={() => {
+                        onClose();
+                        const quoteToLoad = effectiveQuote || quote;
+                        if (typeof useQuoteStore.getState().loadQuote === "function") {
+                          useQuoteStore.getState().loadQuote(quoteToLoad);
+                        } else if (typeof useQuoteStore.getState().setQuoteData === "function") {
+                          useQuoteStore.getState().setQuoteData(quoteToLoad);
+                        }
+                        navigate("/newquotes");
+                      }}
+                      fontWeight="800"
+                      boxShadow="sm"
+                    >
+                      ✏️ Abrir y Corregir en Formulario
+                    </Button>
+                  ) : (
+                    <HStack justify="space-between" align="center" wrap="wrap" gap={2} pt={1}>
+                      <Text fontSize="xs" color="#92400e" fontWeight="600">
+                        ⏳ En espera de que el vendedor ({sellerName || "asignado"}) realice la corrección y reenvíe a validación.
+                      </Text>
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        colorScheme="orange"
+                        borderColor="#f59e0b"
+                        color="#b45309"
+                        _hover={{ bg: "#fef3c7" }}
+                        leftIcon={<Edit3 className="w-3.5 h-3.5" />}
+                        onClick={() => {
+                          onClose();
+                          const quoteToLoad = effectiveQuote || quote;
+                          if (typeof useQuoteStore.getState().loadQuote === "function") {
+                            useQuoteStore.getState().loadQuote(quoteToLoad);
+                          } else if (typeof useQuoteStore.getState().setQuoteData === "function") {
+                            useQuoteStore.getState().setQuoteData(quoteToLoad);
+                          }
+                          navigate("/newquotes");
+                        }}
+                        fontWeight="700"
+                      >
+                        Editar como Administrador
+                      </Button>
+                    </HStack>
+                  )}
                 </VStack>
               </Box>
             ) : activeRole === "SELLER" ? (

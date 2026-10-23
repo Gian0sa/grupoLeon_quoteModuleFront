@@ -2341,8 +2341,8 @@ export function QuoteApprovalPage() {
                 </Button>
               )}
 
-              {/* Botón Corregir para cotizaciones observadas */}
-              {(status === "OBSERVADO" || status === "EN_EDICION") && (
+              {/* Botón Corregir para cotizaciones observadas (SOLO PARA VENDEDOR) */}
+              {!isAdminUser && (status === "OBSERVADO" || status === "EN_EDICION") && (
                 <Button
                   size="xs"
                   h="32px"
@@ -2538,8 +2538,8 @@ export function QuoteApprovalPage() {
               </Button>
             )}
 
-            {/* Botón Corregir para cotizaciones observadas (Mobile) */}
-            {(status === "OBSERVADO" || status === "EN_EDICION") && (
+            {/* Botón Corregir para cotizaciones observadas (Mobile - SOLO PARA VENDEDOR) */}
+            {!isAdminUser && (status === "OBSERVADO" || status === "EN_EDICION") && (
               <Button
                 size="sm"
                 h="40px"
