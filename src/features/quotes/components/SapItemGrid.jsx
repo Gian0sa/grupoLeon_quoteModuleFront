@@ -256,6 +256,7 @@ export default function SapItemGrid({
                         size="xs"
                         h="32px"
                         type="text"
+                        maxLength={6}
                         inputMode="numeric"
                         pattern="[0-9]*"
                         textAlign="center"
@@ -269,11 +270,11 @@ export default function SapItemGrid({
                         px={1}
                         onFocus={(e) => e.target.select()}
                         onChange={(e) => {
-                          const val = e.target.value.replace(/\D/g, "");
+                          const val = e.target.value.replace(/\D/g, "").slice(0, 6);
                           if (val === "") {
                             onUpdateProduct(item.id, { quantity: "" });
                           } else {
-                            const parsed = parseInt(val, 10);
+                            const parsed = Math.min(999999, parseInt(val, 10));
                             onUpdateProduct(item.id, { quantity: parsed > 0 ? parsed : "" });
                           }
                         }}
@@ -532,6 +533,7 @@ export default function SapItemGrid({
                               size="xs"
                               maxW="75px"
                               type="text"
+                              maxLength={6}
                               inputMode="numeric"
                               pattern="[0-9]*"
                               textAlign="center"
@@ -543,11 +545,11 @@ export default function SapItemGrid({
                               px={1}
                               onFocus={(e) => e.target.select()}
                               onChange={(e) => {
-                                const val = e.target.value.replace(/\D/g, "");
+                                const val = e.target.value.replace(/\D/g, "").slice(0, 6);
                                 if (val === "") {
                                   onUpdateProduct(item.id, { quantity: "" });
                                 } else {
-                                  const parsed = parseInt(val, 10);
+                                  const parsed = Math.min(999999, parseInt(val, 10));
                                   onUpdateProduct(item.id, { quantity: parsed > 0 ? parsed : "" });
                                 }
                               }}
@@ -803,6 +805,7 @@ export default function SapItemGrid({
                             h="30px"
                             w="65px"
                             type="text"
+                            maxLength={6}
                             inputMode="numeric"
                             pattern="[0-9]*"
                             textAlign="center"
@@ -815,11 +818,11 @@ export default function SapItemGrid({
                             borderRadius="md"
                             onFocus={(e) => e.target.select()}
                             onChange={(e) => {
-                              const val = e.target.value.replace(/\D/g, "");
+                              const val = e.target.value.replace(/\D/g, "").slice(0, 6);
                               if (val === "") {
                                 onUpdateProduct(p.id, { quantity: "" });
                               } else {
-                                const parsed = parseInt(val, 10);
+                                const parsed = Math.min(999999, parseInt(val, 10));
                                 onUpdateProduct(p.id, { quantity: parsed > 0 ? parsed : "" });
                               }
                             }}

@@ -1397,7 +1397,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         id: p.id || p.code || p.productCode,
         itemCode: p.productCode || p.itemCode || p.ItemCode || p.code || p.id,
         productCode: p.productCode || p.itemCode || p.ItemCode || p.code || p.id,
-        quantity: Number(p.quantity || p.Quantity || 1),
+        quantity: Math.min(999999, Math.max(1, Math.floor(Number(p.quantity || p.Quantity || 1)))),
         description: p.productName || p.description || p.name || p.ItemDescription,
         productName: p.productName || p.description || p.name || p.ItemDescription,
         unitPrice: rawPrice,

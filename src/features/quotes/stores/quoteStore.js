@@ -73,7 +73,7 @@ export const normalizeQuoteItem = (item) => {
     lineDiscount,
     discountPercent: totalDisc,
     discountedUnitPrice,
-    quantity: quantity === "" ? "" : (isNaN(Number(quantity)) || Number(quantity) < 1 ? 1 : Number(quantity)),
+    quantity: quantity === "" ? "" : (isNaN(Number(quantity)) || Number(quantity) < 1 ? 1 : Math.min(999999, Math.floor(Number(quantity)))),
     stock,
     stockChecked: item.stockChecked !== undefined ? item.stockChecked : (rawStock !== undefined && rawStock !== null),
     isAgotado,
@@ -326,7 +326,7 @@ export const useQuoteStore = create((set, get) => {
         updated = [...state.products];
         updated[index] = {
           ...updated[index],
-          quantity: updated[index].quantity + normalized.quantity,
+          quantity: Math.min(999999, (updated[index].quantity || 0) + (normalized.quantity || 1)),
         };
       } else {
         updated = [...state.products, normalized];

@@ -31,7 +31,7 @@ export function PreQuoteDrawer({ isOpen, onClose }) {
   const totals = getTotals();
 
   const handleIncreaseQty = (item) => {
-    updateProduct(item.id, { quantity: (item.quantity || 1) + 1 });
+    updateProduct(item.id, { quantity: Math.min(999999, (item.quantity || 1) + 1) });
   };
 
   const handleDecreaseQty = (item) => {

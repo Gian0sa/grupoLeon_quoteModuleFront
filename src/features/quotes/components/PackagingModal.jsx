@@ -69,7 +69,7 @@ export function PackagingModal({
 
   const handleConfirm = () => {
     if (onApplyQuantity && totalUnits > 0) {
-      onApplyQuantity(totalUnits);
+      onApplyQuantity(Math.min(999999, totalUnits));
     }
     onClose();
   };
