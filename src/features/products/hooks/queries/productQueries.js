@@ -37,7 +37,7 @@ export const useProductsPriceList = ({
       stock,
       page,
     ],
-    queryFn: () => 
+    queryFn: ({ signal }) => 
       getProductsPriceList({ 
         itemName, 
         itemCode, 
@@ -46,6 +46,7 @@ export const useProductsPriceList = ({
         subtipo, 
         stock,
         page,
+        signal,
       }),
     enabled,
     refetchOnWindowFocus: false,

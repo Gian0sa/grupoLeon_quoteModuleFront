@@ -6,7 +6,7 @@ import { useGetPromotions } from "../hooks/queries/quotesQueries";
 import { useDebounce } from "../../../shared/hooks/useDebounce";
 
 const MIN_CHARS = 2;
-const DEBOUNCE_MS = 200;
+const DEBOUNCE_MS = 300;
 
 /** Un término que contiene dígitos o guiones se evalúa con búsqueda inteligente de código y nombre. */
 function isLikelyItemCode(term) {
