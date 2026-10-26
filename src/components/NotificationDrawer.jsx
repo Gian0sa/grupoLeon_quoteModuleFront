@@ -327,7 +327,7 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
     return `${date.toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit", year: "numeric" })} • ${timeStr}`;
   };
 
-  const handleOpenQuote = async (quoteObj, quoteId, notifId) => {
+  const handleOpenQuote = (quoteObj, quoteId, notifId) => {
     let targetDoc = quoteObj ? { ...quoteObj } : null;
     const targetId = quoteId || quoteObj?.docNumber || quoteObj?.id;
 
@@ -350,26 +350,10 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
       return [];
     };
 
-    // 1. Consultar directamente al backend para obtener la cotización real y actualizada
-    if (targetId) {
-      try {
-        const liveQuote = await getQuoteById(targetId);
-        if (liveQuote && (liveQuote.id || liveQuote.docNumber)) {
-          targetDoc = { ...(targetDoc || {}), ...liveQuote };
-          if (liveQuote.products && liveQuote.products.length > 0) targetDoc.products = liveQuote.products;
-          if (liveQuote.totals) targetDoc.totals = liveQuote.totals;
-          if (liveQuote.state) targetDoc.state = liveQuote.state;
-          if (liveQuote.approvalStatus) targetDoc.approvalStatus = liveQuote.approvalStatus;
-          if (liveQuote.sapDocNum) targetDoc.sapDocNum = liveQuote.sapDocNum;
-          if (liveQuote.docNumber) targetDoc.docNumber = liveQuote.docNumber;
-        }
-      } catch (_) {}
-    }
-
+    // ⚡ 1. Resolución ultra rápida desde memoria / caché de React Query
     let items = extractItems(targetDoc);
 
     if (items.length === 0 && targetId) {
-      // 2. Buscar en caché de React Query
       try {
         const cachedQuotes = queryClient.getQueryData(["quotes"]);
         if (Array.isArray(cachedQuotes)) {
@@ -385,7 +369,7 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
         }
       } catch {}
 
-      // 3. Buscar en localStorage
+      // ⚡ 2. Fallback instantáneo en localStorage
       if (items.length === 0) {
         try {
           const savedQuotes = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
@@ -402,23 +386,20 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
       }
     }
 
-    if (!targetDoc || (!targetDoc.clientName && !targetDoc.client && (!items || items.length === 0))) {
-      toast({
-        title: "Cotización no disponible",
-        description: "No se pudieron obtener los detalles de esta cotización o pertenece a otro usuario.",
-        status: "warning",
-        duration: 3500,
-        isClosable: true,
-      });
-      return;
+    if (!targetDoc) {
+      targetDoc = { id: targetId, docNumber: targetId };
     }
-
     targetDoc.products = items;
 
-    // Marcar como leída al abrir para despejar el contador sin borrar el historial
+    // ⚡ 3. APERTURA INSTANTÁNEA (0ms): Cerrar campanita y desplegar el detalle inmediatamente
+    onClose();
+    setSelectedQuoteForDrawer(targetDoc);
+    setIsQuoteDrawerOpen(true);
+
+    // ⚡ 4. Marcar como leída de forma asíncrona sin bloquear la interfaz
     try {
       markNotificationAsRead(notifId, targetId);
-      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"], refetchType: "none" });
       const raw = localStorage.getItem("grupoLeon_notifications");
       const all = raw ? JSON.parse(raw) : [];
       const updated = all.map(n => {
@@ -432,9 +413,24 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
       setLocalVersion(v => v + 1);
     } catch (e) {}
 
-    onClose(); // Cierra el panel de notificaciones para liberar el scroll móvil
-    setSelectedQuoteForDrawer(targetDoc);
-    setIsQuoteDrawerOpen(true);
+    // ⚡ 5. Sincronización en segundo plano con el servidor (sin congelar la pantalla del usuario)
+    if (targetId) {
+      getQuoteById(targetId)
+        .then((liveQuote) => {
+          if (liveQuote && (liveQuote.id || liveQuote.docNumber)) {
+            setSelectedQuoteForDrawer((prev) => {
+              if (!prev) return liveQuote;
+              const serverItems = extractItems(liveQuote);
+              return {
+                ...prev,
+                ...liveQuote,
+                products: serverItems.length > 0 ? serverItems : prev.products,
+              };
+            });
+          }
+        })
+        .catch(() => {});
+    }
   };
 
   const displayName = username || userId || "Usuario";

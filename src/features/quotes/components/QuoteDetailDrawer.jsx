@@ -110,6 +110,30 @@ import {
 import { useSellersData } from "../../auth/hooks/queries/authQueries";
 import { updateQuote } from "../services/quoteService";
 
+// Helper seguro para formatear fechas de registro evitando el desfase de zona horaria UTC (-5 horas en Perú)
+export const formatDateDisplay = (dateVal, fallbackIso) => {
+  const val = dateVal || fallbackIso;
+  if (!val) return "—";
+
+  if (typeof val === "string") {
+    const clean = val.split("T")[0];
+    const parts = clean.split("-");
+    if (parts.length === 3 && parts[0].length === 4) {
+      const [year, month, day] = parts;
+      return `${day.padStart(2, "0")}/${month.padStart(2, "0")}/${year}`;
+    }
+  }
+
+  try {
+    const d = new Date(val);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString("es-PE", { timeZone: "America/Lima" });
+    }
+  } catch {}
+
+  return "—";
+};
+
 export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDeleteQuote }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -445,8 +469,12 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
   }, [effectiveQuote?.products, effectiveQuote?.items]);
 
   // Consulta de Stock en tiempo real directamente a SAP al abrir la cotización
+  // (Solo para cotizaciones pendientes de evaluación; si ya fue emitida o aprobada formalmente, no saturar SAP)
   React.useEffect(() => {
     if (!isOpen || !stockCodesKey) return;
+    const rawSt = String(effectiveQuote?.approvalStatus || effectiveQuote?.state || effectiveQuote?.status || quote?.approvalStatus || quote?.status || "").toUpperCase();
+    const isDocFinished = ["EMITIDO", "EMITIDO_SAP", "PEDIDO_EMITIDO", "FACTURADO", "COMPLETADO", "RECHAZADO", "ANULADO"].includes(rawSt) || Boolean(effectiveQuote?.sapDocNum || effectiveQuote?.totals?.sapDocNum);
+    if (isDocFinished) return;
 
     let isMounted = true;
     const controller = new AbortController();
@@ -814,7 +842,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
     isAlreadySyncedToSap
   );
 
-  const createdIso = effectiveQuote.createdAt || historyLog[0]?.timestamp || (effectiveQuote.docDate ? `${effectiveQuote.docDate}T00:00:00.000Z` : null);
+  const createdIso = effectiveQuote.createdAt || historyLog[0]?.timestamp || (effectiveQuote.docDate ? `${effectiveQuote.docDate}T12:00:00.000Z` : null);
   const solicitudIso = findLogIso(["ENVIADO", "EN_PROCESO", "PENDIENTE_FACTURACION", "APROBADO", "APROBADO_COMERCIAL", "RECHAZADO", "OBSERVADO", "EN_EDICION", "EMITIDO", "EMITIDO_SAP", "COMPLETADO", "PEDIDO_EMITIDO"]) || (isDirectSap ? createdIso : null);
   const revisionIso = findLogIso(["EN_PROCESO", "PENDIENTE_FACTURACION", "APROBADO", "APROBADO_COMERCIAL", "RECHAZADO", "OBSERVADO", "EN_EDICION", "VISTO", "EMITIDO", "EMITIDO_SAP", "COMPLETADO", "PEDIDO_EMITIDO"]) || (isDirectSap ? createdIso : null);
   const finalIso = findLogIso(["APROBADO", "APROBADO_COMERCIAL", "RECHAZADO", "OBSERVADO", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO", "EMITIDO", "EMITIDO_SAP"]) || (isDirectSap ? createdIso : null);
@@ -2244,7 +2272,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
               <GridItem minW={0}>
                 <Text fontSize="10px" fontWeight="700" color="gray.500" textTransform="uppercase">Fecha Registro</Text>
                 <Text fontSize={{ base: "12px", md: "xs" }} fontWeight="800" color="gray.800" isTruncated>
-                  {effectiveQuote.docDate ? new Date(effectiveQuote.docDate).toLocaleDateString() : new Date(createdIso).toLocaleDateString()}
+                  {formatDateDisplay(effectiveQuote.docDate, effectiveQuote.createdAt || createdIso)}
                 </Text>
               </GridItem>
             </Grid>
@@ -2619,7 +2647,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                       <Text fontWeight="700" color="gray.700" fontSize="10px">
                         {(() => {
                           const lastLog = Array.isArray(historyLog) && historyLog.length > 0 ? historyLog[historyLog.length - 1] : null;
-                          const rawIso = lastLog?.timestamp || effectiveQuote.updatedAt || effectiveQuote.createdAt || (effectiveQuote.docDate ? `${effectiveQuote.docDate}T00:00:00.000Z` : null);
+                          const rawIso = lastLog?.timestamp || effectiveQuote.updatedAt || effectiveQuote.createdAt || (effectiveQuote.docDate ? `${effectiveQuote.docDate}T12:00:00.000Z` : null);
                           if (!rawIso) return "—";
                           try {
                             const d = new Date(rawIso);
@@ -2959,8 +2987,6 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                             const isHigherMargin = addDisc < 0;
 
                             const discountedUnitPrice = Number(item.discountedUnitPrice ?? (item.price * (1 - totalDisc / 100)));
-                            const unitPriceConIGV = Number(item.unitPriceConIGV ?? (item.customPriceConIGV ? Number(item.customPriceConIGV) : (discountedUnitPrice * 1.18)).toFixed(2));
-                            const lineTotalConIGV = Number(item.lineTotalConIGV ?? (qty * unitPriceConIGV).toFixed(2));
                             const descText = item.description || item.ItemDescription || item.name || "Artículo";
 
                             return (
@@ -2972,21 +2998,16 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                 border="1px solid"
                                 borderColor={isVolume ? "orange.300" : promoDisc > 0 ? "amber.300" : "gray.200"}
                               >
-                                <Flex justify="space-between" align="center" gap={2} mb={1.5}>
+                                <Flex justify="space-between" align="start" gap={2} mb={1}>
                                   <Badge colorScheme="blue" variant="solid" fontSize="10px" borderRadius="md" px={1.5} fontFamily="mono">
                                     {item.itemCode || item.code || item.id || "ART"}
                                   </Badge>
-                                  <HStack spacing={1} align="baseline">
-                                    <Text fontSize="xs" fontWeight="900" color="emerald.900" fontFamily="mono">
-                                      ${formatThousands(item.lineTotal)}
-                                    </Text>
-                                    <Text fontSize="9px" fontWeight="700" color="gray.500">
-                                      neto
-                                    </Text>
-                                  </HStack>
+                                  <Text fontSize="xs" fontWeight="900" color="emerald.900" fontFamily="mono">
+                                    ${formatThousands(item.lineTotal)}
+                                  </Text>
                                 </Flex>
 
-                                <VStack align="start" spacing={1} mb={2}>
+                                <VStack align="start" spacing={1} mb={1.5}>
                                   <Text fontSize="11.5px" fontWeight="700" color="gray.900" noOfLines={2} lineHeight="1.3" title={descText}>
                                     {descText}
                                   </Text>
@@ -3002,7 +3023,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                   )}
                                 </VStack>
 
-                                <Grid templateColumns={promoDisc > 0 ? "repeat(4, 1fr)" : "repeat(3, 1fr)"} gap={1} fontSize="10px" bg="white" p={2} borderRadius="lg" border="1px solid" borderColor="gray.200" mb={2}>
+                                <Grid templateColumns={promoDisc > 0 ? "repeat(4, 1fr)" : "repeat(3, 1fr)"} gap={1} fontSize="10px" bg="white" p={2} borderRadius="lg" border="1px solid" borderColor="gray.200" mb={1.5}>
                                   <Box textAlign="center">
                                     <Text color="gray.500" fontWeight="700" fontSize="9px">Desc. SAP</Text>
                                     <Badge colorScheme="green" fontSize="9px">{sapDisc}%</Badge>
@@ -3032,42 +3053,22 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                   </Box>
                                 </Grid>
 
-                                {/* BANNER PRECIOS CON Y SIN IGV (CLAVE PARA FACTURACIÓN Y VENTAS) */}
-                                <Box bg="#f0fdf4" p={2} borderRadius="lg" border="1px solid #bbf7d0" mb={2}>
-                                  <Flex justify="space-between" align="center" wrap="wrap" gap={1.5}>
-                                    <VStack align="start" spacing={0}>
-                                      <Text fontSize="8.5px" color="gray.500" fontWeight="700" textTransform="uppercase">P. Unit. Neto</Text>
-                                      <HStack spacing={1} align="baseline">
-                                        {totalDisc > 0 && (
-                                          <Text as="s" fontSize="9px" color="gray.400">${formatThousands(item.price)}</Text>
-                                        )}
-                                        <Text fontSize="11px" fontWeight="900" color="#047857">
-                                          ${formatThousands(discountedUnitPrice)} /u
-                                        </Text>
-                                      </HStack>
-                                    </VStack>
-                                    <VStack align="flex-end" spacing={0}>
-                                      <Text fontSize="8.5px" color="teal.800" fontWeight="800" textTransform="uppercase">Precio Final c/IGV</Text>
-                                      <Badge
-                                        colorScheme="teal"
-                                        bg="#d1fae5"
-                                        color="#065f46"
-                                        fontSize="11px"
-                                        fontWeight="900"
-                                        px={2}
-                                        py={0.5}
-                                        borderRadius="md"
-                                        border="1px solid #a7f3d0"
-                                      >
-                                        ${formatThousands(unitPriceConIGV)} /u
-                                        <Text as="span" fontSize="9px" fontWeight="700" ml={1}>(${formatThousands(lineTotalConIGV)} tot)</Text>
-                                      </Badge>
-                                    </VStack>
-                                  </Flex>
-                                </Box>
-
                                 <Flex justify="space-between" align="center" fontSize="11px" color="gray.600" pt={1.5} borderTop="1px dashed" borderColor="gray.200" wrap="wrap" gap={1}>
                                   <Text>Cant: <Text as="span" fontWeight="800" color="gray.900">{item.quantity} uds</Text></Text>
+                                  <Text>
+                                    P. Unit:{" "}
+                                    {totalDisc > 0 ? (
+                                      <Text as="span">
+                                        <Text as="s" color="gray.400" fontSize="10px" mr={1}>${formatThousands(item.price)}</Text>
+                                        <Text as="span" fontWeight="950" color="#047857">
+                                          ${formatThousands(discountedUnitPrice)}
+                                        </Text>
+                                        <Text as="span" fontSize="9px" color="gray.500" fontWeight="700"> /u</Text>
+                                      </Text>
+                                    ) : (
+                                      <Text as="span" fontWeight="800" color="gray.900">${formatThousands(item.price)} /u</Text>
+                                    )}
+                                  </Text>
                                   <Badge
                                     colorScheme={
                                       isQuoteApproved
@@ -3117,13 +3118,12 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                 <Th fontSize="10px" color="gray.600" px={2} whiteSpace="nowrap">Código</Th>
                                 <Th fontSize="10px" color="gray.600" px={2} minW="110px" maxW="150px">Descripción</Th>
                                 <Th fontSize="10px" textAlign="right" color="gray.600" px={1.5} whiteSpace="nowrap">Cant.</Th>
-                                <Th fontSize="10px" textAlign="right" color="gray.600" px={2} whiteSpace="nowrap">P. Unit. Neto</Th>
+                                <Th fontSize="10px" textAlign="right" color="gray.600" px={2} whiteSpace="nowrap">Precio Unitario</Th>
                                 <Th fontSize="10px" textAlign="center" color="gray.600" px={1.5} whiteSpace="nowrap">Desc. SAP</Th>
                                 <Th fontSize="10px" textAlign="center" color="gray.600" px={1.5} whiteSpace="nowrap">Desc. Adic.</Th>
                                 <Th fontSize="10px" textAlign="center" color="gray.600" px={1.5} whiteSpace="nowrap">Desc. Total</Th>
                                 <Th fontSize="10px" textAlign="center" color="gray.600" px={1.5} whiteSpace="nowrap">¿Aprobación?</Th>
-                                <Th fontSize="10px" textAlign="right" color="teal.800" bg="#f0fdf4" px={2} borderLeft="1px solid #dcfce7" borderRight="1px solid #dcfce7" whiteSpace="nowrap">P. Final c/IGV</Th>
-                                <Th fontSize="10px" textAlign="right" color="gray.600" px={2} whiteSpace="nowrap">Total Neto (USD)</Th>
+                                <Th fontSize="10px" textAlign="right" color="gray.600" px={2.5} whiteSpace="nowrap">Total (USD)</Th>
                               </Tr>
                             </Thead>
                             <Tbody fontSize="xs">
@@ -3142,8 +3142,6 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                 const isHigherMargin = addDisc < 0;
 
                                 const discountedUnitPrice = Number(item.discountedUnitPrice ?? (item.price * (1 - totalDisc / 100)));
-                                const unitPriceConIGV = Number(item.unitPriceConIGV ?? (item.customPriceConIGV ? Number(item.customPriceConIGV) : (discountedUnitPrice * 1.18)).toFixed(2));
-                                const lineTotalConIGV = Number(item.lineTotalConIGV ?? (qty * unitPriceConIGV).toFixed(2));
                                 const descText = item.description || item.ItemDescription || item.name || "Artículo";
 
                                 return (
@@ -3259,39 +3257,8 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                           : "🟢 NO"}
                                       </Badge>
                                     </Td>
-                                    {/* CASILLA PRECIO FINAL CON IGV (Para Facturación y Cobranzas) */}
-                                    <Td textAlign="right" px={2} bg="#f0fdf4" borderLeft="1px solid #dcfce7" borderRight="1px solid #dcfce7">
-                                      <VStack align="flex-end" spacing={0}>
-                                        <Badge
-                                          colorScheme="teal"
-                                          bg="#d1fae5"
-                                          color="#065f46"
-                                          border="1px solid #a7f3d0"
-                                          fontSize="11px"
-                                          fontWeight="900"
-                                          px={1.5}
-                                          py={0.5}
-                                          borderRadius="md"
-                                          fontFamily="mono"
-                                          title="Precio unitario final con IGV incluido"
-                                        >
-                                          ${formatThousands(unitPriceConIGV)} <Text as="span" fontSize="8.5px" fontWeight="700">/u</Text>
-                                        </Badge>
-                                        <Text fontSize="9.5px" color="teal.700" fontWeight="800" mt={0.5} fontFamily="mono" title="Subtotal de la línea con IGV incluido">
-                                          tot: ${formatThousands(lineTotalConIGV)}
-                                        </Text>
-                                      </VStack>
-                                    </Td>
-                                    {/* TOTAL NETO S/IGV (Monto Base Imponible SAP) */}
-                                    <Td textAlign="right" px={2}>
-                                      <VStack align="flex-end" spacing={0}>
-                                        <Text fontWeight="850" color="emerald.900" fontFamily="mono" fontSize="11.5px">
-                                          ${formatThousands(item.lineTotal)}
-                                        </Text>
-                                        <Text fontSize="8.5px" color="gray.400" fontWeight="700">
-                                          neto s/igv
-                                        </Text>
-                                      </VStack>
+                                    <Td textAlign="right" fontWeight="850" color="emerald.900" fontFamily="mono" px={2.5}>
+                                      ${formatThousands(item.lineTotal)}
                                     </Td>
                                   </Tr>
                                 );
