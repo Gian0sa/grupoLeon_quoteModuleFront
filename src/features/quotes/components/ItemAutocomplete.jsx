@@ -138,8 +138,9 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
     const stockVal = hasValidStock ? Number(rawStock) : null;
     const isAgotado = hasValidStock && stockVal === 0;
 
-    const promo = promotionsMap ? promotionsMap[r.ITEM_CODE] : null;
+    const promo = promotionsMap ? (promotionsMap[r.ITEM_CODE] || promotionsMap[r.itemCode]) : null;
     const promoDiscount = promo ? Number(promo.discountPct || 0) : 0;
+    const promoPrice = promo ? Number(promo.promoPrice || 0) : null;
     const campaignName = promo?.campaignName || (promoDiscount > 0 ? "Oferta del Mes" : undefined);
 
     onSelect?.({
@@ -151,6 +152,8 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
       importe: Number(r.PRECIO_DESCUENTO ?? r.PRECIO_VENTA ?? r.PRECIO_LISTA ?? r.Price ?? 0) || 0,
       discount: Number(r.DESCUENTO_PCT ?? r.Discount ?? 0) || 0,
       promoDiscount,
+      promoPrice,
+      U_US_PROMO: promoPrice,
       campaignName,
       stock: stockVal,
       stockChecked: hasValidStock,

@@ -127,6 +127,13 @@ export function useQuoteSocket() {
         currentRole.startsWith("ADMIN") ||
         currentRole === "FACTURACION" ||
         currentRole === "SUPERVISOR" ||
+        currentRole.includes("DIGIT") ||
+        currentRole.includes("SUPERVIS") ||
+        currentRole.includes("CREDIT") ||
+        currentRole.includes("COBRAN") ||
+        currentRole.includes("GERENC") ||
+        currentRole.includes("SISTEMA") ||
+        currentRole.includes("JEFE") ||
         checkIsAdmin(currentEndpoints, authState.username);
 
       const targetRoleUpper = String(notif.targetRole || "").trim().toUpperCase();
@@ -135,12 +142,14 @@ export function useQuoteSocket() {
       let isForMe = false;
 
       if (isAdminActive) {
-        // Facturación / Admin ONLY recibe cotizaciones pendientes de revisión/aprobación
+        // Facturación / Admin / Digitador ONLY recibe cotizaciones pendientes de revisión/aprobación
         if (
           targetRoleUpper === "FACTURACION" ||
           targetRoleUpper === "ADMIN" ||
           targetRoleUpper === "ADMINISTRADOR" ||
-          targetRoleUpper.startsWith("ADMIN")
+          targetRoleUpper.startsWith("ADMIN") ||
+          targetRoleUpper.includes("DIGIT") ||
+          targetRoleUpper.includes("SUPERVIS")
         ) {
           const statusUpper = String(notif.status || "").trim().toUpperCase();
           const titleLower = String(notif.title || "").toLowerCase();
@@ -315,6 +324,44 @@ export function useQuoteSocket() {
       }
     };
 
+    const handlePromotionsUpdated = (data) => {
+      console.log("⚡ [WS] Evento promotions:updated recibido:", data);
+      queryClient.invalidateQueries({ queryKey: ["productPromotions"] });
+
+      if (!data) return;
+
+      const currentUsername = (useAuthStore.getState()?.username || localStorage.getItem("username") || "").trim().toLowerCase();
+      const author = String(data?.createdBy || data?.deletedBy || "").trim();
+      const authorLower = author.toLowerCase();
+
+      // Si el autor es diferente al usuario actual, mostrar alerta en tiempo real a los demás administradores
+      if (author && currentUsername && authorLower !== currentUsername) {
+        const toastId = `promo-${data.type}-${data.productCode}`;
+        if (!toast.isActive(toastId)) {
+          if (data.type === "DELETE") {
+            toast({
+              id: toastId,
+              title: "🏷️ Descuento retirado",
+              description: `${author} retiró el descuento del artículo ${data.productCode || ""}.`,
+              status: "info",
+              duration: 4500,
+              isClosable: true,
+            });
+          } else if (data.type === "SAVE") {
+            const pct = data?.promotion?.discountPct;
+            toast({
+              id: toastId,
+              title: "🏷️ Descuento promocional actualizado",
+              description: `${author} actualizó la oferta de ${data.productCode || ""}${pct ? ` a -${pct}%` : ""}.`,
+              status: "success",
+              duration: 4500,
+              isClosable: true,
+            });
+          }
+        }
+      }
+    };
+
     socket.on("quote:created", handleQuoteCreated);
     socket.on("quote:updated", handleQuoteUpdated);
     socket.on("quote:deleted", handleQuoteDeleted);
@@ -323,6 +370,8 @@ export function useQuoteSocket() {
     socket.on("system:update", handleSystemUpdate);
     socket.on("app:update_available", handleSystemUpdate);
     socket.on("auth:force_logout", handleForceLogout);
+    socket.on("promotions:updated", handlePromotionsUpdated);
+    socket.on("promotions:changed", handlePromotionsUpdated);
 
     return () => {
       if (refreshTimer) window.clearTimeout(refreshTimer);
@@ -334,6 +383,8 @@ export function useQuoteSocket() {
       socket.off("system:update", handleSystemUpdate);
       socket.off("app:update_available", handleSystemUpdate);
       socket.off("auth:force_logout", handleForceLogout);
+      socket.off("promotions:updated", handlePromotionsUpdated);
+      socket.off("promotions:changed", handlePromotionsUpdated);
     };
   }, [queryClient, toast]);
 }

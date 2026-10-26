@@ -642,9 +642,24 @@ export function ProfileAdmin() {
       onSuccess: (data) => {
         console.log("✅ [ProfileAdmin] Guardado exitoso:", data);
 
-        // Emitir evento WebSocket en tiempo real para actualización inmediata sin recargar ni cerrar sesión
+        const updatedEndpoints = data?.user?.endpoints || [];
+        const activeUserId = useAuthStore.getState().userId;
+        const activeUsername = useAuthStore.getState().username;
+
+        // Si el usuario editado es el mismo que está en sesión actual, sincronizar store y localStorage de inmediato
+        if (
+          (payload.userId && String(payload.userId) === String(activeUserId)) ||
+          (payload.username && activeUsername && String(payload.username).trim().toLowerCase() === String(activeUsername).trim().toLowerCase())
+        ) {
+          useAuthStore.getState().updateEndpoints(updatedEndpoints);
+          if (payload.role) {
+            useAuthStore.getState().updateRole(payload.role);
+          }
+          window.dispatchEvent(new Event("permissionsUpdated"));
+        }
+
+        // Emitir evento WebSocket en tiempo real para actualización inmediata en otras pestañas o usuarios
         if (socket) {
-          const updatedEndpoints = data?.user?.endpoints || [];
           socket.emit("user:permissions:updated", {
             userId: payload.userId,
             username: payload.username,

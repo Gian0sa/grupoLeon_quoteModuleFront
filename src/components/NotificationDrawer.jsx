@@ -50,12 +50,21 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
 
   const isAdminHook = useIsAdmin();
   const sessionRoleUpper = String(role || localStorage.getItem("role") || "").trim().toUpperCase();
-  const isAdmin = Boolean(
+  const isVerifierOrAdminRole =
     isAdminHook ||
     sessionRoleUpper === "ADMIN" ||
     sessionRoleUpper === "ADMINISTRADOR" ||
-    sessionRoleUpper.startsWith("ADMIN")
-  );
+    sessionRoleUpper.startsWith("ADMIN") ||
+    sessionRoleUpper === "FACTURACION" ||
+    sessionRoleUpper.includes("DIGIT") ||
+    sessionRoleUpper.includes("SUPERVIS") ||
+    sessionRoleUpper.includes("CREDIT") ||
+    sessionRoleUpper.includes("COBRAN") ||
+    sessionRoleUpper.includes("GERENC") ||
+    sessionRoleUpper.includes("SISTEMA") ||
+    sessionRoleUpper.includes("JEFE");
+
+  const isAdmin = Boolean(isVerifierOrAdminRole);
   const { data: serverNotifs } = useNotifications(
     isAdmin ? "FACTURACION" : "VENDEDOR",
     username
@@ -72,7 +81,13 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
       roleUpper === "ADMINISTRADOR" ||
       roleUpper.startsWith("ADMIN") ||
       roleUpper === "FACTURACION" ||
-      roleUpper === "SUPERVISOR";
+      roleUpper.includes("DIGIT") ||
+      roleUpper.includes("SUPERVIS") ||
+      roleUpper.includes("CREDIT") ||
+      roleUpper.includes("COBRAN") ||
+      roleUpper.includes("GERENC") ||
+      roleUpper.includes("SISTEMA") ||
+      roleUpper.includes("JEFE");
 
     return notifs.filter((n) => {
       if (!n || !n.title) return false;
@@ -80,12 +95,14 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
       const targetUser = (n.targetUsername || "").trim().toLowerCase();
 
       if (isAdminOrMaster) {
-        // Facturación / Admin ONLY ve cotizaciones que requieren revisión/aprobación comercial
+        // Facturación / Admin / Digitador ONLY ve cotizaciones que requieren revisión/aprobación comercial
         if (
           targetRoleUpper !== "FACTURACION" &&
           targetRoleUpper !== "ADMIN" &&
           targetRoleUpper !== "ADMINISTRADOR" &&
-          !targetRoleUpper.startsWith("ADMIN")
+          !targetRoleUpper.startsWith("ADMIN") &&
+          !targetRoleUpper.includes("DIGIT") &&
+          !targetRoleUpper.includes("SUPERVIS")
         ) {
           return false;
         }
@@ -338,7 +355,9 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
       try {
         const liveQuote = await getQuoteById(targetId);
         if (liveQuote && (liveQuote.id || liveQuote.docNumber)) {
-          targetDoc = { ...liveQuote, ...(targetDoc || {}) };
+          targetDoc = { ...(targetDoc || {}), ...liveQuote };
+          if (liveQuote.products && liveQuote.products.length > 0) targetDoc.products = liveQuote.products;
+          if (liveQuote.totals) targetDoc.totals = liveQuote.totals;
           if (liveQuote.state) targetDoc.state = liveQuote.state;
           if (liveQuote.approvalStatus) targetDoc.approvalStatus = liveQuote.approvalStatus;
           if (liveQuote.sapDocNum) targetDoc.sapDocNum = liveQuote.sapDocNum;
@@ -383,12 +402,15 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
       }
     }
 
-    if (!targetDoc) {
-      targetDoc = {
-        id: targetId,
-        docNumber: targetId,
-        state: "ENVIADO",
-      };
+    if (!targetDoc || (!targetDoc.clientName && !targetDoc.client && (!items || items.length === 0))) {
+      toast({
+        title: "Cotización no disponible",
+        description: "No se pudieron obtener los detalles de esta cotización o pertenece a otro usuario.",
+        status: "warning",
+        duration: 3500,
+        isClosable: true,
+      });
+      return;
     }
 
     targetDoc.products = items;

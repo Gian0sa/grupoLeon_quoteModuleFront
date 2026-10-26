@@ -10,6 +10,7 @@ import { DiscountPopoverModal } from "./DiscountPopoverModal";
 import PackagingHelper from "./PackagingHelper";
 import { useIsAdmin } from "../../../shared/utils/permissions";
 import { formatThousands } from "../../../shared/utils/quoteCalculator";
+import { useGetPromotions } from "../hooks/queries/quotesQueries";
 
 const money = (val, currency = "USD") => {
   const num = Number(val || 0);
@@ -44,6 +45,7 @@ export default function SapItemGrid({
   const [isDiscountModalOpen, setIsDiscountModalOpen] = useState(false);
 
   const isAdmin = useIsAdmin();
+  const { promotionsMap = {} } = useGetPromotions();
   const inStockProducts = products.filter((p) => !isItemOutOfStock(p));
   const outOfStockProducts = products.filter(isItemOutOfStock);
 
@@ -52,8 +54,11 @@ export default function SapItemGrid({
     setIsDiscountModalOpen(true);
   };
 
-  const handleApplyDiscountFromModal = (itemId, newLineDiscount) => {
-    onUpdateProduct(itemId, { lineDiscount: newLineDiscount });
+  const handleApplyDiscountFromModal = (itemId, newLineDiscount, customPriceConIGV) => {
+    onUpdateProduct(itemId, { 
+      lineDiscount: Number(Number(newLineDiscount || 0).toFixed(2)),
+      customPriceConIGV: customPriceConIGV !== undefined ? customPriceConIGV : null,
+    });
   };
 
   const handleItemSelect = (selectedItem) => {
@@ -61,6 +66,11 @@ export default function SapItemGrid({
     const rawPrice = Number(selectedItem.price || selectedItem.importe || selectedItem.Price || 0);
     const hasSapPrice = rawPrice > 0;
     const effectivePrice = rawPrice;
+
+    const promoInfo = promotionsMap[selectedItem.id] || promotionsMap[selectedItem.code] || null;
+    const promoDiscount = selectedItem.promoDiscount || promoInfo?.discountPct || 0;
+    const promoPrice = selectedItem.promoPrice || promoInfo?.promoPrice || null;
+    const campaignName = selectedItem.campaignName || promoInfo?.campaignName || (promoDiscount > 0 ? "Oferta del Mes" : undefined);
 
     onAddProduct({
       id: selectedItem.id,
@@ -72,8 +82,10 @@ export default function SapItemGrid({
       isTestFallback: !hasSapPrice,
       isPriceFromSap: hasSapPrice,
       discount: selectedItem.discount || 0,
-      promoDiscount: selectedItem.promoDiscount || 0,
-      campaignName: selectedItem.campaignName,
+      promoDiscount,
+      promoPrice,
+      U_US_PROMO: promoPrice,
+      campaignName,
       whsCode: whsCode || "014",
       taxCode: "I18",
       stock: selectedItem.stock,
@@ -159,16 +171,23 @@ export default function SapItemGrid({
             const qty = Number(item.quantity || 1);
             const price = isOutOfStock ? 0 : Number(item.price ?? item.unitPrice ?? 0);
             const sapDisc = isOutOfStock ? 0 : Number(item.discount || item.sapDiscount || 0);
-            const promoDisc = isOutOfStock ? 0 : Number(item.promoDiscount || 0);
-            const addDisc = isOutOfStock ? 0 : Number(item.lineDiscount || 0);
-            const maxAllowedCeiling = qty > 100 ? 65 : 55;
-            const totalDisc = isOutOfStock ? 0 : Math.min(maxAllowedCeiling, sapDisc + promoDisc + addDisc);
-            const finalUnitPrice = isOutOfStock ? 0 : price * (1 - totalDisc / 100);
-            const lineTotal = isOutOfStock ? 0 : qty * finalUnitPrice;
+            const itemCode = item.code || item.productCode || item.itemCode || item.id || "";
+            const promoInfo = promotionsMap[itemCode] || null;
+            const promoDisc = isOutOfStock ? 0 : Number(item.promoDiscount || promoInfo?.discountPct || 0);
+            const promoPrice = item.promoPrice || promoInfo?.promoPrice || null;
+            const addDisc = isOutOfStock ? 0 : Number(Number(item.lineDiscount || 0).toFixed(2));
+            const maxAllowedCeiling = qty > 100 ? 65 : 60;
+            const totalDisc = isOutOfStock ? 0 : Math.min(maxAllowedCeiling, Math.max(0, sapDisc + promoDisc + addDisc));
+            const customPrice = !isOutOfStock && item.customPriceConIGV && Number(item.customPriceConIGV) > 0
+              ? Number(item.customPriceConIGV)
+              : null;
+            const unitPriceConIGV = customPrice ?? Number(((price * (1 - totalDisc / 100)) * 1.18).toFixed(2));
+            const finalUnitPrice = customPrice ? Number((customPrice / 1.18).toFixed(4)) : Number((price * (1 - totalDisc / 100)).toFixed(4));
+            const lineTotal = Number((qty * finalUnitPrice).toFixed(2));
+            const lineTotalConIGV = customPrice ? Number((qty * customPrice).toFixed(2)) : Number((qty * unitPriceConIGV).toFixed(2));
             const lineSavings = isOutOfStock ? 0 : Math.max(0, (qty * price) - lineTotal);
             const hasAnyDiscount = !isOutOfStock && totalDisc > 0;
             const itemName = item.name || item.productName || item.description || item.ItemName || item.ItemDescription || "Artículo General";
-            const itemCode = item.code || item.productCode || item.itemCode || "";
             const isVolume = !isOutOfStock && qty > 100 && totalDisc > 55;
 
             return (
@@ -204,10 +223,10 @@ export default function SapItemGrid({
                       <Box w="full" bg="#fffbeb" border="1px dashed #f59e0b" p={1.5} borderRadius="md" mt={1.5}>
                         <Flex justify="space-between" align="center" wrap="wrap" gap={1}>
                           <Badge bg="amber.400" color="amber.950" fontSize="10px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
-                            🏷️ {(item.campaignName || "OFERTA DEL MES").toUpperCase()}: -{promoDisc}% EXTRA
+                            🏷️ {(item.campaignName || promoInfo?.campaignName || "OFERTA DEL MES").toUpperCase()}: -{promoDisc}% EXTRA
                           </Badge>
                           <Text fontSize="10px" color="gray.600">
-                            P. Reg: <Text as="s">${formatThousands(price)}</Text> ➔ Oferta: <strong style={{ color: "#b45309" }}>${formatThousands(price * (1 - (sapDisc + promoDisc) / 100))}</strong>
+                            P. Reg: <Text as="s">${formatThousands(sapDisc > 0 ? (price * (1 - sapDisc / 100) * 1.18) : (price * 1.18))}</Text> ➔ Oferta: <strong style={{ color: "#b45309" }}>${formatThousands(promoInfo?.promoPriceConIGV || (unitPriceConIGV))} c/IGV</strong> <Text as="span" fontSize="9px" color="gray.500">(${formatThousands(finalUnitPrice)} neto)</Text>
                           </Text>
                         </Flex>
                       </Box>
@@ -230,7 +249,7 @@ export default function SapItemGrid({
                   )}
                 </Flex>
                 <Divider mb={2.5} borderColor="gray.100" />
-                <Grid templateColumns="1fr 1.2fr 0.9fr 1fr" gap={2} align="center" mb={2.5}>
+                <Grid templateColumns="1fr 1.3fr 1fr" gap={2} align="center" mb={2.5}>
                   <Box>
                     <Text fontSize="0.6rem" color="gray.500" fontWeight="800" mb={0.5} textAlign="center">CANT.</Text>
                     {isReadOnly ? (
@@ -292,7 +311,7 @@ export default function SapItemGrid({
                     </Flex>
                   </Box>
                   <Box>
-                    <Text fontSize="0.6rem" color="gray.500" fontWeight="800" mb={0.5} textAlign="right">PRECIO U.</Text>
+                    <Text fontSize="0.6rem" color="gray.500" fontWeight="800" mb={0.5} textAlign="right">PRECIO (C/IGV)</Text>
                     {isOutOfStock ? (
                       <Flex justify="flex-end">
                         <Badge colorScheme="red" variant="subtle" fontSize="9px" fontWeight="800" px={1.5} py={0.5}>
@@ -304,27 +323,25 @@ export default function SapItemGrid({
                         <HStack spacing={1}>
                           <Text fontSize="9px" color="gray.400" fontWeight="600">Antes:</Text>
                           <Text as="s" fontSize="10px" color="gray.400" fontWeight="600">
-                            {money(price, currency)}
+                            {money(price * 1.18, currency)}
                           </Text>
                         </HStack>
                         <Text fontSize={{ base: "11px", sm: "xs" }} fontWeight="950" color="#047857" textAlign="right">
-                          {money(finalUnitPrice, currency)}/u
+                          {money(unitPriceConIGV, currency)}/u
+                        </Text>
+                        <Text fontSize="9px" color="gray.400" fontWeight="600">
+                          Neto: {money(finalUnitPrice, currency)}
                         </Text>
                       </VStack>
                     ) : (
-                      <Text fontSize={{ base: "11px", sm: "xs" }} fontWeight="800" color="gray.900" textAlign="right">
-                        {money(price, currency)}/u
-                      </Text>
-                    )}
-                  </Box>
-                  <Box textAlign="center">
-                    <Text fontSize="0.6rem" color="gray.500" fontWeight="800" mb={0.5}>DESC.</Text>
-                    {isOutOfStock ? (
-                      <Text fontSize="xs" color="gray.400" fontWeight="700">—</Text>
-                    ) : (
-                      <Badge colorScheme="green" fontSize="0.65rem" fontWeight="800" px={1} py={0.5} borderRadius="md">
-                        {sapDisc}%
-                      </Badge>
+                      <VStack align="flex-end" spacing={0}>
+                        <Text fontSize={{ base: "11px", sm: "xs" }} fontWeight="800" color="gray.900" textAlign="right">
+                          {money(unitPriceConIGV, currency)}/u
+                        </Text>
+                        <Text fontSize="9px" color="gray.400" fontWeight="600">
+                          Neto: {money(price, currency)}
+                        </Text>
+                      </VStack>
                     )}
                   </Box>
                   <Box textAlign="center">
@@ -342,7 +359,7 @@ export default function SapItemGrid({
                         cursor="not-allowed"
                         title="Descuento bloqueado en modo revisión"
                       >
-                        {addDisc > 0 ? `+${addDisc}%` : addDisc < 0 ? `${addDisc}%` : "0%"}
+                        {addDisc > 0 ? `+${addDisc.toFixed(2)}%` : addDisc < 0 ? `${addDisc.toFixed(2)}%` : "0%"}
                       </Badge>
                     ) : (
                       <Button
@@ -360,15 +377,15 @@ export default function SapItemGrid({
                           bg: isVolume ? "orange.200" : addDisc > 0 ? "red.200" : addDisc < 0 ? "green.200" : "gray.200",
                         }}
                         onClick={() => handleOpenDiscountModal(item)}
-                        title={addDisc > 0 ? `Se bajó de precio (+${addDisc}%).` : addDisc < 0 ? `Mayor margen (${addDisc}%).` : "Ajuste de precio"}
+                        title={addDisc > 0 ? `Se bajó de precio (+${addDisc.toFixed(2)}%).` : addDisc < 0 ? `Mayor margen (${addDisc.toFixed(2)}%).` : "Ajuste de precio"}
                       >
-                        {addDisc > 0 ? `+${addDisc}%` : addDisc < 0 ? `${addDisc}%` : "0%"}
+                        {addDisc > 0 ? `+${addDisc.toFixed(2)}%` : addDisc < 0 ? `${addDisc.toFixed(2)}%` : "0%"}
                       </Button>
                     )}
                   </Box>
                 </Grid>
                 <Flex justify="space-between" align="center" bg={isOutOfStock ? "#fef2f2" : "#f8fafc"} p={2.5} borderRadius="lg" border="1px solid" borderColor={isOutOfStock ? "#fee2e2" : "gray.100"}>
-                  <Text fontSize="0.65rem" fontWeight="800" color={isOutOfStock ? "red.700" : "gray.600"}>TOTAL LÍNEA:</Text>
+                  <Text fontSize="0.65rem" fontWeight="800" color={isOutOfStock ? "red.700" : "gray.600"}>TOTAL (C/IGV):</Text>
                   {isOutOfStock ? (
                     <Badge colorScheme="red" variant="solid" bg="#dc2626" color="white" fontSize="10px" fontWeight="800" px={2} py={0.5} borderRadius="md">
                       Demanda Back Order
@@ -376,14 +393,14 @@ export default function SapItemGrid({
                   ) : (
                     <VStack align="flex-end" spacing={0.5}>
                       <HStack spacing={1.5}>
-                        <Text fontSize="sm" fontWeight="950" color="#166534">{money(lineTotal, currency)}</Text>
+                        <Text fontSize="sm" fontWeight="950" color="#166534">{money(lineTotalConIGV, currency)}</Text>
                         <Text fontSize="10px" color="gray.600" fontWeight="700">
-                          ({qty > 1 ? `${qty} uds × ${money(finalUnitPrice, currency)}` : `1 ud × ${money(finalUnitPrice, currency)}`})
+                          ({qty > 1 ? `${qty} uds × ${money(unitPriceConIGV, currency)}` : `1 ud × ${money(unitPriceConIGV, currency)}`})
                         </Text>
                       </HStack>
                       {lineSavings > 0.009 && (
                         <Badge colorScheme="red" bg="#fee2e2" color="#b91c1c" fontSize="9px" px={1.5} py={0.2} borderRadius="full" fontWeight="800">
-                          Descuento {money(lineSavings, currency)}
+                          Descuento {money(lineSavings * 1.18, currency)}
                         </Badge>
                       )}
                     </VStack>
@@ -407,16 +424,13 @@ export default function SapItemGrid({
                   Cantidad
                 </Th>
                 <Th color="white" py={3} textAlign="right" fontSize="xs" fontWeight="800" textTransform="none" letterSpacing="normal">
-                  Precio unitario
-                </Th>
-                <Th color="white" py={3} textAlign="center" fontSize="xs" fontWeight="800" textTransform="none" letterSpacing="normal">
-                  Desc. Base
+                  Precio unitario (c/IGV)
                 </Th>
                 <Th color="white" py={3} textAlign="center" fontSize="xs" fontWeight="800" textTransform="none" letterSpacing="normal">
                   Ajuste Precio
                 </Th>
                 <Th color="white" py={3} textAlign="right" fontSize="xs" fontWeight="800" textTransform="none" letterSpacing="normal">
-                  Total (doc.)
+                  Total doc. (c/IGV)
                 </Th>
                 {!isReadOnly && (
                   <Th color="white" py={3} textAlign="center" fontSize="xs" fontWeight="800" textTransform="none" letterSpacing="normal">
@@ -428,7 +442,7 @@ export default function SapItemGrid({
             <Tbody>
               {inStockProducts.length === 0 ? (
                 <Tr>
-                  <Td colSpan={isReadOnly ? 6 : 7} textAlign="center" py={8} color="gray.500">
+                  <Td colSpan={isReadOnly ? 5 : 6} textAlign="center" py={8} color="gray.500">
                     <VStack spacing={2}>
                       <Package className="w-8 h-8 opacity-40 text-gray-400" />
                       <Text fontSize="xs" fontWeight="700">No hay artículos con stock disponibles en la grilla principal</Text>
@@ -446,16 +460,25 @@ export default function SapItemGrid({
                   const qty = Number(item.quantity || 1);
                   const price = isOutOfStock ? 0 : Number(item.price ?? item.unitPrice ?? 0);
                   const sapDisc = isOutOfStock ? 0 : Number(item.discount || item.sapDiscount || 0);
-                  const promoDisc = isOutOfStock ? 0 : Number(item.promoDiscount || 0);
-                  const addDisc = isOutOfStock ? 0 : Number(item.lineDiscount || 0);
-                  const maxAllowedCeiling = qty > 100 ? 65 : 55;
+                  const itemCode = item.code || item.productCode || item.itemCode || item.id || "";
+                  const promoInfo = promotionsMap[itemCode] || null;
+                  const promoDisc = isOutOfStock ? 0 : Number(item.promoDiscount || promoInfo?.discountPct || 0);
+                  const promoPrice = item.promoPrice || promoInfo?.promoPrice || null;
+                  const addDisc = isOutOfStock ? 0 : Number(Number(item.lineDiscount || 0).toFixed(2));
+                  const maxAllowedCeiling = qty > 100 ? 65 : 60;
                   const totalDisc = isOutOfStock ? 0 : Math.min(maxAllowedCeiling, Math.max(0, sapDisc + promoDisc + addDisc));
-                  const finalUnitPrice = isOutOfStock ? 0 : price * (1 - totalDisc / 100);
-                  const lineTotal = isOutOfStock ? 0 : qty * finalUnitPrice;
+
+                  // Si el usuario fijó un precio unitario con IGV exacto (ej. $10.00 exactos), respetarlo fielmente
+                  const customPrice = !isOutOfStock && item.customPriceConIGV && Number(item.customPriceConIGV) > 0
+                    ? Number(item.customPriceConIGV)
+                    : null;
+                  const unitPriceConIGV = customPrice ?? Number(((price * (1 - totalDisc / 100)) * 1.18).toFixed(2));
+                  const finalUnitPrice = customPrice ? Number((customPrice / 1.18).toFixed(4)) : Number((price * (1 - totalDisc / 100)).toFixed(4));
+                  const lineTotal = Number((qty * finalUnitPrice).toFixed(2));
+                  const lineTotalConIGV = customPrice ? Number((qty * customPrice).toFixed(2)) : Number((qty * unitPriceConIGV).toFixed(2));
                   const lineSavings = isOutOfStock ? 0 : Math.max(0, (qty * price) - lineTotal);
                   const hasAnyDiscount = !isOutOfStock && totalDisc > 0;
                   const itemName = item.name || item.productName || item.description || item.ItemName || item.ItemDescription || "Artículo General";
-                  const itemCode = item.code || item.productCode || item.itemCode || "";
                   const isVolume = !isOutOfStock && qty > 100 && totalDisc > 55;
 
                   return (
@@ -488,13 +511,13 @@ export default function SapItemGrid({
                             )}
                           </HStack>
                           {!isOutOfStock && promoDisc > 0 && (
-                            <Box bg="#fffbeb" border="1px dashed #f59e0b" p={1.5} borderRadius="md" mt={1} maxW="380px">
+                            <Box bg="#fffbeb" border="1px dashed #f59e0b" p={1.5} borderRadius="md" mt={1} maxW="420px">
                               <Flex justify="space-between" align="center" gap={1.5}>
                                 <Badge bg="amber.400" color="amber.950" fontSize="9px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
-                                  🏷️ {(item.campaignName || "OFERTA DEL MES").toUpperCase()}: -{promoDisc}% EXTRA
+                                  🏷️ {(item.campaignName || promoInfo?.campaignName || "OFERTA DEL MES").toUpperCase()}: -{promoDisc}% EXTRA
                                 </Badge>
                                 <Text fontSize="10px" color="gray.600">
-                                  P. Reg: <Text as="s">${formatThousands(price)}</Text> ➔ Oferta: <strong style={{ color: "#b45309" }}>${formatThousands(price * (1 - (sapDisc + promoDisc) / 100))}</strong>
+                                  P. Reg: <Text as="s">${formatThousands(sapDisc > 0 ? (price * (1 - sapDisc / 100) * 1.18) : (price * 1.18))}</Text> ➔ Oferta: <strong style={{ color: "#b45309" }}>${formatThousands(promoInfo?.promoPriceConIGV || (unitPriceConIGV))} c/IGV</strong> <Text as="span" fontSize="9px" color="gray.500">(${formatThousands(finalUnitPrice)} neto)</Text>
                                 </Text>
                               </Flex>
                             </Box>
@@ -572,41 +595,40 @@ export default function SapItemGrid({
                           </Badge>
                         ) : hasAnyDiscount ? (
                           <VStack align="flex-end" spacing={0}>
-                            {/* Precio original tachado estilo supermercado */}
+                            {/* Precio original tachado estilo supermercado con IGV */}
                             <HStack spacing={1}>
                               <Text fontSize="10px" color="gray.400" fontWeight="600">Antes:</Text>
-                              <Text as="s" fontSize="11px" color="gray.400" fontWeight="600" title="Precio original de lista SAP">
-                                {money(price, currency)}
+                              <Text as="s" fontSize="11px" color="gray.400" fontWeight="600" title="Precio original de lista con IGV">
+                                {money(price * 1.18, currency)}
                               </Text>
                             </HStack>
-                            {/* Precio con descuento en grande y claro */}
+                            {/* Precio con descuento con IGV en grande */}
                             <HStack spacing={1} align="baseline">
-                              <Text fontWeight="950" fontSize="sm" color="#047857" title="Precio neto unitario que pagas">
-                                {money(finalUnitPrice, currency)}
+                              <Text fontWeight="950" fontSize="sm" color="#047857" title="Precio con IGV">
+                                {money(unitPriceConIGV, currency)}
                               </Text>
                               <Text fontSize="10px" color="gray.500" fontWeight="700">
                                 /u
                               </Text>
                             </HStack>
+                            <Text fontSize="9px" color="gray.400" fontWeight="600">
+                              Neto: {money(finalUnitPrice, currency)}
+                            </Text>
                           </VStack>
                         ) : (
-                          <HStack spacing={1} justify="flex-end" align="baseline">
-                            <Text fontWeight="800" fontSize="xs" color="gray.800">
-                              {money(price, currency)}
+                          <VStack align="flex-end" spacing={0}>
+                            <HStack spacing={1} justify="flex-end" align="baseline">
+                              <Text fontWeight="800" fontSize="xs" color="gray.800">
+                                {money(unitPriceConIGV, currency)}
+                              </Text>
+                              <Text fontSize="10px" color="gray.500" fontWeight="700">
+                                /u
+                              </Text>
+                            </HStack>
+                            <Text fontSize="9px" color="gray.400" fontWeight="600">
+                              Neto: {money(price, currency)}
                             </Text>
-                            <Text fontSize="10px" color="gray.500" fontWeight="700">
-                              /u
-                            </Text>
-                          </HStack>
-                        )}
-                      </Td>
-                      <Td px={2} textAlign="center">
-                        {isOutOfStock ? (
-                          <Text color="gray.400" fontSize="xs" fontWeight="700">—</Text>
-                        ) : (
-                          <Badge colorScheme="green" fontSize="xs" fontWeight="800" px={1.5} py={0.5} borderRadius="md">
-                            {sapDisc}%
-                          </Badge>
+                          </VStack>
                         )}
                       </Td>
                       <Td px={2} textAlign="center">
@@ -623,7 +645,7 @@ export default function SapItemGrid({
                             cursor="not-allowed"
                             title="Descuento bloqueado en modo revisión"
                           >
-                            {addDisc > 0 ? `+${addDisc}%` : addDisc < 0 ? `${addDisc}%` : "0%"}
+                            {addDisc > 0 ? `+${addDisc.toFixed(2)}%` : addDisc < 0 ? `${addDisc.toFixed(2)}%` : "0%"}
                           </Badge>
                         ) : (
                           <Button
@@ -643,9 +665,9 @@ export default function SapItemGrid({
                             }}
                             transition="all 0.15s ease"
                             onClick={() => handleOpenDiscountModal(item)}
-                            title={isVolume ? `Mayoreo (${totalDisc}%). Requiere aprobación gerencial.` : totalDisc > 50.009 ? `Descuento (${totalDisc}%). Requiere aprobación comercial.` : addDisc > 0 ? `Rebaja dentro del margen (${totalDisc}%). Aprobación inmediata.` : addDisc < 0 ? `Mayor margen (${addDisc}%).` : "Toca para ajustar precio o descuento"}
+                            title={isVolume ? `Mayoreo (${totalDisc}%). Requiere aprobación gerencial.` : totalDisc > 50.009 ? `Descuento (${totalDisc}%). Requiere aprobación comercial.` : addDisc > 0 ? `Rebaja dentro del margen (${totalDisc}%). Aprobación inmediata.` : addDisc < 0 ? `Mayor margen (${addDisc.toFixed(2)}%).` : "Toca para ajustar precio o descuento"}
                           >
-                            {addDisc > 0 ? `+${addDisc}%` : addDisc < 0 ? `${addDisc}%` : "0%"}
+                            {addDisc > 0 ? `+${addDisc.toFixed(2)}%` : addDisc < 0 ? `${addDisc.toFixed(2)}%` : "0%"}
                           </Button>
                         )}
                       </Td>
@@ -656,13 +678,13 @@ export default function SapItemGrid({
                           </Badge>
                         ) : (
                           <VStack align="flex-end" spacing={0.5}>
-                            {/* Total final a pagar */}
-                            <Text fontWeight="950" fontSize="sm" color="#166534" lineHeight="1">
-                              {money(lineTotal, currency)}
+                            {/* Total final a pagar con IGV */}
+                            <Text fontWeight="950" fontSize="sm" color="#166534" lineHeight="1" title="Total de línea con IGV incluido">
+                              {money(lineTotalConIGV, currency)}
                             </Text>
-                            {/* Multiplicador claro: cantidad x precio unitario */}
+                            {/* Multiplicador claro: cantidad x precio unitario con IGV */}
                             <Text fontSize="10px" color="gray.600" fontWeight="700">
-                              {qty > 1 ? `${qty} uds × ${money(finalUnitPrice, currency)}` : `1 ud × ${money(finalUnitPrice, currency)}`}
+                              {qty > 1 ? `${qty} uds × ${money(unitPriceConIGV, currency)}` : `1 ud × ${money(unitPriceConIGV, currency)}`}
                             </Text>
                             {/* Descuento estilo supermercado */}
                             {lineSavings > 0.009 && (
@@ -677,7 +699,7 @@ export default function SapItemGrid({
                                 borderRadius="full"
                                 fontWeight="800"
                               >
-                                Descuento {money(lineSavings, currency)}
+                                Descuento {money(lineSavings * 1.18, currency)}
                               </Badge>
                             )}
                           </VStack>

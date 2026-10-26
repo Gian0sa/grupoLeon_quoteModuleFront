@@ -58,9 +58,7 @@ export default function QuoteOrderForm({ sellerName }) {
 
   useEffect(() => {
     if (!rateData) return;
-    // ⚠️ [NO TOCAR] SÍMBOLO DE CAMBIO - REGLA COMERCIAL AUTOPARTES:
-    // Redondeo a favor de la empresa (+0.04). Si la base termina en 3.385 (3.385 + 0.04 = 3.425), debe quedar en 3.43.
-    const rawVal = rateData.officialRate;
+    const rawVal = rateData.collectionRate || rateData.officialRate;
     const num = Number(rawVal);
     const finalRate = (rateData.rawRate === 3.385 || num === 3.42) ? 3.43 : (isNaN(num) ? rawVal : num);
     setExchangeRate({

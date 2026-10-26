@@ -30,9 +30,14 @@ export const normalizeQuoteItem = (item) => {
   const rawPrice = Number(item.price ?? item.unitPrice ?? item.Price ?? item.UnitPrice ?? 0);
   const price = rawPrice > 0 ? rawPrice : 0;
   const discount = Number(item.discount ?? item.Discount ?? item.sapDiscount ?? 0);
-  const lineDiscount = Number(item.lineDiscount ?? item.LineDiscount ?? 0);
-  const totalDisc = Math.max(0, Math.min(56, Number((discount + lineDiscount).toFixed(2))));
-  const discountedUnitPrice = Number((price * (1 - totalDisc / 100)).toFixed(4));
+  const lineDiscount = Number(Number(item.lineDiscount ?? item.LineDiscount ?? 0).toFixed(2));
+  const totalDisc = Math.max(0, Math.min(80.0, Number((discount + lineDiscount).toFixed(2))));
+  const customPriceConIGV = item.customPriceConIGV !== undefined && item.customPriceConIGV !== null && !isNaN(Number(item.customPriceConIGV))
+    ? Number(item.customPriceConIGV)
+    : undefined;
+  const discountedUnitPrice = customPriceConIGV && customPriceConIGV > 0
+    ? Number((customPriceConIGV / 1.18).toFixed(4))
+    : Number((price * (1 - totalDisc / 100)).toFixed(4));
 
   // Permitir temporalmente string vacío al tipear para que el usuario pueda borrar y cambiar la cantidad libremente
   const rawQty = item.quantity ?? item.Quantity;
@@ -71,8 +76,19 @@ export const normalizeQuoteItem = (item) => {
     discount,
     sapDiscount: discount,
     lineDiscount,
-    discountPercent: totalDisc,
+    customPriceConIGV,
+    discountPercent: Number(totalDisc.toFixed(2)),
     discountedUnitPrice,
+    totalPrice: item.totalPrice !== undefined && !isNaN(Number(item.totalPrice)) && Number(item.totalPrice) > 0
+      ? Number(item.totalPrice)
+      : (item.lineTotal !== undefined && !isNaN(Number(item.lineTotal)) && Number(item.lineTotal) > 0
+        ? Number(item.lineTotal)
+        : Number((discountedUnitPrice * (Number(quantity) || 1)).toFixed(2))),
+    lineTotal: item.lineTotal !== undefined && !isNaN(Number(item.lineTotal)) && Number(item.lineTotal) > 0
+      ? Number(item.lineTotal)
+      : (item.totalPrice !== undefined && !isNaN(Number(item.totalPrice)) && Number(item.totalPrice) > 0
+        ? Number(item.totalPrice)
+        : Number((discountedUnitPrice * (Number(quantity) || 1)).toFixed(2))),
     quantity: quantity === "" ? "" : (isNaN(Number(quantity)) || Number(quantity) < 1 ? 1 : Math.min(999999, Math.floor(Number(quantity)))),
     stock,
     stockChecked: item.stockChecked !== undefined ? item.stockChecked : (rawStock !== undefined && rawStock !== null),

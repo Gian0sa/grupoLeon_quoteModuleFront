@@ -65,7 +65,23 @@ export function TopHeaderBanner({
     };
   }, []);
 
-  const isAdmin = useIsAdmin();
+  const isAdminHook = useIsAdmin();
+  const sessionRoleUpper = String(role || localStorage.getItem("role") || "").trim().toUpperCase();
+  const isVerifierOrAdminRole =
+    isAdminHook ||
+    sessionRoleUpper === "ADMIN" ||
+    sessionRoleUpper === "ADMINISTRADOR" ||
+    sessionRoleUpper.startsWith("ADMIN") ||
+    sessionRoleUpper === "FACTURACION" ||
+    sessionRoleUpper.includes("DIGIT") ||
+    sessionRoleUpper.includes("SUPERVIS") ||
+    sessionRoleUpper.includes("CREDIT") ||
+    sessionRoleUpper.includes("COBRAN") ||
+    sessionRoleUpper.includes("GERENC") ||
+    sessionRoleUpper.includes("SISTEMA") ||
+    sessionRoleUpper.includes("JEFE");
+
+  const isAdmin = Boolean(isVerifierOrAdminRole);
   const { data: serverNotifs } = useNotifications(
     isAdmin ? "FACTURACION" : "VENDEDOR",
     username
@@ -111,14 +127,22 @@ export function TopHeaderBanner({
         roleUpper === "ADMINISTRADOR" ||
         roleUpper.startsWith("ADMIN") ||
         roleUpper === "FACTURACION" ||
-        roleUpper === "SUPERVISOR";
+        roleUpper.includes("DIGIT") ||
+        roleUpper.includes("SUPERVIS") ||
+        roleUpper.includes("CREDIT") ||
+        roleUpper.includes("COBRAN") ||
+        roleUpper.includes("GERENC") ||
+        roleUpper.includes("SISTEMA") ||
+        roleUpper.includes("JEFE");
 
       if (isAdminOrMaster) {
         if (
           targetRoleUpper !== "FACTURACION" &&
           targetRoleUpper !== "ADMIN" &&
           targetRoleUpper !== "ADMINISTRADOR" &&
-          !targetRoleUpper.startsWith("ADMIN")
+          !targetRoleUpper.startsWith("ADMIN") &&
+          !targetRoleUpper.includes("DIGIT") &&
+          !targetRoleUpper.includes("SUPERVIS")
         ) {
           return false;
         }
@@ -302,15 +326,12 @@ export function TopHeaderBanner({
                     whiteSpace="nowrap"
                     sx={{ "@media (max-width: 359px)": { fontSize: "11px", letterSpacing: "normal" } }}
                   >
-                    {/* ⚠️ [NO TOCAR] SÍMBOLO DE CAMBIO - REGLA COMERCIAL AUTOPARTES:
-                        Tipo de cambio a favor de la empresa (+0.04).
-                        Si la base termina en 3.385 (3.385 + 0.04 = 3.425), el valor debe quedar en 3.43. */}
                     USD: {(() => {
-                      const rate = exchangeRate?.collectionRate;
-                      if (!rate) return "3.45";
+                      const rate = exchangeRate?.collectionRate || exchangeRate?.officialRate;
+                      if (!rate) return "3.49";
                       const num = Number(rate);
                       if (exchangeRate?.rawRate === 3.385 || num === 3.42) return "3.43";
-                      return isNaN(num) ? rate : num.toFixed(2);
+                      return isNaN(num) ? String(rate) : num.toFixed(2);
                     })()}
                   </Text>
                 )}

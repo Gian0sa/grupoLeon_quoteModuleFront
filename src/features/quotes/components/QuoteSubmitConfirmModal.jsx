@@ -153,15 +153,9 @@ export default function QuoteSubmitConfirmModal({
               <Text fontSize="xs" fontWeight="900" color="#92400e" textTransform="uppercase" mb={2}>💰 Totales del Documento</Text>
               <VStack align="stretch" spacing={1} fontSize="sm">
                 <Flex justify="space-between">
-                  <Text fontWeight="700" color="#475569">Subtotal Gravado:</Text>
-                  <Text fontWeight="800">${Number(totals.grossSubtotalUSD ?? totals.subtotalUSD ?? 0).toFixed(2)}</Text>
+                  <Text fontWeight="700" color="#475569">Valor Venta Neto:</Text>
+                  <Text fontWeight="800">${Number(totals.subtotalUSD ?? 0).toFixed(2)}</Text>
                 </Flex>
-                {Number(totals.totalDiscountUSD || 0) > 0 && (
-                  <Flex justify="space-between" color="red.600">
-                    <Text fontWeight="700">Descuento Aplicado ({totals.discPct || 0}%):</Text>
-                    <Text fontWeight="800">-${Number(totals.totalDiscountUSD).toFixed(2)}</Text>
-                  </Flex>
-                )}
                 <Flex justify="space-between">
                   <Text fontWeight="700" color="#475569">I.G.V. (18%):</Text>
                   <Text fontWeight="800">+${Number(totals.igvUSD || 0).toFixed(2)}</Text>

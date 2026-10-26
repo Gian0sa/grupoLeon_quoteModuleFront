@@ -115,16 +115,19 @@ export default function TrackingPage({ orden, data }) {
   const isUSD = orderCurrency === "USD";
   const docRate = Number(orden?.DocRate || orden?.totals?.tc || 3.49);
 
-  // Extraer monto USD asegurando matemáticamente que nunca tome un monto en Soles (ej: 11,154.14) como USD
+  // Extraer monto USD asegurando que traiga con prioridad absoluta el monto oficial registrado en SAP
   const extractUsdAmount = () => {
-    if (orden?.totals?.grandTotalUSD && Number(orden.totals.grandTotalUSD) > 0) {
-      return Number(orden.totals.grandTotalUSD);
-    }
     if (orden?.DocTotalFc && Number(orden.DocTotalFc) > 0) {
       return Number(orden.DocTotalFc);
     }
     if (orden?.DocTotalSys && Number(orden.DocTotalSys) > 0) {
       return Number(orden.DocTotalSys);
+    }
+    if (orden?.DocTotalUSD && Number(orden.DocTotalUSD) > 0) {
+      return Number(orden.DocTotalUSD);
+    }
+    if (orden?.totals?.grandTotalUSD && Number(orden.totals.grandTotalUSD) > 0) {
+      return Number(orden.totals.grandTotalUSD);
     }
     const rawTotal = Number(orden?.DocTotal || orden?.OrderAmount || 0);
     if (isUSD && rawTotal > 0) {
@@ -132,13 +135,6 @@ export default function TrackingPage({ orden, data }) {
         return Number((rawTotal / docRate).toFixed(2));
       }
       return rawTotal;
-    }
-    if (orden?.DocTotalUSD && Number(orden.DocTotalUSD) > 0) {
-      const dUSD = Number(orden.DocTotalUSD);
-      if (rawTotal > 0 && Math.abs(dUSD - rawTotal) < 0.05 && docRate > 1.2) {
-        return Number((rawTotal / docRate).toFixed(2));
-      }
-      return dUSD;
     }
     return 0;
   };

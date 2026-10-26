@@ -76,7 +76,7 @@ const normalizeItem = (item) => {
     finalUnitPrice = Number((lineTotalNum / qty).toFixed(2));
   } else {
     const listPrice = Number(item.price ?? item.unitPrice ?? item.Price ?? item.UnitPrice ?? item.importe ?? 0);
-    const totalDisc = Math.min(65.0, Number(item.discountPercent ?? (sapDisc + promoDisc + addDisc)));
+    const totalDisc = Math.min(100.0, Math.max(0, Number(item.discountPercent ?? (sapDisc + promoDisc + addDisc))));
     finalUnitPrice = Number((listPrice * (1 - totalDisc / 100)).toFixed(2));
     lineTotalNum = Number((qty * finalUnitPrice).toFixed(2));
   }
@@ -90,7 +90,7 @@ const normalizeItem = (item) => {
   const discParts = [];
   if (sapDisc > 0) discParts.push(`-${sapDisc}%`);
   if (promoDisc > 0) discParts.push(`-${promoDisc}% Promo`);
-  if (addDisc > 0) discParts.push(`-${addDisc}%`);
+  if (addDisc > 0) discParts.push(`-${Number(addDisc).toFixed(2)}%`);
   const discTag = discParts.length > 0 ? ` (${discParts.join(" ")})` : "";
 
   return {

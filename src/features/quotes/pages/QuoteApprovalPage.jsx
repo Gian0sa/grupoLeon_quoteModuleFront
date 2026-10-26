@@ -82,7 +82,7 @@ import { useGetQuotes } from "../hooks/queries/quotesQueries";
 import { updateQuote, deleteQuote, createQuote, getQuotes } from "../services/quoteService";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { cleanSellerName, cleanClientName, formatQuoteSellerName } from "../../../shared/utils/quoteLogisticsFormatters";
+import { cleanSellerName, cleanClientName, formatQuoteSellerName, SALES_PERSONS_MAP } from "../../../shared/utils/quoteLogisticsFormatters";
 import { useSellersData } from "../../auth/hooks/queries/authQueries";
 
 const isDraftState = (status) => {
@@ -135,28 +135,55 @@ const cleanDeliveryForm = (df) => {
   return df;
 };
 
-const isDraftOwnedByCurrentUser = (q, currentUsername, currentUserId) => {
+const isDraftOwnedByCurrentUser = (q, currentUsername, currentUserId, currentSalesCode, salesPrefix) => {
   if (!q) return false;
-  const st = q.approvalStatus || q.state || q.status;
-  if (!isDraftState(st)) {
-    // Si la cotización ya fue enviada o procesada (ENVIADO, EN_PROCESO, APROBADO, etc.),
-    // es parte del flujo de pedidos de la empresa y debe ser visible según permisos.
-    return true;
-  }
-
-  // REGLA ESTRICTA DE PRIVACIDAD: Si es un BORRADOR no enviado,
-  // SOLO el usuario que lo creó puede verlo en su sesión.
+  // Aislamiento estricto: Si el usuario es un asesor de ventas, solo puede ver cotizaciones que le pertenecen
   const qCreator = String(q.createdByUsername || "").toLowerCase().trim();
   const qSeller = String(q.sellerName || "").toLowerCase().trim();
   const qUser = String(q.user || "").toLowerCase().trim();
-  const qCreatorId = q.createdByUserId !== undefined && q.createdByUserId !== null ? String(q.createdByUserId) : "";
+  const qCreatorId = q.userId !== undefined && q.userId !== null ? String(q.userId) : (q.createdByUserId !== undefined && q.createdByUserId !== null ? String(q.createdByUserId) : "");
   const currentIdStr = currentUserId !== undefined && currentUserId !== null ? String(currentUserId) : "";
   const currentUsernameClean = String(currentUsername || "").toLowerCase().trim();
+  const totals = typeof q.totals === "string" ? (() => { try { return JSON.parse(q.totals); } catch { return {}; } })() : (q.totals || {});
+  const qSlp = Number(
+    q.salesPersonCode ?? q.salesEmployeeCode ?? q.SlpCode ?? q.slpCode ??
+    totals?.salesPersonCode ?? totals?.salesEmployeeCode ?? totals?.SlpCode ?? totals?.slpCode ?? 0
+  );
+
+  const salesCodeNum = currentSalesCode ? Number(currentSalesCode) : null;
+  if (salesCodeNum && qSlp > 0 && salesCodeNum === qSlp) {
+    return true;
+  }
+
+  // Coincidencia exacta por prefijo numérico de vendedor (ej: "7." o "541.") NUNCA includes suelto
+  if (salesCodeNum && qSeller && (qSeller.startsWith(`${salesCodeNum}.`) || qSeller.startsWith(`${salesCodeNum} -`))) {
+    return true;
+  }
+
+  if (salesPrefix && qSeller && (qSeller.startsWith(`${salesPrefix}.`) || qSeller.startsWith(`${salesPrefix} -`))) {
+    return true;
+  }
+
+  // Consultar mapa oficial de vendedores para prefijo o nombre (ej: 7 -> 541 -> Manuel Zapata)
+  if (salesCodeNum && SALES_PERSONS_MAP[salesCodeNum]) {
+    const sInfo = SALES_PERSONS_MAP[salesCodeNum];
+    if (sInfo.prefix && (qSeller.startsWith(`${sInfo.prefix}.`) || qSeller.startsWith(`${sInfo.prefix} -`) || qSeller.includes(sInfo.prefix))) {
+      return true;
+    }
+    if (sInfo.name) {
+      const normName = sInfo.name.toLowerCase();
+      if (qSeller.includes(normName) || qCreator.includes(normName)) return true;
+      const parts = normName.split(" ");
+      for (const p of parts) {
+        if (p.length > 3 && (qSeller.includes(p) || qCreator.includes(p))) return true;
+      }
+    }
+  }
 
   if (currentUsernameClean) {
-    if (qCreator && qCreator === currentUsernameClean) return true;
-    if (qSeller && qSeller === currentUsernameClean) return true;
-    if (qUser && qUser === currentUsernameClean) return true;
+    if (qCreator && (qCreator === currentUsernameClean || qCreator.includes(currentUsernameClean) || currentUsernameClean.includes(qCreator))) return true;
+    if (qSeller && (qSeller.includes(currentUsernameClean) || currentUsernameClean.includes(qSeller))) return true;
+    if (qUser && (qUser === currentUsernameClean || qUser.includes(currentUsernameClean) || currentUsernameClean.includes(qUser))) return true;
   }
 
   if (currentIdStr && qCreatorId && qCreatorId === currentIdStr) {
@@ -211,9 +238,6 @@ export const isQuotePendingApproval = (q) => {
   if (isQuoteEmittedToSap(q) || Boolean(q.sapDocNum || q.totals?.sapDocNum || q.isSapDirect || q.totals?.isSapDirect || status === "EMITIDO" || status === "EMITIDO_SAP" || status === "PEDIDO_EMITIDO")) return false;
   if (["PENDIENTE", "PENDIENTE_APROBACION", "ENVIADO", "EN_PROCESO", "PENDIENTE_FACTURACION", "EN_FACTURACION", "OBSERVADO", "EN_EDICION"].includes(status)) {
     return true;
-  }
-  if (String(q.docNumber || "").toUpperCase().includes("PENDIENTE")) {
-    return false;
   }
   return !["APROBADO", "APROBADO_COMERCIAL", "APROBADO_CREDITOS", "EMITIDO", "EMITIDO_SAP"].includes(status);
 };
@@ -569,30 +593,34 @@ export function QuoteApprovalPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const today = format(new Date(), "EEEE, d 'de' MMMM 'del' yyyy", { locale: es });
+  const hasAccess = useHasAccess();
+  const isAdmin = useIsAdmin();
 
   const { username: authUsername, userId: authUserId, role: authRole, salesEmployeeCode: authSalesCode } = useAuthStore();
   const localUser = (localStorage.getItem("username") || localStorage.getItem("userId") || "").toLowerCase();
   const localRole = (localStorage.getItem("role") || "").toUpperCase();
-  const hasAccess = useHasAccess();
-  const isAdmin = useIsAdmin();
-  const isRoleAdmin =
-    authRole === "ADMIN" ||
-    authRole === "ADMINISTRADOR" ||
-    localRole === "ADMIN" ||
-    localRole === "ADMINISTRADOR" ||
-    String(authRole || "").toUpperCase().startsWith("ADMIN") ||
-    String(localRole || "").toUpperCase().startsWith("ADMIN") ||
-    isAdmin;
+  const userRoleUpper = String(authRole || localRole || "").toUpperCase().trim();
+  const isVerifierOrAdminRole =
+    userRoleUpper.startsWith("ADMIN") ||
+    userRoleUpper.includes("DIGIT") ||
+    userRoleUpper.includes("FACTUR") ||
+    userRoleUpper.includes("SUPERVIS") ||
+    userRoleUpper.includes("CREDIT") ||
+    userRoleUpper.includes("COBRAN") ||
+    userRoleUpper.includes("GERENC") ||
+    userRoleUpper.includes("SISTEMA") ||
+    userRoleUpper.includes("JEFE");
 
-  const isSellerUser = !isRoleAdmin && Boolean(authSalesCode && Number(authSalesCode) > 0 && Number(authSalesCode) !== 20);
-  const isAdminUser =
-    isRoleAdmin ||
-    (!isSellerUser && (
-      authRole === "FACTURACION" ||
-      authRole === "SUPERVISOR" ||
-      hasAccess("POST /quotes/approval") ||
-      hasAccess("POST /quotations/approve")
-    ));
+  const hasApprovalPrivileges =
+    hasAccess("POST /quotes/approval") ||
+    hasAccess("POST /quotations/approve") ||
+    hasAccess("POST /quotes/sap/order") ||
+    hasAccess("POST:/quotes/approval") ||
+    hasAccess("POST:/quotes/sap/order");
+
+  const isRoleAdmin = isVerifierOrAdminRole || isAdmin;
+  const isAdminUser = Boolean(isRoleAdmin || hasApprovalPrivileges);
+  const isSellerUser = !isAdminUser;
   const activeCurrentUsername = (authUsername || localStorage.getItem("username") || "").toLowerCase().trim();
   const activeCurrentUserId = authUserId || localStorage.getItem("userId");
 
@@ -618,7 +646,10 @@ export function QuoteApprovalPage() {
       const stored = localStorage.getItem("grupoLeon_local_quotes");
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          if (isAdminUser) return parsed;
+          return parsed.filter(q => isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId, authSalesCode));
+        }
       }
     } catch {}
     return [];
@@ -654,6 +685,14 @@ export function QuoteApprovalPage() {
     if (Array.isArray(sellersResponse.data)) return sellersResponse.data;
     return [];
   }, [sellersResponse]);
+
+  const mySapSellerPrefix = useMemo(() => {
+    if (!authSalesCode || !sellersResponse) return null;
+    const list = Array.isArray(sellersResponse) ? sellersResponse : (sellersResponse?.sellers || []);
+    const mySap = list.find(s => Number(s.SalesEmployeeCode ?? s.value) === Number(authSalesCode));
+    const match = String(mySap?.SalesEmployeeName || mySap?.label || "").match(/^(\d+)\./);
+    return match ? match[1] : null;
+  }, [authSalesCode, sellersResponse]);
   
   // Sincronización automática de fecha diaria oficial de Perú (cambio de medianoche 11:59:59 PM -> 00:00:00 AM)
   const [currentPeruDate, setCurrentPeruDate] = useState(() => getTodayPeruDateString());
@@ -901,14 +940,17 @@ export function QuoteApprovalPage() {
               opNum: sq.opNum || matchedLocal.opNum || sq.totals?.opNum || matchedLocal.totals?.opNum || null,
             };
           }
-          return sq;
+          return {
+            ...sq,
+            docNumber: sq.docNumber || (sq.id ? `COT-WEB-${String(sq.id).padStart(6, '0')}` : "COT-PENDIENTE"),
+          };
         });
 
         const merged = [];
         for (const item of [...enrichedServerQuotes, ...localDraftsOnly]) {
           // Admins can see ALL server quotes (including drafts of other users).
-          // Non-admins can only see drafts they own; non-drafts are always visible.
-          if (!isAdminUser && !isDraftOwnedByCurrentUser(item, activeCurrentUsername, activeCurrentUserId)) {
+          // Non-admins can only see quotes they own.
+          if (!isAdminUser && !isDraftOwnedByCurrentUser(item, activeCurrentUsername, activeCurrentUserId, authSalesCode, mySapSellerPrefix)) {
             continue;
           }
           const hasDuplicate = merged.some(m => isMatchingDoc(m, item));
@@ -921,8 +963,8 @@ export function QuoteApprovalPage() {
       } else if (cleanLocal.length > 0) {
         const validLocal = cleanLocal.filter(q => {
           const notTest = !String(q.docNumber || "").startsWith("TEST-");
-          // Admins see all local quotes too; non-admins only see their own drafts
-          return notTest && (isAdminUser || isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId));
+          // Admins see all local quotes too; non-admins only see their own quotes
+          return notTest && (isAdminUser || isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId, authSalesCode, mySapSellerPrefix));
         });
         setQuotes(validLocal);
         safeSetLocalQuotes(validLocal);
@@ -938,7 +980,7 @@ export function QuoteApprovalPage() {
 
   useEffect(() => {
     syncQuotes();
-  }, [serverQuotes]);
+  }, [serverQuotes, mySapSellerPrefix]);
 
   // Escuchar eventos en vivo de actualización local (CERO necesidad de recargar / F5)
   useEffect(() => {
@@ -1003,18 +1045,21 @@ export function QuoteApprovalPage() {
                 opNum: sq.opNum || localMatch.opNum || sq.totals?.opNum || localMatch.totals?.opNum || null,
               };
             }
-            return sq;
+            return {
+              ...sq,
+              docNumber: sq.docNumber || (sq.id ? `COT-WEB-${String(sq.id).padStart(6, '0')}` : "COT-PENDIENTE"),
+            };
           });
 
           // Agregar docs locales que no estén en servidor (borradores nuevos)
           const unsyncedLocal = local.filter(q => {
             const notInServer = !serverQuotes.some(sq => isMatchingDoc(sq, q));
-            return notInServer && isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId);
+            return notInServer && (isAdminUser || isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId, authSalesCode, mySapSellerPrefix));
           });
 
           const merged = [];
           for (const item of [...mergedWithLocal, ...unsyncedLocal]) {
-            if (!isDraftOwnedByCurrentUser(item, activeCurrentUsername, activeCurrentUserId)) {
+            if (!isAdminUser && !isDraftOwnedByCurrentUser(item, activeCurrentUsername, activeCurrentUserId, authSalesCode, mySapSellerPrefix)) {
               continue;
             }
             const hasDuplicate = merged.some(m => isMatchingDoc(m, item));
@@ -1024,7 +1069,7 @@ export function QuoteApprovalPage() {
           }
           setQuotes(merged);
         } else {
-          const validLocal = local.filter(q => isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId));
+          const validLocal = local.filter(q => isAdminUser || isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId, authSalesCode, mySapSellerPrefix));
           setQuotes(validLocal);
         }
       } catch (err) {
@@ -1034,7 +1079,7 @@ export function QuoteApprovalPage() {
 
     window.addEventListener("localQuotesUpdated", handleLocalUpdate);
     return () => window.removeEventListener("localQuotesUpdated", handleLocalUpdate);
-  }, [serverQuotes, activeCurrentUsername, activeCurrentUserId]);
+  }, [serverQuotes, activeCurrentUsername, activeCurrentUserId, authSalesCode, mySapSellerPrefix, isAdminUser]);
 
   const DRAFT_STATUSES = ["BORRADOR", "GENERADO"];
 
@@ -1753,20 +1798,6 @@ export function QuoteApprovalPage() {
 
   useEffect(() => {
     loadQuotes();
-    
-    const handleSync = () => {
-      // Direct load to state
-      const stored = localStorage.getItem("grupoLeon_local_quotes");
-      if (stored) {
-        setQuotes(JSON.parse(stored));
-      } else {
-        setQuotes([]);
-      }
-    };
-    window.addEventListener("localQuotesUpdated", handleSync);
-    return () => {
-      window.removeEventListener("localQuotesUpdated", handleSync);
-    };
   }, []);
 
 
@@ -1775,10 +1806,39 @@ export function QuoteApprovalPage() {
     const qUser = String(q.createdByUsername || q.username || "").toLowerCase().trim();
     const qSeller = String(q.sellerName || "").toLowerCase().trim();
     const qUserId = q.userId || q.createdByUserId;
-    const qSlp = q.salesEmployeeCode || q.SlpCode || q.totals?.salesEmployeeCode;
+    const totals = typeof q.totals === "string" ? (() => { try { return JSON.parse(q.totals); } catch { return {}; } })() : (q.totals || {});
+    const qSlp = Number(
+      q.salesPersonCode ?? q.salesEmployeeCode ?? q.SlpCode ?? q.slpCode ??
+      totals?.salesPersonCode ?? totals?.salesEmployeeCode ?? totals?.SlpCode ?? totals?.slpCode ?? 0
+    );
 
-    if (authSalesCode && qSlp && Number(authSalesCode) === Number(qSlp)) {
+    const salesCodeNum = authSalesCode ? Number(authSalesCode) : null;
+    if (salesCodeNum && qSlp > 0 && salesCodeNum === qSlp) {
       return true;
+    }
+
+    if (salesCodeNum && qSeller && (qSeller.startsWith(`${salesCodeNum}.`) || qSeller.startsWith(`${salesCodeNum} -`))) {
+      return true;
+    }
+
+    if (mySapSellerPrefix && qSeller && (qSeller.startsWith(`${mySapSellerPrefix}.`) || qSeller.startsWith(`${mySapSellerPrefix} -`))) {
+      return true;
+    }
+
+    // Consultar mapa oficial de vendedores para prefijo o nombre (ej: 7 -> 541 -> Manuel Zapata)
+    if (salesCodeNum && SALES_PERSONS_MAP[salesCodeNum]) {
+      const sInfo = SALES_PERSONS_MAP[salesCodeNum];
+      if (sInfo.prefix && (qSeller.startsWith(`${sInfo.prefix}.`) || qSeller.startsWith(`${sInfo.prefix} -`) || qSeller.includes(sInfo.prefix))) {
+        return true;
+      }
+      if (sInfo.name) {
+        const normName = sInfo.name.toLowerCase();
+        if (qSeller.includes(normName) || qUser.includes(normName)) return true;
+        const parts = normName.split(" ");
+        for (const p of parts) {
+          if (p.length > 3 && (qSeller.includes(p) || qUser.includes(p))) return true;
+        }
+      }
     }
 
     if (activeCurrentUsername) {
@@ -1793,7 +1853,7 @@ export function QuoteApprovalPage() {
       if (mySapSeller?.label || mySapSeller?.SalesEmployeeName) {
         const fullLabel = String(mySapSeller.label || mySapSeller.SalesEmployeeName).toLowerCase();
         const tokens = fullLabel.split(/\s+/).filter(t => t.length >= 3 && !/^\d+$/.test(t) && !t.includes("."));
-        if (tokens.some(t => qSeller.includes(t) || qUser.includes(t))) {
+        if (tokens.length > 0 && tokens.every(t => qSeller.includes(t) || qUser.includes(t))) {
           return true;
         }
       }
@@ -2135,7 +2195,7 @@ export function QuoteApprovalPage() {
           letterSpacing="wider"
           boxShadow="xs"
         >
-          🔥 Mayoreo (&gt;55% a 65%)
+          🔥 Mayoreo Especial (&gt;50% a 80%)
         </Badge>
       </VStack>
     );
@@ -2143,8 +2203,8 @@ export function QuoteApprovalPage() {
   // Botones de acción por fila, con diseño ultra elegante y optimizado para móvil y escritorio
   const renderRowActions = (q, docId, status, { stack = false } = {}) => {
     const isDraft = !status || isDraftState(status);
-    const isPendingApproval = status === "ENVIADO" || status === "EN_PROCESO" || status === "PENDIENTE_APROBACION";
-    const isPendingBilling = status === "PENDIENTE_FACTURACION";
+    const isPendingApproval = ["ENVIADO", "EN_PROCESO", "PENDIENTE_APROBACION", "PENDIENTE", "OBSERVADO", "EN_EDICION"].includes(status);
+    const isPendingBilling = status === "PENDIENTE_FACTURACION" || status === "EN_FACTURACION";
     const isSap = isQuoteFromSap(q);
     const isAlreadyAnulado = isCancelledState(status);
     const isApprovedOrder = status === "APROBADO" || status === "APROBADO_COMERCIAL" || status === "FACTURADO" || status === "PEDIDO_EMITIDO" || status === "EMITIDO" || status === "EMITIDO_SAP" || status === "COMPLETADO" || Boolean(q.sapDocNum);

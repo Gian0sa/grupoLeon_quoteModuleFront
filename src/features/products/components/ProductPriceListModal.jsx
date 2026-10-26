@@ -13,6 +13,7 @@ import {
   Box,
   Divider
 } from "@chakra-ui/react";
+import { useGetPromotions } from "../../quotes/hooks/queries/quotesQueries";
 
 export function ProductPriceListModal({ product, isOpen, onClose }) {
   if (!isOpen || !product) return null;
@@ -32,12 +33,41 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
     ROTACION
   } = product;
 
+  const { promotionsMap = {} } = useGetPromotions();
+  const promo = promotionsMap[ITEM_CODE] || promotionsMap[product.productCode] || (product.U_US_PROMO ? { promoPrice: Number(product.U_US_PROMO) } : null);
+
   // En Lista de Precios de Productos (Catálogo), los precios mostrados incluyen IGV
   const precioListaConIgv = Number(PRECIO_LISTA_CON_IGV ?? (PRECIO_LISTA > 0 ? (PRECIO_LISTA * 1.18).toFixed(2) : 0));
   const precioDescConIgv = Number(PRECIO_DESCUENTO_CON_IGV ?? (PRECIO_DESCUENTO > 0 ? (PRECIO_DESCUENTO * 1.18).toFixed(2) : 0));
 
   const hasDiscount = DESCUENTO_PCT > 0;
-  const finalPriceConIgv = hasDiscount ? precioDescConIgv : precioListaConIgv;
+  const regularPriceConIgv = hasDiscount ? precioDescConIgv : precioListaConIgv;
+
+  const hasPromo = Boolean(promo && (Number(promo.promoPriceConIGV || promo.promoPrice || promo.U_US_PROMO || 0) > 0));
+  // En SAP, U_US_PROMO es el precio final CON IGV (ej. $51.79 USD)
+  const promoPriceConIgv = hasPromo
+    ? Number(promo.promoPriceConIGV ?? promo.U_US_PROMO ?? (promo.promoPrice ? (promo.promoPrice * 1.18).toFixed(2) : 0))
+    : null;
+  const promoPriceNeto = hasPromo
+    ? Number(promo.promoPriceNeto ?? promo.promoPrice ?? (promoPriceConIgv ? (promoPriceConIgv / 1.18).toFixed(2) : 0))
+    : null;
+  const totalDiscountPct = hasPromo
+    ? Number(promo.totalDiscountPct || (precioListaConIgv > 0 ? (((precioListaConIgv - promoPriceConIgv) / precioListaConIgv) * 100).toFixed(2) : 0))
+    : Number(DESCUENTO_PCT || 0);
+
+  // Desglose de Descuentos para productos en Promoción:
+  const baseDiscountPct = Number(DESCUENTO_PCT > 0 ? DESCUENTO_PCT : (promo?.discountPct ? (totalDiscountPct - Number(promo.discountPct)).toFixed(2) : 43.3));
+  const extraDiscountPct = hasPromo
+    ? Number(promo?.discountPct || (totalDiscountPct > baseDiscountPct ? (totalDiscountPct - baseDiscountPct).toFixed(2) : 0))
+    : 0;
+
+  // Precio anterior regular con IGV (ej. $70.47):
+  const anteriorPriceConIgv = Number(PRECIO_DESCUENTO_CON_IGV ?? (precioListaConIgv > 0 ? (precioListaConIgv * (1 - baseDiscountPct / 100)).toFixed(2) : regularPriceConIgv));
+
+  // El Precio Final a cobrar es el de Oferta ($51.79 con IGV) si existe, sino el regular ($70.47 con IGV):
+  const finalPriceConIgv = hasPromo ? promoPriceConIgv : regularPriceConIgv;
+  const displayDiscount = hasPromo ? totalDiscountPct : Number(DESCUENTO_PCT || 0);
+  const showDiscountBadge = displayDiscount > 0;
 
   const formatNumber = (num, decimals = 0) =>
     num?.toLocaleString("es-PE", {
@@ -78,6 +108,11 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
             <Badge colorScheme="teal" variant="subtle" px={2} py={0.5} borderRadius="md" fontSize="12px" fontWeight="800" mr={2} verticalAlign="middle">
               {SIGLA}
             </Badge>
+          )}
+          {promo && (
+            <Text as="span" fontSize="14px" mr={1.5} title="Artículo en oferta">
+              ⭐
+            </Text>
           )}
           {ITEM_NAME || SIGLA || "Producto sin descripción"}
         </ModalHeader>
@@ -176,7 +211,7 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
 
             {/* Precios */}
             <VStack spacing={1} align="stretch">
-              {/* Precio Listado */}
+              {/* Precio Listado y Descuento */}
               <Flex align="center" justify="space-between">
                 <Box
                   bg="blue.200"
@@ -189,7 +224,7 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
                 >
                   Precio Listado: $ {precioListaConIgv?.toFixed(2) || "0.00"}
                 </Box>
-                {hasDiscount && (
+                {showDiscountBadge && (
                   <Box
                     bg="red.800"
                     color="white"
@@ -199,7 +234,9 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
                     borderRadius="full"
                     fontWeight="bold"
                   >
-                    Descuento: {DESCUENTO_PCT}%
+                    {hasPromo && extraDiscountPct > 0
+                      ? `Descuento: ${baseDiscountPct}% + ${extraDiscountPct}% (${totalDiscountPct}%)`
+                      : `Descuento: ${displayDiscount}%`}
                   </Box>
                 )}
               </Flex>
@@ -216,7 +253,18 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
                 textAlign="center"
                 boxShadow="sm"
               >
-                Precio Final: $ {finalPriceConIgv?.toFixed(2) || "0.00"} (Inc. IGV)
+                {hasPromo && anteriorPriceConIgv ? (
+                  <Flex justify="center" align="center" gap={2} wrap="wrap">
+                    <Text fontSize="sm" fontWeight="700" opacity={0.85}>
+                      Antes: <Text as="s" fontWeight="800">$ {anteriorPriceConIgv?.toFixed(2)}</Text>
+                    </Text>
+                    <Text fontSize="lg" fontWeight="black">
+                      ➔ Precio Final: $ {finalPriceConIgv?.toFixed(2)} (Inc. IGV)
+                    </Text>
+                  </Flex>
+                ) : (
+                  `Precio Final: $ ${finalPriceConIgv?.toFixed(2) || "0.00"} (Inc. IGV)`
+                )}
               </Box>
             </VStack>
 

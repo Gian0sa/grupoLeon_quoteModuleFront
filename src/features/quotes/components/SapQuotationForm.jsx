@@ -25,7 +25,7 @@ import { createQuote, updateQuote, getNextDocNumber } from "../services/quoteSer
 import { useQuoteStore, normalizeQuoteClient } from "../stores/quoteStore";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { useExchangeRate } from "../../dashboard/hooks/queries/dashboardQueries";
-import { useGetTransports, useGetPaymentType, useGetDeliveryForms } from "../hooks/queries/quotesQueries";
+import { useGetTransports, useGetPaymentType, useGetDeliveryForms, useGetPromotions } from "../hooks/queries/quotesQueries";
 import { calculateQuoteTotals, formatThousands } from "../../../shared/utils/quoteCalculator";
 import { useNavigate } from "react-router-dom";
 import QuoteSubmitConfirmModal from "./QuoteSubmitConfirmModal";
@@ -312,14 +312,13 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     currency: "USD",
     date: docDate || todayIso(),
   });
-  // ⚠️ [NO TOCAR] SÍMBOLO DE CAMBIO - REGLA COMERCIAL AUTOPARTES:
-  // Redondeo a favor de la empresa (+0.04). Si la base termina en 3.385 (3.385 + 0.04 = 3.425), debe quedar en 3.43.
+  // 👁️ Tipo de cambio comercial a la vista del frontend (+0.04 aumento comercial de la empresa)
   const exchangeRate = (() => {
     const raw = rateData?.collectionRate || rateData?.officialRate;
-    if (!raw) return 3.76;
+    if (!raw) return 3.49;
     const num = Number(raw);
     if (rateData?.rawRate === 3.385 || num === 3.42) return 3.43;
-    return isNaN(num) ? 3.76 : num;
+    return isNaN(num) ? 3.49 : num;
   })();
 
   // ─── CONSULTA Y ANÁLISIS DE DEUDA Y LOGÍSTICA DEL CLIENTE EN TIEMPO REAL (SAP B1) ───
@@ -548,6 +547,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   const { dataTransports } = useGetTransports();
   const { dataDeliveryForms } = useGetDeliveryForms();
   const { dataPaymentTypes } = useGetPaymentType();
+  const { promotionsMap } = useGetPromotions();
 
   const deliveryPoints = useMemo(() => {
     if (!client) return [];
@@ -737,7 +737,38 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     };
   }, [products, setProducts]);
 
+  // ⚡ Sincronización en tiempo real de Ofertas / Promociones en los artículos de la cotización activa
+  useEffect(() => {
+    // Si la cotización está bloqueada (solo lectura / ya emitida en SAP) no alterar retroactivamente
+    if (isSellerFieldsLocked || !products || products.length === 0 || !promotionsMap) return;
 
+    let hasChanges = false;
+    const updatedProducts = products.map((p) => {
+      const code = String(p.productCode || p.itemCode || p.code || p.id || "").trim();
+      if (!code) return p;
+
+      const livePromo = promotionsMap[code];
+      const livePromoDisc = livePromo ? Number(livePromo.discountPct || 0) : 0;
+      const liveCampaign = livePromo?.campaignName || (livePromoDisc > 0 ? "Oferta del Mes" : undefined);
+
+      const currentPromoDisc = Number(p.promoDiscount || 0);
+      const currentCampaign = p.campaignName;
+
+      if (currentPromoDisc !== livePromoDisc || currentCampaign !== liveCampaign) {
+        hasChanges = true;
+        return {
+          ...p,
+          promoDiscount: livePromoDisc,
+          campaignName: liveCampaign,
+        };
+      }
+      return p;
+    });
+
+    if (hasChanges && typeof setProducts === "function") {
+      setProducts(updatedProducts);
+    }
+  }, [promotionsMap, isSellerFieldsLocked, products, setProducts]);
 
   // Cálculos de totales estilo SAP B1 — unificados con la calculadora global
   const totals = useMemo(() => {
@@ -996,6 +1027,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       PaymentMethod: paymentMethod || null,
       createdByUsername: finalCreatedByUsername,
       createdByUserId: finalCreatedByUserId,
+      userId: finalCreatedByUserId,
       createdAt: existingDoc?.createdAt || nowIso,
       updatedAt: nowIso,
       status: currentStatus,
@@ -1137,6 +1169,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       return res;
     }).catch(err => {
       console.error("Error persistiendo cotización en base de datos:", err);
+      if (targetStatus === "ENVIADO") {
+        throw err;
+      }
       return newDoc;
     });
 
@@ -1970,8 +2005,14 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     } catch (err) {
       console.error("Error al enviar a validación:", err);
       setIsSendingToValidation(false);
-      clear();
-      navigate("/historyquotes");
+      toast({
+        title: "❌ No se pudo enviar a validación",
+        description: err?.message || "Ocurrió un error al persistir el pedido en el servidor. Por favor verifique su conexión e intente nuevamente.",
+        status: "error",
+        duration: 6000,
+        isClosable: true,
+        position: "top",
+      });
     }
   };
 
@@ -2607,13 +2648,13 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
           <VStack align="stretch" spacing={2} fontSize="xs">
 
-            {/* Subtotal Productos (Suma de precios de lista con stock) */}
+            {/* Valor Venta Neto (con conteo de ítems con stock) */}
             <Flex justify="space-between" align="center" color="#ecfdf5" gap={2}>
               <Text fontWeight="600">
-                Subtotal ({totals.inStockProducts ? totals.inStockProducts.length : products.length} {(totals.inStockProducts ? totals.inStockProducts.length : products.length) === 1 ? 'ítem con stock' : 'ítems con stock'})
+                Valor Venta Neto ({(totals.inStockProducts ? totals.inStockProducts.length : products.length)} {(totals.inStockProducts ? totals.inStockProducts.length : products.length) === 1 ? 'ítem con stock' : 'ítems con stock'})
               </Text>
               <Text fontWeight="800" fontFamily="mono" whiteSpace="nowrap">
-                USD {formatThousands(totals.grossSubtotalUSD ?? totals.subtotalUSD)}
+                USD {formatThousands(totals.subtotalUSD)}
               </Text>
             </Flex>
 
@@ -2625,26 +2666,6 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                 <Badge colorScheme="red" bg="#dc2626" color="white" fontSize="9px" px={1.5} py={0.2} borderRadius="sm" fontWeight="800">
                   Back Order
                 </Badge>
-              </Flex>
-            )}
-
-            {/* Descuento si aplica */}
-            {totals.totalDiscountUSD > 0 && (
-              <Flex justify="space-between" align="center" color="#fca5a5" gap={2}>
-                <Text fontWeight="600">Descuento ({totals.discPct || 0}%)</Text>
-                <Text fontWeight="700" fontFamily="mono" whiteSpace="nowrap">
-                  -USD {formatThousands(totals.totalDiscountUSD)}
-                </Text>
-              </Flex>
-            )}
-
-            {/* Valor Venta Neto tras descuento */}
-            {totals.totalDiscountUSD > 0 && (
-              <Flex justify="space-between" align="center" color="#ecfdf5" gap={2}>
-                <Text fontWeight="600">Valor Venta Neto</Text>
-                <Text fontWeight="700" fontFamily="mono" whiteSpace="nowrap">
-                  USD {formatThousands(totals.subtotalUSD)}
-                </Text>
               </Flex>
             )}
 

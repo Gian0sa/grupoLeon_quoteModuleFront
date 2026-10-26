@@ -3,9 +3,11 @@ import { axiosInstance } from "../../../shared/lib/axiosInstance";
 /**
  * Obtiene todas las promociones activas desde el backend
  */
-export async function fetchActivePromotions() {
+export async function fetchActivePromotions(forceRefresh = false) {
   try {
-    const res = await axiosInstance.get("/quoteModule/promotions");
+    const res = await axiosInstance.get("/quoteModule/promotions", {
+      params: forceRefresh ? { refresh: "true" } : {},
+    });
     return res.data || { list: [], map: {} };
   } catch (error) {
     console.error("Error al obtener promociones:", error);
@@ -25,6 +27,9 @@ export async function savePromotion(promotionData) {
  * Elimina o desactiva la promoción de un producto
  */
 export async function deletePromotion(productCode) {
-  const res = await axiosInstance.delete(`/quoteModule/promotions/${productCode}`);
+  const cleanCode = String(productCode || "").trim();
+  const res = await axiosInstance.delete("/quoteModule/promotions", {
+    params: { productCode: cleanCode },
+  });
   return res.data;
 }

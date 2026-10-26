@@ -727,7 +727,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
   ]);
 
   // Calcular Totales unificados con calculadora global
-  const tcVal = Number(effectiveQuote.totals?.tc || effectiveQuote.totals?.exchangeRate || effectiveQuote.exchangeRate) || 3.76;
+  const tcVal = Number(effectiveQuote.docRate || effectiveQuote.DocRate || effectiveQuote.totals?.tc || effectiveQuote.totals?.exchangeRate || effectiveQuote.exchangeRate) || 3.45;
   const isSapDirect = Boolean(effectiveQuote.isSapDirect || effectiveQuote.sapDocNum || effectiveQuote.DocNum);
   const calcRes = calculateQuoteTotals(products, tcVal, { isSapDirect });
   const displayProducts = calcRes.normalizedProducts && calcRes.normalizedProducts.length > 0 ? calcRes.normalizedProducts : products;
@@ -745,8 +745,10 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
     : Number(effectiveQuote.totals?.subtotalUSD || effectiveQuote.totals?.subTotalUSD || 0);
   const igvUSD = calcRes.igvUSD > 0
     ? calcRes.igvUSD
-    : Number(effectiveQuote.totals?.igvUSD || Number((subtotalUSD * 0.18).toFixed(2)));
-  const grandTotalUSD = Number((subtotalUSD + igvUSD).toFixed(2));
+    : Number(effectiveQuote.totals?.igvUSD || (subtotalUSD > 0 ? Number((subtotalUSD * 0.18).toFixed(2)) : 0));
+  const grandTotalUSD = calcRes.grandTotalUSD > 0
+    ? calcRes.grandTotalUSD
+    : (effectiveQuote.totals?.grandTotalUSD ? Number(effectiveQuote.totals.grandTotalUSD) : Number((subtotalUSD + igvUSD).toFixed(2)));
   const grandTotalSOL = isSapDirect && effectiveQuote.DocTotal && (effectiveQuote.DocCurrency === "PEN" || effectiveQuote.DocCurrency === "SOL")
     ? Number(effectiveQuote.DocTotal)
     : (calcRes.grandTotalSOL || Number((grandTotalUSD * tcVal).toFixed(2)));
@@ -1302,7 +1304,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         const rawPrice = Number(p.unitPrice ?? p.price ?? p.Price ?? 0);
         const sapDisc = Number(p.sapDiscount ?? p.discount ?? p.Discount ?? 0);
         const promoDisc = Number(p.promoDiscount ?? p.PromoDiscount ?? 0);
-        const addDisc = Number(p.lineDiscount ?? p.LineDiscount ?? 0);
+        const addDisc = Number(Number(p.lineDiscount ?? p.LineDiscount ?? 0).toFixed(2));
         const totalDisc = Number(p.discountPercent ?? (sapDisc + promoDisc + addDisc));
         const valorDescLista = Number((rawPrice * (1 - sapDisc / 100)).toFixed(2));
         const descVenta = Number(Math.max(0, totalDisc - sapDisc).toFixed(2));
@@ -2946,8 +2948,8 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                             const qty = Number(item.quantity ?? 1);
                             const sapDisc = Number(item.sapDiscount ?? item.discount ?? 0);
                             const promoDisc = Number(item.promoDiscount ?? 0);
-                            let addDisc = Number(item.lineDiscount ?? 0);
-                            const maxAllowedCeiling = qty > 100 ? 65 : 55;
+                            let addDisc = Number(Number(item.lineDiscount ?? 0).toFixed(2));
+                            const maxAllowedCeiling = qty > 100 ? 65 : 60;
                             const totalDisc = Number(item.discountPercent ?? Math.min(maxAllowedCeiling, Math.max(0, sapDisc + promoDisc + addDisc)));
                             if (addDisc === 0 && (sapDisc + promoDisc) > 0 && Math.abs(totalDisc - (sapDisc + promoDisc)) > 0.01) {
                               addDisc = Number((totalDisc - (sapDisc + promoDisc)).toFixed(2));
@@ -3010,7 +3012,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                       color={addDisc < 0 ? "emerald.900" : undefined}
                                       fontSize="9px"
                                     >
-                                      {addDisc > 0 ? `+${addDisc}%` : addDisc < 0 ? `${addDisc}%` : "0%"}
+                                      {addDisc > 0 ? `+${Number(addDisc).toFixed(2)}%` : addDisc < 0 ? `${Number(addDisc).toFixed(2)}%` : "0%"}
                                     </Badge>
                                   </Box>
                                   <Box textAlign="center">
@@ -3097,8 +3099,8 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                 const qty = Number(item.quantity ?? 1);
                                 const sapDisc = Number(item.sapDiscount ?? item.discount ?? 0);
                                 const promoDisc = Number(item.promoDiscount ?? 0);
-                                let addDisc = Number(item.lineDiscount ?? 0);
-                                const maxAllowedCeiling = qty > 100 ? 65 : 55;
+                                let addDisc = Number(Number(item.lineDiscount ?? 0).toFixed(2));
+                                const maxAllowedCeiling = qty > 100 ? 65 : 60;
                                 const totalDisc = Number(item.discountPercent ?? Math.min(maxAllowedCeiling, Math.max(0, sapDisc + promoDisc + addDisc)));
                                 if (addDisc === 0 && (sapDisc + promoDisc) > 0 && Math.abs(totalDisc - (sapDisc + promoDisc)) > 0.01) {
                                   addDisc = Number((totalDisc - (sapDisc + promoDisc)).toFixed(2));
@@ -3173,7 +3175,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                           borderRadius="md"
                                           title={addDisc < 0 ? `Mayor margen comercial (${addDisc}%).` : undefined}
                                         >
-                                          {addDisc > 0 ? `+${addDisc}%` : addDisc < 0 ? `${addDisc}%` : "0%"}
+                                          {addDisc > 0 ? `+${Number(addDisc).toFixed(2)}%` : addDisc < 0 ? `${Number(addDisc).toFixed(2)}%` : "0%"}
                                         </Badge>
                                       </VStack>
                                     </Td>
@@ -3349,8 +3351,8 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                   {(() => {
                     const computedGrossUSD = inStockProducts.reduce((acc, it) => acc + (Number(it.quantity || 1) * Number(it.price || 0)), 0);
                     const computedNetUSD = inStockProducts.reduce((acc, it) => acc + (Number(it.lineTotal || 0)), 0);
-                    const grossUSD = computedGrossUSD > 0 ? computedGrossUSD : (calcRes.grossSubtotalUSD || subtotalUSD);
-                    const netUSD = computedNetUSD > 0 ? computedNetUSD : subtotalUSD;
+                    const grossUSD = calcRes.grossSubtotalUSD > 0 ? calcRes.grossSubtotalUSD : (computedGrossUSD > 0 ? computedGrossUSD : subtotalUSD);
+                    const netUSD = subtotalUSD > 0 ? subtotalUSD : (calcRes.subtotalUSD > 0 ? calcRes.subtotalUSD : computedNetUSD);
                     const discountUSD = Math.max(0, Number((grossUSD - netUSD).toFixed(2)));
                     const discountPct = grossUSD > 0 ? Number(((discountUSD / grossUSD) * 100).toFixed(1)) : 0;
 
@@ -3614,13 +3616,13 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                             </Text>
 
                             <VStack align="stretch" spacing={2} fontSize="xs">
-                              {/* Subtotal Productos (Suma de precios de lista con stock) */}
+                              {/* Valor Venta Neto (con conteo de ítems con stock) */}
                               <Flex justify="space-between" align="center" color="#ecfdf5">
                                 <Text fontWeight="600">
-                                  Subtotal ({inStockProducts.length} {inStockProducts.length === 1 ? 'ítem con stock' : 'ítems con stock'})
+                                  Valor Venta Neto ({inStockProducts.length} {inStockProducts.length === 1 ? 'ítem con stock' : 'ítems con stock'})
                                 </Text>
                                 <Text fontWeight="800" fontFamily="mono">
-                                  USD {formatThousands(grossUSD)}
+                                  USD {formatThousands(netUSD)}
                                 </Text>
                               </Flex>
 
@@ -3633,26 +3635,6 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                   <Badge colorScheme="red" bg="#dc2626" color="white" fontSize="9px" px={1.5} py={0.2} borderRadius="sm" fontWeight="800">
                                     BACK ORDER
                                   </Badge>
-                                </Flex>
-                              )}
-
-                              {/* Descuento si aplica */}
-                              {discountUSD > 0 && (
-                                <Flex justify="space-between" align="center" color="#fca5a5">
-                                  <Text fontWeight="600">Descuento ({discountPct}%)</Text>
-                                  <Text fontWeight="700" fontFamily="mono">
-                                    -USD {formatThousands(discountUSD)}
-                                  </Text>
-                                </Flex>
-                              )}
-
-                              {/* Valor Venta Neto tras descuento */}
-                              {discountUSD > 0 && (
-                                <Flex justify="space-between" align="center" color="#ecfdf5">
-                                  <Text fontWeight="600">Valor Venta Neto</Text>
-                                  <Text fontWeight="700" fontFamily="mono">
-                                    USD {formatThousands(netUSD)}
-                                  </Text>
                                 </Flex>
                               )}
 

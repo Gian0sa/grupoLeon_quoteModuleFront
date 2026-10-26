@@ -11,11 +11,13 @@ import {
 import { ProductPriceListModal } from "./ProductPriceListModal";
 import { FiPackage, FiChevronRight } from "react-icons/fi";
 import { motion } from "framer-motion";
+import { useGetPromotions } from "../../quotes/hooks/queries/quotesQueries";
 
 const MotionBox = motion(Box);
 
 export function ProductPriceListCard({ product, tipoPrecio }) {
   const { isOpen, onOpen, onClose } = useDisclosure();
+  const { promotionsMap = {} } = useGetPromotions();
 
   const {
     SIGLA,
@@ -32,12 +34,23 @@ export function ProductPriceListCard({ product, tipoPrecio }) {
     PRECIO_CREDITO
   } = product;
 
+  const promo = promotionsMap[ITEM_CODE] || promotionsMap[product.productCode] || (product.U_US_PROMO ? { promoPrice: Number(product.U_US_PROMO) } : null);
+
   // En la Lista de Precios de Productos (Catálogo), los precios mostrados al asesor/cliente incluyen IGV
   const precioListaConIgv = Number(PRECIO_LISTA_CON_IGV ?? (PRECIO_LISTA > 0 ? (PRECIO_LISTA * 1.18).toFixed(2) : 0));
   const precioDescConIgv = Number(PRECIO_DESCUENTO_CON_IGV ?? (PRECIO_DESCUENTO > 0 ? (PRECIO_DESCUENTO * 1.18).toFixed(2) : 0));
 
   const hasDiscount = DESCUENTO_PCT > 0;
-  const finalPriceConIgv = hasDiscount ? precioDescConIgv : precioListaConIgv;
+  const regularPriceConIgv = hasDiscount ? precioDescConIgv : precioListaConIgv;
+  const promoPriceConIgv = promo && (Number(promo.promoPriceConIGV || promo.U_US_PROMO || 0) > 0)
+    ? Number(promo.promoPriceConIGV ?? promo.U_US_PROMO)
+    : null;
+  const finalPriceConIgv = promoPriceConIgv ?? regularPriceConIgv;
+  const totalDiscountPct = promo
+    ? Number(promo.totalDiscountPct || (precioListaConIgv > 0 && promoPriceConIgv ? (((precioListaConIgv - promoPriceConIgv) / precioListaConIgv) * 100).toFixed(2) : DESCUENTO_PCT))
+    : Number(DESCUENTO_PCT || 0);
+  const displayDiscount = promo ? totalDiscountPct : Number(DESCUENTO_PCT || 0);
+  const showDiscountBadge = displayDiscount > 0;
 
   const priceColorMap = {
     CONTADO: { bg: "blue.50", color: "blue.700", borderColor: "blue.200", label: "Precio contado" },
@@ -119,9 +132,9 @@ export function ProductPriceListCard({ product, tipoPrecio }) {
               <Badge bg="gray.100" color="gray.700" px={2} py={0.5} borderRadius="md" fontSize="11px" fontWeight="700">
                 #{ITEM_CODE}
               </Badge>
-              {hasDiscount && (
+              {showDiscountBadge && (
                 <Badge colorScheme="orange" fontSize="10px" fontWeight="800">
-                  -{DESCUENTO_PCT}% DESC
+                  -{displayDiscount}% DESC
                 </Badge>
               )}
             </HStack>

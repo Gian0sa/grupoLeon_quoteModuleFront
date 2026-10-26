@@ -22,6 +22,8 @@ export function checkIsAdmin(endpoints = [], username = "") {
     normUser.includes("jorge") ||
     normUser.includes("edwin") ||
     normUser.includes("jimmy") ||
+    normUser.includes("punkay") ||
+    normUser === "juan" ||
     ((normUser === "julio" || normUser.startsWith("julio ")) && !normUser.includes("flores"))
   );
 }
@@ -41,9 +43,19 @@ export function useIsAdmin() {
   }
 
   // 🛡️ Si el usuario tiene asignado un código de vendedor comercial en SAP (≠ 20 Oficina Admin),
-  // es estrictamente un VENDEDOR, nunca administrador maestro
+  // y no tiene rol administrativo, es estrictamente un VENDEDOR
   const slpNum = Number(salesEmployeeCode);
-  if (salesEmployeeCode && !isNaN(slpNum) && slpNum > 0 && slpNum !== 20) {
+  const isVerifierRole =
+    roleUpper.includes("DIGIT") ||
+    roleUpper.includes("FACTUR") ||
+    roleUpper.includes("SUPERVIS") ||
+    roleUpper.includes("CREDIT") ||
+    roleUpper.includes("COBRAN") ||
+    roleUpper.includes("GERENC") ||
+    roleUpper.includes("SISTEMA") ||
+    roleUpper.includes("JEFE");
+
+  if (!isVerifierRole && salesEmployeeCode && !isNaN(slpNum) && slpNum > 0 && slpNum !== 20) {
     return false;
   }
 
@@ -58,9 +70,12 @@ export function useHasAccess() {
   return (endpoint) => {
     if (!endpoint) return true;
 
-    // 🛡️ Únicamente el Administrador Maestro posee pase absoluto a nivel de interfaz
+    // 🛡️ Únicamente el Administrador Maestro posee pase general a nivel de interfaz,
+    // EXCEPTO para permisos granulares explícitos como "Gestionar Ofertas del Mes y Promociones" (/promotions),
+    // que deben respetar fielmente su activación o desactivación en el perfil del usuario.
+    const isGranularPermission = endpoint.includes("/promotions");
     const roleUpper = String(role || localStorage.getItem("role") || "").toUpperCase();
-    if (roleUpper === "ADMIN" || roleUpper === "ADMINISTRADOR" || roleUpper.startsWith("ADMIN") || checkIsAdmin(endpoints, username)) {
+    if (!isGranularPermission && (roleUpper === "ADMIN" || roleUpper === "ADMINISTRADOR" || roleUpper.startsWith("ADMIN") || checkIsAdmin(endpoints, username))) {
       return true;
     }
 
@@ -72,7 +87,15 @@ export function useHasAccess() {
 
     // Soporte de equivalencias para compatibilidad transparente de permisos
     const candidateList = [endpoint, targetWithSpace, targetWithColon];
-    if (endpoint.includes("/quotations")) {
+    if (endpoint.includes("/promotions")) {
+      candidateList.push(
+        "POST /promotions",
+        "POST:/promotions",
+        "/promotions",
+        "POST /quoteModule/promotions",
+        "POST:/quoteModule/promotions"
+      );
+    } else if (endpoint.includes("/quotations")) {
       candidateList.push(endpoint.replace("/quotations", "/quotes"));
       candidateList.push(targetWithSpace.replace("/quotations", "/quotes"));
       candidateList.push(targetWithColon.replace("/quotations", "/quotes"));
