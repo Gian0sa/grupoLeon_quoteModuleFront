@@ -40,26 +40,24 @@ export const isPickupInStoreForm = (form) => {
     const name = String(parsed.TrnspName ?? parsed.name ?? parsed.label ?? "");
     const combined = `${code} ${name}`.toLowerCase();
     return (
-      combined.includes("recojo") ||
-      combined.includes("tienda") ||
-      combined.includes("almacen") ||
-      combined.includes("almacén") ||
-      combined.includes("recoge") ||
       code === "1" ||
-      code === "4" ||
-      code === "04"
+      combined.includes("recojo tienda") ||
+      combined.includes("recojo en tienda") ||
+      combined.includes("recojo almacen") ||
+      combined.includes("recojo almacén") ||
+      combined.includes("recoge en tienda") ||
+      (combined.includes("recojo") && !combined.includes("interprovincial") && !combined.includes("transporte") && !combined.includes("carga"))
     );
   }
   const str = String(parsed).toLowerCase();
   return (
-    str.includes("recojo") ||
-    str.includes("tienda") ||
-    str.includes("almacen") ||
-    str.includes("almacén") ||
-    str.includes("recoge") ||
     str === "1" ||
-    str === "4" ||
-    str === "04"
+    str.includes("recojo tienda") ||
+    str.includes("recojo en tienda") ||
+    str.includes("recojo almacen") ||
+    str.includes("recojo almacén") ||
+    str.includes("recoge en tienda") ||
+    (str.includes("recojo") && !str.includes("interprovincial") && !str.includes("transporte") && !str.includes("carga"))
   );
 };
 
@@ -78,10 +76,28 @@ export const isOwnPickupInStoreForm = (form) => {
     const code = String(parsed.TrnspCode ?? parsed.code ?? parsed.value ?? "");
     const name = String(parsed.TrnspName ?? parsed.name ?? parsed.label ?? "");
     const combined = `${code} ${name}`.toLowerCase();
-    return combined.includes("reparto propio") || combined.includes("motorizado propio") || combined.includes("propio") || code === "2" || code === "02" || code === "5" || code === "05";
+    // En SAP B1: Código 2 es "05. Reparto Propio - Programación", Código 3 es "06. Envio Motorizado Propio"
+    // NUNCA debe incluir Código 5 ("02. Transporte Interprovincial"), Código 6 ("03. Servicio de Ag. de Transporte") ni Código 7 ("01. Transporte Carga Terrestre")
+    const isAgency = combined.includes("interprovincial") || combined.includes("ag. de transporte") || combined.includes("agencia") || combined.includes("carga terrestre") || code === "5" || code === "6" || code === "7" || code === "9";
+    if (isAgency) return false;
+    return (
+      code === "2" ||
+      code === "3" ||
+      combined.includes("reparto propio") ||
+      combined.includes("motorizado propio") ||
+      (combined.includes("propio") && !combined.includes("interprovincial"))
+    );
   }
   const str = String(parsed).toLowerCase();
-  return str.includes("reparto propio") || str.includes("motorizado propio") || str.includes("propio") || str === "2" || str === "02" || str === "5" || str === "05";
+  const isAgencyStr = str.includes("interprovincial") || str.includes("ag. de transporte") || str.includes("agencia") || str.includes("carga terrestre") || str === "5" || str === "6" || str === "7" || str === "9";
+  if (isAgencyStr) return false;
+  return (
+    str === "2" ||
+    str === "3" ||
+    str.includes("reparto propio") ||
+    str.includes("motorizado propio") ||
+    (str.includes("propio") && !str.includes("interprovincial"))
+  );
 };
 
 export const getCustomSelectStyles = (isLocked) => ({
