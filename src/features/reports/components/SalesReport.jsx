@@ -171,8 +171,8 @@ export default function SalespersonReports({ salespersonId }) {
     <Box w="full" minH="100vh" bg="gray.50" pb="120px">
       {/* HEADER PRINCIPAL UNIFICADO */}
       <TopHeaderBanner
-        title="Reporte de Órdenes"
-        subtitle="Monitoreo en tiempo real del flujo de pedidos"
+        title="Reporte de Órdenes de Venta"
+        subtitle="Monitoreo en tiempo real del flujo de órdenes de venta"
         showBack={true}
         refreshQueries={refreshQueries}
       >

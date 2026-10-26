@@ -20,36 +20,55 @@ const getSafeJsonValue = (key) => {
   }
 };
 
-const SESSION_MAX_DURATION_MS = 1 * 60 * 60 * 1000; // 1 hora exacta
+// Sesión por inactividad: 3 horas continuas sin interactuar con la app
+const IDLE_TIMEOUT_MS = 3 * 60 * 60 * 1000;
 
-const isSessionExpired = () => {
-  const loginTime = Number(getSafeValue('sessionLoginTime') || 0);
-  if (!loginTime) return false;
-  return Date.now() - loginTime > SESSION_MAX_DURATION_MS;
+// Pantallas protegidas donde NUNCA se debe expulsar bruscamente al vendedor en medio de trabajo
+const PROTECTED_PATHS = ['/visitlog', '/newquotes', '/cotizaciones', '/clientebusqueda'];
+
+export const updateLastActivity = () => {
+  try {
+    localStorage.setItem('lastUserActivityTime', Date.now().toString());
+  } catch (_) {}
 };
 
-// Si expiró la sesión al abrir/recargar la app, limpiar de inmediato
-if (isSessionExpired()) {
-  ['userId', 'username', 'salesEmployeeCode', 'endpoints', 'lastRoute', 'sessionLoginTime'].forEach((key) => {
+export const isProtectedCurrentRoute = () => {
+  if (typeof window === "undefined") return false;
+  const path = String(window.location.pathname || '').toLowerCase();
+  return PROTECTED_PATHS.some((p) => path === p || path.startsWith(p + '/'));
+};
+
+const isSessionExpired = () => {
+  const lastActivity = Number(getSafeValue('lastUserActivityTime') || getSafeValue('sessionLoginTime') || 0);
+  if (!lastActivity) return false;
+  return Date.now() - lastActivity > IDLE_TIMEOUT_MS;
+};
+
+// Si expiró la sesión por inactividad prolongada (y no está en ruta protegida con trabajo), limpiar
+if (isSessionExpired() && !isProtectedCurrentRoute()) {
+  ['userId', 'username', 'salesEmployeeCode', 'endpoints', 'role', 'lastRoute', 'sessionLoginTime', 'lastUserActivityTime'].forEach((key) => {
     try { localStorage.removeItem(key); } catch (e) {}
   });
 }
 
 export const useAuthStore = create((set) => ({
-  userId: isSessionExpired() ? null : getSafeValue('userId'),
-  username: isSessionExpired() ? null : (typeof getSafeValue('username') === 'string' ? getSafeValue('username').trim() : getSafeValue('username')),
-  salesEmployeeCode: isSessionExpired() ? null : getSafeValue('salesEmployeeCode'),
-  endpoints: isSessionExpired() ? [] : (getSafeJsonValue('endpoints') || []),
-  isAuthenticated: !isSessionExpired() && !!getSafeValue('userId'),
+  userId: (isSessionExpired() && !isProtectedCurrentRoute()) ? null : getSafeValue('userId'),
+  username: (isSessionExpired() && !isProtectedCurrentRoute()) ? null : (typeof getSafeValue('username') === 'string' ? getSafeValue('username').trim() : getSafeValue('username')),
+  salesEmployeeCode: (isSessionExpired() && !isProtectedCurrentRoute()) ? null : getSafeValue('salesEmployeeCode'),
+  role: (isSessionExpired() && !isProtectedCurrentRoute()) ? null : (getSafeValue('role') || 'ASESOR_VENTAS'),
+  endpoints: (isSessionExpired() && !isProtectedCurrentRoute()) ? [] : (getSafeJsonValue('endpoints') || []),
+  isAuthenticated: (!isSessionExpired() || isProtectedCurrentRoute()) && !!getSafeValue('userId'),
 
-  login: ({ userId, username, salesEmployeeCode, endpoints }) => {
+  login: ({ userId, username, salesEmployeeCode, endpoints, role }) => {
     const cleanUsername = typeof username === 'string' ? username.trim() : username;
     const safeValues = {
       userId: userId?.toString() || null,
       username: cleanUsername || null,
       salesEmployeeCode: salesEmployeeCode || null,
+      role: role || 'ASESOR_VENTAS',
       endpoints: endpoints || [],
       sessionLoginTime: Date.now().toString(),
+      lastUserActivityTime: Date.now().toString(),
     };
 
     // Guardar en localStorage solo lo público
@@ -73,12 +92,22 @@ export const useAuthStore = create((set) => ({
       userId: safeValues.userId,
       username: safeValues.username,
       salesEmployeeCode: safeValues.salesEmployeeCode,
+      role: safeValues.role,
       endpoints: safeValues.endpoints,
       isAuthenticated: true,
     });
 
     // Sincronizar y autenticar WebSockets en tiempo real
     updateSocketAuth();
+  },
+
+  updateRole: (newRole) => {
+    if (newRole) {
+      try {
+        localStorage.setItem("role", newRole);
+      } catch (e) {}
+      set({ role: newRole });
+    }
   },
 
   updateEndpoints: (newEndpoints) => {
@@ -92,10 +121,16 @@ export const useAuthStore = create((set) => ({
   },
 
   checkSessionExpiry: () => {
+    // Si el vendedor está en medio de una visita o cotización, nunca interrumpir su trabajo
+    if (isProtectedCurrentRoute()) {
+      updateLastActivity();
+      return false;
+    }
+
     if (useAuthStore.getState().isAuthenticated && isSessionExpired()) {
       useAuthStore.getState().logout();
       if (typeof window !== "undefined" && window.location.pathname !== "/") {
-        window.location.href = "/";
+        window.location.href = "/?reason=session_expired";
       }
       return true;
     }
@@ -117,7 +152,7 @@ export const useAuthStore = create((set) => ({
     }
 
     try {
-      ['userId', 'username', 'salesEmployeeCode', 'endpoints', 'lastRoute', 'sessionLoginTime'].forEach((key) =>
+      ['userId', 'username', 'salesEmployeeCode', 'endpoints', 'lastRoute', 'sessionLoginTime', 'lastUserActivityTime'].forEach((key) =>
         localStorage.removeItem(key)
       );
     } catch (e) {}
@@ -138,6 +173,20 @@ export const useAuthStore = create((set) => ({
 }));
 
 if (typeof window !== "undefined") {
+  // Detección de actividad del usuario: mientras toque la pantalla o interactúe, la sesión se mantiene viva
+  let lastRecordedActivity = 0;
+  const recordUserActivity = () => {
+    const now = Date.now();
+    if (now - lastRecordedActivity > 30000) { // Al menos 30 segundos entre escrituras a localStorage
+      lastRecordedActivity = now;
+      updateLastActivity();
+    }
+  };
+
+  ['mousedown', 'keydown', 'touchstart', 'scroll'].forEach((evt) => {
+    window.addEventListener(evt, recordUserActivity, { passive: true });
+  });
+
   const handleWakeup = () => {
     const store = useAuthStore.getState();
     if (store?.isAuthenticated && typeof store.checkSessionExpiry === "function") {

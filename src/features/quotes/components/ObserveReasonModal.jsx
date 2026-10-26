@@ -21,6 +21,7 @@ import {
   WrapItem
 } from "@chakra-ui/react";
 import { MessageSquare, AlertCircle, Send } from "lucide-react";
+import { formatQuoteSellerName } from "../../../shared/utils/quoteLogisticsFormatters";
 
 const PREDEFINED_OBSERVATIONS = [
   "⚡ Descuento adicional fuera de margen permitido",
@@ -39,7 +40,7 @@ export function ObserveReasonModal({ isOpen, onClose, quote, onConfirmObserve })
 
   if (!quote) return null;
   const quoteId = typeof quote === "object" ? (quote.docNumber || quote.id || "COT-000000") : String(quote || "COT-000000");
-  const sellerName = typeof quote === "object" ? (quote.sellerName || quote.createdByUsername || "Vendedor") : "Vendedor";
+  const sellerName = formatQuoteSellerName(quote);
 
   const handleConfirm = async () => {
     let finalNote = selectedPreset;
@@ -61,7 +62,13 @@ export function ObserveReasonModal({ isOpen, onClose, quote, onConfirmObserve })
 
     try {
       setIsSubmitting(true);
-      await onConfirmObserve(quote, finalNote.trim());
+      if (typeof onConfirmObserve === "function") {
+        if (onConfirmObserve.length === 1) {
+          await onConfirmObserve(finalNote.trim());
+        } else {
+          await onConfirmObserve(quote, finalNote.trim());
+        }
+      }
       onClose();
       setSelectedPreset(PREDEFINED_OBSERVATIONS[0]);
       setCustomDetail("");

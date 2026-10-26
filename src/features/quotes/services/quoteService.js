@@ -43,7 +43,10 @@ export const createQuote = async (quote) => {
         const response = await axiosInstance.post('/quoteModule/quotes', quote);
         return response.data;
     } catch (err) {
-        console.warn("ℹ️ Cotización guardada y sincronizada en almacenamiento local seguro.", err.message);
+        const currentSt = String(quote?.approvalStatus || quote?.state || quote?.status || "").toUpperCase();
+        const isSubmitted = currentSt === "ENVIADO" || currentSt === "PENDIENTE_APROBACION" || currentSt === "PENDIENTE";
+        console.error("❌ Error persistiendo cotización en backend MySQL:", err.message);
+
         try {
           const localQuotes = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
           const docId = quote.docNumber || quote.id || `LOCAL-${Date.now()}`;
@@ -56,6 +59,10 @@ export const createQuote = async (quote) => {
           }
           localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(localQuotes));
         } catch (e) {}
+
+        if (isSubmitted) {
+          throw new Error(err?.response?.data?.message || err.message || "Error al conectar con el servidor central para registrar la cotización");
+        }
         return quote;
     }
 };
@@ -249,6 +256,16 @@ export const getSapRelationshipMap = async (docNum) => {
   } catch (err) {
     console.warn("⚠️ Aviso al obtener mapa de relaciones SAP:", err.message);
     return null;
+  }
+};
+
+export const getSapStatusService = async () => {
+  try {
+    const response = await axiosInstance.get('/quoteModule/sap-status');
+    return response.data;
+  } catch (err) {
+    console.warn("⚠️ [SAP Status] No se pudo obtener ambiente SAP:", err?.message);
+    return { success: false, companyDB: "SBO", environment: "PRUEBAS", isProd: false };
   }
 };
 

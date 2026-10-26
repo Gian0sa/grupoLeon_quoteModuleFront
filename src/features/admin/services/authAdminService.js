@@ -7,9 +7,14 @@ export const updateProfileAdmin = async (profileData) => {
 }
 
 export const adminUsers = async () => {
-  const response = await axiosInstance.get("/authModule/adminUsers");
-  return response.data;
-}
+  try {
+    const response = await axiosInstance.get("/authModule/adminUsers");
+    return response.data;
+  } catch (error) {
+    console.error("❌ Error en adminUsers (/authModule/adminUsers):", error?.response?.status, error?.response?.data || error.message);
+    throw error;
+  }
+};
 
 export const updateUserStatus = async ({ userId, active }) => {
   const response = await axiosInstance.put(

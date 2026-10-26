@@ -35,6 +35,7 @@ export const HEADER_GLASS_PANEL_PROPS = {
 
 export function TopHeaderBanner({
   title,
+  titleExtra,
   subtitle,
   showBack = true,
   backTo = "/dashboard",
@@ -64,7 +65,23 @@ export function TopHeaderBanner({
     };
   }, []);
 
-  const isAdmin = useIsAdmin();
+  const isAdminHook = useIsAdmin();
+  const sessionRoleUpper = String(role || localStorage.getItem("role") || "").trim().toUpperCase();
+  const isVerifierOrAdminRole =
+    isAdminHook ||
+    sessionRoleUpper === "ADMIN" ||
+    sessionRoleUpper === "ADMINISTRADOR" ||
+    sessionRoleUpper.startsWith("ADMIN") ||
+    sessionRoleUpper === "FACTURACION" ||
+    sessionRoleUpper.includes("DIGIT") ||
+    sessionRoleUpper.includes("SUPERVIS") ||
+    sessionRoleUpper.includes("CREDIT") ||
+    sessionRoleUpper.includes("COBRAN") ||
+    sessionRoleUpper.includes("GERENC") ||
+    sessionRoleUpper.includes("SISTEMA") ||
+    sessionRoleUpper.includes("JEFE");
+
+  const isAdmin = Boolean(isVerifierOrAdminRole);
   const { data: serverNotifs } = useNotifications(
     isAdmin ? "FACTURACION" : "VENDEDOR",
     username
@@ -103,15 +120,36 @@ export function TopHeaderBanner({
       const targetRoleUpper = (n.targetRole || "").trim().toUpperCase();
       const targetUser = (n.targetUsername || "").trim().toLowerCase();
       const userLower = (username || "").trim().toLowerCase();
-      const roleUpper = (role || "").trim().toUpperCase();
-      const isAdminOrMaster = isAdmin || roleUpper === "ADMIN" || roleUpper === "FACTURACION" || roleUpper === "SUPERVISOR";
+      const roleUpper = (role || localStorage.getItem("role") || "").trim().toUpperCase();
+      const isAdminOrMaster =
+        isAdmin ||
+        roleUpper === "ADMIN" ||
+        roleUpper === "ADMINISTRADOR" ||
+        roleUpper.startsWith("ADMIN") ||
+        roleUpper === "FACTURACION" ||
+        roleUpper.includes("DIGIT") ||
+        roleUpper.includes("SUPERVIS") ||
+        roleUpper.includes("CREDIT") ||
+        roleUpper.includes("COBRAN") ||
+        roleUpper.includes("GERENC") ||
+        roleUpper.includes("SISTEMA") ||
+        roleUpper.includes("JEFE");
 
       if (isAdminOrMaster) {
-        if (targetRoleUpper !== "FACTURACION" && targetRoleUpper !== "ADMIN") return false;
+        if (
+          targetRoleUpper !== "FACTURACION" &&
+          targetRoleUpper !== "ADMIN" &&
+          targetRoleUpper !== "ADMINISTRADOR" &&
+          !targetRoleUpper.startsWith("ADMIN") &&
+          !targetRoleUpper.includes("DIGIT") &&
+          !targetRoleUpper.includes("SUPERVIS")
+        ) {
+          return false;
+        }
         const statusUpper = (n.status || "").trim().toUpperCase();
         if (statusUpper === "EMITIDO" || statusUpper === "ANULADO" || statusUpper === "CANCELADO") return false;
         const titleLower = (n.title || "").toLowerCase();
-        if (titleLower.includes("orden sap") || titleLower.includes("pedido emitido") || titleLower.includes("cotización enviada a validación")) return false;
+        if (titleLower.includes("orden sap") || titleLower.includes("pedido emitido") || titleLower.includes("orden de venta") || titleLower.includes("orden emitida") || titleLower.includes("cotización enviada a validación")) return false;
         return true;
       } else {
         if (targetRoleUpper !== "VENDEDOR" && targetRoleUpper !== "SELLER") return false;
@@ -288,15 +326,12 @@ export function TopHeaderBanner({
                     whiteSpace="nowrap"
                     sx={{ "@media (max-width: 359px)": { fontSize: "11px", letterSpacing: "normal" } }}
                   >
-                    {/* ⚠️ [NO TOCAR] SÍMBOLO DE CAMBIO - REGLA COMERCIAL AUTOPARTES:
-                        Tipo de cambio a favor de la empresa (+0.04).
-                        Si la base termina en 3.385 (3.385 + 0.04 = 3.425), el valor debe quedar en 3.43. */}
                     USD: {(() => {
-                      const rate = exchangeRate?.collectionRate;
-                      if (!rate) return "3.45";
+                      const rate = exchangeRate?.collectionRate || exchangeRate?.officialRate;
+                      if (!rate) return "3.49";
                       const num = Number(rate);
                       if (exchangeRate?.rawRate === 3.385 || num === 3.42) return "3.43";
-                      return isNaN(num) ? rate : num.toFixed(2);
+                      return isNaN(num) ? String(rate) : num.toFixed(2);
                     })()}
                   </Text>
                 )}
@@ -395,17 +430,20 @@ export function TopHeaderBanner({
           <Box w="full" maxW="100%" mb={children ? { base: 2.5, md: 3.5 } : 0}>
             <VStack align="start" spacing={0.5} maxW="100%">
               {title && (
-                <Text
-                  fontSize={{ base: "xl", sm: "2xl", md: "3xl", lg: "32px" }}
-                  fontWeight="800"
-                  color="white"
-                  letterSpacing="tight"
-                  lineHeight="1.2"
-                  maxW="100%"
-                  overflowWrap="anywhere"
-                >
-                  {title}
-                </Text>
+                <Flex align="center" gap={{ base: 2, md: 3 }} wrap="wrap">
+                  <Text
+                    fontSize={{ base: "xl", sm: "2xl", md: "3xl", lg: "32px" }}
+                    fontWeight="800"
+                    color="white"
+                    letterSpacing="tight"
+                    lineHeight="1.2"
+                    maxW="100%"
+                    overflowWrap="anywhere"
+                  >
+                    {title}
+                  </Text>
+                  {titleExtra}
+                </Flex>
               )}
               {subtitle && (
                 <Text

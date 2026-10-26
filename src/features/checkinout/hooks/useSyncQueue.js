@@ -182,6 +182,15 @@ export const useSyncQueue = ({ enabled = true } = {}) => {
                 continue;
               }
 
+              // Si es un Check-In rechazado porque ya existe un Check-In activo o colisión de UUID,
+              // conciliar con el servidor para no dejar la cola trabada indefinidamente.
+              if (item.type === "IN" && (msg.includes("Ya tienes un Check-In activo") || msg.includes("ya registrado") || msg.includes("VisitLog_uuid_key"))) {
+                console.log(`ℹ️ Check-In ${item.id} conciliado con el servidor. Eliminando de cola.`);
+                await removeFromQueue(item.id);
+                syncedCount++;
+                continue;
+              }
+
               const retryable = failure?.retryable !== false;
               await updateQueueItem(item.id, {
                 status: retryable ? QUEUE_STATUS.PENDING : QUEUE_STATUS.NEEDS_REVIEW,
@@ -239,12 +248,14 @@ export const useSyncQueue = ({ enabled = true } = {}) => {
         });
       }
 
-      // Si quedaron ítems postergados que ahora pueden enviarse, encadenar pasada adicional
-      const remainingItems = await getQueue();
-      if (remainingItems.some((i) => i.status === QUEUE_STATUS.PENDING)) {
-        setTimeout(() => {
-          syncPending().catch(() => {});
-        }, 500);
+      // Si quedaron ítems postergados que ahora pueden enviarse, encadenar pasada adicional SOLO si hubo éxito previo
+      if (syncedCount > 0) {
+        const remainingItems = await getQueue();
+        if (remainingItems.some((i) => i.status === QUEUE_STATUS.PENDING)) {
+          setTimeout(() => {
+            syncPending().catch(() => {});
+          }, 1000);
+        }
       }
     } catch (error) {
       console.warn("⚠️ No se pudo procesar la cola offline; se reintentará:", error?.message || error);

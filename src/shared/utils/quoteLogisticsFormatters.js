@@ -19,26 +19,24 @@ export const isPickupInStoreForm = (form) => {
     const name = String(parsed.TrnspName ?? parsed.name ?? parsed.label ?? "");
     const combined = `${code} ${name}`.toLowerCase();
     return (
-      combined.includes("recojo") ||
-      combined.includes("tienda") ||
-      combined.includes("almacen") ||
-      combined.includes("almacén") ||
-      combined.includes("recoge") ||
       code === "1" ||
-      code === "4" ||
-      code === "04"
+      combined.includes("recojo tienda") ||
+      combined.includes("recojo en tienda") ||
+      combined.includes("recojo almacen") ||
+      combined.includes("recojo almacén") ||
+      combined.includes("recoge en tienda") ||
+      (combined.includes("recojo") && !combined.includes("interprovincial") && !combined.includes("transporte") && !combined.includes("carga"))
     );
   }
   const str = String(parsed).toLowerCase();
   return (
-    str.includes("recojo") ||
-    str.includes("tienda") ||
-    str.includes("almacen") ||
-    str.includes("almacén") ||
-    str.includes("recoge") ||
     str === "1" ||
-    str === "4" ||
-    str === "04"
+    str.includes("recojo tienda") ||
+    str.includes("recojo en tienda") ||
+    str.includes("recojo almacen") ||
+    str.includes("recojo almacén") ||
+    str.includes("recoge en tienda") ||
+    (str.includes("recojo") && !str.includes("interprovincial") && !str.includes("transporte") && !str.includes("carga"))
   );
 };
 
@@ -57,27 +55,25 @@ export const isOwnDeliveryForm = (form) => {
     const code = String(parsed.TrnspCode ?? parsed.code ?? parsed.value ?? "");
     const name = String(parsed.TrnspName ?? parsed.name ?? parsed.label ?? "");
     const combined = `${code} ${name}`.toLowerCase();
+    const isAgency = combined.includes("interprovincial") || combined.includes("ag. de transporte") || combined.includes("agencia") || combined.includes("carga terrestre") || code === "5" || code === "6" || code === "7" || code === "9";
+    if (isAgency) return false;
     return (
-      combined.includes("reparto propio") ||
-      combined.includes("propio") ||
-      combined.includes("movilidad propia") ||
-      combined.includes("movilidad interna") ||
       code === "2" ||
-      code === "02" ||
-      code === "5" ||
-      code === "05"
+      code === "3" ||
+      combined.includes("reparto propio") ||
+      combined.includes("motorizado propio") ||
+      (combined.includes("propio") && !combined.includes("interprovincial"))
     );
   }
   const str = String(parsed).toLowerCase();
+  const isAgencyStr = str.includes("interprovincial") || str.includes("ag. de transporte") || str.includes("agencia") || str.includes("carga terrestre") || str === "5" || str === "6" || str === "7" || str === "9";
+  if (isAgencyStr) return false;
   return (
-    str.includes("reparto propio") ||
-    str.includes("propio") ||
-    str.includes("movilidad propia") ||
-    str.includes("movilidad interna") ||
     str === "2" ||
-    str === "02" ||
-    str === "5" ||
-    str === "05"
+    str === "3" ||
+    str.includes("reparto propio") ||
+    str.includes("motorizado propio") ||
+    (str.includes("propio") && !str.includes("interprovincial"))
   );
 };
 
@@ -92,25 +88,33 @@ export const formatDeliveryForm = (form) => {
       } catch (e) {}
     }
   }
+  const SAP_SHIPPING_NAMES = {
+    1: "04. Recojo Tienda - Almacen",
+    2: "05. Reparto Propio - Programación",
+    3: "06. Envio Motorizado Propio",
+    4: "07. Courier Local",
+    5: "02. Transporte Interprovincial",
+    6: "03. Servicio de Ag. de Transporte",
+    7: "01. Transporte Carga Terrestre",
+    8: "08. Contraentrega COD",
+    9: "09. Transporte Carga Aéreo",
+  };
   if (typeof parsed === "object" && parsed !== null) {
     const name = parsed.TrnspName || parsed.label || parsed.name || "";
     if (name && /cotizaci[oó]n|oferta|pedido|boleta|factura/i.test(name.trim())) {
       return "Despacho Regular";
     }
     if (name && name !== "undefined" && name !== "null") return name;
-    const code = parsed.TrnspCode || parsed.code || parsed.value;
-    if (code === 1 || code === "1") return "Recojo en Almacén / Tienda";
-    if (code === 2 || code === "2") return "Envío a Domicilio / Agencia Lima";
-    if (code === 3 || code === "3") return "Despacho a Provincia (Agencia)";
+    const code = Number(parsed.TrnspCode || parsed.code || parsed.value);
+    if (SAP_SHIPPING_NAMES[code]) return SAP_SHIPPING_NAMES[code];
     if (code) return `Forma #${code}`;
   }
   const str = String(parsed).trim();
   if (/cotizaci[oó]n|oferta|pedido|boleta|factura/i.test(str)) {
     return "Despacho Regular";
   }
-  if (str === "1") return "Recojo en Almacén / Tienda";
-  if (str === "2") return "Envío a Domicilio / Agencia Lima";
-  if (str === "3") return "Despacho a Provincia (Agencia)";
+  const numStr = Number(str);
+  if (SAP_SHIPPING_NAMES[numStr]) return SAP_SHIPPING_NAMES[numStr];
   if (!str || str === "undefined" || str === "null") return "Despacho Regular";
   return str;
 };
@@ -304,8 +308,41 @@ export const formatSunatOp = (sunatOp) => {
   return str;
 };
 
+export const SALES_PERSONS_MAP = {
+  1: { code: 1, prefix: "062", name: "Gerardo Phun" },
+  2: { code: 2, prefix: "432", name: "Carlos Paz" },
+  3: { code: 3, prefix: "535", name: "Wilson Ramirez" },
+  4: { code: 4, prefix: "005", name: "Guillermo Alcas" },
+  5: { code: 5, prefix: "439", name: "Rene Villanueva" },
+  6: { code: 6, prefix: "552", name: "Richard Talavera" },
+  7: { code: 7, prefix: "541", name: "Manuel Zapata" },
+  8: { code: 8, prefix: "520", name: "Benny Borja" },
+  9: { code: 9, prefix: "540", name: "Eric Acuña" },
+  10: { code: 10, prefix: "032", name: "Alberto Chamorro" },
+  11: { code: 11, prefix: "548", name: "Daniel Capuñay" },
+  12: { code: 12, prefix: "711", name: "Manuel Villalta" },
+  13: { code: 13, prefix: "727", name: "Pedro Pazos" },
+  14: { code: 14, prefix: "417", name: "Gleen Rodriguez" },
+  15: { code: 15, prefix: "723", name: "Arturo Jeri" },
+  16: { code: 16, prefix: "725", name: "Luis Perez" },
+  19: { code: 19, prefix: "719", name: "Rafael Nolasco" },
+  20: { code: 20, prefix: "001", name: "Ofic Administración" },
+  21: { code: 21, prefix: "551", name: "León Autos" },
+  30: { code: 30, prefix: "", name: "Eder Vargas" },
+  31: { code: 31, prefix: "", name: "Luis Espinar" },
+  33: { code: 33, prefix: "", name: "Julio Flores" },
+  34: { code: 34, prefix: "", name: "Willy Ambrosio" },
+  35: { code: 35, prefix: "", name: "Josepham Ruiz" },
+  40: { code: 40, prefix: "", name: "Roger Vasquez" },
+  41: { code: 41, prefix: "", name: "Sara Benavides" },
+  42: { code: 42, prefix: "", name: "Jaime Flores" },
+  43: { code: 43, prefix: "", name: "Ronald Lavado" },
+  46: { code: 46, prefix: "741", name: "Yordy Sosa" },
+  744: { code: 744, prefix: "", name: "usuario asdtest cambio" },
+};
+
 export const cleanSellerName = (seller) => {
-  if (!seller) return "Vendedor Autorizado";
+  if (!seller) return "001.Ofic Administración";
   const s = String(seller).trim();
   const upper = s.toUpperCase();
   if (
@@ -315,11 +352,93 @@ export const cleanSellerName = (seller) => {
     upper === "-1" ||
     upper === "0" ||
     upper === "NULL" ||
-    upper === "UNDEFINED"
+    upper === "UNDEFINED" ||
+    upper === "VENDEDOR AUTORIZADO" ||
+    upper === "VENDEDOR" ||
+    upper === "VENDEDOR SAP" ||
+    upper === "SIN VENDEDOR"
   ) {
-    return "Venta Directa / Mostrador";
+    return "001.Ofic Administración";
   }
   return s;
+};
+
+export const formatQuoteSellerName = (q, sellersList = []) => {
+  if (!q) return "001.Ofic Administración";
+  if (typeof q === "string") return cleanSellerName(q);
+
+  // 1. Extraer código de vendedor numérico (SlpCode, salesPersonCode, salesEmployeeCode)
+  const rawCode =
+    q.SlpCode ??
+    q.slpCode ??
+    q.salesPersonCode ??
+    q.SalesPersonCode ??
+    q.salesEmployeeCode ??
+    q.SalesEmployeeCode ??
+    q.sellerCode ??
+    q.totals?.SlpCode ??
+    q.totals?.slpCode ??
+    q.totals?.salesPersonCode ??
+    q.totals?.salesEmployeeCode;
+
+  const numCode = rawCode !== null && rawCode !== undefined && !isNaN(Number(rawCode)) ? Number(rawCode) : null;
+
+  // Si tiene código 20 (Oficina / Admin)
+  if (numCode === 20) {
+    return "001.Ofic Administración";
+  }
+
+  // Buscar por código en sellersList de SAP
+  if (numCode && numCode > 0 && Array.isArray(sellersList) && sellersList.length > 0) {
+    const found = sellersList.find(s => Number(s.SalesEmployeeCode ?? s.value ?? s.code) === numCode);
+    if (found?.label || found?.SalesEmployeeName) {
+      return cleanSellerName(found.label || found.SalesEmployeeName);
+    }
+  }
+
+  // Buscar por código en SALES_PERSONS_MAP estático
+  if (numCode && numCode > 0 && SALES_PERSONS_MAP[numCode]) {
+    const sp = SALES_PERSONS_MAP[numCode];
+    return sp.prefix ? `${sp.prefix}.${sp.name}` : sp.name;
+  }
+
+  // 2. Extraer nombre directo si no es genérico
+  const directName = String(q.sellerName || q.SlpName || q.salesPersonName || "").trim();
+  const isGeneric = !directName ||
+    /^(vendedor\s*autorizado|vendedor\s*sap|vendedor|sin\s*vendedor|no\s*asignado|ning[uú]n\s*empleado)$/i.test(directName);
+
+  if (directName && !isGeneric) {
+    return cleanSellerName(directName);
+  }
+
+  // 3. Buscar por creador (createdByUsername)
+  const creator = String(q.createdByUsername || q.user?.username || q.user || "").trim();
+  if (creator && !/^(vendedor|admin|root|null|undefined)$/i.test(creator)) {
+    if (Array.isArray(sellersList) && sellersList.length > 0) {
+      const cleanCreator = creator.toLowerCase();
+      const found = sellersList.find(s => {
+        const sName = String(s.label || s.SalesEmployeeName || "").toLowerCase();
+        return sName.includes(cleanCreator) || cleanCreator.includes(sName);
+      });
+      if (found?.label || found?.SalesEmployeeName) {
+        return cleanSellerName(found.label || found.SalesEmployeeName);
+      }
+    }
+    return cleanSellerName(creator);
+  }
+
+  // 4. Si el cliente tiene vendedor asignado en la entidad cliente
+  if (q.client?.SlpCode || q.client?.SalesPersonCode) {
+    const cSlp = Number(q.client.SlpCode || q.client.SalesPersonCode);
+    if (cSlp === 20) return "001.Ofic Administración";
+    if (cSlp && SALES_PERSONS_MAP[cSlp]) {
+      const sp = SALES_PERSONS_MAP[cSlp];
+      return sp.prefix ? `${sp.prefix}.${sp.name}` : sp.name;
+    }
+  }
+
+  // 5. Fallback oficial Autopartes
+  return "001.Ofic Administración";
 };
 
 export const cleanClientName = (q) => {
@@ -372,4 +491,73 @@ export const formatCheckBank = (val) => {
     return "—";
   }
   return clean;
+};
+
+/**
+ * Obtiene la fecha actual en la zona horaria oficial del negocio (Perú: America/Lima, UTC-5)
+ * en formato YYYY-MM-DD.
+ */
+export const getTodayPeruDateString = () => {
+  try {
+    return new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" });
+  } catch {
+    return new Date().toISOString().split("T")[0];
+  }
+};
+
+/**
+ * Obtiene la fecha representativa de un documento o cotización en formato YYYY-MM-DD
+ * respetando la zona horaria de Perú si viene como ISO timestamp.
+ */
+export const getQuoteDateString = (q) => {
+  if (!q) return "";
+  const rawDate = q.docDate || q.DocDate || q.createdAt || q.updatedAt || "";
+  if (!rawDate) return "";
+  const str = String(rawDate).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return str;
+  }
+  try {
+    const d = new Date(str);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString("en-CA", { timeZone: "America/Lima" });
+    }
+  } catch {}
+  return str.split("T")[0] || "";
+};
+
+/**
+ * Suma o resta días a una fecha en formato YYYY-MM-DD de forma exacta,
+ * manejando automáticamente meses de 31, 30, 28/29 días y años bisiestos.
+ */
+export const addDaysToDateString = (dateStr, days) => {
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return "";
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  const year = dt.getUTCFullYear();
+  const month = String(dt.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(dt.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+/**
+ * Formatea una fecha YYYY-MM-DD para visualización ejecutiva en español (Perú)
+ * Ej: "Lun, 19 oct 2026"
+ */
+export const formatDateDisplayPeru = (dateStr) => {
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr || "";
+  try {
+    const [y, m, d] = dateStr.split("-").map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+    return dt.toLocaleDateString("es-PE", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+  } catch {
+    return dateStr;
+  }
 };

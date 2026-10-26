@@ -9,6 +9,7 @@ export function useQuoteSocket() {
   const queryClient = useQueryClient();
   const toast = useToast();
   const displayedToastIdsRef = useRef(new Set());
+  const lastPermissionProcessedAtRef = useRef(0);
 
   useEffect(() => {
     if (!socket) return;
@@ -120,7 +121,20 @@ export function useQuoteSocket() {
       const currentUsername = (authState.username || "").trim().toLowerCase();
       const currentRole = (authState.role || "").trim().toUpperCase();
       const currentEndpoints = authState.endpoints;
-      const isAdminActive = currentRole === "ADMIN" || currentRole === "FACTURACION" || currentRole === "SUPERVISOR" || checkIsAdmin(currentEndpoints, authState.username);
+      const isAdminActive =
+        currentRole === "ADMIN" ||
+        currentRole === "ADMINISTRADOR" ||
+        currentRole.startsWith("ADMIN") ||
+        currentRole === "FACTURACION" ||
+        currentRole === "SUPERVISOR" ||
+        currentRole.includes("DIGIT") ||
+        currentRole.includes("SUPERVIS") ||
+        currentRole.includes("CREDIT") ||
+        currentRole.includes("COBRAN") ||
+        currentRole.includes("GERENC") ||
+        currentRole.includes("SISTEMA") ||
+        currentRole.includes("JEFE") ||
+        checkIsAdmin(currentEndpoints, authState.username);
 
       const targetRoleUpper = String(notif.targetRole || "").trim().toUpperCase();
       const targetUser = String(notif.targetUsername || "").trim().toLowerCase();
@@ -128,18 +142,41 @@ export function useQuoteSocket() {
       let isForMe = false;
 
       if (isAdminActive) {
-        // Facturación / Admin ONLY recibe cotizaciones pendientes de revisión/aprobación
-        if (targetRoleUpper === "FACTURACION" || targetRoleUpper === "ADMIN") {
+        // Facturación / Admin / Digitador ONLY recibe cotizaciones pendientes de revisión/aprobación
+        if (
+          targetRoleUpper === "FACTURACION" ||
+          targetRoleUpper === "ADMIN" ||
+          targetRoleUpper === "ADMINISTRADOR" ||
+          targetRoleUpper.startsWith("ADMIN") ||
+          targetRoleUpper.includes("DIGIT") ||
+          targetRoleUpper.includes("SUPERVIS")
+        ) {
           const statusUpper = String(notif.status || "").trim().toUpperCase();
           const titleLower = String(notif.title || "").toLowerCase();
-          if (statusUpper !== "EMITIDO" && statusUpper !== "ANULADO" && statusUpper !== "CANCELADO" && !titleLower.includes("orden sap") && !titleLower.includes("pedido emitido")) {
+          if (
+            statusUpper !== "EMITIDO" &&
+            statusUpper !== "ANULADO" &&
+            statusUpper !== "CANCELADO" &&
+            !titleLower.includes("orden sap") &&
+            !titleLower.includes("pedido emitido") &&
+            !titleLower.includes("orden de venta") &&
+            !titleLower.includes("orden emitida")
+          ) {
             isForMe = true;
           }
         }
       } else {
         // VENDEDOR: ONLY recibe notificaciones para su rol y dirigidas a su nombre de usuario
-        if (targetRoleUpper === "VENDEDOR" || targetRoleUpper === "SELLER") {
-          if (!targetUser || targetUser === currentUsername || currentUsername.includes(targetUser) || targetUser.includes(currentUsername)) {
+        if (targetRoleUpper === "VENDEDOR" || targetRoleUpper === "SELLER" || targetRoleUpper === "ASESOR_VENTAS") {
+          const cleanTarget = targetUser.replace(/^\d+[\.\s-]+/, "").trim();
+          const cleanCurrent = currentUsername.replace(/^\d+[\.\s-]+/, "").trim();
+          if (
+            !targetUser ||
+            targetUser === currentUsername ||
+            (cleanCurrent && cleanTarget && (cleanCurrent === cleanTarget || cleanCurrent.includes(cleanTarget) || cleanTarget.includes(cleanCurrent))) ||
+            currentUsername.includes(targetUser) ||
+            targetUser.includes(currentUsername)
+          ) {
             isForMe = true;
           }
         }
@@ -181,6 +218,12 @@ export function useQuoteSocket() {
         return;
       }
 
+      const titleLower = String(notif.title || "").toLowerCase();
+      // Silenciar toasts invasivos para confirmaciones ordinarias de envío ("Cotización Enviada a Validación")
+      if (titleLower.includes("enviada a validación") || titleLower.includes("enviada a validacion")) {
+        return;
+      }
+
       if (isForMe && notif.title) {
         const toastId = `ws-notif-${notif.quoteId || notif.id}-${notif.status || 'new'}`;
         
@@ -215,31 +258,47 @@ export function useQuoteSocket() {
 
       const isTargetUser =
         (data.userId && String(data.userId) === String(activeUserId)) ||
-        (data.username && activeUsername && data.username.toLowerCase() === activeUsername.toLowerCase());
+        (data.username && activeUsername && String(data.username).trim().toLowerCase() === String(activeUsername).trim().toLowerCase());
 
       if (isTargetUser && Array.isArray(data.endpoints)) {
-        console.log("🔑 [WS PERMISSIONS] Aplicando nuevos permisos en vivo al usuario actual:", data.endpoints);
+        const now = Date.now();
+        // 🛡️ Blindaje estricto contra lluvia de toasts: ignorar ráfagas dentro de 4 segundos
+        const isDuplicateBurst = (now - lastPermissionProcessedAtRef.current) < 4000;
+        lastPermissionProcessedAtRef.current = now;
+
+        console.log("🔑 [WS PERMISSIONS] Aplicando nuevos permisos y rol en vivo al usuario actual:", data.endpoints, data.role);
         useAuthStore.getState().updateEndpoints(data.endpoints);
-        window.dispatchEvent(new Event("permissionsUpdated"));
-
-        const toastId = `ws-perm-${Date.now()}`;
-        if (!toast.isActive(toastId)) {
-          toast({
-            id: toastId,
-            title: "🔑 Accesos y Permisos Actualizados",
-            description: `Tus accesos han sido actualizados en tiempo real (${data.endpoints.length} permisos activos). No requieres cerrar sesión.`,
-            status: "success",
-            duration: 6000,
-            isClosable: true,
-            position: "top-right",
-          });
+        if (data.role) {
+          useAuthStore.getState().updateRole(data.role);
         }
-      }
+        window.dispatchEvent(new Event("permissionsUpdated"));
+        window.dispatchEvent(new CustomEvent("permissionsUpdated", { detail: data }));
 
-      // Refrescar consultas de usuarios y servicios en cualquier panel de administración abierto
-      queryClient.invalidateQueries({ queryKey: ["adminUsers"] });
-      queryClient.invalidateQueries({ queryKey: ["allUsersAdmin"] });
-      queryClient.invalidateQueries({ queryKey: ["Services"] });
+        if (!isDuplicateBurst) {
+          // Refrescar consultas de permisos de forma segura
+          queryClient.invalidateQueries({ queryKey: ["adminUsers"] });
+          queryClient.invalidateQueries({ queryKey: ["allUsersAdmin"] });
+          queryClient.invalidateQueries({ queryKey: ["Services"] });
+
+          const toastId = "ws-user-permissions-updated-toast";
+          if (!toast.isActive(toastId)) {
+            toast({
+              id: toastId,
+              title: "🔑 Accesos y Permisos Actualizados",
+              description: `Tus accesos han sido actualizados en tiempo real (${data.endpoints.length} permisos activos). Ya puedes acceder a tus nuevas funciones sin recargar.`,
+              status: "success",
+              duration: 5000,
+              isClosable: true,
+              position: "top-right",
+            });
+          }
+        }
+      } else {
+        // Refrescar consultas de usuarios y servicios en cualquier panel de administración abierto
+        queryClient.invalidateQueries({ queryKey: ["adminUsers"] });
+        queryClient.invalidateQueries({ queryKey: ["allUsersAdmin"] });
+        queryClient.invalidateQueries({ queryKey: ["Services"] });
+      }
     };
 
     // 6. Escuchar actualizaciones en vivo del sistema o avisos globales de mantenimiento
@@ -255,13 +314,51 @@ export function useQuoteSocket() {
       const activeUserId = useAuthStore.getState().userId;
       const targetUserId = data?.userId;
 
-      if (!targetUserId || String(targetUserId) === String(activeUserId)) {
+      if (targetUserId && String(targetUserId) === String(activeUserId)) {
         console.warn("⛔ Tu cuenta ha sido desactivada por el administrador. Cerrando sesión de inmediato...");
         try {
           sessionStorage.setItem("logoutReason", data?.message || "Tu cuenta ha sido desactivada por el administrador.");
         } catch (_) {}
         useAuthStore.getState().logout();
         window.location.href = "/?reason=deactivated";
+      }
+    };
+
+    const handlePromotionsUpdated = (data) => {
+      console.log("⚡ [WS] Evento promotions:updated recibido:", data);
+      queryClient.invalidateQueries({ queryKey: ["productPromotions"] });
+
+      if (!data) return;
+
+      const currentUsername = (useAuthStore.getState()?.username || localStorage.getItem("username") || "").trim().toLowerCase();
+      const author = String(data?.createdBy || data?.deletedBy || "").trim();
+      const authorLower = author.toLowerCase();
+
+      // Si el autor es diferente al usuario actual, mostrar alerta en tiempo real a los demás administradores
+      if (author && currentUsername && authorLower !== currentUsername) {
+        const toastId = `promo-${data.type}-${data.productCode}`;
+        if (!toast.isActive(toastId)) {
+          if (data.type === "DELETE") {
+            toast({
+              id: toastId,
+              title: "🏷️ Descuento retirado",
+              description: `${author} retiró el descuento del artículo ${data.productCode || ""}.`,
+              status: "info",
+              duration: 4500,
+              isClosable: true,
+            });
+          } else if (data.type === "SAVE") {
+            const pct = data?.promotion?.discountPct;
+            toast({
+              id: toastId,
+              title: "🏷️ Descuento promocional actualizado",
+              description: `${author} actualizó la oferta de ${data.productCode || ""}${pct ? ` a -${pct}%` : ""}.`,
+              status: "success",
+              duration: 4500,
+              isClosable: true,
+            });
+          }
+        }
       }
     };
 
@@ -273,6 +370,8 @@ export function useQuoteSocket() {
     socket.on("system:update", handleSystemUpdate);
     socket.on("app:update_available", handleSystemUpdate);
     socket.on("auth:force_logout", handleForceLogout);
+    socket.on("promotions:updated", handlePromotionsUpdated);
+    socket.on("promotions:changed", handlePromotionsUpdated);
 
     return () => {
       if (refreshTimer) window.clearTimeout(refreshTimer);
@@ -284,6 +383,8 @@ export function useQuoteSocket() {
       socket.off("system:update", handleSystemUpdate);
       socket.off("app:update_available", handleSystemUpdate);
       socket.off("auth:force_logout", handleForceLogout);
+      socket.off("promotions:updated", handlePromotionsUpdated);
+      socket.off("promotions:changed", handlePromotionsUpdated);
     };
   }, [queryClient, toast]);
 }

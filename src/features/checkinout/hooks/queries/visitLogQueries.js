@@ -38,14 +38,29 @@ export const useActiveVisitByVendor = (vendorName, vendorCode) => {
         ],
         queryFn: async () => {
             let serverData = null;
-            try {
-                serverData = await getActiveVisitByVendor(vendorName);
-            } catch (error) {
-                console.warn("Could not fetch active visit from server (offline):", error);
+            if (vendorName) {
+                try {
+                    serverData = await Promise.race([
+                        getActiveVisitByVendor(vendorName),
+                        new Promise((_, reject) =>
+                            setTimeout(() => reject(new Error("Timeout obteniendo visita activa")), 5000)
+                        )
+                    ]);
+                } catch (error) {
+                    console.warn("Could not fetch active visit from server (offline or timeout):", error);
+                }
             }
-            return getActiveVisitState(vendorName, serverData, vendorCode);
+            try {
+                return await getActiveVisitState(vendorName, serverData, vendorCode);
+            } catch (queueErr) {
+                console.error("Error evaluating local active visit state:", queueErr);
+                return { active: serverData?.active || false, visit: serverData?.visit || null };
+            }
         },
-        networkMode: "always"
+        enabled: Boolean(vendorName),
+        networkMode: "always",
+        staleTime: 1000 * 10,
+        retry: 1
     });
 };
 

@@ -40,7 +40,8 @@ export function TopProductsCard({ year, month, sellerCode, sellerName, canFilter
   const salesEmployeeCode = useAuthStore((state) => state.salesEmployeeCode);
 
   const isAdminHook = useIsAdmin();
-  const isAdmin = isAdminHook || role === "ADMIN" || role === "FACTURACION";
+  const roleUpper = String(role || localStorage.getItem("role") || "").toUpperCase();
+  const isAdmin = Boolean(isAdminHook || roleUpper === "ADMIN" || roleUpper === "ADMINISTRADOR" || roleUpper.startsWith("ADMIN") || roleUpper === "FACTURACION");
   const isSeller = !isAdmin && !canFilterSellers;
 
   // Periodo dinámico recibido por props o fallback a hoy

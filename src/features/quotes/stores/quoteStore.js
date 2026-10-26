@@ -30,9 +30,14 @@ export const normalizeQuoteItem = (item) => {
   const rawPrice = Number(item.price ?? item.unitPrice ?? item.Price ?? item.UnitPrice ?? 0);
   const price = rawPrice > 0 ? rawPrice : 0;
   const discount = Number(item.discount ?? item.Discount ?? item.sapDiscount ?? 0);
-  const lineDiscount = Number(item.lineDiscount ?? item.LineDiscount ?? 0);
-  const totalDisc = Math.max(0, Math.min(56, Number((discount + lineDiscount).toFixed(2))));
-  const discountedUnitPrice = Number((price * (1 - totalDisc / 100)).toFixed(4));
+  const lineDiscount = Number(Number(item.lineDiscount ?? item.LineDiscount ?? 0).toFixed(2));
+  const totalDisc = Math.max(0, Math.min(80.0, Number((discount + lineDiscount).toFixed(2))));
+  const customPriceConIGV = item.customPriceConIGV !== undefined && item.customPriceConIGV !== null && !isNaN(Number(item.customPriceConIGV))
+    ? Number(item.customPriceConIGV)
+    : undefined;
+  const discountedUnitPrice = customPriceConIGV && customPriceConIGV > 0
+    ? Number((customPriceConIGV / 1.18).toFixed(4))
+    : Number((price * (1 - totalDisc / 100)).toFixed(4));
 
   // Permitir temporalmente string vacío al tipear para que el usuario pueda borrar y cambiar la cantidad libremente
   const rawQty = item.quantity ?? item.Quantity;
@@ -71,9 +76,20 @@ export const normalizeQuoteItem = (item) => {
     discount,
     sapDiscount: discount,
     lineDiscount,
-    discountPercent: totalDisc,
+    customPriceConIGV,
+    discountPercent: Number(totalDisc.toFixed(2)),
     discountedUnitPrice,
-    quantity: quantity === "" ? "" : (isNaN(Number(quantity)) || Number(quantity) < 1 ? 1 : Number(quantity)),
+    totalPrice: item.totalPrice !== undefined && !isNaN(Number(item.totalPrice)) && Number(item.totalPrice) > 0
+      ? Number(item.totalPrice)
+      : (item.lineTotal !== undefined && !isNaN(Number(item.lineTotal)) && Number(item.lineTotal) > 0
+        ? Number(item.lineTotal)
+        : Number((discountedUnitPrice * (Number(quantity) || 1)).toFixed(2))),
+    lineTotal: item.lineTotal !== undefined && !isNaN(Number(item.lineTotal)) && Number(item.lineTotal) > 0
+      ? Number(item.lineTotal)
+      : (item.totalPrice !== undefined && !isNaN(Number(item.totalPrice)) && Number(item.totalPrice) > 0
+        ? Number(item.totalPrice)
+        : Number((discountedUnitPrice * (Number(quantity) || 1)).toFixed(2))),
+    quantity: quantity === "" ? "" : (isNaN(Number(quantity)) || Number(quantity) < 1 ? 1 : Math.min(999999, Math.floor(Number(quantity)))),
     stock,
     stockChecked: item.stockChecked !== undefined ? item.stockChecked : (rawStock !== undefined && rawStock !== null),
     isAgotado,
@@ -269,7 +285,23 @@ export const useQuoteStore = create((set, get) => {
   return {
     ...getInitialStateWithDraft(),
 
-    setClient: (clientData) => customSet({ client: normalizeQuoteClient(clientData) }),
+    setClient: (clientData) => {
+      const normalizedClient = normalizeQuoteClient(clientData);
+      const docDigits = String(
+        normalizedClient?.FederalTaxID || 
+        normalizedClient?.clientDocument || 
+        normalizedClient?.documentNumber || 
+        normalizedClient?.LicTradNum || 
+        normalizedClient?.CardCode || 
+        ""
+      ).replace(/\D/g, "");
+      const autoDocType = docDigits.length === 8 ? "BOLETA" : "FACTURA";
+
+      customSet({ 
+        client: normalizedClient,
+        documentType: autoDocType 
+      });
+    },
     setQuoteId: (id) => customSet({ quoteId: id }),
     setApprovalStatus: (status) => customSet({ approvalStatus: status }),
 
@@ -310,7 +342,7 @@ export const useQuoteStore = create((set, get) => {
         updated = [...state.products];
         updated[index] = {
           ...updated[index],
-          quantity: updated[index].quantity + normalized.quantity,
+          quantity: Math.min(999999, (updated[index].quantity || 0) + (normalized.quantity || 1)),
         };
       } else {
         updated = [...state.products, normalized];
@@ -517,12 +549,12 @@ export const useQuoteStore = create((set, get) => {
         approvalStatus: quoteData.approvalStatus || quoteData.state || quoteData.status || null,
         rejectionReason: quoteData.rejectionReason || quoteData.observations || null,
         observations: quoteData.observations || quoteData.rejectionReason || null,
-        sellerName: quoteData.sellerName || quoteData.createdByUsername || null,
-        createdByUsername: quoteData.createdByUsername || quoteData.sellerName || null,
-        createdByUserId: quoteData.createdByUserId || quoteData.userId || null,
-        SlpCode: quoteData.SlpCode || quoteData.slpCode || quoteData.salesPersonCode || quoteData.salesEmployeeCode || null,
-        salesPersonCode: quoteData.salesPersonCode || quoteData.salesEmployeeCode || quoteData.SlpCode || null,
-        salesEmployeeCode: quoteData.salesEmployeeCode || quoteData.salesPersonCode || quoteData.SlpCode || null,
+        sellerName: quoteData.sellerName || quoteData.totals?.sellerName || quoteData.createdByUsername || null,
+        createdByUsername: quoteData.createdByUsername || quoteData.totals?.createdByUsername || quoteData.sellerName || null,
+        createdByUserId: quoteData.createdByUserId || quoteData.totals?.createdByUserId || quoteData.userId || null,
+        SlpCode: quoteData.SlpCode || quoteData.slpCode || quoteData.salesPersonCode || quoteData.salesEmployeeCode || quoteData.totals?.SlpCode || quoteData.totals?.slpCode || quoteData.totals?.salesPersonCode || quoteData.totals?.salesEmployeeCode || null,
+        salesPersonCode: quoteData.salesPersonCode || quoteData.salesEmployeeCode || quoteData.SlpCode || quoteData.totals?.salesPersonCode || quoteData.totals?.salesEmployeeCode || quoteData.totals?.SlpCode || quoteData.totals?.slpCode || null,
+        salesEmployeeCode: quoteData.salesEmployeeCode || quoteData.salesPersonCode || quoteData.SlpCode || quoteData.totals?.salesEmployeeCode || quoteData.totals?.salesPersonCode || quoteData.totals?.SlpCode || quoteData.totals?.slpCode || null,
         paymentMethod: quoteData.paymentMethod || quoteData.PaymentMethod || quoteData.totals?.paymentMethod || quoteData.totals?.PaymentMethod || "",
         bankAccount: (() => {
           const val = quoteData.bankAccount || quoteData.U_VS_BANCO || quoteData.totals?.bankAccount || quoteData.totals?.U_VS_BANCO || "";

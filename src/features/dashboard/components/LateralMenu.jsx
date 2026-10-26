@@ -48,7 +48,7 @@ import { HEADER_MAIN_BG } from '../../../components/TopHeaderBanner';
 // Opciones estáticas fuera del componente para evitar recreación de memoria en cada render
 const APPLICATION_OPTIONS = [
   { label: 'Gestión de Cotizaciones', icon: MdRequestQuote, path: '/historyquotes', access: 'GET:/quotes' },
-  { label: 'Pedidos', icon: MdLocalShipping, path: '/reports', access: 'GET:/reports' },
+  { label: 'Órdenes de Venta', icon: MdLocalShipping, path: '/reports', access: 'GET:/reports' },
   { label: 'Cuentas por cobrar', icon: MdAccountBalanceWallet, path: '/receivable', access: 'GET:/accountsReceivable' },
   { label: 'Lista de precios', icon: MdPriceChange, path: '/productsPriceList', access: 'GET:/priceList' },
   { label: 'Catálogo de productos', icon: MdInventory2, path: '/catalog', access: 'GET:/catalogProducts' },
@@ -171,7 +171,7 @@ export function LateralMenu() {
   const btnRef = useRef();
   const navigate = useNavigate();
   const location = useLocation();
-  const { username } = useAuthStore();
+  const { username, role } = useAuthStore();
   const { logout } = useAuthMutations();
 
   // Cerrar menú automáticamente al cambiar de página
@@ -182,11 +182,31 @@ export function LateralMenu() {
   const hasAccess = useHasAccess();
   const hasAdminAccess = hasAccess("PUT:/profile/admin/:userId");
 
-  // Etiqueta dinámica de rol para evitar catalogar falsamente como Administrador
+  // Etiqueta oficial de rol priorizando el cargo asignado en la cuenta del usuario
   const userRoleLabel = useMemo(() => {
-    if (hasAccess("PUT:/profile/admin/:userId")) {
+    // Si posee permiso maestro de administración de usuarios o endpoint admin, siempre es Administrador
+    if (hasAdminAccess || hasAccess("PUT:/profile/admin/:userId") || hasAccess("PUT /profile/admin/:userId")) {
       return "Administrador";
     }
+
+    const norm = String(role || "").toUpperCase().trim();
+    if (norm === "ADMINISTRADOR" || norm === "ADMIN") {
+      return "Administrador";
+    }
+    if (norm === "FACTURACION" || norm === "CREDITOS") {
+      return "Facturación y Créditos";
+    }
+    if (norm === "SUPERVISOR") {
+      return "Supervisor Comercial";
+    }
+    if (norm === "ALMACEN" || norm === "LOGISTICA") {
+      return "Logística / Despacho";
+    }
+    if (norm === "ASESOR_VENTAS" || norm === "VENDEDOR" || norm === "ASESOR") {
+      return "Asesor de Ventas";
+    }
+
+    // Fallback inteligente para sesiones previas sin migrar
     if (hasAccess("GET:/AdminQuotesSellers/:slpCode/:month") || (hasAccess("GET:/sellers") && hasAccess("GET:/visit-logs"))) {
       return "Supervisor Comercial";
     }
@@ -194,7 +214,7 @@ export function LateralMenu() {
       return "Facturación y Créditos";
     }
     return "Asesor de Ventas";
-  }, [hasAccess]);
+  }, [role, hasAccess, hasAdminAccess]);
 
   const handleLogout = useCallback(() => {
     logout.mutate();

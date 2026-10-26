@@ -1,6 +1,6 @@
 import axios from "axios";
 import {logoutUser} from "../../features/auth/services/auhtService";
-import {useAuthStore} from "../../features/auth/stores/useAuthStore";
+import {useAuthStore, updateLastActivity} from "../../features/auth/stores/useAuthStore";
 
 let isRefreshing = false;
 let failedQueue = [];
@@ -20,6 +20,14 @@ const processQueue = (error, token = null) => {
     });
     failedQueue = [];
 };
+
+// Interceptor de petición: cada llamada renueva el temporizador de actividad del usuario
+axiosInstance.interceptors.request.use((config) => {
+    try {
+        updateLastActivity();
+    } catch (_) {}
+    return config;
+});
 
 // Interceptor de respuesta
 axiosInstance.interceptors.response.use((res) => res, async (error) => {

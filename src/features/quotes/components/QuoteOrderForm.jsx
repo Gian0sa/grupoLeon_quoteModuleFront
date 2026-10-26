@@ -58,9 +58,7 @@ export default function QuoteOrderForm({ sellerName }) {
 
   useEffect(() => {
     if (!rateData) return;
-    // ⚠️ [NO TOCAR] SÍMBOLO DE CAMBIO - REGLA COMERCIAL AUTOPARTES:
-    // Redondeo a favor de la empresa (+0.04). Si la base termina en 3.385 (3.385 + 0.04 = 3.425), debe quedar en 3.43.
-    const rawVal = rateData.officialRate;
+    const rawVal = rateData.collectionRate || rateData.officialRate;
     const num = Number(rawVal);
     const finalRate = (rateData.rawRate === 3.385 || num === 3.42) ? 3.43 : (isNaN(num) ? rawVal : num);
     setExchangeRate({
@@ -411,10 +409,11 @@ export default function QuoteOrderForm({ sellerName }) {
                                 <NumberInput
                                   size="xs"
                                   min={1}
+                                  max={999999}
                                   value={p.quantity}
                                   onChange={(_, valueAsNumber) =>
                                     updateProduct(p.id, {
-                                      quantity: Number.isNaN(valueAsNumber) ? 1 : valueAsNumber,
+                                      quantity: Number.isNaN(valueAsNumber) ? 1 : Math.min(999999, Math.max(1, valueAsNumber)),
                                     })
                                   }
                                   maxW="70px"
@@ -563,7 +562,7 @@ export default function QuoteOrderForm({ sellerName }) {
                                     aria-label="Sumar"
                                     icon={<Plus className="w-3 h-3" />}
                                     size="xs"
-                                    onClick={() => updateProduct(p.id, { quantity: p.quantity + 1 })}
+                                    onClick={() => updateProduct(p.id, { quantity: Math.min(999999, (p.quantity || 1) + 1) })}
                                   />
                                 </HStack>
                                 <PackagingHelper

@@ -23,6 +23,9 @@ import { useAuthStore } from "../features/auth/stores/useAuthStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNotifications } from "../features/quotes/hooks/queries/quotesQueries";
 import { markNotificationAsRead, deleteNotification, clearNotifications, updateQuote, getQuoteById } from "../features/quotes/services/quoteService";
+import { checkQuoteLock, forceUnlockQuote } from "../features/quotes/services/quoteLockService";
+import { Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, ModalCloseButton, Alert, AlertIcon } from "@chakra-ui/react";
+import { Lock, Eye } from "lucide-react";
 import { useIsAdmin } from "../shared/utils/permissions";
 
 export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
@@ -30,8 +33,10 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
   const queryClient = useQueryClient();
   const [selectedQuoteForDrawer, setSelectedQuoteForDrawer] = useState(null);
   const [isQuoteDrawerOpen, setIsQuoteDrawerOpen] = useState(false);
+  const [lockAlertTarget, setLockAlertTarget] = useState(null);
 
   const [localVersion, setLocalVersion] = useState(0);
+  const [dismissedKeys, setDismissedKeys] = useState(() => new Set());
 
   useEffect(() => {
     const handleUpdate = () => setLocalVersion(v => v + 1);
@@ -43,7 +48,23 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
     };
   }, []);
 
-  const isAdmin = useIsAdmin();
+  const isAdminHook = useIsAdmin();
+  const sessionRoleUpper = String(role || localStorage.getItem("role") || "").trim().toUpperCase();
+  const isVerifierOrAdminRole =
+    isAdminHook ||
+    sessionRoleUpper === "ADMIN" ||
+    sessionRoleUpper === "ADMINISTRADOR" ||
+    sessionRoleUpper.startsWith("ADMIN") ||
+    sessionRoleUpper === "FACTURACION" ||
+    sessionRoleUpper.includes("DIGIT") ||
+    sessionRoleUpper.includes("SUPERVIS") ||
+    sessionRoleUpper.includes("CREDIT") ||
+    sessionRoleUpper.includes("COBRAN") ||
+    sessionRoleUpper.includes("GERENC") ||
+    sessionRoleUpper.includes("SISTEMA") ||
+    sessionRoleUpper.includes("JEFE");
+
+  const isAdmin = Boolean(isVerifierOrAdminRole);
   const { data: serverNotifs } = useNotifications(
     isAdmin ? "FACTURACION" : "VENDEDOR",
     username
@@ -53,8 +74,20 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
   const filterForCurrentUser = (notifs) => {
     if (!username && !role) return [];
     const userLower = (username || "").trim().toLowerCase();
-    const roleUpper = (role || "").trim().toUpperCase();
-    const isAdminOrMaster = isAdmin || roleUpper === "ADMIN" || roleUpper === "FACTURACION" || roleUpper === "SUPERVISOR";
+    const roleUpper = (role || localStorage.getItem("role") || "").trim().toUpperCase();
+    const isAdminOrMaster =
+      isAdmin ||
+      roleUpper === "ADMIN" ||
+      roleUpper === "ADMINISTRADOR" ||
+      roleUpper.startsWith("ADMIN") ||
+      roleUpper === "FACTURACION" ||
+      roleUpper.includes("DIGIT") ||
+      roleUpper.includes("SUPERVIS") ||
+      roleUpper.includes("CREDIT") ||
+      roleUpper.includes("COBRAN") ||
+      roleUpper.includes("GERENC") ||
+      roleUpper.includes("SISTEMA") ||
+      roleUpper.includes("JEFE");
 
     return notifs.filter((n) => {
       if (!n || !n.title) return false;
@@ -62,8 +95,15 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
       const targetUser = (n.targetUsername || "").trim().toLowerCase();
 
       if (isAdminOrMaster) {
-        // Facturación / Admin ONLY ve cotizaciones que requieren revisión/aprobación comercial
-        if (targetRoleUpper !== "FACTURACION" && targetRoleUpper !== "ADMIN") {
+        // Facturación / Admin / Digitador ONLY ve cotizaciones que requieren revisión/aprobación comercial
+        if (
+          targetRoleUpper !== "FACTURACION" &&
+          targetRoleUpper !== "ADMIN" &&
+          targetRoleUpper !== "ADMINISTRADOR" &&
+          !targetRoleUpper.startsWith("ADMIN") &&
+          !targetRoleUpper.includes("DIGIT") &&
+          !targetRoleUpper.includes("SUPERVIS")
+        ) {
           return false;
         }
         // Facturación NO ve alertas que son exclusivas del vendedor (órdenes SAP emitidas, anuladas, observadas)
@@ -72,7 +112,7 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
           return false;
         }
         const titleLower = String(n.title || "").toLowerCase();
-        if (titleLower.includes("orden sap") || titleLower.includes("pedido emitido") || titleLower.includes("cotización enviada a validación")) {
+        if (titleLower.includes("orden sap") || titleLower.includes("pedido emitido") || titleLower.includes("orden de venta") || titleLower.includes("orden emitida") || titleLower.includes("cotización enviada a validación")) {
           return false;
         }
         return true;
@@ -157,56 +197,76 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
                        rawQ.match(/^(\d+)$/);
       const canonicalKey = matchWeb ? `QUOTE-${Number(matchWeb[1])}` : rawQ;
 
+      // ⚡ Omitir de inmediato si fue descartada por el usuario (0ms)
+      if (
+        dismissedKeys.has(String(notif.id)) ||
+        dismissedKeys.has(String(notif.quoteId)) ||
+        dismissedKeys.has(canonicalKey) ||
+        (matchWeb && dismissedKeys.has(`QUOTE-${Number(matchWeb[1])}`))
+      ) {
+        continue;
+      }
+
       if (!uniqueMap.has(canonicalKey)) {
         uniqueMap.set(canonicalKey, notif);
       }
     }
 
     return Array.from(uniqueMap.values()).slice(0, 30);
-  }, [serverNotifs, username, userId, role, isAdmin, localVersion]);
+  }, [serverNotifs, username, userId, role, isAdmin, localVersion, dismissedKeys]);
 
   const unreadCount = React.useMemo(() => {
     return myNotifications.filter((n) => !n.read).length;
   }, [myNotifications]);
 
-  const handleClearAll = async () => {
-    try {
-      await clearNotifications(isAdmin ? "FACTURACION" : undefined, username);
-      queryClient.invalidateQueries({ queryKey: ["notifications"] });
-    } catch (e) {
-      console.error("Error clearing server notifications:", e);
-    }
-
-    try {
-      const raw = localStorage.getItem("grupoLeon_notifications");
-      const all = raw ? JSON.parse(raw) : [];
-      const remaining = all.filter((n) => {
-        if (n.targetUsername && username) {
-          return n.targetUsername.toLowerCase() !== username.toLowerCase();
-        }
-        if (n.targetRole === "FACTURACION" && isAdmin) {
-          return false;
-        }
-        if (n.targetUserId && userId) {
-          return String(n.targetUserId) !== String(userId);
-        }
-        return true;
+  const handleClearAll = () => {
+    // ⚡ 1. Descartar todas las alertas actuales de inmediato (0ms de latencia en pantalla)
+    setDismissedKeys(prev => {
+      const next = new Set(prev);
+      myNotifications.forEach(n => {
+        if (n.id) next.add(String(n.id));
+        if (n.quoteId) next.add(String(n.quoteId));
+        const rawQ = String(n.quoteId || n.id || "").trim();
+        const matchWeb = rawQ.match(/COT-WEB-(\d+)/i) || rawQ.match(/COT-(\d+)/i) || rawQ.match(/(\d+)/);
+        if (matchWeb) next.add(`QUOTE-${Number(matchWeb[1])}`);
       });
-      localStorage.setItem("grupoLeon_notifications", JSON.stringify(remaining));
+      return next;
+    });
+
+    // ⚡ 2. Limpieza inmediata de almacenamiento local
+    try {
+      localStorage.setItem("grupoLeon_notifications", "[]");
       window.dispatchEvent(new Event("localNotificationsUpdated"));
       setLocalVersion(v => v + 1);
     } catch {}
+
+    // ⚡ 3. Limpieza optimista en caché de React Query (0ms)
+    queryClient.setQueriesData({ queryKey: ["notifications"] }, []);
+
+    // ⚡ 4. Notificar al servidor en segundo plano
+    clearNotifications(isAdmin ? "FACTURACION" : undefined, username)
+      .catch(e => console.error("Error clearing server notifications:", e))
+      .finally(() => {
+        queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      });
   };
 
-  const handleDeleteNotif = async (id, quoteId) => {
-    try {
-      await deleteNotification(id, quoteId);
-      await markNotificationAsRead(id, quoteId);
-      queryClient.invalidateQueries({ queryKey: ["notifications"] });
-    } catch (e) {
-      console.error("Error deleting notif:", e);
-    }
+  const handleDeleteNotif = (id, quoteId) => {
+    const rawQ = String(quoteId || id || "").trim();
+    const matchWeb = rawQ.match(/COT-WEB-(\d+)/i) || rawQ.match(/COT-(\d+)/i) || rawQ.match(/(\d+)/);
+    const canonicalKey = matchWeb ? `QUOTE-${Number(matchWeb[1])}` : rawQ;
 
+    // ⚡ 1. ACTUALIZACIÓN OPTIMISTA INMEDIATA (0ms): La alerta desaparece al instante de la UI
+    setDismissedKeys(prev => {
+      const next = new Set(prev);
+      if (id) next.add(String(id));
+      if (quoteId) next.add(String(quoteId));
+      if (canonicalKey) next.add(canonicalKey);
+      if (matchWeb) next.add(`QUOTE-${Number(matchWeb[1])}`);
+      return next;
+    });
+
+    // ⚡ 2. Limpieza inmediata del almacenamiento local
     try {
       const raw = localStorage.getItem("grupoLeon_notifications");
       const all = raw ? JSON.parse(raw) : [];
@@ -214,12 +274,32 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
         if (id && String(n.id) === String(id)) return false;
         if (quoteId && String(n.quoteId || n.id) === String(quoteId)) return false;
         if (id && String(n.quoteId) === String(id)) return false;
+        if (matchWeb && String(n.quoteId || n.title || "").includes(String(matchWeb[1]))) return false;
         return true;
       });
       localStorage.setItem("grupoLeon_notifications", JSON.stringify(updated));
       window.dispatchEvent(new Event("localNotificationsUpdated"));
       setLocalVersion(v => v + 1);
     } catch {}
+
+    // ⚡ 3. Actualización optimista de caché de React Query (0ms)
+    queryClient.setQueriesData({ queryKey: ["notifications"] }, (old) => {
+      if (!Array.isArray(old)) return [];
+      return old.filter((n) => {
+        if (id && String(n.id) === String(id)) return false;
+        if (quoteId && String(n.quoteId || n.id) === String(quoteId)) return false;
+        if (matchWeb && String(n.quoteId || n.title || "").includes(String(matchWeb[1]))) return false;
+        return true;
+      });
+    });
+
+    // ⚡ 4. Sincronización asíncrona en segundo plano sin congelar la interfaz
+    Promise.allSettled([
+      deleteNotification(id, quoteId),
+      markNotificationAsRead(id, quoteId),
+    ]).finally(() => {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    });
   };
 
   const formatTimeAgo = (dateStr) => {
@@ -247,9 +327,18 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
     return `${date.toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit", year: "numeric" })} • ${timeStr}`;
   };
 
-  const handleOpenQuote = async (quoteObj, quoteId, notifId) => {
+  const handleOpenQuote = (quoteObj, quoteId, notifId) => {
     let targetDoc = quoteObj ? { ...quoteObj } : null;
     const targetId = quoteId || quoteObj?.docNumber || quoteObj?.id;
+
+    // Concurrencia de Digitación: Verificar si otro usuario ya la tiene abierta
+    if (targetId) {
+      const lockCheck = checkQuoteLock(targetId, userId, username);
+      if (lockCheck.isLocked && !isAdmin) {
+        setLockAlertTarget({ quoteId: targetId, lockInfo: lockCheck.lockInfo });
+        return;
+      }
+    }
 
     const extractItems = (doc) => {
       if (!doc) return [];
@@ -261,24 +350,10 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
       return [];
     };
 
-    // 1. Consultar directamente al backend para obtener la cotización real y actualizada
-    if (targetId) {
-      try {
-        const liveQuote = await getQuoteById(targetId);
-        if (liveQuote && (liveQuote.id || liveQuote.docNumber)) {
-          targetDoc = { ...liveQuote, ...(targetDoc || {}) };
-          if (liveQuote.state) targetDoc.state = liveQuote.state;
-          if (liveQuote.approvalStatus) targetDoc.approvalStatus = liveQuote.approvalStatus;
-          if (liveQuote.sapDocNum) targetDoc.sapDocNum = liveQuote.sapDocNum;
-          if (liveQuote.docNumber) targetDoc.docNumber = liveQuote.docNumber;
-        }
-      } catch (_) {}
-    }
-
+    // ⚡ 1. Resolución ultra rápida desde memoria / caché de React Query
     let items = extractItems(targetDoc);
 
     if (items.length === 0 && targetId) {
-      // 2. Buscar en caché de React Query
       try {
         const cachedQuotes = queryClient.getQueryData(["quotes"]);
         if (Array.isArray(cachedQuotes)) {
@@ -294,7 +369,7 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
         }
       } catch {}
 
-      // 3. Buscar en localStorage
+      // ⚡ 2. Fallback instantáneo en localStorage
       if (items.length === 0) {
         try {
           const savedQuotes = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
@@ -312,19 +387,19 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
     }
 
     if (!targetDoc) {
-      targetDoc = {
-        id: targetId,
-        docNumber: targetId,
-        state: "ENVIADO",
-      };
+      targetDoc = { id: targetId, docNumber: targetId };
     }
-
     targetDoc.products = items;
 
-    // Marcar como leída al abrir para despejar el contador sin borrar el historial
+    // ⚡ 3. APERTURA INSTANTÁNEA (0ms): Cerrar campanita y desplegar el detalle inmediatamente
+    onClose();
+    setSelectedQuoteForDrawer(targetDoc);
+    setIsQuoteDrawerOpen(true);
+
+    // ⚡ 4. Marcar como leída de forma asíncrona sin bloquear la interfaz
     try {
       markNotificationAsRead(notifId, targetId);
-      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"], refetchType: "none" });
       const raw = localStorage.getItem("grupoLeon_notifications");
       const all = raw ? JSON.parse(raw) : [];
       const updated = all.map(n => {
@@ -338,9 +413,24 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
       setLocalVersion(v => v + 1);
     } catch (e) {}
 
-    onClose(); // Cierra el panel de notificaciones para liberar el scroll móvil
-    setSelectedQuoteForDrawer(targetDoc);
-    setIsQuoteDrawerOpen(true);
+    // ⚡ 5. Sincronización en segundo plano con el servidor (sin congelar la pantalla del usuario)
+    if (targetId) {
+      getQuoteById(targetId)
+        .then((liveQuote) => {
+          if (liveQuote && (liveQuote.id || liveQuote.docNumber)) {
+            setSelectedQuoteForDrawer((prev) => {
+              if (!prev) return liveQuote;
+              const serverItems = extractItems(liveQuote);
+              return {
+                ...prev,
+                ...liveQuote,
+                products: serverItems.length > 0 ? serverItems : prev.products,
+              };
+            });
+          }
+        })
+        .catch(() => {});
+    }
   };
 
   const displayName = username || userId || "Usuario";
@@ -627,64 +717,142 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
       </Drawer>
 
       {/* Drawer de Detalle de Cotización desde la Campanita */}
-      <QuoteDetailDrawer
-        isOpen={isQuoteDrawerOpen}
-        onClose={() => setIsQuoteDrawerOpen(false)}
-        quote={selectedQuoteForDrawer}
-        onUpdateStatus={async (quoteId, newStatus, reasonNote) => {
-          const savedQuotes = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
-          const idStr = String(quoteId || "").trim();
-          const cleanId = idStr.replace(/^COT-0*/i, "");
-          const nowIso = new Date().toISOString();
+      {isQuoteDrawerOpen && selectedQuoteForDrawer && (
+        <QuoteDetailDrawer
+          isOpen={isQuoteDrawerOpen}
+          onClose={() => setIsQuoteDrawerOpen(false)}
+          quote={selectedQuoteForDrawer}
+          onUpdateStatus={async (quoteId, newStatus, reasonNote) => {
+            const savedQuotes = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
+            const idStr = String(quoteId || "").trim();
+            const cleanId = idStr.replace(/^COT-0*/i, "");
+            const nowIso = new Date().toISOString();
 
-          let targetDoc = null;
-          const updated = savedQuotes.map((q) => {
-            const qDoc = String(q.docNumber || "").trim();
-            const qId = String(q.id !== undefined && q.id !== null ? q.id : "").trim();
-            const cleanDoc = qDoc.replace(/^COT-0*/i, "");
-            const cleanQId = qId.replace(/^COT-0*/i, "");
+            let targetDoc = null;
+            const updated = savedQuotes.map((q) => {
+              const qDoc = String(q.docNumber || "").trim();
+              const qId = String(q.id !== undefined && q.id !== null ? q.id : "").trim();
+              const cleanDoc = qDoc.replace(/^COT-0*/i, "");
+              const cleanQId = qId.replace(/^COT-0*/i, "");
 
-            const isMatch = (qDoc && qDoc === idStr) || (qId && qId === idStr) || (cleanId && (cleanDoc === cleanId || cleanQId === cleanId));
-            if (isMatch) {
-              const currentHistory = q.historyLog || [];
-              const doc = {
-                ...q,
-                approvalStatus: newStatus,
-                status: newStatus,
-                state: newStatus,
-                rejectionReason: newStatus === "RECHAZADO" || newStatus === "OBSERVADO" ? reasonNote : q.rejectionReason,
-                observationReason: newStatus === "OBSERVADO" ? reasonNote : q.observationReason,
-                observedAt: newStatus === "OBSERVADO" ? nowIso : q.observedAt,
-                observedBy: newStatus === "OBSERVADO" ? (username || "Administrador") : q.observedBy,
-                updatedAt: nowIso,
-                historyLog: [
-                  {
-                    status: newStatus,
-                    timestamp: nowIso,
-                    user: username || "Administrador",
-                    note: reasonNote || `Cambio de estado a ${newStatus}`
-                  },
-                  ...currentHistory
-                ]
-              };
-              targetDoc = doc;
-              return doc;
+              const isMatch = (qDoc && qDoc === idStr) || (qId && qId === idStr) || (cleanId && (cleanDoc === cleanId || cleanQId === cleanId));
+              if (isMatch) {
+                const currentHistory = q.historyLog || [];
+                const doc = {
+                  ...q,
+                  approvalStatus: newStatus,
+                  status: newStatus,
+                  state: newStatus,
+                  rejectionReason: newStatus === "RECHAZADO" || newStatus === "OBSERVADO" ? reasonNote : q.rejectionReason,
+                  observationReason: newStatus === "OBSERVADO" ? reasonNote : q.observationReason,
+                  observedAt: newStatus === "OBSERVADO" ? nowIso : q.observedAt,
+                  observedBy: newStatus === "OBSERVADO" ? (username || "Administrador") : q.observedBy,
+                  updatedAt: nowIso,
+                  historyLog: [
+                    {
+                      status: newStatus,
+                      timestamp: nowIso,
+                      user: username || "Administrador",
+                      note: reasonNote || `Cambio de estado a ${newStatus}`
+                    },
+                    ...currentHistory
+                  ]
+                };
+                targetDoc = doc;
+                return doc;
+              }
+              return q;
+            });
+
+            localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updated));
+            window.dispatchEvent(new Event("localQuotesUpdated"));
+
+            if (targetDoc) {
+              try {
+                await updateQuote(targetDoc);
+              } catch (e) {
+                console.error("Error sincronizando estado desde NotificationDrawer:", e);
+              }
             }
-            return q;
-          });
+          }}
+        />
+      )}
 
-          localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updated));
-          window.dispatchEvent(new Event("localQuotesUpdated"));
-
-          if (targetDoc) {
-            try {
-              await updateQuote(targetDoc);
-            } catch (e) {
-              console.error("Error sincronizando estado desde NotificationDrawer:", e);
-            }
-          }
-        }}
-      />
+      {/* Modal de Concurrencia desde Notificación */}
+      <Modal isOpen={!!lockAlertTarget} onClose={() => setLockAlertTarget(null)} isCentered size="md">
+        <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(3px)" />
+        <ModalContent borderRadius="2xl" p={2}>
+          <ModalHeader display="flex" alignItems="center" gap={2} color="#b45309" fontSize="md">
+            <Lock className="w-5 h-5 text-amber-600" />
+            Cotización en Revisión Activa
+          </ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <VStack align="stretch" spacing={3}>
+              <Alert status="warning" borderRadius="xl" bg="#fffbeb" border="1.5px solid #fde68a" p={3.5}>
+                <AlertIcon />
+                <Box fontSize="xs">
+                  <Text fontWeight="900" color="#92400e">
+                    Esta cotización ({lockAlertTarget?.quoteId}) ya fue abierta y está siendo atendida en este momento.
+                  </Text>
+                  <Text color="#78350f" mt={1.5} fontWeight="700">
+                    👤 Atendida por: <strong>{lockAlertTarget?.lockInfo?.lockedByUsername}</strong> ({lockAlertTarget?.lockInfo?.lockedByProfile})
+                  </Text>
+                  <Text color="#92400e" mt={0.5} fontSize="11px">
+                    ⏰ Inicio de verificación: {lockAlertTarget?.lockInfo?.lockedAt ? new Date(lockAlertTarget.lockInfo.lockedAt).toLocaleTimeString() : "Recientemente"}
+                  </Text>
+                </Box>
+              </Alert>
+              <Text fontSize="xs" color="gray.600" fontWeight="600">
+                Para evitar emisión duplicada de órdenes en SAP o inconsistencia de datos, no se permite que dos personas de digitación la verifiquen simultáneamente.
+              </Text>
+            </VStack>
+          </ModalBody>
+          <ModalFooter gap={2}>
+            {isAdmin && (
+              <Button
+                colorScheme="red"
+                variant="outline"
+                size="sm"
+                fontWeight="800"
+                onClick={() => {
+                  forceUnlockQuote(lockAlertTarget?.quoteId);
+                  setLockAlertTarget(null);
+                }}
+              >
+                ⚠️ Forzar Desbloqueo (Admin)
+              </Button>
+            )}
+            <Button
+              colorScheme="blue"
+              variant="outline"
+              size="sm"
+              fontWeight="700"
+              leftIcon={<Eye className="w-4 h-4" />}
+              onClick={async () => {
+                const targetId = lockAlertTarget?.quoteId;
+                setLockAlertTarget(null);
+                if (targetId) {
+                  try {
+                    const q = await getQuoteById(targetId);
+                    if (q) {
+                      setSelectedQuoteForDrawer(q);
+                      setIsQuoteDrawerOpen(true);
+                    }
+                  } catch (e) {
+                    console.error("Error cargando cotización para modo solo lectura:", e);
+                  }
+                }
+              }}
+            >
+              👁️ Ver en Modo Solo Lectura
+            </Button>
+            <Button colorScheme="gray" size="sm" fontWeight="700" onClick={() => setLockAlertTarget(null)}>
+              Entendido / Cerrar
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </>
   );
 }

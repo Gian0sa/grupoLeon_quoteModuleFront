@@ -75,12 +75,14 @@ export function NewProductSection({ products }) {
                   <Input
                     type="number"
                     min={1}
+                    max={999999}
                     value={product.quantity}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
                       updateProduct(product.id, {
-                        quantity: parseInt(e.target.value),
-                      })
-                    }
+                        quantity: isNaN(val) ? "" : Math.min(999999, Math.max(1, val)),
+                      });
+                    }}
                     size="sm"
                     width="60px"
                   />

@@ -12,7 +12,8 @@ export const getProductsPriceList = async ({
   tipo = '', 
   subtipo = '',  
   stock = 'N',
-  page = 1
+  page = 1,
+  signal,
 }) => {
   try {
     const params = new URLSearchParams();
@@ -28,10 +29,12 @@ export const getProductsPriceList = async ({
 
     const url = `/reportModule/priceList?${params.toString()}`;
 
-    const response = await axiosInstance.get(url);
-    console.log("Respuesta:", response.data);
+    const response = await axiosInstance.get(url, { signal });
     return response.data;
   } catch (error) {
+    if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') {
+      return null;
+    }
     console.error("Error al obtener la lista de precios:", error);
     return null;
   }

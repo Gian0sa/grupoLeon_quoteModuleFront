@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Box, Heading, Text, VStack, HStack, Table, Thead, Tbody, Tr, Th, Td,
   TableContainer, Badge, Button, Flex, Tabs, TabList, TabPanels, Tab, TabPanel,
@@ -13,6 +13,7 @@ import { useHasAccess, useIsAdmin } from "../../../shared/utils/permissions";
 import { useGetPromotions } from "../hooks/queries/quotesQueries";
 import { ProductPromotionsModal } from "../components/ProductPromotionsModal";
 import { SapQuoteDocumentModal } from "../components/SapQuoteDocumentModal";
+import { SapEnvironmentBadge } from "../components/SapEnvironmentBadge";
 import { QuoteApprovalPage } from "./QuoteApprovalPage";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -39,11 +40,39 @@ export function HistoryQuotesPage() {
 
   const { setQuoteData, setClient, setProducts, setComment, setWhsCode, setContactPerson, setRefNumber } = useQuoteStore();
   const { username, role: authRole } = useAuthStore();
+  const endpoints = useAuthStore((state) => state.endpoints);
+  const [localEndpoints, setLocalEndpoints] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("endpoints") || "[]");
+    } catch {
+      return [];
+    }
+  });
+
   const localUser = (localStorage.getItem("username") || localStorage.getItem("userId") || "").toLowerCase();
   const localRole = (localStorage.getItem("role") || "").toUpperCase();
   const hasAccess = useHasAccess();
   const isAdmin = useIsAdmin();
-  const canManagePromotions = isAdmin || hasAccess("POST /promotions") || hasAccess("POST:/promotions") || hasAccess("GET /promotions") || hasAccess("GET:/promotions");
+
+  // 🛡️ Las promociones y ofertas del mes se muestran ÚNICAMENTE si el usuario
+  // tiene activado explícitamente el permiso "Cotizaciones - Gestionar Ofertas del Mes y Promociones" (POST /promotions).
+  // Si está inactivo o desmarcado en el perfil, el botón se oculta estrictamente sin excepción.
+  const canManagePromotions = useMemo(() => {
+    const list = Array.isArray(endpoints) && endpoints.length > 0 ? endpoints : localEndpoints;
+    return list.some((e) => {
+      if (!e) return false;
+      const str = String(e).trim().toUpperCase();
+      return (
+        str === "POST:/PROMOTIONS" ||
+        str === "POST /PROMOTIONS" ||
+        str === "/PROMOTIONS" ||
+        str === "POST:/QUOTEMODULE/PROMOTIONS" ||
+        str === "POST /QUOTEMODULE/PROMOTIONS" ||
+        str.endsWith("/PROMOTIONS")
+      );
+    });
+  }, [endpoints, localEndpoints]);
+
   const canCreateQuote = isAdmin || hasAccess("POST /quotes") || hasAccess("POST:/quotes");
 
   const [isPromoModalOpen, setIsPromoModalOpen] = useState(false);
@@ -70,14 +99,26 @@ export function HistoryQuotesPage() {
     }
   };
 
+  const reloadPermissions = () => {
+    try {
+      const stored = JSON.parse(localStorage.getItem("endpoints") || "[]");
+      setLocalEndpoints(stored);
+    } catch (err) {
+      console.error("Error leyendo permisos locales:", err);
+    }
+  };
+
   useEffect(() => {
     reloadLocal();
     reloadNotifications();
+    reloadPermissions();
     window.addEventListener("localQuotesUpdated", reloadLocal);
     window.addEventListener("localNotificationsUpdated", reloadNotifications);
+    window.addEventListener("permissionsUpdated", reloadPermissions);
     return () => {
       window.removeEventListener("localQuotesUpdated", reloadLocal);
       window.removeEventListener("localNotificationsUpdated", reloadNotifications);
+      window.removeEventListener("permissionsUpdated", reloadPermissions);
     };
   }, []);
 
@@ -124,6 +165,7 @@ export function HistoryQuotesPage() {
     <Box w="full" minH="100vh" bg="gray.50" pb="100px">
       <TopHeaderBanner
         title="Gestión de Cotizaciones"
+        titleExtra={<SapEnvironmentBadge />}
         subtitle={`Centro Unificado de Creación, Historial y Aprobaciones • ${today.charAt(0).toUpperCase() + today.slice(1)}`}
         showBack={true}
         showExchangeRate={false}

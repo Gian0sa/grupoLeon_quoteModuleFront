@@ -39,8 +39,17 @@ import {
   ShieldAlert,
   ShieldCheck,
   Shield,
-  AlertTriangle
+  AlertTriangle,
+  Briefcase,
+  Receipt,
+  Award,
+  PackageCheck,
+  Sparkles,
+  Check
 } from "lucide-react";
+
+import RoleSelectorMenu, { AVAILABLE_ROLES } from "./RoleSelectorMenu";
+export { AVAILABLE_ROLES };
 
 export default function UserBasicFields({
   formData,
@@ -50,6 +59,7 @@ export default function UserBasicFields({
   onUnlock,
   isUnlocking,
   onToggleMasterAdmin,
+  onApplyRolePreset,
 }) {
   const [showPassword, setShowPassword] = useState(false);
   const [isConfirmAdminOpen, setIsConfirmAdminOpen] = useState(false);
@@ -58,15 +68,18 @@ export default function UserBasicFields({
     selectedUser?.blockedUntil && new Date(selectedUser.blockedUntil) > new Date()
   );
 
-  const isMasterAdmin = (formData?.permittedServices || []).some((id) => Number(id) === 22);
+  const isMasterAdmin = (formData?.permittedServices || []).some((id) => Number(id) === 22) || formData?.role === "ADMINISTRADOR";
   const isSeller = Boolean(formData?.salesEmployeeCode && Number(formData?.salesEmployeeCode) > 0);
 
-  const handleAdminSwitchChange = (e) => {
-    const willEnable = e.target.checked;
-    if (willEnable) {
+  const currentRoleKey = formData?.role || (isMasterAdmin ? "ADMINISTRADOR" : (isSeller ? "ASESOR_VENTAS" : "ASESOR_VENTAS"));
+  const activeRoleConfig = AVAILABLE_ROLES.find((r) => r.key === currentRoleKey) || AVAILABLE_ROLES[0];
+
+  const handleSelectRole = (newRoleKey) => {
+    if (newRoleKey === "ADMINISTRADOR") {
       setIsConfirmAdminOpen(true);
     } else {
-      if (onToggleMasterAdmin) {
+      onChange({ target: { name: "role", value: newRoleKey } });
+      if (isMasterAdmin && onToggleMasterAdmin) {
         onToggleMasterAdmin(false);
       }
     }
@@ -74,6 +87,7 @@ export default function UserBasicFields({
 
   const handleConfirmEnableAdmin = () => {
     setIsConfirmAdminOpen(false);
+    onChange({ target: { name: "role", value: "ADMINISTRADOR" } });
     if (onToggleMasterAdmin) {
       onToggleMasterAdmin(true);
     }
@@ -255,103 +269,45 @@ export default function UserBasicFields({
         </FormControl>
       </SimpleGrid>
 
-      {/* ─── SWITCHES DE ESTADO Y ROL MAESTRO ─── */}
-      <VStack spacing={3} align="stretch">
-        {/* 1. Switch de Usuario Activo */}
-        <Flex
-          align="center"
-          justify="space-between"
-          bg="white"
-          p={3}
-          borderRadius="xl"
-          border="1px solid"
-          borderColor="gray.200"
-        >
-          <Box>
-            <Text fontSize="xs" fontWeight="800" color="gray.800">
-              Estado de Cuenta
-            </Text>
-            <Text fontSize="11px" color={formData.active ? "green.700" : "red.600"} fontWeight="600">
-              {formData.active
-                ? "🟢 Usuario activo (puede iniciar sesión y operar)"
-                : "🔴 Usuario inactivo (acceso bloqueado temporalmente)"}
-            </Text>
-          </Box>
-          <Switch
-            isChecked={formData.active}
-            onChange={(e) => onChange({ target: { name: "active", value: e.target.checked } })}
-            colorScheme="green"
-            size="lg"
-          />
-        </Flex>
+      {/* ─── 2. CARGO / ROL OFICIAL EN LA EMPRESA (COMPACTO TIPO HAMBURGUESA) ─── */}
+      <RoleSelectorMenu
+        role={currentRoleKey}
+        onSelectRole={handleSelectRole}
+        onApplyRolePreset={onApplyRolePreset}
+        stepNumber="2."
+        title="Cargo / Perfil Oficial del Colaborador"
+        subtitle="Define el puesto en la empresa. Este cargo se mostrará en su perfil y menú lateral de forma independiente a los permisos técnicos que le actives."
+        mb={4}
+      />
 
-        {/* 2. 🛡️ ACTIVACIÓN EXCLUSIVA DE ROL ADMINISTRADOR MAESTRO */}
-        <Box
-          p={3.5}
-          borderRadius="xl"
-          border="1.5px solid"
-          borderColor={isMasterAdmin ? "#fca5a5" : "gray.200"}
-          bg={isMasterAdmin ? "linear-gradient(to right, #ffffff, #fef2f2)" : "white"}
-          boxShadow={isMasterAdmin ? "0 0 0 1px #fca5a5" : "none"}
-          transition="all 0.2s ease"
-        >
-          <Flex direction={{ base: "column", sm: "row" }} justify="space-between" align={{ base: "flex-start", sm: "center" }} gap={3}>
-            <HStack spacing={3} align="flex-start" flex="1">
-              <Flex
-                w="38px"
-                h="38px"
-                minW="38px"
-                borderRadius="xl"
-                bg={isMasterAdmin ? "#fee2e2" : "gray.100"}
-                color={isMasterAdmin ? "#dc2626" : "gray.500"}
-                align="center"
-                justify="center"
-              >
-                {isMasterAdmin ? <ShieldAlert className="w-5 h-5 text-red-600 stroke-[2.5]" /> : <ShieldCheck className="w-5 h-5 text-gray-500" />}
-              </Flex>
-              <Box>
-                <HStack spacing={2} wrap="wrap">
-                  <Text fontSize="xs" fontWeight="900" color={isMasterAdmin ? "red.800" : "gray.800"}>
-                    Rol Administrador del Sistema
-                  </Text>
-                  <Badge
-                    bg={isMasterAdmin ? "#fee2e2" : "#f1f5f9"}
-                    color={isMasterAdmin ? "#b91c1c" : "#64748b"}
-                    border="1px solid"
-                    borderColor={isMasterAdmin ? "#fca5a5" : "#e2e8f0"}
-                    fontSize="9px"
-                    fontWeight="900"
-                    px={2}
-                    py={0.2}
-                    borderRadius="full"
-                    letterSpacing="wider"
-                  >
-                    {isMasterAdmin ? "👑 ROL MAESTRO ACTIVO" : "⚪ USUARIO ESTÁNDAR"}
-                  </Badge>
-                </HStack>
-                <Text fontSize="11px" color={isMasterAdmin ? "red.700" : "gray.500"} mt={0.5}>
-                  {isMasterAdmin
-                    ? "Acceso total a gestión de usuarios, edición de permisos y contraseñas (PUT /profile/admin/:userId)."
-                    : "Usuario regular sin privilegios administrativos. Acceso limitado únicamente a las opciones marcadas en el árbol inferior."}
-                </Text>
-                {isSeller && (
-                  <Text fontSize="10.5px" color="amber.700" fontWeight="700" mt={1}>
-                    💼 Vendedor Comercial SAP #{formData.salesEmployeeCode} (Recomendado mantener desactivado).
-                  </Text>
-                )}
-              </Box>
-            </HStack>
-
-            <Switch
-              isChecked={isMasterAdmin}
-              onChange={handleAdminSwitchChange}
-              colorScheme="red"
-              size="lg"
-              alignSelf={{ base: "flex-end", sm: "center" }}
-            />
-          </Flex>
+      {/* ─── ESTADO DE CUENTA (USUARIO ACTIVO / INACTIVO) ─── */}
+      <Flex
+        align="center"
+        justify="space-between"
+        bg="white"
+        p={3.5}
+        borderRadius="xl"
+        border="1px solid"
+        borderColor={formData.active ? "gray.200" : "red.200"}
+        mb={4}
+      >
+        <Box>
+          <Text fontSize="xs" fontWeight="800" color="gray.800">
+            Estado de Cuenta
+          </Text>
+          <Text fontSize="11px" color={formData.active ? "green.700" : "red.600"} fontWeight="600" mt={0.5}>
+            {formData.active
+              ? "🟢 Usuario activo (puede iniciar sesión y operar)"
+              : "🔴 Usuario inactivo (acceso bloqueado temporalmente)"}
+          </Text>
         </Box>
-      </VStack>
+        <Switch
+          isChecked={formData.active}
+          onChange={(e) => onChange({ target: { name: "active", value: e.target.checked } })}
+          colorScheme="green"
+          size="lg"
+        />
+      </Flex>
 
       {/* ─── MODAL DE CONFIRMACIÓN DE SEGURIDAD PARA ROL MAESTRO ─── */}
       <Modal isOpen={isConfirmAdminOpen} onClose={() => setIsConfirmAdminOpen(false)} isCentered size="md">

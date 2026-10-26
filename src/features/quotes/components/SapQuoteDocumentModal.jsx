@@ -37,7 +37,10 @@ import { useAuthStore } from "../../auth/stores/useAuthStore";
 
 const money = (val) => {
   const num = Number(val || 0);
-  return num.toFixed(2);
+  return num.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 };
 
 const extractProducts = (q) => {
@@ -73,10 +76,19 @@ const normalizeItem = (item) => {
   const promoDisc = Math.max(0, Math.min(100, isNaN(rawPromoDisc) ? 0 : rawPromoDisc));
   const addDisc = Math.max(0, Math.min(100, isNaN(rawAddDisc) ? 0 : rawAddDisc));
 
+  const isOutOfStock = Boolean(
+    item.isAgotado === true ||
+    (item.stockChecked && typeof item.stock === "number" && item.stock <= 0) ||
+    (item.stock !== undefined && item.stock !== null && Number(item.stock) === 0)
+  );
+
   let finalUnitPrice = 0;
   let lineTotalNum = 0;
 
-  if (item.discountedUnitPrice && Number(item.discountedUnitPrice) > 0) {
+  if (isOutOfStock) {
+    finalUnitPrice = 0;
+    lineTotalNum = 0;
+  } else if (item.discountedUnitPrice && Number(item.discountedUnitPrice) > 0) {
     finalUnitPrice = Number(Number(item.discountedUnitPrice).toFixed(2));
     lineTotalNum = item.lineTotal && Number(item.lineTotal) > 0
       ? Number(Number(item.lineTotal).toFixed(2))
@@ -89,7 +101,7 @@ const normalizeItem = (item) => {
     finalUnitPrice = Number((lineTotalNum / qty).toFixed(2));
   } else {
     const listPrice = Number(item.price ?? item.unitPrice ?? item.Price ?? item.UnitPrice ?? item.importe ?? 0);
-    const totalDisc = Math.min(65.0, Number(item.discountPercent ?? (sapDisc + promoDisc + addDisc)));
+    const totalDisc = Math.min(100.0, Math.max(0, Number(item.discountPercent ?? (sapDisc + promoDisc + addDisc))));
     finalUnitPrice = Number((listPrice * (1 - totalDisc / 100)).toFixed(2));
     lineTotalNum = Number((qty * finalUnitPrice).toFixed(2));
   }
@@ -103,7 +115,7 @@ const normalizeItem = (item) => {
   const discParts = [];
   if (sapDisc > 0) discParts.push(`-${sapDisc}%`);
   if (promoDisc > 0) discParts.push(`-${promoDisc}% Promo`);
-  if (addDisc > 0) discParts.push(`-${addDisc}%`);
+  if (addDisc > 0) discParts.push(`-${Number(addDisc).toFixed(2)}%`);
   const discTag = discParts.length > 0 ? ` (${discParts.join(" ")})` : "";
 
   return {
@@ -112,6 +124,7 @@ const normalizeItem = (item) => {
     desc: `${baseName}${discTag}`.trim(),
     finalUnitPrice,
     lineTotalNum,
+    isOutOfStock,
   };
 };
 
@@ -198,7 +211,8 @@ export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) 
   const [isJsonModalOpen, setIsJsonModalOpen] = useState(false);
   const isAdminHook = useIsAdmin();
   const { role } = useAuthStore();
-  const isAdmin = isAdminHook || String(role || "").toUpperCase() === "ADMIN";
+  const roleUpper = String(role || localStorage.getItem("role") || "").toUpperCase();
+  const isAdmin = Boolean(isAdminHook || roleUpper === "ADMIN" || roleUpper === "ADMINISTRADOR" || roleUpper.startsWith("ADMIN"));
 
   const handleAutoFit = () => {
     const availableW = window.innerWidth - 32;
@@ -821,8 +835,8 @@ export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) 
                           const itemNum = idx + 1;
                           const qty = item ? item.qty : "";
                           const name = item ? item.desc : "";
-                          const price = item && item.finalUnitPrice ? `${currencySymbol.trim()}${money(item.finalUnitPrice)}` : "";
-                          const lineTotal = item && item.lineTotalNum ? `${currencySymbol.trim()}${money(item.lineTotalNum)}` : "";
+                          const price = item && item.isOutOfStock ? "Sin Stock" : (item && item.finalUnitPrice ? `${currencySymbol.trim()}${money(item.finalUnitPrice)}` : "");
+                          const lineTotal = item && item.isOutOfStock ? "Back Order" : (item && item.lineTotalNum ? `${currencySymbol.trim()}${money(item.lineTotalNum)}` : "");
                           const descStyle = getItemDescStyle(name);
                           const priceStyle = getPriceStyle(price);
                           const lineTotalStyle = getPriceStyle(lineTotal);
@@ -876,8 +890,8 @@ export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) 
                           const itemNum = idx + 16;
                           const qty = item ? item.qty : "";
                           const name = item ? item.desc : "";
-                          const price = item && item.finalUnitPrice ? `${currencySymbol.trim()}${money(item.finalUnitPrice)}` : "";
-                          const lineTotal = item && item.lineTotalNum ? `${currencySymbol.trim()}${money(item.lineTotalNum)}` : "";
+                          const price = item && item.isOutOfStock ? "Sin Stock" : (item && item.finalUnitPrice ? `${currencySymbol.trim()}${money(item.finalUnitPrice)}` : "");
+                          const lineTotal = item && item.isOutOfStock ? "Back Order" : (item && item.lineTotalNum ? `${currencySymbol.trim()}${money(item.lineTotalNum)}` : "");
                           const descStyle = getItemDescStyle(name);
                           const priceStyle = getPriceStyle(price);
                           const lineTotalStyle = getPriceStyle(lineTotal);

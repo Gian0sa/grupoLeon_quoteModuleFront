@@ -40,26 +40,24 @@ export const isPickupInStoreForm = (form) => {
     const name = String(parsed.TrnspName ?? parsed.name ?? parsed.label ?? "");
     const combined = `${code} ${name}`.toLowerCase();
     return (
-      combined.includes("recojo") ||
-      combined.includes("tienda") ||
-      combined.includes("almacen") ||
-      combined.includes("almacén") ||
-      combined.includes("recoge") ||
       code === "1" ||
-      code === "4" ||
-      code === "04"
+      combined.includes("recojo tienda") ||
+      combined.includes("recojo en tienda") ||
+      combined.includes("recojo almacen") ||
+      combined.includes("recojo almacén") ||
+      combined.includes("recoge en tienda") ||
+      (combined.includes("recojo") && !combined.includes("interprovincial") && !combined.includes("transporte") && !combined.includes("carga"))
     );
   }
   const str = String(parsed).toLowerCase();
   return (
-    str.includes("recojo") ||
-    str.includes("tienda") ||
-    str.includes("almacen") ||
-    str.includes("almacén") ||
-    str.includes("recoge") ||
     str === "1" ||
-    str === "4" ||
-    str === "04"
+    str.includes("recojo tienda") ||
+    str.includes("recojo en tienda") ||
+    str.includes("recojo almacen") ||
+    str.includes("recojo almacén") ||
+    str.includes("recoge en tienda") ||
+    (str.includes("recojo") && !str.includes("interprovincial") && !str.includes("transporte") && !str.includes("carga"))
   );
 };
 
@@ -78,10 +76,28 @@ export const isOwnPickupInStoreForm = (form) => {
     const code = String(parsed.TrnspCode ?? parsed.code ?? parsed.value ?? "");
     const name = String(parsed.TrnspName ?? parsed.name ?? parsed.label ?? "");
     const combined = `${code} ${name}`.toLowerCase();
-    return combined.includes("reparto propio") || combined.includes("motorizado propio") || combined.includes("propio") || code === "2" || code === "02" || code === "5" || code === "05";
+    // En SAP B1: Código 2 es "05. Reparto Propio - Programación", Código 3 es "06. Envio Motorizado Propio"
+    // NUNCA debe incluir Código 5 ("02. Transporte Interprovincial"), Código 6 ("03. Servicio de Ag. de Transporte") ni Código 7 ("01. Transporte Carga Terrestre")
+    const isAgency = combined.includes("interprovincial") || combined.includes("ag. de transporte") || combined.includes("agencia") || combined.includes("carga terrestre") || code === "5" || code === "6" || code === "7" || code === "9";
+    if (isAgency) return false;
+    return (
+      code === "2" ||
+      code === "3" ||
+      combined.includes("reparto propio") ||
+      combined.includes("motorizado propio") ||
+      (combined.includes("propio") && !combined.includes("interprovincial"))
+    );
   }
   const str = String(parsed).toLowerCase();
-  return str.includes("reparto propio") || str.includes("motorizado propio") || str.includes("propio") || str === "2" || str === "02" || str === "5" || str === "05";
+  const isAgencyStr = str.includes("interprovincial") || str.includes("ag. de transporte") || str.includes("agencia") || str.includes("carga terrestre") || str === "5" || str === "6" || str === "7" || str === "9";
+  if (isAgencyStr) return false;
+  return (
+    str === "2" ||
+    str === "3" ||
+    str.includes("reparto propio") ||
+    str.includes("motorizado propio") ||
+    (str.includes("propio") && !str.includes("interprovincial"))
+  );
 };
 
 export const getCustomSelectStyles = (isLocked) => ({
@@ -585,6 +601,24 @@ export function NewSellTerms({
     }
   }, [client, allPaymentTypes, selectedPaymentType]);
 
+  // Auto-deducir internamente si es BOLETA o FACTURA según documento del cliente (DNI 8 dígitos -> BOLETA, RUC/Empresa -> FACTURA)
+  useEffect(() => {
+    if (setDocumentType) {
+      const clientDocDigits = String(
+        client?.FederalTaxID || 
+        client?.clientDocument || 
+        client?.documentNumber || 
+        client?.LicTradNum || 
+        client?.CardCode || 
+        ""
+      ).replace(/\D/g, "");
+      const autoDocType = clientDocDigits.length === 8 ? "BOLETA" : "FACTURA";
+      if (documentType !== autoDocType) {
+        setDocumentType(autoDocType);
+      }
+    }
+  }, [client, documentType, setDocumentType]);
+
   return (
     <VStack align="stretch" spacing={5} py={2}>
       {clientAdapted ? (
@@ -841,21 +875,25 @@ export function NewSellTerms({
                                       saleCondition === "CREDITO";
 
             const clientDocDigits = String(client?.FederalTaxID || client?.clientDocument || client?.documentNumber || client?.LicTradNum || client?.CardCode || "").replace(/\D/g, "");
-            const isLikelyRuc = clientDocDigits.length === 11;
             const isLikelyDni = clientDocDigits.length === 8;
-            const effectiveDocType = documentType || (isLikelyRuc ? "FACTURA" : "BOLETA");
+            const effectiveDocType = isLikelyDni ? "BOLETA" : "FACTURA";
 
             return (
               <VStack align="stretch" spacing={4}>
-                <Grid templateColumns={{ base: "1fr", md: "1.4fr 1fr" }} gap={3.5}>
+                <Box>
                   <FormControl>
                     <Flex justify="space-between" align="center" mb={1.5}>
                       <FormLabel fontSize="xs" fontWeight="800" color="gray.700" mb={0}>
                         Tipo de Pago / Condición Comercial (Tabla OCTG - SAP B1) {isFinanceLocked && "🔒"}
                       </FormLabel>
-                      <Badge colorScheme={isCreditCondition ? "purple" : "green"} fontSize="9px" px={1.5} py={0.2} borderRadius="sm" fontWeight="800">
-                        {isCreditCondition ? "CRÉDITO" : "CONTADO"}
-                      </Badge>
+                      <HStack spacing={2}>
+                        <Badge colorScheme={effectiveDocType === "FACTURA" ? "blue" : "teal"} fontSize="10px" px={2} py={0.5} borderRadius="md" fontWeight="800">
+                          {effectiveDocType === "FACTURA" ? "📄 FACTURA (RUC)" : "🧾 BOLETA (DNI)"}
+                        </Badge>
+                        <Badge colorScheme={isCreditCondition ? "purple" : "green"} fontSize="10px" px={2} py={0.5} borderRadius="md" fontWeight="800">
+                          {isCreditCondition ? "CRÉDITO" : "CONTADO"}
+                        </Badge>
+                      </HStack>
                     </Flex>
                     <CreatableSelect
                       isDisabled={isFinanceLocked}
@@ -875,53 +913,7 @@ export function NewSellTerms({
                       </Text>
                     )}
                   </FormControl>
-
-                  {/* Selector de Comprobante Fiscal (FACTURA / BOLETA) */}
-                  <FormControl>
-                    <Flex justify="space-between" align="center" mb={1.5}>
-                      <FormLabel fontSize="xs" fontWeight="800" color="gray.700" mb={0}>
-                        Tipo de Comprobante Fiscal {isFinanceLocked && "🔒"}
-                      </FormLabel>
-                      <Badge colorScheme={effectiveDocType === "FACTURA" ? "blue" : "teal"} fontSize="9px" px={1.5} py={0.2} borderRadius="sm" fontWeight="800">
-                        {isLikelyRuc ? "RUC DETECTADO" : isLikelyDni ? "DNI DETECTADO" : "AUTO"}
-                      </Badge>
-                    </Flex>
-                    <HStack spacing={2}>
-                      <Button
-                        size="sm"
-                        variant={effectiveDocType === "FACTURA" ? "solid" : "outline"}
-                        colorScheme="blue"
-                        onClick={() => {
-                          if (!isFinanceLocked && setDocumentType) setDocumentType("FACTURA");
-                        }}
-                        isDisabled={isFinanceLocked}
-                        fontSize="xs"
-                        fontWeight="800"
-                        borderRadius="lg"
-                        h="40px"
-                        flex="1"
-                      >
-                        📄 FACTURA {isLikelyRuc && "(RUC)"}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={effectiveDocType === "BOLETA" ? "solid" : "outline"}
-                        colorScheme="teal"
-                        onClick={() => {
-                          if (!isFinanceLocked && setDocumentType) setDocumentType("BOLETA");
-                        }}
-                        isDisabled={isFinanceLocked}
-                        fontSize="xs"
-                        fontWeight="800"
-                        borderRadius="lg"
-                        h="40px"
-                        flex="1"
-                      >
-                        🧾 BOLETA {isLikelyDni && "(DNI)"}
-                      </Button>
-                    </HStack>
-                  </FormControl>
-                </Grid>
+                </Box>
 
                 {/* Si es CRÉDITO: Plazo Pactado y Letra de Cambio */}
                 {isCreditCondition && (
