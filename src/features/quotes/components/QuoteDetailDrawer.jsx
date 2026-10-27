@@ -1373,6 +1373,8 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         slpCode: resolvedSlp,
         salesPersonCode: resolvedSlp,
         salesEmployeeCode: resolvedSlp,
+        documentsOwner: effectiveQuote.documentsOwner || effectiveQuote.DocumentsOwner || effectiveQuote.OwnerCode,
+        DocumentsOwner: effectiveQuote.documentsOwner || effectiveQuote.DocumentsOwner || effectiveQuote.OwnerCode,
         deliveryForm: effectiveQuote.deliveryForm || effectiveQuote.selectedDeliveryForm,
         deliveryPoint: effectiveQuote.deliveryPoint || effectiveQuote.selectedPoint,
         shipToCode: effectiveQuote.deliveryPoint?.AddressName || effectiveQuote.selectedPoint?.AddressName || effectiveQuote.shipToCode || effectiveQuote.ShipToCode || undefined,
