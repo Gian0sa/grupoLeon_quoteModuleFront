@@ -60,6 +60,14 @@ export const SAP_FIELD_DICTIONARY = {
     category: "header",
     description: "Nombre o denominación comercial del cliente registrado en el maestro de socios de negocio."
   },
+  PayToCode: {
+    label: "Destinatario de Factura",
+    sapTable: "ORDR / OQUT / OINV",
+    type: "String ('FISCAL')",
+    importance: "CRÍTICO",
+    category: "header",
+    description: "Código de dirección fiscal de facturación del cliente en SAP B1. Por regla de negocio y localización de Grupo León siempre se envía 'FISCAL'."
+  },
   JournalMemo: {
     label: "Comentario del Asiento Contable",
     sapTable: "ORDR / OJDT",
@@ -263,6 +271,14 @@ export const SAP_FIELD_DICTIONARY = {
     importance: "ESTÁNDAR",
     category: "udf",
     description: "Prefijo de dos dígitos de la operación tributaria SUNAT ('01')."
+  },
+  U_VS_NATNUM: {
+    label: "Naturaleza de Numeración",
+    sapTable: "ORDR / OQUT / OINV (UDF)",
+    type: "String ('T' | 'P')",
+    importance: "CRÍTICO",
+    category: "udf",
+    description: "Naturaleza de numeración de comprobantes en SAP: 'T' para Tercero, 'P' para Propio. Por regla de negocio siempre se envía 'T' (Tercero)."
   },
   U_TQC_TRANSPOR: {
     label: "Nombre de la Agencia de Transporte",
