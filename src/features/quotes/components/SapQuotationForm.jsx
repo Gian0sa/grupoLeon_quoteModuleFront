@@ -877,12 +877,35 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     // Guardar o actualizar en localStorage sin retroceder de estado
     const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
     const isMatchingDoc = (q) => {
-      if (!q || !activeDocNumber) return false;
-      const activeStr = String(activeDocNumber).trim();
-      if (!activeStr) return false;
+      if (!q) return false;
       const qDocNum = q.docNumber ? String(q.docNumber).trim() : "";
       const qId = q.id !== undefined && q.id !== null ? String(q.id).trim() : "";
-      return (qDocNum && qDocNum === activeStr) || (qId && qId === activeStr);
+      if (activeDocNumber) {
+        const activeStr = String(activeDocNumber).trim();
+        if (activeStr && ((qDocNum && qDocNum === activeStr) || (qId && qId === activeStr))) {
+          return true;
+        }
+      }
+      // Detección de coincidencia de borrador por cliente y monto total aproximado
+      const qStatus = String(q.approvalStatus || q.state || q.status || "BORRADOR").toUpperCase();
+      if (["BORRADOR", "GENERADO"].includes(qStatus)) {
+        const qRuc = String(q.clientRuc || q.clientDocument || q.client?.LicTradNum || q.client?.CardCode || "").replace(/\D/g, "");
+        const currentRuc = String(client?.LicTradNum || client?.clientRuc || client?.clientDocument || client?.CardCode || "").replace(/\D/g, "");
+        const qName = String(q.clientName || q.client?.CardName || "").trim().toLowerCase();
+        const currentName = String(client?.CardName || client?.name || "").trim().toLowerCase();
+
+        const sameClient = (qRuc && currentRuc && qRuc === currentRuc) ||
+          (qName && currentName && (qName === currentName || (qName.length > 5 && currentName.includes(qName))));
+
+        if (sameClient) {
+          const qTotal = Number(q.totals?.grandTotalUSD || q.grandTotalUSD || 0);
+          const curTotal = Number(finalTotals?.grandTotalUSD || totals?.grandTotalUSD || 0);
+          if (Math.abs(qTotal - curTotal) < 0.15 || qTotal === 0 || curTotal === 0) {
+            return true;
+          }
+        }
+      }
+      return false;
     };
 
     const existingDoc = saved.find(isMatchingDoc);
@@ -1047,11 +1070,22 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     };
 
     const isExisting = Boolean(existingDoc);
+    let updated;
     if (isExisting) {
-      const updated = saved.map((q) => (isMatchingDoc(q) ? newDoc : q));
-      localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updated));
-      window.dispatchEvent(new Event("localQuotesUpdated"));
+      updated = saved.map((q) => (isMatchingDoc(q) ? newDoc : q));
+    } else {
+      const cleanedSaved = saved.filter((q) => !isMatchingDoc(q));
+      updated = [newDoc, ...cleanedSaved];
     }
+    // Deduplicar para garantizar que nunca haya dos borradores del mismo documento
+    const dedupedLocal = [];
+    for (const q of updated) {
+      if (!dedupedLocal.some((existing) => isMatchingDoc(existing) && isMatchingDoc(q))) {
+        dedupedLocal.push(q);
+      }
+    }
+    localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(dedupedLocal.slice(0, 80)));
+    window.dispatchEvent(new Event("localQuotesUpdated"));
 
     const clientName = client?.CardName || client?.name || "Cliente General";
     const totalUsdStr = finalTotals?.grandTotalUSD ? `$${formatThousands(finalTotals.grandTotalUSD)}` : "$0.00";
@@ -1079,7 +1113,8 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
             const iId = item.id !== undefined && item.id !== null ? String(item.id) : "";
             const isColliding = (iDoc && iDoc === String(assignedNumber)) || (iId && iId === String(res?.id));
             const isPreviousActive = activeDocNumber && (iDoc === String(activeDocNumber) || iId === String(activeDocNumber));
-            return !isColliding && !isPreviousActive;
+            const isSameDraft = isMatchingDoc(item);
+            return !isColliding && !isPreviousActive && !isSameDraft;
           });
           const persistedDoc = {
             ...newDoc,
@@ -1090,7 +1125,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
             approvalStatus: currentStatus,
           };
           cleaned.unshift(persistedDoc);
-          localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(cleaned));
+          localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(cleaned.slice(0, 80)));
           window.dispatchEvent(new Event("localQuotesUpdated"));
         } catch (e) {}
 
@@ -1464,13 +1499,14 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       return itemClean;
     });
 
+    const isAlreadyEmittedLocally = Boolean(currentQuoteObj.sapDocNum && Number(currentQuoteObj.sapDocNum) > 1000);
     const quotePayload = {
       ...currentQuoteObj,
       id: activeDocNumber,
       docNumber: activeDocNumber,
-      sapDocNum: null,
-      DocNum: null,
-      forceEmit: true,
+      sapDocNum: isAlreadyEmittedLocally ? Number(currentQuoteObj.sapDocNum) : null,
+      DocNum: isAlreadyEmittedLocally ? Number(currentQuoteObj.sapDocNum) : null,
+      forceEmit: !isAlreadyEmittedLocally,
       clientDocument: client?.CardCode || client?.clientDocument || client?.FederalTaxID || clientDocDigits,
       clientName: client?.CardName || client?.name || client?.clientName,
       sellerName: resolvedSellerName || activeSeller || sellerUsername,
@@ -1479,6 +1515,8 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       slpCode: effectiveSlpCode,
       salesPersonCode: effectiveSlpCode,
       salesEmployeeCode: effectiveSlpCode,
+      documentsOwner: currentQuoteObj.documentsOwner || currentQuoteObj.DocumentsOwner || currentQuoteObj.OwnerCode,
+      DocumentsOwner: currentQuoteObj.documentsOwner || currentQuoteObj.DocumentsOwner || currentQuoteObj.OwnerCode,
       deliveryForm: selectedDeliveryForm,
       deliveryPoint: selectedPoint,
       shipToCode: selectedPoint?.AddressName || undefined,
@@ -1533,34 +1571,57 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     } else {
       setValidationStepText(`Emitiendo orden oficial directamente a SAP Service Layer (${inStockProductsForSap.length} artículo(s) con stock)...`);
       try {
-        const res = await axiosInstance.post("/quoteModule/quotes/sap/order", quotePayload);
+        const res = await axiosInstance.post("/quoteModule/quotes/sap/order", quotePayload, { timeout: 95000 });
         const sapData = res.data?.data || res.data || {};
         officialSapDocNum = sapData.DocNum || sapData.docNum;
         officialSapDocEntry = sapData.DocEntry || sapData.docEntry;
       } catch (err) {
         console.error("⚠️ Error emitiendo directamente a SAP B1:", err);
-        sapErrorMessage = err.response?.data?.error?.message?.value
-          || err.response?.data?.error?.message
-          || err.response?.data?.message
-          || (typeof err.response?.data === "string" ? err.response?.data : null)
-          || err.message
-          || "Error conectando con SAP Service Layer";
 
-        setIsSendingToValidation(false);
-        isExplicitlySubmittingRef.current = false;
-        const isRateError = typeof sapErrorMessage === "string" && (
-          sapErrorMessage.toLowerCase().includes("tipo de cambio") || 
-          sapErrorMessage.toLowerCase().includes("exchange rate")
-        );
-        toast({
-          title: isRateError ? "⚠️ Tipo de Cambio Requerido en SAP" : "❌ Error al Sincronizar con SAP",
-          description: typeof sapErrorMessage === "string" ? sapErrorMessage : JSON.stringify(sapErrorMessage),
-          status: isRateError ? "warning" : "error",
-          duration: 9000,
-          isClosable: true,
-          position: "top-right",
-        });
-        return;
+        // 🛡️ Auto-recuperación: Si el backend devolvió el doc en el body de error o si ya existe en BD
+        const fallbackSapData = err.response?.data?.data;
+        if (fallbackSapData && (fallbackSapData.DocNum || fallbackSapData.docNum)) {
+          officialSapDocNum = Number(fallbackSapData.DocNum || fallbackSapData.docNum);
+          officialSapDocEntry = Number(fallbackSapData.DocEntry || fallbackSapData.docEntry || officialSapDocNum);
+          console.log(`✅ [Frontend Auto-Recuperación] Orden oficial #${officialSapDocNum} recuperada de respuesta backend.`);
+        } else {
+          try {
+            setValidationStepText("Verificando si la orden se registró en SAP tras respuesta demorada...");
+            const rawId = currentQuoteObj.id || activeDocNumber;
+            const checkRes = await axiosInstance.get(`/quoteModule/quotes/${rawId}`).catch(() => null);
+            const foundQuote = checkRes?.data?.data || checkRes?.data;
+            if (foundQuote && foundQuote.sapDocNum && Number(foundQuote.sapDocNum) > 1000) {
+              console.log(`✅ [Frontend Auto-Recuperación] ¡Orden oficial #${foundQuote.sapDocNum} encontrada en base de datos!`);
+              officialSapDocNum = Number(foundQuote.sapDocNum);
+              officialSapDocEntry = Number(foundQuote.sapDocEntry || foundQuote.sapDocNum);
+            }
+          } catch (_) {}
+        }
+
+        if (!officialSapDocNum) {
+          sapErrorMessage = err.response?.data?.error?.message?.value
+            || err.response?.data?.error?.message
+            || err.response?.data?.message
+            || (typeof err.response?.data === "string" ? err.response?.data : null)
+            || err.message
+            || "Error conectando con SAP Service Layer";
+
+          setIsSendingToValidation(false);
+          isExplicitlySubmittingRef.current = false;
+          const isRateError = typeof sapErrorMessage === "string" && (
+            sapErrorMessage.toLowerCase().includes("tipo de cambio") || 
+            sapErrorMessage.toLowerCase().includes("exchange rate")
+          );
+          toast({
+            title: isRateError ? "⚠️ Tipo de Cambio Requerido en SAP" : "❌ Error al Sincronizar con SAP",
+            description: typeof sapErrorMessage === "string" ? sapErrorMessage : JSON.stringify(sapErrorMessage),
+            status: isRateError ? "warning" : "error",
+            duration: 9000,
+            isClosable: true,
+            position: "top-right",
+          });
+          return;
+        }
       }
     }
 

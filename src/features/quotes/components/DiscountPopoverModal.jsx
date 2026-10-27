@@ -72,14 +72,18 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
   const parsedInputPrice = parseFloat(priceInputStr);
   const hasValidInputPrice = !isNaN(parsedInputPrice) && parsedInputPrice > 0;
 
-  // El precio final con IGV es EXACTAMENTE el valor ingresado por el usuario (ej: 10.00 exactos)
-  const finalUnitPriceConIGV = hasValidInputPrice
+  // Desglose oficial de Neto e IGV con regla de simulación 18% SUNAT / SAP B1
+  const rawUnitPriceConIGV = hasValidInputPrice
     ? Number(parsedInputPrice.toFixed(2))
     : Number(((basePrice * (1 - (baseFixedDisc + currentDisc) / 100)) * (1 + TAX_RATE)).toFixed(2));
 
-  // Desglose oficial de Neto e IGV con cuadre perfecto (Neto + IGV = Total exacto con IGV)
-  const finalUnitPriceSinIGV = Number((finalUnitPriceConIGV / (1 + TAX_RATE)).toFixed(2));
-  const calculatedTax = Number((finalUnitPriceConIGV - finalUnitPriceSinIGV).toFixed(2));
+  // Base neta unitaria (2 decimales): 98.50 / 1.18 = 83.47
+  const finalUnitPriceSinIGV = Number((rawUnitPriceConIGV / (1 + TAX_RATE)).toFixed(2));
+  // IGV oficial SAP (18%) con redondeo estándar a 2 decimales (a partir de 5 hacia arriba):
+  // 83.47 * 0.18 = 15.0246 -> 15.02
+  const calculatedTax = Number((finalUnitPriceSinIGV * TAX_RATE).toFixed(2));
+  // Total oficial con IGV que SAP registrará exactamente: 83.47 + 15.02 = 98.49
+  const finalUnitPriceConIGV = Number((finalUnitPriceSinIGV + calculatedTax).toFixed(2));
   const finalLineTotalConIGV = Number((finalUnitPriceConIGV * qty).toFixed(2));
 
   // Descuento total equivalente según el precio objetivo con IGV:
@@ -144,10 +148,15 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
       valNum = priceCeilingConIGV;
     }
 
-    setPriceInputStr(valNum.toFixed(2));
+    // Alinear al precio exacto oficial SAP (Neto + IGV redondeado al centavo a partir de 5):
+    const net = Number((valNum / (1 + TAX_RATE)).toFixed(2));
+    const tax = Number((net * TAX_RATE).toFixed(2));
+    const exactSapPrice = Number((net + tax).toFixed(2));
+
+    setPriceInputStr(exactSapPrice.toFixed(2));
 
     if (basePrice > 0) {
-      const netTarget = valNum / (1 + TAX_RATE);
+      const netTarget = exactSapPrice / (1 + TAX_RATE);
       const calculatedTotalDisc = ((basePrice - netTarget) / basePrice) * 100;
       const rawAddDisc = calculatedTotalDisc - baseFixedDisc;
       const clampedAddDisc = Math.max(minAllowedAddDisc, Math.min(maxAllowedAddDisc, Number(rawAddDisc.toFixed(2))));
@@ -189,12 +198,8 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
   const handleConfirm = () => {
     const targetKey = item.id || item.productCode || item.code || item.itemCode;
     if (onApplyDiscount && targetKey) {
-      const finalTargetPrice = parseFloat(priceInputStr);
-      const confirmedPriceConIGV = !isNaN(finalTargetPrice) && finalTargetPrice > 0
-        ? Number(finalTargetPrice.toFixed(2))
-        : finalUnitPriceConIGV;
       const cleanDisc = Number(Number(currentDisc).toFixed(2));
-      onApplyDiscount(targetKey, cleanDisc, confirmedPriceConIGV);
+      onApplyDiscount(targetKey, cleanDisc, finalUnitPriceConIGV);
     }
     onClose();
   };

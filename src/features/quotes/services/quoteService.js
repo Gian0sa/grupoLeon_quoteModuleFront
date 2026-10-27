@@ -51,13 +51,28 @@ export const createQuote = async (quote) => {
           const localQuotes = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
           const docId = quote.docNumber || quote.id || `LOCAL-${Date.now()}`;
           const normalized = { ...quote, id: docId, docNumber: docId, isLocalFallback: true };
-          const existsIdx = localQuotes.findIndex(q => String(q.id || q.docNumber) === String(docId));
+          const quoteRuc = String(quote.clientRuc || quote.clientDocument || quote.client?.LicTradNum || "").replace(/\D/g, "");
+          const quoteTotal = Number(quote.totals?.grandTotalUSD || quote.grandTotalUSD || 0);
+
+          const existsIdx = localQuotes.findIndex(q => {
+            const matchId = String(q.id || q.docNumber) === String(docId);
+            if (matchId) return true;
+            const isBothDraft = ["BORRADOR", "GENERADO"].includes(String(q.approvalStatus || q.state || "").toUpperCase());
+            if (isBothDraft && quoteRuc) {
+              const qRuc = String(q.clientRuc || q.clientDocument || q.client?.LicTradNum || "").replace(/\D/g, "");
+              const qTotal = Number(q.totals?.grandTotalUSD || q.grandTotalUSD || 0);
+              if (qRuc && qRuc === quoteRuc && (Math.abs(qTotal - quoteTotal) < 0.15 || qTotal === 0 || quoteTotal === 0)) {
+                return true;
+              }
+            }
+            return false;
+          });
           if (existsIdx >= 0) {
             localQuotes[existsIdx] = normalized;
           } else {
             localQuotes.unshift(normalized);
           }
-          localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(localQuotes));
+          localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(localQuotes.slice(0, 80)));
         } catch (e) {}
 
         if (isSubmitted) {
