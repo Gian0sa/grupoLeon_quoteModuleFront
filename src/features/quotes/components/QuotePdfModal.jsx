@@ -44,7 +44,21 @@ export default function QuotePdfModal({ isOpen, onClose, quote }) {
 
   if (!quote) return null;
 
-  const docNumber = quote.opNum || quote.docNum || quote.id || quote.docNumber || "COT-000000";
+  const isEmittedToSap = Boolean(
+    (quote.sapDocNum && String(quote.sapDocNum).trim() !== "") ||
+    (quote.DocNum && !String(quote.DocNum).startsWith("COT-")) ||
+    (quote.docNum && !String(quote.docNum).startsWith("COT-")) ||
+    quote.status === "EMITIDO" ||
+    quote.status === "EMITIDO_SAP" ||
+    quote.status === "APROBADO_SAP" ||
+    quote.isSyncedToSap === true
+  );
+
+  const documentTitle = isEmittedToSap ? "Orden_de_Venta" : "Cotizacion";
+  const docTitleDisplay = isEmittedToSap ? "Orden de Venta" : "Cotización";
+  const docNumber = isEmittedToSap
+    ? (quote.sapDocNum || quote.DocNum || quote.docNum || quote.docNumber || "OV-PENDIENTE")
+    : (quote.docNumber || (quote.id ? `COT-${String(quote.id).padStart(5, "0")}` : "COT-PENDIENTE"));
 
   const handleDownloadPdf = async () => {
     try {
@@ -101,11 +115,11 @@ export default function QuotePdfModal({ isOpen, onClose, quote }) {
       
       // Ajustar perfectamente a 1 página A4 estándar (210mm x 297mm)
       pdf.addImage(imgData, "PNG", 0, 0, 210, 297, undefined, "FAST");
-      pdf.save(`Autopartes_Cotizacion_${docNumber}.pdf`);
+      pdf.save(`Autopartes_${documentTitle}_${docNumber}.pdf`);
 
       toast({
         title: "✅ PDF Descargado en Alta Calidad",
-        description: `Se ha guardado Autopartes_Cotizacion_${docNumber}.pdf en tus descargas.`,
+        description: `Se ha guardado Autopartes_${documentTitle}_${docNumber}.pdf en tus descargas.`,
         status: "success",
         duration: 3500,
         isClosable: true,
@@ -227,7 +241,7 @@ export default function QuotePdfModal({ isOpen, onClose, quote }) {
             <HStack spacing={2}>
               <FileText className="w-5 h-5 text-emerald-400" />
               <Text fontSize={{ base: "xs", sm: "sm", md: "md" }} fontWeight="800" isTruncated maxW={{ base: "190px", sm: "350px", md: "full" }}>
-                Vista Previa de Cotización Electrónica
+                Vista Previa de {docTitleDisplay} Electrónica
               </Text>
             </HStack>
             <Badge colorScheme="green" fontSize={{ base: "2xs", sm: "xs" }} px={2.5} py={0.5} borderRadius="full">

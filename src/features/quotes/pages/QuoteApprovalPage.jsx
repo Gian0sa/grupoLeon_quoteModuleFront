@@ -39,7 +39,11 @@ import {
   Select,
   Alert,
   AlertIcon,
-  Icon as ChakraIcon
+  Icon as ChakraIcon,
+  Menu,
+  MenuButton,
+  MenuList,
+  MenuItem
 } from "@chakra-ui/react";
 import {
   Search,
@@ -58,6 +62,8 @@ import {
   MessageSquareWarning,
   FileText,
   MessageSquare,
+  Share2,
+  ChevronDown,
   X,
   ChevronLeft,
   ChevronRight,
@@ -73,6 +79,7 @@ import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
 import { QuoteStepper, getStageIndex } from "../components/QuoteStepper";
 import { QuoteDetailDrawer } from "../components/QuoteDetailDrawer";
 import QuotePdfModal from "../components/QuotePdfModal";
+import WhatsAppQuoteModal from "../components/WhatsAppQuoteModal";
 import { ObserveReasonModal } from "../components/ObserveReasonModal";
 import { checkQuoteLock, acquireQuoteLock, releaseQuoteLock, forceUnlockQuote, getActiveQuoteLocks, syncActiveLocksFromRest } from "../services/quoteLockService";
 import { calculateQuoteTotals, getQuoteTotalUSD, formatThousands } from "../../../shared/utils/quoteCalculator";
@@ -780,6 +787,7 @@ export function QuoteApprovalPage() {
   const [selectedQuote, setSelectedQuote] = useState(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [pdfQuote, setPdfQuote] = useState(null);
+  const [whatsAppQuote, setWhatsAppQuote] = useState(null);
   const [deleteConfirmDoc, setDeleteConfirmDoc] = useState(null);
   const [observeQuoteTarget, setObserveQuoteTarget] = useState(null);
   const [quoteLocks, setQuoteLocks] = useState(() => getActiveQuoteLocks());
@@ -2292,9 +2300,9 @@ export function QuoteApprovalPage() {
           );
         case "OBSERVADO":
           return (
-            <Badge bg="#fff7ed" color="#c2410c" border="1.5px solid #fdba74" px={2.5} py={0.5} borderRadius="full" fontSize="11px" fontWeight="800" textTransform="none" letterSpacing="normal" fontFamily="Arial, sans-serif" whiteSpace="nowrap" display="inline-flex" alignItems="center" gap={1}>
-              <MessageSquare className="w-3 h-3 text-orange-600" />
-              <Text as="span">1. Observado para Corrección 💬</Text>
+            <Badge bg="#fff7ed" color="#c2410c" border="1.5px solid #fdba74" px={2.5} py={0.8} borderRadius="full" fontSize="11px" fontWeight="800" textTransform="none" letterSpacing="normal" fontFamily="Arial, sans-serif" whiteSpace="nowrap" display="inline-flex" alignItems="center" gap={1.5}>
+              <MessageSquare className="w-3.5 h-3.5 text-orange-600" />
+              <Text as="span">Observado (Corrección)</Text>
             </Badge>
           );
         case "EN_EDICION":
@@ -2352,6 +2360,15 @@ export function QuoteApprovalPage() {
     const isSap = isQuoteFromSap(q);
     const isAlreadyAnulado = isCancelledState(status);
     const isApprovedOrder = status === "APROBADO" || status === "APROBADO_COMERCIAL" || status === "FACTURADO" || status === "PEDIDO_EMITIDO" || status === "EMITIDO" || status === "EMITIDO_SAP" || status === "COMPLETADO" || Boolean(q.sapDocNum);
+    const canShowQuickObserve = isAdminUser && !isAlreadyAnulado && !isApprovedOrder && (
+      status === "PENDIENTE" ||
+      status === "ENVIADO" ||
+      status === "PENDIENTE_APROBACION" ||
+      status === "EN_PROCESO" ||
+      status === "PENDIENTE_FACTURACION" ||
+      status === "EN_FACTURACION"
+    );
+    const canViewPdfOrShare = Boolean(isApprovedOrder || isPendingApproval || isPendingBilling || status === "PENDIENTE" || status === "EN_VALIDACION" || status === "APROBADO_CREDITOS");
     const canShowTrashIcon = false; // 🚫 SOLO BORRADORES PUEDEN ELIMINARSE (manejado arriba en isDraft)
 
     const lockCheck = checkQuoteLock(docId, authUserId, authUsername) || (q?.id ? checkQuoteLock(q.id, authUserId, authUsername) : { isLocked: false, isOwnLock: false, hasActiveLock: false });
@@ -2376,13 +2393,13 @@ export function QuoteApprovalPage() {
     // ─────────────────────────────────────────────────────────────
     if (!stack) {
       return (
-        <Flex gap={1.5} justify="flex-end" align="center" wrap="nowrap">
+        <Flex gap={2} justify="flex-end" align="center" wrap="nowrap">
           {/* Si es Borrador: Editar y Borrar */}
           {isDraft ? (
             <>
               <Button
                 size="xs"
-                h="32px"
+                h="30px"
                 bg="#2563eb"
                 color="white"
                 _hover={{ bg: "#1d4ed8", transform: "translateY(-1px)", boxShadow: "0 2px 8px rgba(37,99,235,0.3)" }}
@@ -2391,15 +2408,15 @@ export function QuoteApprovalPage() {
                 onClick={() => handleLoadQuote(q)}
                 fontWeight="700"
                 borderRadius="lg"
-                px={3}
+                px={2.5}
                 boxShadow="xs"
               >
                 Editar
               </Button>
               <IconButton
                 size="xs"
-                h="32px"
-                w="32px"
+                h="30px"
+                w="30px"
                 variant="ghost"
                 colorScheme="red"
                 color="#dc2626"
@@ -2424,7 +2441,7 @@ export function QuoteApprovalPage() {
                   return (
                     <Button
                       size="xs"
-                      h="32px"
+                      h="30px"
                       bg="#fef3c7"
                       color="#92400e"
                       variant="outline"
@@ -2447,7 +2464,7 @@ export function QuoteApprovalPage() {
                   return (
                     <Button
                       size="xs"
-                      h="32px"
+                      h="30px"
                       bg="#0f766e"
                       color="white"
                       _hover={{ bg: "#115e59", transform: "translateY(-1px)", boxShadow: "0 4px 12px rgba(15,118,110,0.3)" }}
@@ -2461,7 +2478,7 @@ export function QuoteApprovalPage() {
                       }}
                       fontWeight="800"
                       borderRadius="lg"
-                      px={3}
+                      px={2.5}
                       boxShadow="xs"
                       title="Estás verificando esta cotización con candado activo"
                     >
@@ -2474,7 +2491,7 @@ export function QuoteApprovalPage() {
                   <>
                     <Button
                       size="xs"
-                      h="32px"
+                      h="30px"
                       bg={isAdminUser && (isPendingApproval || isPendingBilling) ? "#0f766e" : "white"}
                       color={isAdminUser && (isPendingApproval || isPendingBilling) ? "white" : "#334155"}
                       variant={isAdminUser && (isPendingApproval || isPendingBilling) ? "solid" : "outline"}
@@ -2494,15 +2511,15 @@ export function QuoteApprovalPage() {
                       }}
                       fontWeight="700"
                       borderRadius="lg"
-                      px={3}
+                      px={2.5}
                       boxShadow="xs"
                     >
                       {isAdminUser && (isPendingApproval || isPendingBilling) ? "Verificar" : "Vista"}
                     </Button>
-                    {isAdminUser && (isPendingApproval || isPendingBilling) && (
+                    {canShowQuickObserve && (
                       <Button
                         size="xs"
-                        h="32px"
+                        h="30px"
                         colorScheme="orange"
                         bg="#fff7ed"
                         color="#c2410c"
@@ -2522,34 +2539,60 @@ export function QuoteApprovalPage() {
                 );
               })()}
 
-              {/* Botón PDF: SOLO SI YA ESTÁ APROBADO */}
-              {isApprovedOrder && (
-                <Button
-                  size="xs"
-                  h="32px"
-                  variant="outline"
-                  borderColor="#e2e8f0"
-                  color="#0f766e"
-                  bg="#f0fdfa"
-                  _hover={{ bg: "#ccfbf1", borderColor: "#5eead4", transform: "translateY(-1px)" }}
-                  leftIcon={<FileText className="w-3.5 h-3.5 text-teal-600" />}
-                  onClick={() => {
-                    markAsViewedByAdmin(q);
-                    setPdfQuote(q);
-                  }}
-                  fontWeight="700"
-                  borderRadius="lg"
-                  px={2.5}
-                >
-                  PDF
-                </Button>
+              {/* Botón Compartir (PDF y WhatsApp unificados en menú desplegable) */}
+              {canViewPdfOrShare && (
+                <Menu isLazy placement="bottom-end">
+                  <MenuButton
+                    as={Button}
+                    size="xs"
+                    h="30px"
+                    variant="outline"
+                    borderColor="#bbf7d0"
+                    color="#15803d"
+                    bg="#f0fdf4"
+                    _hover={{ bg: "#dcfce7", borderColor: "#86efac", transform: "translateY(-1px)" }}
+                    leftIcon={<Share2 className="w-3.5 h-3.5 text-emerald-600" />}
+                    rightIcon={<ChevronDown className="w-3 h-3 text-emerald-600" />}
+                    fontWeight="700"
+                    borderRadius="lg"
+                    px={2}
+                  >
+                    Compartir
+                  </MenuButton>
+                  <MenuList minW="190px" py={1.5} borderRadius="xl" boxShadow="xl" borderColor="gray.200" zIndex={30}>
+                    <MenuItem
+                      icon={<FileText className="w-4 h-4 text-teal-600" />}
+                      onClick={() => {
+                        markAsViewedByAdmin(q);
+                        setPdfQuote(q);
+                      }}
+                      fontSize="xs"
+                      fontWeight="700"
+                      py={2}
+                    >
+                      Ver Talonario (PDF)
+                    </MenuItem>
+                    <MenuItem
+                      icon={<MessageSquare className="w-4 h-4 text-green-600" />}
+                      onClick={() => {
+                        markAsViewedByAdmin(q);
+                        setWhatsAppQuote(q);
+                      }}
+                      fontSize="xs"
+                      fontWeight="700"
+                      py={2}
+                    >
+                      Enviar por WhatsApp
+                    </MenuItem>
+                  </MenuList>
+                </Menu>
               )}
 
               {/* Botón Corregir para cotizaciones observadas (SOLO PARA VENDEDOR) */}
               {!isAdminUser && (status === "OBSERVADO" || status === "EN_EDICION") && (
                 <Button
                   size="xs"
-                  h="32px"
+                  h="30px"
                   bg="#ea580c"
                   color="white"
                   _hover={{ bg: "#c2410c", transform: "translateY(-1px)", boxShadow: "0 2px 8px rgba(234,88,12,0.3)" }}
@@ -2558,7 +2601,7 @@ export function QuoteApprovalPage() {
                   onClick={() => handleLoadQuote(q)}
                   fontWeight="700"
                   borderRadius="lg"
-                  px={3}
+                  px={2.5}
                   boxShadow="xs"
                 >
                   Corregir
@@ -2569,7 +2612,7 @@ export function QuoteApprovalPage() {
               {!isAdminUser && isPendingApproval && !isViewedOrUnderReview && (
                 <Button
                   size="xs"
-                  h="32px"
+                  h="30px"
                   variant="outline"
                   borderColor="#fdba74"
                   color="#c2410c"
@@ -2589,8 +2632,8 @@ export function QuoteApprovalPage() {
               {canShowTrashIcon && (
                 <IconButton
                   size="xs"
-                  h="32px"
-                  w="32px"
+                  h="30px"
+                  w="30px"
                   variant="ghost"
                   colorScheme="red"
                   color="#dc2626"
@@ -2720,26 +2763,52 @@ export function QuoteApprovalPage() {
               );
             })()}
 
-            {/* Botón PDF Mobile: SOLO SI YA ESTÁ APROBADO */}
-            {isApprovedOrder && (
-              <Button
-                size="sm"
-                h="40px"
-                variant="outline"
-                borderColor="#e2e8f0"
-                color="#0f766e"
-                bg="#f0fdfa"
-                _hover={{ bg: "#ccfbf1" }}
-                leftIcon={<FileText className="w-4 h-4 text-teal-600" />}
-                onClick={() => {
-                  markAsViewedByAdmin(q);
-                  setPdfQuote(q);
-                }}
-                fontWeight="800"
-                borderRadius="xl"
-              >
-                PDF
-              </Button>
+            {/* Botón Compartir Mobile (PDF y WhatsApp unificados en menú desplegable) */}
+            {canViewPdfOrShare && (
+              <Menu isLazy placement="bottom-end">
+                <MenuButton
+                  as={Button}
+                  size="sm"
+                  h="40px"
+                  variant="outline"
+                  borderColor="#bbf7d0"
+                  color="#15803d"
+                  bg="#f0fdf4"
+                  _hover={{ bg: "#dcfce7", borderColor: "#86efac" }}
+                  leftIcon={<Share2 className="w-4 h-4 text-emerald-600" />}
+                  rightIcon={<ChevronDown className="w-3.5 h-3.5 text-emerald-600" />}
+                  fontWeight="800"
+                  borderRadius="xl"
+                >
+                  Compartir
+                </MenuButton>
+                <MenuList minW="200px" py={1.5} borderRadius="xl" boxShadow="xl" borderColor="gray.200" zIndex={30}>
+                  <MenuItem
+                    icon={<FileText className="w-4 h-4 text-teal-600" />}
+                    onClick={() => {
+                      markAsViewedByAdmin(q);
+                      setPdfQuote(q);
+                    }}
+                    fontSize="sm"
+                    fontWeight="700"
+                    py={2.5}
+                  >
+                    Ver Talonario (PDF)
+                  </MenuItem>
+                  <MenuItem
+                    icon={<MessageSquare className="w-4 h-4 text-green-600" />}
+                    onClick={() => {
+                      markAsViewedByAdmin(q);
+                      setWhatsAppQuote(q);
+                    }}
+                    fontSize="sm"
+                    fontWeight="700"
+                    py={2.5}
+                  >
+                    Enviar por WhatsApp
+                  </MenuItem>
+                </MenuList>
+              </Menu>
             )}
 
             {/* Botón Corregir para cotizaciones observadas (Mobile - SOLO PARA VENDEDOR) */}
@@ -2761,7 +2830,7 @@ export function QuoteApprovalPage() {
             )}
 
             {/* Administrador: Botón Observar rápido (Mobile) */}
-            {isAdminUser && (isPendingApproval || isPendingBilling) && (
+            {canShowQuickObserve && (
               <Button
                 size="sm"
                 h="40px"
@@ -2944,14 +3013,14 @@ export function QuoteApprovalPage() {
 
         {/* TABLA PRINCIPAL OPTIMIZADA CON ALTO CONTRASTE (solo escritorio) */}
         <Box display={{ base: "none", lg: "block" }} bg="white" borderRadius="2xl" border="1.5px solid" borderColor="#cbd5e1" boxShadow="sm" overflowX="auto" overflowY="hidden" width="100%">
-          <Table variant="simple" size="md" style={{ tableLayout: "fixed", width: "100%", minWidth: "960px" }}>
+          <Table variant="simple" size="md" style={{ width: "100%", minWidth: "1050px" }}>
             <Thead bg="#0e572b">
               <Tr>
-                <Th py={4} px={4} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" width="28%">DOCUMENTO Y CLIENTE</Th>
-                <Th py={4} px={3} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" width="11%" whiteSpace="nowrap">FECHA</Th>
-                <Th py={4} px={3} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="right" width="14%" whiteSpace="nowrap">TOTAL (USD)</Th>
-                <Th py={4} px={3} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="center" width="25%" whiteSpace="nowrap">ESTADO DE APROBACIÓN</Th>
-                <Th py={4} px={4} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="right" width="22%">ACCIONES DISPONIBLES</Th>
+                <Th py={3.5} px={4} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" minW="260px">DOCUMENTO Y CLIENTE</Th>
+                <Th py={3.5} px={3} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" minW="95px" whiteSpace="nowrap">FECHA</Th>
+                <Th py={3.5} px={3} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="right" minW="110px" whiteSpace="nowrap">TOTAL (USD)</Th>
+                <Th py={3.5} px={4} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="center" minW="210px" whiteSpace="nowrap">ESTADO DE APROBACIÓN</Th>
+                <Th py={3.5} px={4} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="right" minW="180px" whiteSpace="nowrap">ACCIONES DISPONIBLES</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -3109,9 +3178,7 @@ export function QuoteApprovalPage() {
 
                       {/* Acciones */}
                       <Td textAlign="right" py={3} px={4} whiteSpace="nowrap">
-                        <HStack justify="flex-end" spacing={2.5}>
-                          {renderRowActions(q, docId, status)}
-                        </HStack>
+                        {renderRowActions(q, docId, status)}
                       </Td>
                     </Tr>
                   );
@@ -3373,6 +3440,12 @@ export function QuoteApprovalPage() {
         isOpen={!!pdfQuote}
         onClose={() => setPdfQuote(null)}
         quote={pdfQuote}
+      />
+
+      <WhatsAppQuoteModal
+        isOpen={Boolean(whatsAppQuote)}
+        onClose={() => setWhatsAppQuote(null)}
+        quote={whatsAppQuote}
       />
 
       <ObserveReasonModal
