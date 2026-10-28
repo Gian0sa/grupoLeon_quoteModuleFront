@@ -754,63 +754,6 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
     sellerName
   ]);
 
-  // Calcular Totales unificados con calculadora global
-  const tcVal = Number(effectiveQuote.docRate || effectiveQuote.DocRate || effectiveQuote.totals?.tc || effectiveQuote.totals?.exchangeRate || effectiveQuote.exchangeRate) || 3.45;
-  const isSapDirect = Boolean(effectiveQuote.isSapDirect || effectiveQuote.sapDocNum || effectiveQuote.DocNum);
-  const calcRes = calculateQuoteTotals(products, tcVal, { isSapDirect });
-  const displayProducts = calcRes.normalizedProducts && calcRes.normalizedProducts.length > 0 ? calcRes.normalizedProducts : products;
-  const fallbackUSD = effectiveQuote.DocTotalSys
-    ? Number(effectiveQuote.DocTotalSys)
-    : (effectiveQuote.DocTotalFc
-        ? Number(effectiveQuote.DocTotalFc)
-        : (effectiveQuote.DocTotal && effectiveQuote.DocRate
-            ? Number((effectiveQuote.DocTotal / effectiveQuote.DocRate).toFixed(2))
-            : Number(effectiveQuote.DocTotal || 0)));
-
-  // Totales normalizados y matemáticamente exactos (Subtotal + IGV = Total)
-  const subtotalUSD = calcRes.subtotalUSD > 0
-    ? calcRes.subtotalUSD
-    : Number(effectiveQuote.totals?.subtotalUSD || effectiveQuote.totals?.subTotalUSD || 0);
-  const igvUSD = calcRes.igvUSD > 0
-    ? calcRes.igvUSD
-    : Number(effectiveQuote.totals?.igvUSD || (subtotalUSD > 0 ? Number((subtotalUSD * 0.18).toFixed(2)) : 0));
-  const grandTotalUSD = calcRes.grandTotalUSD > 0
-    ? calcRes.grandTotalUSD
-    : (effectiveQuote.totals?.grandTotalUSD ? Number(effectiveQuote.totals.grandTotalUSD) : Number((subtotalUSD + igvUSD).toFixed(2)));
-  const grandTotalSOL = isSapDirect && effectiveQuote.DocTotal && (effectiveQuote.DocCurrency === "PEN" || effectiveQuote.DocCurrency === "SOL")
-    ? Number(effectiveQuote.DocTotal)
-    : (calcRes.grandTotalSOL || Number((grandTotalUSD * tcVal).toFixed(2)));
-
-  // Formateadores y cálculos de marca de tiempo en vivo
-  const formatTimeStr = (isoStr) => {
-    if (!isoStr) return "—";
-    try {
-      const d = new Date(isoStr);
-      if (isNaN(d.getTime())) return "—";
-      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-    } catch {
-      return "—";
-    }
-  };
-
-  const findLogIso = (targetStatuses) => {
-    const entry = historyLog.find(h => targetStatuses.includes(h.status));
-    return entry ? entry.timestamp : null;
-  };
-
-  const calculateDurationStr = (startIso, endIso) => {
-    if (!startIso || !endIso) return "—";
-    const startMs = new Date(startIso).getTime();
-    const endMs = new Date(endIso).getTime();
-    if (isNaN(startMs) || isNaN(endMs) || endMs < startMs) return "—";
-    const diffMins = Math.round((endMs - startMs) / 60000);
-    if (diffMins < 1) return "< 1 min";
-    if (diffMins < 60) return `${diffMins} min`;
-    const hours = Math.floor(diffMins / 60);
-    const mins = diffMins % 60;
-    return `${hours}h ${mins}m`;
-  };
-
   const isUnapprovedDoc = UNAPPROVED_STATUSES.includes(String(status).toUpperCase().trim());
 
   const currentScopedSyncDocNum = (sapSyncResult?.quoteId && String(sapSyncResult.quoteId) === String(effectiveQuote?.docNumber || quoteId))
@@ -841,6 +784,76 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
     effectiveQuote.totals?.isSapDirect ||
     isAlreadySyncedToSap
   );
+
+  // Calcular Totales unificados con calculadora global
+  const tcVal = Number(effectiveQuote.docRate || effectiveQuote.DocRate || effectiveQuote.totals?.tc || effectiveQuote.totals?.exchangeRate || effectiveQuote.exchangeRate) || 3.45;
+  const isSapDirect = isDirectSap;
+  const calcRes = calculateQuoteTotals(products, tcVal, { isSapDirect });
+  const displayProducts = calcRes.normalizedProducts && calcRes.normalizedProducts.length > 0 ? calcRes.normalizedProducts : products;
+  const fallbackUSD = effectiveQuote.DocTotalSys
+    ? Number(effectiveQuote.DocTotalSys)
+    : (effectiveQuote.DocTotalFc
+        ? Number(effectiveQuote.DocTotalFc)
+        : (effectiveQuote.DocTotal && effectiveQuote.DocRate
+            ? Number((effectiveQuote.DocTotal / effectiveQuote.DocRate).toFixed(2))
+            : Number(effectiveQuote.DocTotal || 0)));
+
+  // Totales normalizados y matemáticamente exactos (Subtotal + IGV = Total)
+  const storedSubtotal = Number(effectiveQuote.totals?.subtotalUSD ?? effectiveQuote.totals?.subTotalUSD ?? effectiveQuote.subtotalUSD ?? 0);
+  const storedIgv = Number(effectiveQuote.totals?.igvUSD ?? effectiveQuote.totals?.igv ?? effectiveQuote.igvUSD ?? 0);
+  const storedGrandTotal = Number(effectiveQuote.totals?.grandTotalUSD ?? effectiveQuote.totals?.grandTotal ?? effectiveQuote.grandTotalUSD ?? 0);
+
+  const grandTotalUSD = (isAlreadySyncedToSap && fallbackUSD > 0)
+    ? fallbackUSD
+    : (calcRes.grandTotalUSD > 0
+        ? calcRes.grandTotalUSD
+        : (storedGrandTotal > 0 ? storedGrandTotal : Number((fallbackUSD || 0).toFixed(2))));
+
+  const subtotalUSD = calcRes.subtotalUSD > 0
+    ? calcRes.subtotalUSD
+    : (storedSubtotal > 0
+        ? storedSubtotal
+        : (grandTotalUSD > 0 ? Number((grandTotalUSD / 1.18).toFixed(2)) : 0));
+
+  const igvUSD = calcRes.igvUSD > 0
+    ? calcRes.igvUSD
+    : (storedIgv > 0
+        ? storedIgv
+        : Number(Math.max(0, grandTotalUSD - subtotalUSD).toFixed(2)));
+
+  const grandTotalSOL = isSapDirect && effectiveQuote.DocTotal && (effectiveQuote.DocCurrency === "PEN" || effectiveQuote.DocCurrency === "SOL")
+    ? Number(effectiveQuote.DocTotal)
+    : (effectiveQuote.totals?.grandTotalSOL || calcRes.grandTotalSOL || Number((grandTotalUSD * tcVal).toFixed(2)));
+
+  // Formateadores y cálculos de marca de tiempo en vivo
+  const formatTimeStr = (isoStr) => {
+    if (!isoStr) return "—";
+    try {
+      const d = new Date(isoStr);
+      if (isNaN(d.getTime())) return "—";
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+    } catch {
+      return "—";
+    }
+  };
+
+  const findLogIso = (targetStatuses) => {
+    const entry = historyLog.find(h => targetStatuses.includes(h.status));
+    return entry ? entry.timestamp : null;
+  };
+
+  const calculateDurationStr = (startIso, endIso) => {
+    if (!startIso || !endIso) return "—";
+    const startMs = new Date(startIso).getTime();
+    const endMs = new Date(endIso).getTime();
+    if (isNaN(startMs) || isNaN(endMs) || endMs < startMs) return "—";
+    const diffMins = Math.round((endMs - startMs) / 60000);
+    if (diffMins < 1) return "< 1 min";
+    if (diffMins < 60) return `${diffMins} min`;
+    const hours = Math.floor(diffMins / 60);
+    const mins = diffMins % 60;
+    return `${hours}h ${mins}m`;
+  };
 
   const createdIso = effectiveQuote.createdAt || historyLog[0]?.timestamp || (effectiveQuote.docDate ? `${effectiveQuote.docDate}T12:00:00.000Z` : null);
   const solicitudIso = findLogIso(["ENVIADO", "EN_PROCESO", "PENDIENTE_FACTURACION", "APROBADO", "APROBADO_COMERCIAL", "RECHAZADO", "OBSERVADO", "EN_EDICION", "EMITIDO", "EMITIDO_SAP", "COMPLETADO", "PEDIDO_EMITIDO"]) || (isDirectSap ? createdIso : null);
@@ -1426,7 +1439,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         })(),
       };
 
-      const res = await axiosInstance.post("/quoteModule/quotes/sap/order", quotePayload);
+      const res = await axiosInstance.post("/quoteModule/quotes/sap/order", quotePayload, { timeout: 95000 });
       const sapData = res.data?.data || res.data || {};
       const sentPayload = res.data?.sentPayload || sapData._sentPayload || quotePayload;
       const sapDocNum = sapData.DocNum || sapData.docNum;

@@ -424,11 +424,38 @@ export const useQuoteStore = create((set, get) => {
         raw: rawClient.raw || (Object.keys(rawClient).length ? rawClient : quoteData),
       });
 
+      const totalsObj = typeof quoteData.totals === "string" ? JSON.parse(quoteData.totals) : (quoteData.totals || {});
+      const totalsProducts = Array.isArray(totalsObj.normalizedProducts) && totalsObj.normalizedProducts.length > 0
+        ? totalsObj.normalizedProducts
+        : (Array.isArray(totalsObj.products) ? totalsObj.products : []);
+
+      const totalsProductMap = new Map();
+      totalsProducts.forEach((tp) => {
+        const key = String(tp.code || tp.productCode || tp.id || tp.itemCode || "").trim().toUpperCase();
+        if (key) totalsProductMap.set(key, tp);
+      });
+
       const rawList = Array.isArray(quoteData.products) && quoteData.products.length > 0
         ? quoteData.products
-        : (Array.isArray(quoteData.items) ? quoteData.items : []);
+        : (Array.isArray(quoteData.items) && quoteData.items.length > 0 ? quoteData.items : totalsProducts);
 
-      const normalizedList = rawList.map(normalizeQuoteItem).filter(Boolean);
+      const mergedList = rawList.map((item) => {
+        const key = String(item.code || item.productCode || item.id || item.itemCode || "").trim().toUpperCase();
+        const tp = totalsProductMap.get(key);
+        if (tp) {
+          return {
+            ...tp,
+            ...item,
+            customPriceConIGV: item.customPriceConIGV ?? tp.customPriceConIGV,
+            unitPriceConIGV: item.unitPriceConIGV ?? tp.unitPriceConIGV,
+            lineTotalConIGV: item.lineTotalConIGV ?? tp.lineTotalConIGV,
+            lineDiscount: item.lineDiscount ?? tp.lineDiscount,
+          };
+        }
+        return item;
+      });
+
+      const normalizedList = mergedList.map(normalizeQuoteItem).filter(Boolean);
       const uniqueMap = new Map();
       normalizedList.forEach((item) => {
         const key = String(item.code || item.id || "").trim().toUpperCase();

@@ -73,29 +73,48 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
       hasAdditionalDiscount = true;
     }
 
-    const customPrice = !isOutOfStock && p.customPriceConIGV && Number(p.customPriceConIGV) > 0
-      ? Number(p.customPriceConIGV)
+    const customPrice = !isOutOfStock && (p.customPriceConIGV || p.unitPriceConIGV || p.PriceAfterVAT) && Number(p.customPriceConIGV || p.unitPriceConIGV || p.PriceAfterVAT) > 0
+      ? Number(p.customPriceConIGV || p.unitPriceConIGV || p.PriceAfterVAT)
       : null;
 
-    const unitPriceConIGV = customPrice ?? Number(((listPrice * (1 - totalDisc / 100)) * 1.18).toFixed(2));
+    // Regla de simulación matemática unificada 18% SUNAT / SAP B1 por línea:
+    // 1. Base neta unitaria (2 decimales): Si el usuario fija precio con IGV (ej: 98.50), la base imponible neta es 98.50 / 1.18 = 83.47
+    let netUnitPrice;
+    let unitTax;
+    let unitPriceConIGV;
 
-    const discountedUnitPrice = isOutOfStock
-      ? 0
-      : (isLineFromSap && p.finalPrice
-        ? Number(p.finalPrice)
-        : customPrice
-        ? Number((customPrice / 1.18).toFixed(4))
-        : Number((listPrice * (1 - totalDisc / 100)).toFixed(4)));
+    if (isOutOfStock) {
+      netUnitPrice = 0;
+      unitTax = 0;
+      unitPriceConIGV = 0;
+    } else if (isLineFromSap && p.finalPrice) {
+      netUnitPrice = Number(Number(p.finalPrice).toFixed(2));
+      unitTax = Number((netUnitPrice * 0.18).toFixed(2));
+      unitPriceConIGV = Number((netUnitPrice + unitTax).toFixed(2));
+    } else if (customPrice) {
+      netUnitPrice = Number((customPrice / 1.18).toFixed(2));
+      unitTax = Number((customPrice - netUnitPrice).toFixed(2));
+      unitPriceConIGV = customPrice;
+    } else {
+      netUnitPrice = Number((listPrice * (1 - totalDisc / 100)).toFixed(2));
+      unitTax = Number((netUnitPrice * 0.18).toFixed(2));
+      unitPriceConIGV = Number((netUnitPrice + unitTax).toFixed(2));
+    }
+
     const netLine = isOutOfStock
       ? 0
       : (isLineFromSap && (p.subtotal || p.lineTotal)
-        ? Number(p.subtotal || p.lineTotal)
-        : qty * discountedUnitPrice);
+        ? Number(Number(p.subtotal || p.lineTotal).toFixed(2))
+        : Number((qty * netUnitPrice).toFixed(2)));
+
+    const lineTax = isOutOfStock
+      ? 0
+      : (customPrice ? Number((customPrice * qty - netLine).toFixed(2)) : Number((netLine * 0.18).toFixed(2)));
+
     const lineTotalConIGV = isOutOfStock
       ? 0
-      : (customPrice
-        ? Number((qty * customPrice).toFixed(2))
-        : Number((qty * unitPriceConIGV).toFixed(2)));
+      : (customPrice ? Number((customPrice * qty).toFixed(2)) : Number((netLine + lineTax).toFixed(2)));
+
     const discAmount = isOutOfStock ? 0 : Math.max(0, grossLine - netLine);
 
     const isVolumeLine = !isOutOfStock && qty > 100 && totalDisc > APPROVAL_DISCOUNT_THRESHOLD + 0.01;
@@ -127,11 +146,13 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
       discountPercent: Number(totalDisc.toFixed(2)),
       discount: sapDisc,
       discountAmount: Number(discAmount.toFixed(2)),
-      discountedUnitPrice: Number(discountedUnitPrice.toFixed(4)),
-      unitPriceConIGV: Number(unitPriceConIGV.toFixed(2)),
-      lineTotal: Number(netLine.toFixed(2)),
-      totalPrice: Number(netLine.toFixed(2)),
-      lineTotalConIGV: Number(lineTotalConIGV.toFixed(2)),
+      discountedUnitPrice: netUnitPrice,
+      unitPriceConIGV,
+      lineTotal: netLine,
+      totalPrice: netLine,
+      lineTotalConIGV,
+      taxTotal: lineTax,
+      igvLine: lineTax,
       requiresApproval,
       isHigherMargin: !isOutOfStock && addDisc < 0,
       isVolumeDiscount: isVolumeLine,
@@ -144,46 +165,18 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
   const inStockProducts = normalizedProducts.filter((p) => !p.isOutOfStock);
   const backOrderProducts = normalizedProducts.filter((p) => p.isOutOfStock);
 
-  // 1. Suma preliminar de líneas con stock
-  const sumOfLineTotalsConIGV = inStockProducts.reduce((acc, it) => acc + (it.lineTotalConIGV || 0), 0);
+  // Totales contables oficiales SUNAT / SAP B1:
+  // Base Imponible = Suma exacta de bases netas de las líneas
+  // IGV 18% = Suma exacta de impuestos de las líneas
+  // Total General = Base Imponible + IGV (sin desfase de centavos ni descuentos ocultos)
   const rawNetSubtotal = inStockProducts.reduce((acc, it) => acc + (it.lineTotal || 0), 0);
+  const rawTaxTotal = inStockProducts.reduce((acc, it) => acc + (it.taxTotal || 0), 0);
 
-  // 2. Total General Oficial (coincide EXACTAMENTE con la suma de las líneas de la grilla):
-  const grandTotalUSD = Number((sumOfLineTotalsConIGV > 0 ? sumOfLineTotalsConIGV : (rawNetSubtotal * 1.18)).toFixed(2));
+  const subtotalUSD = Number(rawNetSubtotal.toFixed(2));
+  const igvUSD = Number(rawTaxTotal.toFixed(2));
+  const grandTotalUSD = Number((subtotalUSD + igvUSD).toFixed(2));
 
-  // 3. Subtotal Neto e IGV con cuadre contable exacto:
-  let subtotalUSD;
-  let igvUSD;
-
-  if (sumOfLineTotalsConIGV > 0) {
-    // Si grandTotalUSD termina en múltiplo de 10 centavos (.00, .10, .20... como 529.00):
-    // calcular subtotal con Math.floor a 2 decimales para que tanto subtotal como IGV terminen en 0 centésimos
-    // Ej: 529.00 / 1.18 = 448.305... -> Subtotal: 448.30, IGV: 80.70 (448.30 + 80.70 = 529.00 exactos)
-    const isRoundDecile = Math.round(grandTotalUSD * 100) % 10 === 0;
-    if (isRoundDecile) {
-      subtotalUSD = Math.floor((grandTotalUSD / 1.18) * 100) / 100;
-      igvUSD = Number((grandTotalUSD - subtotalUSD).toFixed(2));
-    } else {
-      subtotalUSD = Number((grandTotalUSD / 1.18).toFixed(2));
-      igvUSD = Number((grandTotalUSD - subtotalUSD).toFixed(2));
-    }
-  } else {
-    subtotalUSD = Number(rawNetSubtotal.toFixed(2));
-    igvUSD = Number((subtotalUSD * 0.18).toFixed(2));
-  }
-
-  // 4. Ajustar la suma de it.lineTotal en inStockProducts para que coincida exactamente con subtotalUSD (448.30):
-  if (inStockProducts.length > 0 && subtotalUSD > 0) {
-    const currentLinesSum = inStockProducts.reduce((acc, it) => acc + (it.lineTotal || 0), 0);
-    const diff = Number((currentLinesSum - subtotalUSD).toFixed(2));
-    if (Math.abs(diff) > 0.001) {
-      const lastInStock = inStockProducts[inStockProducts.length - 1];
-      lastInStock.lineTotal = Number((lastInStock.lineTotal - diff).toFixed(2));
-      lastInStock.totalPrice = lastInStock.lineTotal;
-    }
-  }
-
-  // 5. Valores equivalentes en Soles (PEN) con coherencia matemática exacta:
+  // Valores equivalentes en Soles (PEN) con coherencia matemática exacta:
   const grandTotalSOL = Number((grandTotalUSD * tc).toFixed(2));
   const subtotalSOL = Number((subtotalUSD * tc).toFixed(2));
   const igvSOL = Number(Math.max(0, grandTotalSOL - subtotalSOL).toFixed(2));
@@ -225,23 +218,38 @@ export function getQuoteTotalUSD(quoteOrProducts, tc = 3.76) {
 
   if (typeof quoteOrProducts === "object" && !Array.isArray(quoteOrProducts)) {
     const q = quoteOrProducts;
-    const prods = q.products || q.items || [];
-    if (Array.isArray(prods) && prods.length > 0) {
-      const calc = calculateQuoteTotals(prods, q.totals?.tc || tc).grandTotalUSD;
-      if (calc > 0) return calc;
+    // Si la cotización ya fue emitida a SAP y tiene DocTotalFc oficial de SAP, priorizarlo
+    const sapOfficialTotal = Number(q.DocTotalFc || q.DocTotalSys || (q.DocTotal && (q.DocCurrency === "USD" || !q.DocCurrency) ? q.DocTotal : null));
+    if (q.sapDocNum && !isNaN(sapOfficialTotal) && sapOfficialTotal > 0) {
+      return Number(sapOfficialTotal.toFixed(2));
     }
+
+    // 1. Priorizar el total almacenado oficial y confirmado
     const stored = Number(
       q.totals?.grandTotalUSD ??
-      q.totals?.grandTotal ??
-      q.totals?.netTotal ??
       q.grandTotalUSD ??
+      q.totals?.grandTotal ??
+      q.grandTotal ??
       q.totalUSD ??
+      q.DocTotalFc ??
+      (q.DocTotal && (q.DocCurrency === "USD" || !q.DocCurrency) ? q.DocTotal : null) ??
+      q.totals?.netTotal ??
       q.totalAmount ??
       q.total ??
       q.amount ??
       0
     );
-    return !isNaN(stored) && stored > 0 ? Number(stored.toFixed(2)) : 0;
+    if (!isNaN(stored) && stored > 0) {
+      return Number(stored.toFixed(2));
+    }
+
+    // 2. Solo si no hay total oficial guardado, recalcular dinámicamente desde los productos
+    const prods = q.products || q.items || [];
+    if (Array.isArray(prods) && prods.length > 0) {
+      const calc = calculateQuoteTotals(prods, q.totals?.tc || tc).grandTotalUSD;
+      if (calc > 0) return calc;
+    }
+    return 0;
   }
 
   if (Array.isArray(quoteOrProducts)) {

@@ -510,15 +510,123 @@ export const sortQuotesByPriority = (a, b) => {
 export const isMatchingDoc = (a, b) => {
   if (!a || !b) return false;
 
-  // Si ambos son objetos y comparten el mismo ID numérico de BD o web
-  if (typeof a === "object" && typeof b === "object") {
-    const aId = a.id !== undefined && a.id !== null ? String(a.id).trim() : "";
-    const bId = b.id !== undefined && b.id !== null ? String(b.id).trim() : "";
-    if (aId && bId && aId.toLowerCase() === bId.toLowerCase()) return true;
+  // Si uno de los dos es un valor primitivo (ID o docNumber en string)
+  if (typeof a !== "object" || typeof b !== "object") {
+    const strVal = String(typeof a !== "object" ? a : b).trim().toLowerCase();
+    const objVal = typeof a === "object" ? a : b;
+    if (!strVal || !objVal) return false;
+    const ids = [
+      objVal.docNumber,
+      objVal.id,
+      objVal.sapDocNum,
+      objVal.DocNum,
+      objVal.quoteId,
+    ].filter(Boolean).map(x => String(x).trim().toLowerCase());
+    return ids.includes(strVal);
+  }
 
-    const aDoc = a.docNumber ? String(a.docNumber).trim() : "";
-    const bDoc = b.docNumber ? String(b.docNumber).trim() : "";
-    if (aDoc && bDoc && aDoc.toLowerCase() === bDoc.toLowerCase()) return true;
+  // Si ambos son objetos:
+  const aId = a.id !== undefined && a.id !== null ? String(a.id).trim() : "";
+  const bId = b.id !== undefined && b.id !== null ? String(b.id).trim() : "";
+  if (aId && bId && aId.toLowerCase() === bId.toLowerCase()) return true;
+
+  // Comparar IDs numéricos estrictos si uno o ambos son números
+  const aNumId = aId && !isNaN(Number(aId)) ? Number(aId) : null;
+  const bNumId = bId && !isNaN(Number(bId)) ? Number(bId) : null;
+  if (aNumId !== null && bNumId !== null && aNumId === bNumId) return true;
+
+  const aDoc = a.docNumber ? String(a.docNumber).trim() : "";
+  const bDoc = b.docNumber ? String(b.docNumber).trim() : "";
+  if (aDoc && bDoc && aDoc.toLowerCase() === bDoc.toLowerCase()) return true;
+
+  // Coincidencia por sapDocNum / DocNum de SAP
+  const aSap = a.sapDocNum || a.DocNum || a.totals?.sapDocNum || a.totals?.DocNum || null;
+  const bSap = b.sapDocNum || b.DocNum || b.totals?.sapDocNum || b.totals?.DocNum || null;
+  if (aSap && bSap && String(aSap).trim() === String(bSap).trim()) return true;
+
+  // Normalización de números quitando prefijos ("COT-", "COT-WEB-", ceros a la izquierda)
+  const cleanNumFast = (str) => {
+    if (!str) return null;
+    const s = String(str)
+      .replace(/^COT-(?:WEB-)?0*/i, "")
+      .replace(/^0+/, "")
+      .trim();
+    return s && !isNaN(Number(s)) ? Number(s) : null;
+  };
+
+  const aCleanNum = cleanNumFast(aDoc) || aNumId;
+  const bCleanNum = cleanNumFast(bDoc) || bNumId;
+  if (aCleanNum !== null && bCleanNum !== null && aCleanNum === bCleanNum) {
+    return true;
+  }
+
+  // 🎯 Detección de borradores idénticos duplicados (mismo cliente, mismo total aproximado, ambos en estado borrador / pendiente)
+  const isADraft = isDraftState(a.approvalStatus || a.state || a.status) || !aDoc || aDoc.includes("PENDIENTE") || aDoc.startsWith("LOCAL-") || aDoc.startsWith("COT-WEB-");
+  const isBDraft = isDraftState(b.approvalStatus || b.state || b.status) || !bDoc || bDoc.includes("PENDIENTE") || bDoc.startsWith("LOCAL-") || bDoc.startsWith("COT-WEB-");
+
+  const aHasOfficialSap = Boolean(a.sapDocNum || a.DocNum || a.isSapDirect || (a.approvalStatus === "EMITIDO" && aDoc && !aDoc.includes("WEB") && !aDoc.includes("PENDIENTE")));
+  const bHasOfficialSap = Boolean(b.sapDocNum || b.DocNum || b.isSapDirect || (b.approvalStatus === "EMITIDO" && bDoc && !bDoc.includes("WEB") && !bDoc.includes("PENDIENTE")));
+
+  if ((isADraft || !aHasOfficialSap) && (isBDraft || !bHasOfficialSap)) {
+    const extractClientInfo = (q) => {
+      const docs = [
+        q.clientDocument,
+        q.clientRuc,
+        q.client?.LicTradNum,
+        q.client?.FederalTaxID,
+        q.client?.clientDocument,
+        q.client?.clientRuc,
+        q.client?.CardCode,
+        q.client?.cardCode,
+      ].filter(Boolean).map(x => String(x).trim().toLowerCase());
+
+      const digits = docs.map(d => d.replace(/\D/g, "")).filter(d => d.length >= 8);
+
+      const names = [
+        q.clientName,
+        q.client?.CardName,
+        q.client?.cardName,
+        q.client?.name,
+      ].filter(Boolean).map(x => String(x).trim().toLowerCase());
+
+      return { docs, digits, names };
+    };
+
+    const clientA = extractClientInfo(a);
+    const clientB = extractClientInfo(b);
+
+    const matchDigits = clientA.digits.some(dA => clientB.digits.some(dB => dA === dB));
+    const matchDocs = clientA.docs.some(dA => clientB.docs.some(dB => dA === dB));
+    const matchNames = clientA.names.some(nA => clientB.names.some(nB => {
+      if (!nA || !nB) return false;
+      if (nA === nB) return true;
+      if (nA.length > 5 && nB.length > 5 && (nA.includes(nB) || nB.includes(nA))) return true;
+      return false;
+    }));
+
+    const clientMatches = matchDigits || matchDocs || matchNames;
+
+    if (clientMatches) {
+      const aTotal = getQuoteTotalUSD(a);
+      const bTotal = getQuoteTotalUSD(b);
+
+      const totalMatches = Math.abs(aTotal - bTotal) < 0.15 && aTotal > 0 && bTotal > 0;
+
+      const aItems = a.products || a.items || [];
+      const bItems = b.products || b.items || [];
+      const shareItems = aItems.length > 0 && bItems.length > 0 && aItems.some(ai => {
+        const aCode = String(ai.productCode || ai.itemCode || ai.code || ai.ItemCode || "").trim().toLowerCase();
+        if (!aCode || aCode === "s/c") return false;
+        return bItems.some(bi => {
+          const bCode = String(bi.productCode || bi.itemCode || bi.code || bi.ItemCode || "").trim().toLowerCase();
+          return aCode === bCode;
+        });
+      });
+
+      if (totalMatches || (shareItems && (aTotal === 0 || bTotal === 0 || Math.abs(aTotal - bTotal) < 1.0))) {
+        return true;
+      }
+    }
   }
 
   // Extraer todos los identificadores posibles de cualquier entidad
@@ -533,6 +641,7 @@ export const isMatchingDoc = (a, b) => {
     if (item.id !== undefined && item.id !== null) ids.push(String(item.id).trim());
     if (item.sapDocNum) ids.push(String(item.sapDocNum).trim());
     if (item.DocNum) ids.push(String(item.DocNum).trim());
+    if (item.quoteId) ids.push(String(item.quoteId).trim());
     return ids;
   };
 
@@ -577,11 +686,21 @@ export const safeSetLocalQuotes = (quotesList) => {
       localStorage.setItem("grupoLeon_local_quotes", "[]");
       return;
     }
-    if (typeof quotesList === "string") {
-      localStorage.setItem("grupoLeon_local_quotes", quotesList);
+    const rawList = typeof quotesList === "string" ? JSON.parse(quotesList) : quotesList;
+    if (!Array.isArray(rawList)) {
+      localStorage.setItem("grupoLeon_local_quotes", "[]");
       return;
     }
-    const trimmed = Array.isArray(quotesList) ? quotesList.slice(0, 80) : [];
+
+    // Deduplicar antes de persistir para asegurar que NUNCA queden dos borradores idénticos
+    const deduped = [];
+    for (const q of rawList) {
+      if (!deduped.some(existing => isMatchingDoc(existing, q))) {
+        deduped.push(q);
+      }
+    }
+
+    const trimmed = deduped.slice(0, 80);
     localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(trimmed));
   } catch (err) {
     console.warn("⚠️ [localStorage] No se pudo persistir cotizaciones locales:", err?.message);
@@ -618,8 +737,9 @@ export function QuoteApprovalPage() {
     hasAccess("POST:/quotes/approval") ||
     hasAccess("POST:/quotes/sap/order");
 
+  const isMasterAdminId = [2, 10, 12, 15, 16, 17, 35, 42].includes(Number(authUserId || localStorage.getItem("userId")));
   const isRoleAdmin = isVerifierOrAdminRole || isAdmin;
-  const isAdminUser = Boolean(isRoleAdmin || hasApprovalPrivileges);
+  const isAdminUser = Boolean(isRoleAdmin || hasApprovalPrivileges || isMasterAdminId);
   const isSellerUser = !isAdminUser;
   const activeCurrentUsername = (authUsername || localStorage.getItem("username") || "").toLowerCase().trim();
   const activeCurrentUserId = authUserId || localStorage.getItem("userId");
@@ -838,8 +958,18 @@ export function QuoteApprovalPage() {
         return true;
       });
 
-      if (cleanLocal.length !== local.length || hadChanges) {
-        safeSetLocalQuotes(cleanLocal);
+      // Deduplicar cleanLocal para que jamás existan dos borradores idénticos en memoria local
+      const dedupedLocal = [];
+      for (const q of cleanLocal) {
+        if (!dedupedLocal.some(existing => isMatchingDoc(existing, q))) {
+          dedupedLocal.push(q);
+        } else {
+          hadChanges = true;
+        }
+      }
+
+      if (dedupedLocal.length !== local.length || hadChanges) {
+        safeSetLocalQuotes(dedupedLocal);
       }
 
       if (serverQuotes && Array.isArray(serverQuotes)) {
@@ -849,7 +979,7 @@ export function QuoteApprovalPage() {
         });
 
         // Solo preservar borradores locales legítimos QUE PERTENEZCAN AL USUARIO ACTUAL
-        const localDraftsOnly = cleanLocal.filter(q => {
+        const localDraftsOnly = dedupedLocal.filter(q => {
           const isDraft = isDraftState(q.approvalStatus || q.state || q.status);
           if (!isDraft) return false;
           const notInServer = !validServerQuotes.some(sq => isMatchingDoc(sq, q));
@@ -861,7 +991,7 @@ export function QuoteApprovalPage() {
         // (por updatedAt) o más avanzado (por jerarquía de estados), el local prevalece.
         // Esto protege actualizaciones optimistas (OBSERVADO, RECHAZADO, etc.) del refresco del servidor.
         const enrichedServerQuotes = validServerQuotes.map(sq => {
-          const matchedLocal = cleanLocal.find(lq => isMatchingDoc(lq, sq));
+          const matchedLocal = dedupedLocal.find(lq => isMatchingDoc(lq, sq));
           if (matchedLocal) {
             const sqItems = (sq.products && sq.products.length > 0) ? sq.products : (sq.items || []);
             const lqItems = (matchedLocal.products && matchedLocal.products.length > 0) ? matchedLocal.products : (matchedLocal.items || []);
@@ -960,8 +1090,8 @@ export function QuoteApprovalPage() {
         }
         setQuotes(merged);
         safeSetLocalQuotes(merged);
-      } else if (cleanLocal.length > 0) {
-        const validLocal = cleanLocal.filter(q => {
+      } else if (dedupedLocal.length > 0) {
+        const validLocal = dedupedLocal.filter(q => {
           const notTest = !String(q.docNumber || "").startsWith("TEST-");
           // Admins see all local quotes too; non-admins only see their own quotes
           return notTest && (isAdminUser || isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId, authSalesCode, mySapSellerPrefix));
@@ -987,7 +1117,13 @@ export function QuoteApprovalPage() {
     const handleLocalUpdate = () => {
       try {
         const stored = localStorage.getItem("grupoLeon_local_quotes");
-        const local = stored ? JSON.parse(stored) : [];
+        const rawLocal = stored ? JSON.parse(stored) : [];
+        const local = [];
+        for (const q of (Array.isArray(rawLocal) ? rawLocal : [])) {
+          if (!local.some(existing => isMatchingDoc(existing, q))) {
+            local.push(q);
+          }
+        }
 
         if (serverQuotes && Array.isArray(serverQuotes)) {
           // CORRECCIÓN CRÍTICA: Cuando el localStorage se actualiza optimistamente,
@@ -1887,6 +2023,14 @@ export function QuoteApprovalPage() {
       return true;
     });
 
+    // 1.1 Deduplicación estricta de documentos visibles (garantiza cero duplicados en pantalla)
+    const dedupedVisibleQuotes = [];
+    for (const q of visibleQuotes) {
+      if (!dedupedVisibleQuotes.some(existing => isMatchingDoc(existing, q))) {
+        dedupedVisibleQuotes.push(q);
+      }
+    }
+
     const isSearching = searchQuery.trim().length > 0;
     const rawQuery = searchQuery.trim().toLowerCase();
     const cleanNumericQuery = rawQuery.replace(/[^0-9]/g, "");
@@ -1955,13 +2099,13 @@ export function QuoteApprovalPage() {
 
     // Si el usuario está buscando algo específico en la barra de búsqueda (sin restringir por fecha):
     if (isSearching) {
-      return visibleQuotes
+      return dedupedVisibleQuotes
         .filter((q) => matchesSearch(q))
         .sort(sortQuotesByPriority);
     }
 
     // Pestañas Operativas del Día a Día (Carga Rápida)
-    const result = visibleQuotes.filter((q) => {
+    const result = dedupedVisibleQuotes.filter((q) => {
       // Regla de optimización operativa: solo cotizaciones de todo el día de hoy si ya están emitidas en SAP.
       // Las pendientes de aprobación NUNCA se ocultan ni se borran por fecha; permanecen hasta ser aprobadas.
       if (!isQuoteOperationalDaily(q, currentPeruDate)) {

@@ -304,21 +304,27 @@ export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) 
     ? calcTotals.normalizedProducts
     : products;
 
-  const grandTotalUSD = calcTotals.grandTotalUSD || quote.totals?.grandTotalUSD || quote.totals?.grandTotal || Number(quote.DocTotalSys || 0);
-  const grandTotalSOL = calcTotals.grandTotalSOL || quote.totals?.grandTotalSOL;
+  const storedGrandTotal = Number(quote.totals?.grandTotalUSD ?? quote.totals?.grandTotal ?? quote.grandTotalUSD ?? 0);
+  const storedSubtotal = Number(quote.totals?.subtotalUSD ?? quote.totals?.subTotalUSD ?? quote.subtotalUSD ?? 0);
+  const storedIgv = Number(quote.totals?.igvUSD ?? quote.totals?.igv ?? quote.igvUSD ?? 0);
+
+  const grandTotalUSD = storedGrandTotal > 0
+    ? storedGrandTotal
+    : (calcTotals.grandTotalUSD || Number(quote.DocTotalSys || quote.DocTotalFc || 0));
+  const grandTotalSOL = Number(quote.totals?.grandTotalSOL || quote.totals?.grandTotalPEN || calcTotals.grandTotalSOL || (grandTotalUSD * tc));
 
   // Monto total del documento oficial (prioriza total unificado exacto)
   const documentTotalNum = isSol
     ? Number(quote.totals?.grandTotalPEN || quote.totals?.grandTotalSOL || grandTotalSOL || quote.DocTotal)
-    : Number(quote.totals?.grandTotalUSD || grandTotalUSD || quote.DocTotalSys || quote.DocTotalFc);
+    : grandTotalUSD;
 
   const subtotalDocNum = isSol
     ? Number(quote.totals?.subtotalSOL || calcTotals.subtotalSOL || (documentTotalNum / 1.18))
-    : Number(quote.totals?.subtotalUSD || calcTotals.subtotalUSD || (documentTotalNum / 1.18));
+    : (storedSubtotal > 0 ? storedSubtotal : (calcTotals.subtotalUSD || Number((documentTotalNum / 1.18).toFixed(2))));
 
   const igvDocNum = isSol
     ? Number(quote.totals?.igvSOL || calcTotals.igvSOL || (documentTotalNum - subtotalDocNum))
-    : Number(quote.totals?.igvUSD || calcTotals.igvUSD || (documentTotalNum - subtotalDocNum));
+    : (storedIgv > 0 ? storedIgv : (calcTotals.igvUSD || Number(Math.max(0, documentTotalNum - subtotalDocNum).toFixed(2))));
 
   // División de ítems normalizados para Grilla Doble de 30 renglones (1-15 y 16-30)
   const col1Items = [];

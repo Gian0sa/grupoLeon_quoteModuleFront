@@ -249,20 +249,26 @@ export const QuotePdfDocument = React.forwardRef(({ quote, isPrintMode = false }
     ? calcRes.normalizedProducts
     : products;
 
-  const grandTotalUSD = calcRes.grandTotalUSD || Number(quote.totals?.grandTotalUSD || 0) || Number(quote.DocTotalSys || 0);
+  const storedGrandTotal = Number(quote.totals?.grandTotalUSD ?? quote.totals?.grandTotal ?? quote.grandTotalUSD ?? 0);
+  const storedSubtotal = Number(quote.totals?.subtotalUSD ?? quote.totals?.subTotalUSD ?? quote.subtotalUSD ?? 0);
+  const storedIgv = Number(quote.totals?.igvUSD ?? quote.totals?.igv ?? quote.igvUSD ?? 0);
+
+  const grandTotalUSD = storedGrandTotal > 0
+    ? storedGrandTotal
+    : (calcRes.grandTotalUSD || Number(quote.DocTotalSys || quote.DocTotalFc || 0));
 
   // Monto total del documento oficial (prioriza total unificado exacto)
   const documentTotalNum = isSol
     ? Number(quote.totals?.grandTotalPEN || quote.totals?.grandTotalSOL || calcRes.grandTotalSOL || quote.DocTotal || (grandTotalUSD * tcVal))
-    : Number(quote.totals?.grandTotalUSD || grandTotalUSD || quote.DocTotalSys || quote.DocTotalFc);
+    : grandTotalUSD;
 
   const subtotalDocNum = isSol
     ? Number(quote.totals?.subtotalSOL || calcRes.subtotalSOL || (documentTotalNum / 1.18))
-    : Number(quote.totals?.subtotalUSD || calcRes.subtotalUSD || (documentTotalNum / 1.18));
+    : (storedSubtotal > 0 ? storedSubtotal : (calcRes.subtotalUSD || Number((documentTotalNum / 1.18).toFixed(2))));
 
   const igvDocNum = isSol
     ? Number(quote.totals?.igvSOL || calcRes.igvSOL || (documentTotalNum - subtotalDocNum))
-    : Number(quote.totals?.igvUSD || calcRes.igvUSD || (documentTotalNum - subtotalDocNum));
+    : (storedIgv > 0 ? storedIgv : (calcRes.igvUSD || Number(Math.max(0, documentTotalNum - subtotalDocNum).toFixed(2))));
 
   // Grilla Doble de 30 renglones normalizados (alineados con la vista del drawer)
   const col1Items = [];
