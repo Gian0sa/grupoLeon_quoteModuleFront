@@ -28,17 +28,25 @@ export function ProductPriceListCard({ product, tipoPrecio }) {
     PRECIO_DESCUENTO,
     PRECIO_LISTA_CON_IGV,
     PRECIO_DESCUENTO_CON_IGV,
+    U_TQC_PRVT,
     DESCUENTO_PCT,
     STOCK_DISPONIBLE,
     PRECIO_CONTADO,
     PRECIO_CREDITO
   } = product;
 
-  const promo = promotionsMap[ITEM_CODE] || promotionsMap[product.productCode] || (product.U_US_PROMO ? { promoPrice: Number(product.U_US_PROMO) } : null);
+  const promo = promotionsMap[ITEM_CODE] || promotionsMap[product.productCode] || (product.U_US_PROMO ? {
+    promoPriceConIGV: Number(product.U_US_PROMO),
+    U_US_PROMO: Number(product.U_US_PROMO),
+    promoPriceNeto: Number((Number(product.U_US_PROMO) / 1.18).toFixed(2)),
+    promoPrice: Number((Number(product.U_US_PROMO) / 1.18).toFixed(2)),
+  } : null);
 
   // En la Lista de Precios de Productos (Catálogo), los precios mostrados al asesor/cliente incluyen IGV
-  const precioListaConIgv = Number(PRECIO_LISTA_CON_IGV ?? (PRECIO_LISTA > 0 ? (PRECIO_LISTA * 1.18).toFixed(2) : 0));
-  const precioDescConIgv = Number(PRECIO_DESCUENTO_CON_IGV ?? (PRECIO_DESCUENTO > 0 ? (PRECIO_DESCUENTO * 1.18).toFixed(2) : 0));
+  const prvtVal = Number(PRECIO_LISTA_CON_IGV ?? U_TQC_PRVT ?? product.U_TQC_PRVT ?? 0);
+  const precioListaConIgv = Number(prvtVal > 0 ? prvtVal : (PRECIO_LISTA > 0 ? (PRECIO_LISTA * 1.18).toFixed(2) : 0));
+  const prvtDescVal = Number(PRECIO_DESCUENTO_CON_IGV ?? 0);
+  const precioDescConIgv = Number(prvtDescVal > 0 ? prvtDescVal : (PRECIO_DESCUENTO > 0 ? (PRECIO_DESCUENTO * 1.18).toFixed(2) : 0));
 
   const hasDiscount = DESCUENTO_PCT > 0;
   const regularPriceConIgv = hasDiscount ? precioDescConIgv : precioListaConIgv;
