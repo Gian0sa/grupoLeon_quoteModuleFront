@@ -49,6 +49,10 @@ import {
   Spinner,
   Progress,
   Tooltip,
+  Menu,
+  MenuButton,
+  MenuList,
+  MenuItem,
 } from "@chakra-ui/react";
 import {
   FileText,
@@ -82,12 +86,15 @@ import {
   Receipt,
   Package,
   Unlock,
+  Share2,
+  ChevronDown,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useQuoteStore } from "../stores/quoteStore";
 import { RejectReasonModal } from "./RejectReasonModal";
 import { ObserveReasonModal } from "./ObserveReasonModal";
 import QuotePdfModal from "./QuotePdfModal";
+import WhatsAppQuoteModal from "./WhatsAppQuoteModal";
 import { SapPayloadJsonModal } from "./SapPayloadJsonModal";
 import { resolveUserProfileTitle, acquireQuoteLock, releaseQuoteLock, checkQuoteLock, forceUnlockQuote } from "../services/quoteLockService";
 import { calculateQuoteTotals, formatThousands } from "../../../shared/utils/quoteCalculator";
@@ -175,6 +182,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
   const [isResubmitModalOpen, setIsResubmitModalOpen] = useState(false);
   const [resubmitNote, setResubmitNote] = useState("");
   const [pdfQuote, setPdfQuote] = useState(null);
+  const [whatsAppQuote, setWhatsAppQuote] = useState(null);
   const [liveStockMap, setLiveStockMap] = useState({});
   const [isSyncingSap, setIsSyncingSap] = useState(false);
   const [sapSyncResult, setSapSyncResult] = useState(null);
@@ -1713,13 +1721,35 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                   </Text>
                 </Box>
               </HStack>
-              <DrawerCloseButton
-                color="white"
-                position="static"
-                flexShrink={0}
-                w={{ base: "44px", md: "32px" }}
-                h={{ base: "44px", md: "32px" }}
-              />
+              <HStack spacing={2} flexShrink={0}>
+                <Button
+                  size="xs"
+                  colorScheme="whatsapp"
+                  bg="#25d366"
+                  _hover={{ bg: "#20bd5a" }}
+                  color="white"
+                  leftIcon={<MessageSquare className="w-3.5 h-3.5" />}
+                  onClick={() =>
+                    setWhatsAppQuote({
+                      ...effectiveQuote,
+                      products: displayProducts,
+                      totals: { ...effectiveQuote.totals, ...calcRes },
+                    })
+                  }
+                  fontWeight="800"
+                  boxShadow="xs"
+                  title="Compartir por WhatsApp"
+                >
+                  WhatsApp
+                </Button>
+                <DrawerCloseButton
+                  color="white"
+                  position="static"
+                  flexShrink={0}
+                  w={{ base: "44px", md: "32px" }}
+                  h={{ base: "44px", md: "32px" }}
+                />
+              </HStack>
             </Flex>
           </DrawerHeader>
 
@@ -3798,25 +3828,57 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                 )}
 
 
-                {/* Botón para Descargar PDF: SOLO SI YA ESTÁ APROBADO */}
-                {!isUnapprovedDoc && (isFinalApproved || Boolean(syncedDocNum) || Boolean(effectiveQuote.sapDocNum) || Boolean(effectiveQuote.DocNum && !String(effectiveQuote.DocNum).startsWith("COT-"))) && (
-                  <Button
-                    colorScheme="teal"
-                    variant="outline"
+                {/* Botón Unificado Compartir: Ver Talonario (PDF) y Enviar por WhatsApp */}
+                <Menu isLazy placement="top-end">
+                  <MenuButton
+                    as={Button}
                     size="sm"
-                    leftIcon={<Download className="w-4 h-4 text-teal-600" />}
-                    onClick={() =>
-                      setPdfQuote({
-                        ...effectiveQuote,
-                        products: displayProducts,
-                        totals: { ...effectiveQuote.totals, ...calcRes },
-                      })
-                    }
+                    variant="outline"
+                    borderColor="#bbf7d0"
+                    color="#15803d"
+                    bg="#f0fdf4"
+                    _hover={{ bg: "#dcfce7", borderColor: "#86efac", transform: "translateY(-1px)" }}
+                    leftIcon={<Share2 className="w-4 h-4 text-emerald-600" />}
+                    rightIcon={<ChevronDown className="w-3.5 h-3.5 text-emerald-600" />}
                     fontWeight="800"
+                    borderRadius="lg"
+                    px={3}
                   >
-                    Descargar PDF
-                  </Button>
-                )}
+                    Compartir
+                  </MenuButton>
+                  <MenuList minW="210px" py={1.5} borderRadius="xl" boxShadow="xl" borderColor="gray.200" zIndex={1500}>
+                    <MenuItem
+                      icon={<FileText className="w-4 h-4 text-teal-600" />}
+                      onClick={() =>
+                        setPdfQuote({
+                          ...effectiveQuote,
+                          products: displayProducts,
+                          totals: { ...effectiveQuote.totals, ...calcRes },
+                        })
+                      }
+                      fontSize="sm"
+                      fontWeight="700"
+                      py={2}
+                    >
+                      Ver Talonario (PDF)
+                    </MenuItem>
+                    <MenuItem
+                      icon={<MessageSquare className="w-4 h-4 text-green-600" />}
+                      onClick={() =>
+                        setWhatsAppQuote({
+                          ...effectiveQuote,
+                          products: displayProducts,
+                          totals: { ...effectiveQuote.totals, ...calcRes },
+                        })
+                      }
+                      fontSize="sm"
+                      fontWeight="700"
+                      py={2}
+                    >
+                      Enviar por WhatsApp
+                    </MenuItem>
+                  </MenuList>
+                </Menu>
 
                 {/* Botón exclusivo para Administrador: Ver Trama JSON SAP */}
                 {isRealAdmin && (
@@ -3845,6 +3907,12 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         isOpen={!!pdfQuote}
         onClose={() => setPdfQuote(null)}
         quote={pdfQuote}
+      />
+
+      <WhatsAppQuoteModal
+        isOpen={Boolean(whatsAppQuote)}
+        onClose={() => setWhatsAppQuote(null)}
+        quote={whatsAppQuote}
       />
 
       {/* Modal Inspector Técnico JSON SAP (Solo Administrador) */}

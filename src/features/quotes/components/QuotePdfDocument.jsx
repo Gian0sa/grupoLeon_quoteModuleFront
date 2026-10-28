@@ -7,7 +7,8 @@ import {
   formatDeliveryPoint,
   formatPaymentTerms,
   isPickupInStoreForm,
-  formatCheckBank
+  formatCheckBank,
+  SALES_PERSONS_MAP
 } from "../../../shared/utils/quoteLogisticsFormatters";
 
 const money = (val) => {
@@ -96,6 +97,8 @@ const normalizeItem = (item) => {
   return {
     qty: isNaN(qty) || qty < 1 ? 1 : qty,
     code,
+    baseName,
+    discTag,
     desc: `${baseName}${discTag}`.trim(),
     finalUnitPrice,
     lineTotalNum,
@@ -105,11 +108,9 @@ const normalizeItem = (item) => {
 
 const getItemDescStyle = (text) => {
   const len = (text || "").length;
-  if (len > 55) return { fontSize: "5.8px", letterSpacing: "-0.35px" };
-  if (len > 42) return { fontSize: "6.5px", letterSpacing: "-0.3px" };
-  if (len > 32) return { fontSize: "7.2px", letterSpacing: "-0.2px" };
-  if (len > 22) return { fontSize: "7.8px", letterSpacing: "-0.1px" };
-  return { fontSize: "8.5px", letterSpacing: "normal" };
+  if (len > 55) return { fontSize: "8px", letterSpacing: "normal" };
+  if (len > 40) return { fontSize: "8.5px", letterSpacing: "normal" };
+  return { fontSize: "9px", letterSpacing: "normal" };
 };
 
 const getPriceStyle = (priceStr) => {
@@ -118,28 +119,6 @@ const getPriceStyle = (priceStr) => {
   if (len > 8) return { fontSize: "7.5px", letterSpacing: "-0.15px" };
   if (len > 7) return { fontSize: "8px" };
   return { fontSize: "8.5px" };
-};
-
-const SALES_PERSONS_MAP = {
-  1: { code: 1, prefix: "062", name: "Gerardo Phun" },
-  2: { code: 2, prefix: "432", name: "Carlos Paz" },
-  3: { code: 3, prefix: "535", name: "Wilson Ramirez" },
-  4: { code: 4, prefix: "005", name: "Guillermo Alcas" },
-  5: { code: 5, prefix: "439", name: "Rene Villanueva" },
-  6: { code: 6, prefix: "552", name: "Richard Talavera" },
-  7: { code: 7, prefix: "541", name: "Manuel Zapata" },
-  8: { code: 8, prefix: "520", name: "Benny Borja" },
-  9: { code: 9, prefix: "540", name: "Eric Acuña" },
-  10: { code: 10, prefix: "032", name: "Alberto Chamorro" },
-  11: { code: 11, prefix: "548", name: "Daniel Capuñay" },
-  12: { code: 12, prefix: "711", name: "Manuel Villalta" },
-  13: { code: 13, prefix: "727", name: "Pedro Pazos" },
-  14: { code: 14, prefix: "417", name: "Gleen Rodriguez" },
-  15: { code: 15, prefix: "723", name: "Arturo Jeri" },
-  16: { code: 16, prefix: "725", name: "Luis Perez" },
-  19: { code: 19, prefix: "719", name: "Rafael Nolasco" },
-  20: { code: 20, prefix: "001", name: "Ofic Administración" },
-  21: { code: 21, prefix: "551", name: "León Autos" },
 };
 
 const resolveSellerCode = (q) => {
@@ -180,8 +159,79 @@ const resolveSellerCode = (q) => {
   return "";
 };
 
+const resolveSellerFullName = (q) => {
+  if (!q) return "";
+  let name =
+    q.sellerName ||
+    q.salesPersonName ||
+    q.SlpName ||
+    q.SalesPersonName ||
+    q.totals?.sellerName ||
+    q.seller?.name ||
+    (typeof q.seller === "string" ? q.seller : "") ||
+    "";
+
+  if (name && typeof name === "string") {
+    const sName = name.trim();
+    const upper = sName.toUpperCase();
+    const isGeneric =
+      upper.includes("NINGÚN EMPLEADO") ||
+      upper.includes("NINGUN EMPLEADO") ||
+      upper.includes("NO ASIGNADO") ||
+      upper === "-1" ||
+      upper === "0" ||
+      upper === "NULL" ||
+      upper === "UNDEFINED" ||
+      upper === "VENDEDOR AUTORIZADO" ||
+      upper === "VENDEDOR" ||
+      upper === "VENDEDOR SAP" ||
+      upper === "SIN VENDEDOR";
+
+    if (!isGeneric) {
+      const cleanName = sName.replace(/^\d{1,4}\s*[\.\-]?\s*/, "").trim();
+      if (cleanName.length >= 2 && isNaN(Number(cleanName))) return cleanName;
+      if (sName.length >= 2 && isNaN(Number(sName))) return sName;
+    }
+  }
+
+  const code = resolveSellerCode(q);
+  if (code) {
+    if (SALES_PERSONS_MAP[code]) {
+      return SALES_PERSONS_MAP[code].name;
+    }
+    const cleanCode = String(code).replace(/^0+/, "");
+    const byPrefix = Object.values(SALES_PERSONS_MAP).find(
+      (sp) => sp.prefix && String(sp.prefix).replace(/^0+/, "") === cleanCode
+    );
+    if (byPrefix) {
+      return byPrefix.name;
+    }
+  }
+
+  if (q.createdByUsername) {
+    return q.createdByUsername;
+  }
+  return (code && isNaN(Number(code)) ? code : "") || "Asesor Comercial";
+};
+
 export const QuotePdfDocument = React.forwardRef(({ quote, isPrintMode = false }, ref) => {
   if (!quote) return null;
+
+  const isEmittedToSap = Boolean(
+    (quote.sapDocNum && String(quote.sapDocNum).trim() !== "") ||
+    (quote.DocNum && !String(quote.DocNum).startsWith("COT-")) ||
+    (quote.docNum && !String(quote.docNum).startsWith("COT-")) ||
+    quote.status === "EMITIDO" ||
+    quote.status === "EMITIDO_SAP" ||
+    quote.status === "APROBADO_SAP" ||
+    quote.isSyncedToSap === true
+  );
+
+  const documentTitle = isEmittedToSap ? "ORDEN DE VENTA" : "COTIZACIÓN";
+
+  const docNumberDisplay = isEmittedToSap
+    ? (quote.sapDocNum || quote.DocNum || quote.docNum || quote.docNumber || "OV-PENDIENTE")
+    : (quote.docNumber || (quote.id ? `COT-${String(quote.id).padStart(5, "0")}` : "COT-PENDIENTE"));
 
   const client = quote.client || {};
   const products = extractProducts(quote);
@@ -326,7 +376,7 @@ export const QuotePdfDocument = React.forwardRef(({ quote, isPrintMode = false }
         </tbody>
       </table>
 
-      {/* 2. TÍTULO Y NUMERACIÓN (ORDEN DE PEDIDO) */}
+      {/* 2. TÍTULO Y NUMERACIÓN (ORDEN DE VENTA / COTIZACIÓN) */}
       <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "8px", marginTop: "2px" }}>
         <tbody>
           <tr>
@@ -342,7 +392,7 @@ export const QuotePdfDocument = React.forwardRef(({ quote, isPrintMode = false }
                 textTransform: "uppercase",
               }}
             >
-              ORDEN DE PEDIDO
+              {documentTitle}
             </td>
             <td
               style={{
@@ -354,7 +404,7 @@ export const QuotePdfDocument = React.forwardRef(({ quote, isPrintMode = false }
                 fontFamily: "'Courier New', Courier, monospace",
               }}
             >
-              Nº {quote.docNumber && String(quote.docNumber).startsWith("COT-0") ? quote.docNumber : "COT-PENDIENTE"}
+              Nº {docNumberDisplay}
             </td>
           </tr>
         </tbody>
@@ -556,12 +606,45 @@ export const QuotePdfDocument = React.forwardRef(({ quote, isPrintMode = false }
                     const lineTotalStyle = getPriceStyle(lineTotal);
 
                     return (
-                      <tr key={idx} style={{ height: "19px", maxHeight: "19px", minHeight: "19px", borderBottom: "1px solid #000", fontSize: "8.5px", boxSizing: "border-box", lineHeight: "19px" }}>
-                        <td style={{ textAlign: "center", borderRight: "1px solid #000", fontWeight: "bold", color: "#000", padding: "0 2px", whiteSpace: "nowrap" }}>{itemNum}</td>
-                        <td style={{ textAlign: "center", borderRight: "1px solid #000", fontWeight: "bold", color: "#000", padding: "0 2px", whiteSpace: "nowrap" }}>{qty}</td>
-                        <td style={{ borderRight: "1px solid #000", fontWeight: "bold", padding: "0 4px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "#000000", lineHeight: "19px", ...descStyle }} title={name}>{name}</td>
-                        <td style={{ textAlign: "right", borderRight: "1px solid #000", fontFamily: "monospace", padding: "0 3px", whiteSpace: "nowrap", overflow: "hidden", fontWeight: "bold", color: "#000000", lineHeight: "19px", ...priceStyle }}>{price}</td>
-                        <td style={{ textAlign: "right", fontWeight: "bold", fontFamily: "monospace", padding: "0 3px", whiteSpace: "nowrap", overflow: "hidden", color: "#000000", lineHeight: "19px", ...lineTotalStyle }}>{lineTotal}</td>
+                      <tr
+                        key={idx}
+                        style={{
+                          minHeight: "19px",
+                          height: item ? "auto" : "19px",
+                          borderBottom: "1px solid #000",
+                          fontSize: "9px",
+                          boxSizing: "border-box",
+                        }}
+                      >
+                        <td style={{ textAlign: "center", borderRight: "1px solid #000", fontWeight: "bold", color: "#000", padding: "2px 2px", verticalAlign: "middle", whiteSpace: "nowrap", fontSize: "9px" }}>{itemNum}</td>
+                        <td style={{ textAlign: "center", borderRight: "1px solid #000", fontWeight: "bold", color: "#000", padding: "2px 2px", verticalAlign: "middle", whiteSpace: "nowrap", fontSize: "9px" }}>{qty}</td>
+                        <td
+                          style={{
+                            borderRight: "1px solid #000",
+                            fontWeight: "bold",
+                            padding: "2px 4px",
+                            color: "#000000",
+                            verticalAlign: "middle",
+                            whiteSpace: "normal",
+                            wordBreak: "break-word",
+                            lineHeight: "1.18",
+                            ...descStyle,
+                          }}
+                          title={name}
+                        >
+                          {item ? (
+                            <div>
+                              <span>{item.baseName || item.desc}</span>
+                              {item.discTag && (
+                                <span style={{ color: "#166534", fontSize: "8px", fontWeight: "800", marginLeft: "4px", whiteSpace: "nowrap" }}>
+                                  {item.discTag}
+                                </span>
+                              )}
+                            </div>
+                          ) : ""}
+                        </td>
+                        <td style={{ textAlign: "right", borderRight: "1px solid #000", fontFamily: "monospace", padding: "2px 3px", whiteSpace: "nowrap", fontWeight: "bold", color: "#000000", verticalAlign: "middle", ...priceStyle }}>{price}</td>
+                        <td style={{ textAlign: "right", fontWeight: "bold", fontFamily: "monospace", padding: "2px 3px", whiteSpace: "nowrap", color: "#000000", verticalAlign: "middle", ...lineTotalStyle }}>{lineTotal}</td>
                       </tr>
                     );
                   })}
@@ -611,12 +694,45 @@ export const QuotePdfDocument = React.forwardRef(({ quote, isPrintMode = false }
                     const lineTotalStyle = getPriceStyle(lineTotal);
 
                     return (
-                      <tr key={idx} style={{ height: "19px", maxHeight: "19px", minHeight: "19px", borderBottom: "1px solid #000", fontSize: "8.5px", boxSizing: "border-box", lineHeight: "19px" }}>
-                        <td style={{ textAlign: "center", borderRight: "1px solid #000", fontWeight: "bold", color: "#000", padding: "0 2px", whiteSpace: "nowrap" }}>{itemNum}</td>
-                        <td style={{ textAlign: "center", borderRight: "1px solid #000", fontWeight: "bold", color: "#000", padding: "0 2px", whiteSpace: "nowrap" }}>{qty}</td>
-                        <td style={{ borderRight: "1px solid #000", fontWeight: "bold", padding: "0 4px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "#000000", lineHeight: "19px", ...descStyle }} title={name}>{name}</td>
-                        <td style={{ textAlign: "right", borderRight: "1px solid #000", fontFamily: "monospace", padding: "0 3px", whiteSpace: "nowrap", overflow: "hidden", fontWeight: "bold", color: "#000000", lineHeight: "19px", ...priceStyle }}>{price}</td>
-                        <td style={{ textAlign: "right", fontWeight: "bold", fontFamily: "monospace", padding: "0 3px", whiteSpace: "nowrap", overflow: "hidden", color: "#000000", lineHeight: "19px", ...lineTotalStyle }}>{lineTotal}</td>
+                      <tr
+                        key={idx}
+                        style={{
+                          minHeight: "19px",
+                          height: item ? "auto" : "19px",
+                          borderBottom: "1px solid #000",
+                          fontSize: "9px",
+                          boxSizing: "border-box",
+                        }}
+                      >
+                        <td style={{ textAlign: "center", borderRight: "1px solid #000", fontWeight: "bold", color: "#000", padding: "2px 2px", verticalAlign: "middle", whiteSpace: "nowrap", fontSize: "9px" }}>{itemNum}</td>
+                        <td style={{ textAlign: "center", borderRight: "1px solid #000", fontWeight: "bold", color: "#000", padding: "2px 2px", verticalAlign: "middle", whiteSpace: "nowrap", fontSize: "9px" }}>{qty}</td>
+                        <td
+                          style={{
+                            borderRight: "1px solid #000",
+                            fontWeight: "bold",
+                            padding: "2px 4px",
+                            color: "#000000",
+                            verticalAlign: "middle",
+                            whiteSpace: "normal",
+                            wordBreak: "break-word",
+                            lineHeight: "1.18",
+                            ...descStyle,
+                          }}
+                          title={name}
+                        >
+                          {item ? (
+                            <div>
+                              <span>{item.baseName || item.desc}</span>
+                              {item.discTag && (
+                                <span style={{ color: "#166534", fontSize: "8px", fontWeight: "800", marginLeft: "4px", whiteSpace: "nowrap" }}>
+                                  {item.discTag}
+                                </span>
+                              )}
+                            </div>
+                          ) : ""}
+                        </td>
+                        <td style={{ textAlign: "right", borderRight: "1px solid #000", fontFamily: "monospace", padding: "2px 3px", whiteSpace: "nowrap", fontWeight: "bold", color: "#000000", verticalAlign: "middle", ...priceStyle }}>{price}</td>
+                        <td style={{ textAlign: "right", fontWeight: "bold", fontFamily: "monospace", padding: "2px 3px", whiteSpace: "nowrap", color: "#000000", verticalAlign: "middle", ...lineTotalStyle }}>{lineTotal}</td>
                       </tr>
                     );
                   })}
@@ -648,11 +764,31 @@ export const QuotePdfDocument = React.forwardRef(({ quote, isPrintMode = false }
           <tr>
             {/* Vendedor */}
             <td style={{ width: "30%", verticalAlign: "bottom", padding: "0 8px" }}>
-              <div style={{ width: "65px", height: "18px", border: "1px solid #000", margin: "0 auto 3px auto", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "8.5px", fontWeight: "bold", background: "#ffffff" }}>
-                {resolveSellerCode(quote)}
+              <div
+                style={{
+                  minWidth: "110px",
+                  maxWidth: "140px",
+                  minHeight: "22px",
+                  border: "1.5px solid #000",
+                  margin: "0 auto 3px auto",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "11px",
+                  fontWeight: "900",
+                  lineHeight: "1.2",
+                  textAlign: "center",
+                  textTransform: "uppercase",
+                  padding: "3px 6px",
+                  background: "#ffffff",
+                  whiteSpace: "normal",
+                  wordBreak: "break-word",
+                }}
+              >
+                {resolveSellerFullName(quote)}
               </div>
-              <div style={{ borderBottom: "1px solid #000", width: "130px", margin: "0 auto 3px auto" }}></div>
-              <div style={{ fontSize: "9px", fontWeight: "bold" }}>VENDEDOR</div>
+              <div style={{ borderBottom: "1.5px solid #000", width: "130px", margin: "0 auto 3px auto" }}></div>
+              <div style={{ fontSize: "9px", fontWeight: "bold", letterSpacing: "1px" }}>VENDEDOR</div>
             </td>
 
             {/* Cliente */}

@@ -15,12 +15,20 @@ import {
   Checkbox,
   Flex,
   Spinner,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalFooter,
+  ModalBody,
+  ModalCloseButton,
+  useDisclosure,
 } from "@chakra-ui/react";
 import Select from "react-select";
 import CreatableSelect from "react-select/creatable";
 import { adaptBusinessPartner } from "../adapters/quotesAdapter";
 import { useQuoteMutations } from "../hooks/mutations/quotesMutations";
-import { Truck, CreditCard, Shield } from "lucide-react";
+import { Truck, CreditCard, Shield, MapPin, Plus } from "lucide-react";
 import { SAP_TRANSPORTS_CATALOG } from "../constants/sapTransportsCatalog";
 import { DatePickerField } from "../../../components/DatePickerField";
 
@@ -158,6 +166,34 @@ export const getCustomSelectStyles = (isLocked) => ({
   }),
 });
 
+export const PERU_DEPARTMENTS = [
+  { code: "15", name: "LIMA" },
+  { code: "07", name: "CALLAO" },
+  { code: "04", name: "AREQUIPA" },
+  { code: "13", name: "LA LIBERTAD" },
+  { code: "20", name: "PIURA" },
+  { code: "14", name: "LAMBAYEQUE" },
+  { code: "11", name: "ICA" },
+  { code: "12", name: "JUNÍN" },
+  { code: "08", name: "CUSCO" },
+  { code: "02", name: "ÁNCASH" },
+  { code: "06", name: "CAJAMARCA" },
+  { code: "22", name: "SAN MARTÍN" },
+  { code: "16", name: "LORETO" },
+  { code: "23", name: "TACNA" },
+  { code: "21", name: "PUNO" },
+  { code: "10", name: "HUÁNUCO" },
+  { code: "05", name: "AYACUCHO" },
+  { code: "24", name: "TUMBES" },
+  { code: "18", name: "MOQUEGUA" },
+  { code: "19", name: "PASCO" },
+  { code: "09", name: "HUANCAVELICA" },
+  { code: "03", name: "APURÍMAC" },
+  { code: "01", name: "AMAZONAS" },
+  { code: "17", name: "MADRE DE DIOS" },
+  { code: "25", name: "UCAYALI" },
+];
+
 export function NewSellTerms({
   client,
   transports = [],
@@ -203,6 +239,86 @@ export function NewSellTerms({
 }) {
   const { uploadImageMutation, deleteImageMutation } = useQuoteMutations();
   const [attachments, setAttachments] = useState([]);
+  const {
+    isOpen: isAddressModalOpen,
+    onOpen: onOpenAddressModal,
+    onClose: onCloseAddressModal,
+  } = useDisclosure();
+
+  const [customAddrForm, setCustomAddrForm] = useState({
+    addressName: "",
+    street: "",
+    department: "15",
+    city: "LIMA",
+    county: "",
+    reference: "",
+    saveToClient: false,
+  });
+
+  const [addressError, setAddressError] = useState("");
+
+  const handleOpenNewAddressModal = () => {
+    if (selectedPoint && typeof selectedPoint === "object" && selectedPoint.isCustomAddress) {
+      setCustomAddrForm({
+        addressName: selectedPoint.AddressName || "",
+        street: selectedPoint.Street || selectedPoint.address || "",
+        department: selectedPoint.State || "15",
+        city: selectedPoint.City || "LIMA",
+        county: selectedPoint.County || "",
+        reference: selectedPoint.BuildingFloorRoom || "",
+        saveToClient: Boolean(selectedPoint.saveToClient),
+      });
+    } else {
+      setCustomAddrForm({
+        addressName: "",
+        street: "",
+        department: "15",
+        city: "LIMA",
+        county: "",
+        reference: "",
+        saveToClient: false,
+      });
+    }
+    setAddressError("");
+    onOpenAddressModal();
+  };
+
+  const handleSaveCustomAddress = () => {
+    const cleanStreet = String(customAddrForm.street || "").trim();
+    if (!cleanStreet) {
+      setAddressError("La dirección (calle, avenida, jirón o número) es obligatoria.");
+      return;
+    }
+
+    const deptObj = PERU_DEPARTMENTS.find(d => d.code === customAddrForm.department) || { code: "15", name: "LIMA" };
+    const cleanCity = String(customAddrForm.city || "LIMA").trim().toUpperCase();
+    const cleanCounty = String(customAddrForm.county || "").trim().toUpperCase();
+    const cleanName = String(
+      customAddrForm.addressName || (cleanCounty ? `DESTINO ${cleanCounty}` : "DESTINO NUEVO")
+    ).trim().toUpperCase().slice(0, 50);
+
+    const newPoint = {
+      AddressName: cleanName,
+      Street: cleanStreet,
+      City: cleanCity || "LIMA",
+      County: cleanCounty || cleanCity || "LIMA",
+      State: deptObj.code,
+      Country: "PE",
+      BuildingFloorRoom: String(customAddrForm.reference || "").trim(),
+      isCustomAddress: true,
+      saveToClient: Boolean(customAddrForm.saveToClient),
+      label: `📍 [NUEVA] ${cleanName} - ${cleanStreet} (${cleanCounty || cleanCity}, ${deptObj.name})`,
+      value: cleanName,
+    };
+
+    setSelectedPoint(newPoint);
+    onCloseAddressModal();
+  };
+
+  const handleRemoveCustomAddress = () => {
+    setSelectedPoint(null);
+  };
+
   const isCommercialLocked = Boolean(isDeliveryLocked && isFinanceLocked);
 
   const clientAdapted = client ? adaptBusinessPartner(client) : null;
@@ -320,6 +436,12 @@ export function NewSellTerms({
       }
     }
     if (typeof val === "object" && val !== null) {
+      if (val.isCustomAddress) {
+        return {
+          value: val.AddressName || val.Street || "NUEVA",
+          label: val.label || `📍 [NUEVA] ${val.AddressName || 'Destino'} - ${val.Street}`,
+        };
+      }
       const name = val.AddressName ?? val.label ?? val.name ?? val.value ?? "";
       const street = val.Street ?? val.address ?? "";
       const label = val.label || (street ? `${name ? name + ' - ' : ''}${street}` : name);
@@ -625,7 +747,7 @@ export function NewSellTerms({
         <Box p={{ base: 2.5, sm: 3.5 }} bg="emerald.50" borderRadius="xl" border="1.5px solid" borderColor="emerald.200">
           <Flex justify="space-between" align="center" mb={1} wrap="wrap" gap={1}>
             <Text fontSize="xs" fontWeight="800" color="emerald.900" textTransform="uppercase">CLIENTE SELECCIONADO</Text>
-            <Badge colorScheme="emerald" fontSize="xs">SAP OK</Badge>
+            <Badge colorScheme="emerald" fontSize="xs">VÁLIDO</Badge>
           </Flex>
           <Text fontSize="xs" color="gray.700" wordBreak="break-word"><strong>Código:</strong> {clientAdapted.cardCode}</Text>
           <Text fontSize="xs" color="gray.700" wordBreak="break-word"><strong>Nombre:</strong> {clientAdapted.cardName}</Text>
@@ -634,7 +756,7 @@ export function NewSellTerms({
       ) : (
         <Box p={{ base: 2.5, sm: 3.5 }} bg="gray.50" borderRadius="xl" border="1.5px dashed" borderColor="gray.300">
           <Text fontSize="xs" color="gray.600" fontWeight="600" fontStyle="italic">
-            💡 Completa los parámetros de logística, medios de pago y anexos requeridos para una facturación completa en SAP B1.
+            💡 Completa los parámetros de logística, medios de pago y anexos requeridos para la facturación.
           </Text>
         </Box>
       )}
@@ -677,7 +799,7 @@ export function NewSellTerms({
               onChange={handleDeliveryFormChange}
               placeholder="Selecciona una forma de entrega..."
               noOptionsMessage={({ inputValue }) =>
-                inputValue ? `No se encontró: "${inputValue}"` : "Sin formas de entrega registradas en SAP"
+                inputValue ? `No se encontró: "${inputValue}"` : "Sin formas de entrega registradas"
               }
               styles={getCustomSelectStyles(isDeliveryLocked)}
               menuPortalTarget={typeof document !== "undefined" ? document.body : null}
@@ -685,63 +807,180 @@ export function NewSellTerms({
             />
             {deliveryFormsOptions.length > 0 && (
               <Text fontSize="11px" color="gray.500" mt={1}>
-                📦 <b>{deliveryFormsOptions.length}</b> modalidades de despacho activas en SAP Business One.
+                📦 <b>{deliveryFormsOptions.length}</b> modalidades de despacho activas en el sistema.
               </Text>
             )}
           </Box>
 
           {selectedDeliveryForm && !isPickupInStore && (
             <Box>
-              <FormLabel fontSize="xs" fontWeight="800" color="gray.700">
-                Punto de Llegada (Destino de Entrega) {isDeliveryLocked && "🔒"}
-              </FormLabel>
-              <CreatableSelect
-                isDisabled={isDeliveryLocked}
-                isLoading={isLoadingDeliveryPoints}
-                isClearable={!isDeliveryLocked}
-                options={deliveryOptions}
-                value={normalizeDeliveryPointValue(selectedPoint)}
-                onChange={handleDeliveryPointChange}
-                placeholder={
-                  isLoadingDeliveryPoints
-                    ? "Cargando direcciones de SAP Business One..."
-                    : client
-                    ? "Selecciona o escribe un destino de entrega..."
-                    : "Selecciona un cliente o escribe un destino libre..."
-                }
-                noOptionsMessage={({ inputValue }) =>
-                  inputValue
-                    ? `Presiona Enter para usar: "${inputValue}" como destino`
-                    : isLoadingDeliveryPoints
-                    ? "Cargando direcciones de SAP Business One..."
-                    : client
-                    ? "Escribe la dirección o ciudad de destino..."
-                    : "Selecciona primero un cliente en la pestaña Cotización o escribe un destino libre..."
-                }
-                formatCreateLabel={(inputValue) => `Escribir destino libre: "${inputValue}"`}
-                styles={getCustomSelectStyles(isDeliveryLocked)}
-                menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                menuPosition="fixed"
-              />
-              {!client ? (
-                <Text fontSize="11px" color="amber.800" bg="amber.50" px={2.5} py={1.5} borderRadius="md" border="1px dashed" borderColor="amber.300" mt={1.5}>
-                  💡 <b>Aviso SAP B1:</b> Selecciona primero un cliente en la <b>Pestaña 1 (Cotización)</b> para cargar automáticamente sus almacenes y sucursales registradas en SAP B1, o puedes escribir una dirección libre directamente aquí.
-                </Text>
-              ) : isLoadingDeliveryPoints ? (
-                <HStack spacing={1.5} mt={1.5} bg="blue.50" px={2.5} py={1} borderRadius="md">
-                  <Spinner size="xs" color="blue.600" />
-                  <Text fontSize="11px" color="blue.700" fontWeight="600">
-                    Consultando almacenes y sucursales en SAP Business One...
-                  </Text>
-                </HStack>
-              ) : deliveryOptions.length > 0 ? (
-                <Text fontSize="11px" color="emerald.700" fontWeight="600" mt={1}>
-                  🏢 <b>{deliveryOptions.length}</b> {deliveryOptions.length === 1 ? "dirección oficial de SAP B1 cargada" : "direcciones oficiales de SAP B1 cargadas"} para este cliente ({client.CardName || client.clientName || client.CardCode}).
-                </Text>
+              <Flex
+                justify="space-between"
+                align={{ base: "stretch", sm: "center" }}
+                direction={{ base: "column", sm: "row" }}
+                mb={2}
+                gap={2}
+              >
+                <FormLabel fontSize="xs" fontWeight="800" color="gray.700" mb={0}>
+                  Punto de Llegada (Destino de Entrega) {isDeliveryLocked && "🔒"}
+                </FormLabel>
+                {!isDeliveryLocked && (
+                  <Button
+                    size="xs"
+                    h={{ base: "32px", sm: "28px" }}
+                    px={3}
+                    fontSize={{ base: "12px", sm: "11px" }}
+                    fontWeight="800"
+                    borderRadius="lg"
+                    leftIcon={<Plus className="w-3.5 h-3.5" />}
+                    onClick={handleOpenNewAddressModal}
+                    {...(selectedPoint?.isCustomAddress
+                      ? {
+                          bg: "#0d6334",
+                          color: "white",
+                          _hover: { bg: "#064e3b" },
+                          _active: { bg: "#043327" },
+                        }
+                      : {
+                          variant: "outline",
+                          borderColor: "#0d6334",
+                          color: "#0d6334",
+                          _hover: { bg: "#f0fdf4" },
+                        })}
+                  >
+                    {selectedPoint?.isCustomAddress ? "✏️ Editar Dirección Nueva" : "➕ Registrar Nueva Dirección"}
+                  </Button>
+                )}
+              </Flex>
+
+              {/* Si es una dirección personalizada nueva, mostrar tarjeta clara con detalles */}
+              {selectedPoint && typeof selectedPoint === "object" && selectedPoint.isCustomAddress ? (
+                <Box
+                  p={{ base: 3, sm: 3.5 }}
+                  bg="#f0fdf4"
+                  border="1.5px solid #86efac"
+                  borderRadius="xl"
+                  boxShadow="0 1px 3px rgba(0,0,0,0.04)"
+                >
+                  <Flex
+                    direction={{ base: "column", sm: "row" }}
+                    justify="space-between"
+                    align={{ base: "stretch", sm: "flex-start" }}
+                    gap={2.5}
+                  >
+                    <VStack align="start" spacing={1.5} flex="1">
+                      <HStack spacing={2} wrap="wrap">
+                        <Badge bg="#0d6334" color="white" fontSize="11px" px={2.5} py={0.5} borderRadius="md" fontWeight="800">
+                          📍 DIRECCIÓN DE ENTREGA NUEVA
+                        </Badge>
+                        {selectedPoint.saveToClient ? (
+                          <Badge bg="#6b21a8" color="white" fontSize="10px" px={2} py={0.5} borderRadius="md" fontWeight="700">
+                            💾 Guardar en ficha del cliente
+                          </Badge>
+                        ) : (
+                          <Badge bg="gray.100" color="gray.700" border="1px solid #cbd5e1" fontSize="10px" px={2} py={0.5} borderRadius="md">
+                            📦 Despacho específico
+                          </Badge>
+                        )}
+                      </HStack>
+                      <Text fontSize={{ base: "13px", sm: "xs" }} fontWeight="800" color="gray.900">
+                        Destino: {selectedPoint.AddressName}
+                      </Text>
+                      <Text fontSize={{ base: "13px", sm: "xs" }} color="gray.800">
+                        <b>Calle / Av.:</b> {selectedPoint.Street}
+                      </Text>
+                      <Text fontSize={{ base: "12px", sm: "11px" }} color="gray.600">
+                        <b>Ubicación:</b> {selectedPoint.County}, {selectedPoint.City} (Dpto. {selectedPoint.State})
+                      </Text>
+                      {selectedPoint.BuildingFloorRoom && (
+                        <Text fontSize={{ base: "12px", sm: "11px" }} color="gray.600">
+                          <b>Referencia:</b> {selectedPoint.BuildingFloorRoom}
+                        </Text>
+                      )}
+                    </VStack>
+                    {!isDeliveryLocked && (
+                      <HStack spacing={2} justify={{ base: "flex-end", sm: "flex-end" }} mt={{ base: 1, sm: 0 }}>
+                        <Button
+                          size="xs"
+                          h="28px"
+                          px={3}
+                          color="#0d6334"
+                          bg="#dcfce7"
+                          _hover={{ bg: "#bbf7d0" }}
+                          fontWeight="700"
+                          borderRadius="md"
+                          onClick={handleOpenNewAddressModal}
+                        >
+                          Editar
+                        </Button>
+                        <Button
+                          size="xs"
+                          h="28px"
+                          px={3}
+                          color="#b91c1c"
+                          bg="#fee2e2"
+                          _hover={{ bg: "#fecaca" }}
+                          fontWeight="700"
+                          borderRadius="md"
+                          onClick={handleRemoveCustomAddress}
+                        >
+                          Quitar
+                        </Button>
+                      </HStack>
+                    )}
+                  </Flex>
+                </Box>
               ) : (
-                <Text fontSize="11px" color="gray.600" mt={1}>
-                  ℹ️ El cliente no tiene sucursales adicionales en SAP B1. Puedes escribir una dirección libre aquí.
-                </Text>
+                <>
+                  <CreatableSelect
+                    isDisabled={isDeliveryLocked}
+                    isLoading={isLoadingDeliveryPoints}
+                    isClearable={!isDeliveryLocked}
+                    options={deliveryOptions}
+                    value={normalizeDeliveryPointValue(selectedPoint)}
+                    onChange={handleDeliveryPointChange}
+                    placeholder={
+                      isLoadingDeliveryPoints
+                        ? "Cargando direcciones registradas..."
+                        : client
+                        ? "Selecciona o escribe un destino de entrega..."
+                        : "Selecciona un cliente o escribe un destino libre..."
+                    }
+                    noOptionsMessage={({ inputValue }) =>
+                      inputValue
+                        ? `Presiona Enter para usar: "${inputValue}" como destino`
+                        : isLoadingDeliveryPoints
+                        ? "Cargando direcciones registradas..."
+                        : client
+                        ? "Escribe la dirección o ciudad de destino..."
+                        : "Selecciona primero un cliente en la pestaña Cotización o escribe un destino libre..."
+                    }
+                    formatCreateLabel={(inputValue) => `Escribir destino libre: "${inputValue}"`}
+                    styles={getCustomSelectStyles(isDeliveryLocked)}
+                    menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                    menuPosition="fixed"
+                  />
+                  {!client ? (
+                    <Text fontSize="11px" color="amber.800" bg="amber.50" px={2.5} py={1.5} borderRadius="md" border="1px dashed" borderColor="amber.300" mt={1.5}>
+                      💡 <b>Aviso:</b> Selecciona un cliente para ver sus almacenes y sucursales registradas, o pulsa <b>+ Registrar Nueva Dirección</b> para ingresar una nueva ubicación de despacho.
+                    </Text>
+                  ) : isLoadingDeliveryPoints ? (
+                    <HStack spacing={1.5} mt={1.5} bg="blue.50" px={2.5} py={1} borderRadius="md">
+                      <Spinner size="xs" color="blue.600" />
+                      <Text fontSize="11px" color="blue.700" fontWeight="600">
+                        Consultando almacenes y sucursales registradas...
+                      </Text>
+                    </HStack>
+                  ) : deliveryOptions.length > 0 ? (
+                    <Text fontSize="11px" color="emerald.700" fontWeight="600" mt={1}>
+                      🏢 <b>{deliveryOptions.length}</b> {deliveryOptions.length === 1 ? "dirección registrada" : "direcciones registradas"} para este cliente.
+                    </Text>
+                  ) : (
+                    <Text fontSize="11px" color="gray.600" mt={1}>
+                      ℹ️ El cliente no tiene sucursales adicionales registradas. Puedes pulsar <b>+ Registrar Nueva Dirección</b> o escribir un destino libre.
+                    </Text>
+                  )}
+                </>
               )}
             </Box>
           )}
@@ -767,7 +1006,7 @@ export function NewSellTerms({
                 menuPosition="fixed"
               />
               <Text fontSize="11px" color="gray.500" mt={1}>
-                🚚 <b>{transportOptions.length}</b> agencias registradas en SAP Business One o escribe una agencia personalizada.
+                🚚 <b>{transportOptions.length}</b> agencias registradas en el sistema o escribe una agencia personalizada.
               </Text>
             </Box>
           )}
@@ -781,7 +1020,7 @@ export function NewSellTerms({
                     Transporte Asignado: AUTOPARTES S.A. (Flota / Reparto Propio)
                   </Text>
                   <Text fontSize="11px" color="emerald.700" mt={0.5}>
-                    Cód. SAP: <b>00053</b> | Despacho directo con flota propia a la dirección / almacén del cliente
+                    Código: <b>00053</b> | Despacho directo con flota propia a la dirección / almacén del cliente
                   </Text>
                 </Box>
               </HStack>
@@ -841,7 +1080,7 @@ export function NewSellTerms({
           <HStack spacing={2.5}>
             <CreditCard className="w-5 h-5 text-emerald-700 stroke-[2.5] flex-shrink-0" />
             <Text fontSize={{ base: "xs", sm: "sm" }} fontWeight="950" color="emerald.900" textTransform="uppercase" letterSpacing="wide">
-              2. Condición de Pago y Facturación (SAP B1)
+              2. Condición de Pago y Facturación
             </Text>
           </HStack>
           <HStack spacing={2}>
@@ -884,7 +1123,7 @@ export function NewSellTerms({
                   <FormControl>
                     <Flex justify="space-between" align="center" mb={1.5}>
                       <FormLabel fontSize="xs" fontWeight="800" color="gray.700" mb={0}>
-                        Tipo de Pago / Condición Comercial (Tabla OCTG - SAP B1) {isFinanceLocked && "🔒"}
+                        Tipo de Pago / Condición Comercial {isFinanceLocked && "🔒"}
                       </FormLabel>
                       <HStack spacing={2}>
                         <Badge colorScheme={effectiveDocType === "FACTURA" ? "blue" : "teal"} fontSize="10px" px={2} py={0.5} borderRadius="md" fontWeight="800">
@@ -909,7 +1148,7 @@ export function NewSellTerms({
                     />
                     {paymentTypesOptions.length > 0 && (
                       <Text fontSize="11px" color="gray.500" mt={1}>
-                        💰 <b>{paymentTypesOptions.length}</b> condiciones de pago sincronizadas de SAP Business One (Tabla OCTG).
+                        💰 <b>{paymentTypesOptions.length}</b> condiciones de pago disponibles en el sistema.
                       </Text>
                     )}
                   </FormControl>
@@ -961,7 +1200,7 @@ export function NewSellTerms({
                           VENTA A CRÉDITO COMERCIAL PACTADO ({creditTerm || "Plazo Oficial"})
                         </Text>
                         <Text fontSize="11px" color="purple.800" fontWeight="600">
-                          ℹ️ La venta se registrará en SAP B1 con condición "{selectedPaymentType?.PymntGroup || selectedPaymentType?.label || 'Crédito'}", comprobante <b>{effectiveDocType}</b> {isLetra ? "y Letra de Cambio mercantil." : "sin letra."}
+                          ℹ️ La venta se registrará con condición "{selectedPaymentType?.PymntGroup || selectedPaymentType?.label || 'Crédito'}", comprobante <b>{effectiveDocType}</b> {isLetra ? "y Letra de Cambio mercantil." : "sin letra."}
                         </Text>
                       </VStack>
                     </HStack>
@@ -975,7 +1214,7 @@ export function NewSellTerms({
                           VENTA AL CONTADO / ENTREGA INMEDIATA
                         </Text>
                         <Text fontSize="11px" color="emerald.800" fontWeight="600">
-                          ℹ️ La venta se registrará en SAP B1 con condición "{selectedPaymentType?.PymntGroup || selectedPaymentType?.label || 'Contado / Entrega'}" y comprobante <b>{effectiveDocType}</b> (sin días de financiamiento).
+                          ℹ️ La venta se registrará con condición "{selectedPaymentType?.PymntGroup || selectedPaymentType?.label || 'Contado / Entrega'}" y comprobante <b>{effectiveDocType}</b> (sin días de financiamiento).
                         </Text>
                       </VStack>
                     </HStack>
@@ -984,6 +1223,238 @@ export function NewSellTerms({
               </VStack>
             );
           })()}
+      {/* Modal para Registrar o Editar Nueva Dirección de Entrega */}
+      <Modal
+        isOpen={isAddressModalOpen}
+        onClose={onCloseAddressModal}
+        size={{ base: "full", sm: "md" }}
+        isCentered
+        scrollBehavior="inside"
+      >
+        <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(2px)" />
+        <ModalContent
+          borderRadius={{ base: "none", sm: "2xl" }}
+          overflow="hidden"
+          boxShadow="0 25px 50px -12px rgba(0, 0, 0, 0.35)"
+          m={{ base: 0, sm: 3 }}
+          maxW={{ base: "100vw", sm: "480px" }}
+          maxH={{ base: "100vh", sm: "88vh" }}
+        >
+          <ModalHeader
+            bg="linear-gradient(135deg, #0e572b 0%, #064e3b 100%)"
+            color="white"
+            py={{ base: 4, sm: 3.5 }}
+            px={{ base: 4, sm: 5 }}
+          >
+            <HStack spacing={2.5} pr={8}>
+              <Flex
+                w={{ base: "36px", sm: "32px" }}
+                h={{ base: "36px", sm: "32px" }}
+                borderRadius="lg"
+                bg="whiteAlpha.200"
+                align="center"
+                justify="center"
+                flexShrink={0}
+              >
+                <MapPin className="w-5 h-5 text-white" />
+              </Flex>
+              <Box minW={0}>
+                <Text fontSize={{ base: "md", sm: "sm" }} fontWeight="900" lineHeight="1.2">
+                  Nueva Dirección de Entrega
+                </Text>
+                <Text fontSize="11px" color="#a7f3d0" fontWeight="600" mt={0.5}>
+                  Destino para la Guía de Remisión (Despacho)
+                </Text>
+              </Box>
+            </HStack>
+          </ModalHeader>
+          <ModalCloseButton
+            color="white"
+            top={{ base: 3, sm: 2.5 }}
+            right={{ base: 3, sm: 3 }}
+            size="md"
+            _hover={{ bg: "whiteAlpha.200" }}
+          />
+
+          <ModalBody p={{ base: 4, sm: 5 }} bg="#f8fafc" overflowY="auto">
+            <VStack spacing={{ base: 3.5, sm: 4 }} align="stretch">
+              <Box bg="#f0fdf4" p={3} borderRadius="lg" border="1px solid #bbf7d0">
+                <Text fontSize={{ base: "12px", sm: "xs" }} color="#166534" fontWeight="600" lineHeight="1.4">
+                  📦 Esta dirección se registrará en la <b>Logística del documento</b> y saldrá impresa en la <b>Guía de Remisión (Guía de Salida)</b>.
+                </Text>
+              </Box>
+
+              {addressError && (
+                <Box p={3} bg="#fef2f2" border="1px solid #fecaca" borderRadius="lg">
+                  <Text fontSize="xs" color="#991b1b" fontWeight="700">
+                    ⚠️ {addressError}
+                  </Text>
+                </Box>
+              )}
+
+              <FormControl isRequired>
+                <FormLabel fontSize={{ base: "13px", sm: "xs" }} fontWeight="800" color="gray.700" mb={1}>
+                  Dirección exacta (Calle, Jr, Av, Nro, Mz, Lote)
+                </FormLabel>
+                <Input
+                  bg="white"
+                  borderColor="#cbd5e1"
+                  _focus={{ borderColor: "#0d6334", boxShadow: "0 0 0 1px #0d6334" }}
+                  h={{ base: "44px", sm: "38px" }}
+                  fontSize={{ base: "15px", sm: "sm" }}
+                  borderRadius="lg"
+                  placeholder="Ej: Av. Alfredo Mendiola 4520, Mz B Lote 5"
+                  value={customAddrForm.street}
+                  onChange={(e) => {
+                    setCustomAddrForm({ ...customAddrForm, street: e.target.value });
+                    if (addressError) setAddressError("");
+                  }}
+                />
+              </FormControl>
+
+              <Grid templateColumns={{ base: "1fr", sm: "repeat(2, 1fr)" }} gap={3}>
+                <FormControl>
+                  <FormLabel fontSize={{ base: "13px", sm: "xs" }} fontWeight="800" color="gray.700" mb={1}>
+                    Departamento
+                  </FormLabel>
+                  <ChakraSelect
+                    bg="white"
+                    borderColor="#cbd5e1"
+                    _focus={{ borderColor: "#0d6334", boxShadow: "0 0 0 1px #0d6334" }}
+                    h={{ base: "44px", sm: "38px" }}
+                    fontSize={{ base: "14px", sm: "sm" }}
+                    borderRadius="lg"
+                    value={customAddrForm.department}
+                    onChange={(e) => setCustomAddrForm({ ...customAddrForm, department: e.target.value })}
+                  >
+                    {PERU_DEPARTMENTS.map((d) => (
+                      <option key={d.code} value={d.code}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </ChakraSelect>
+                </FormControl>
+
+                <FormControl>
+                  <FormLabel fontSize={{ base: "13px", sm: "xs" }} fontWeight="800" color="gray.700" mb={1}>
+                    Provincia
+                  </FormLabel>
+                  <Input
+                    bg="white"
+                    borderColor="#cbd5e1"
+                    _focus={{ borderColor: "#0d6334", boxShadow: "0 0 0 1px #0d6334" }}
+                    h={{ base: "44px", sm: "38px" }}
+                    fontSize={{ base: "14px", sm: "sm" }}
+                    borderRadius="lg"
+                    placeholder="Ej: LIMA"
+                    value={customAddrForm.city}
+                    onChange={(e) => setCustomAddrForm({ ...customAddrForm, city: e.target.value.toUpperCase() })}
+                  />
+                </FormControl>
+              </Grid>
+
+              <Grid templateColumns={{ base: "1fr", sm: "repeat(2, 1fr)" }} gap={3}>
+                <FormControl>
+                  <FormLabel fontSize={{ base: "13px", sm: "xs" }} fontWeight="800" color="gray.700" mb={1}>
+                    Distrito
+                  </FormLabel>
+                  <Input
+                    bg="white"
+                    borderColor="#cbd5e1"
+                    _focus={{ borderColor: "#0d6334", boxShadow: "0 0 0 1px #0d6334" }}
+                    h={{ base: "44px", sm: "38px" }}
+                    fontSize={{ base: "14px", sm: "sm" }}
+                    borderRadius="lg"
+                    placeholder="Ej: LOS OLIVOS"
+                    value={customAddrForm.county}
+                    onChange={(e) => setCustomAddrForm({ ...customAddrForm, county: e.target.value.toUpperCase() })}
+                  />
+                </FormControl>
+
+                <FormControl>
+                  <FormLabel fontSize={{ base: "13px", sm: "xs" }} fontWeight="800" color="gray.700" mb={1}>
+                    Alias / Nombre Destino
+                  </FormLabel>
+                  <Input
+                    bg="white"
+                    borderColor="#cbd5e1"
+                    _focus={{ borderColor: "#0d6334", boxShadow: "0 0 0 1px #0d6334" }}
+                    h={{ base: "44px", sm: "38px" }}
+                    fontSize={{ base: "14px", sm: "sm" }}
+                    borderRadius="lg"
+                    placeholder="Ej: TALLER NORTE"
+                    value={customAddrForm.addressName}
+                    onChange={(e) => setCustomAddrForm({ ...customAddrForm, addressName: e.target.value.toUpperCase() })}
+                  />
+                </FormControl>
+              </Grid>
+
+              <FormControl>
+                <FormLabel fontSize={{ base: "13px", sm: "xs" }} fontWeight="800" color="gray.700" mb={1}>
+                  Referencia de entrega (opcional)
+                </FormLabel>
+                <Input
+                  bg="white"
+                  borderColor="#cbd5e1"
+                  _focus={{ borderColor: "#0d6334", boxShadow: "0 0 0 1px #0d6334" }}
+                  h={{ base: "44px", sm: "38px" }}
+                  fontSize={{ base: "14px", sm: "sm" }}
+                  borderRadius="lg"
+                  placeholder="Ej: Frente al grifo Repsol, portón blanco"
+                  value={customAddrForm.reference}
+                  onChange={(e) => setCustomAddrForm({ ...customAddrForm, reference: e.target.value })}
+                />
+              </FormControl>
+
+              <Box p={3} bg="white" borderRadius="lg" border="1px dashed #cbd5e1">
+                <Checkbox
+                  size="md"
+                  colorScheme="green"
+                  isChecked={customAddrForm.saveToClient}
+                  onChange={(e) => setCustomAddrForm({ ...customAddrForm, saveToClient: e.target.checked })}
+                >
+                  <Text fontSize={{ base: "13px", sm: "xs" }} fontWeight="700" color="gray.800">
+                    Guardar permanentemente en la ficha del cliente
+                  </Text>
+                </Checkbox>
+                <Text fontSize="11px" color="gray.500" mt={1} ml={{ base: 6, sm: 6 }}>
+                  Si lo marcas, esta sucursal quedará disponible para futuras cotizaciones de este cliente.
+                </Text>
+              </Box>
+            </VStack>
+          </ModalBody>
+
+          <ModalFooter bg="white" borderTop="1px solid #e2e8f0" p={{ base: 3.5, sm: 4 }}>
+            <Flex w="full" direction={{ base: "column-reverse", sm: "row" }} justify="flex-end" gap={2}>
+              <Button
+                w={{ base: "full", sm: "auto" }}
+                h={{ base: "44px", sm: "38px" }}
+                fontSize={{ base: "sm", sm: "xs" }}
+                fontWeight="700"
+                variant="ghost"
+                onClick={onCloseAddressModal}
+              >
+                Cancelar
+              </Button>
+              <Button
+                w={{ base: "full", sm: "auto" }}
+                h={{ base: "44px", sm: "38px" }}
+                fontSize={{ base: "sm", sm: "xs" }}
+                fontWeight="800"
+                bg="#0d6334"
+                _hover={{ bg: "#064e3b" }}
+                _active={{ bg: "#043327" }}
+                color="white"
+                boxShadow="0 2px 4px rgba(13, 99, 52, 0.25)"
+                onClick={handleSaveCustomAddress}
+              >
+                Usar esta dirección
+              </Button>
+            </Flex>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
       </Box>
     </VStack>
   );
