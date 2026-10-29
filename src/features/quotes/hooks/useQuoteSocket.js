@@ -4,6 +4,7 @@ import { socket } from "../../../shared/lib/socket";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { checkIsAdmin } from "../../../shared/utils/permissions";
 import { useToast } from "@chakra-ui/react";
+import { showLocalNativeNotification, subscribeToPush } from "../../../shared/services/pushNotificationService";
 
 export function useQuoteSocket() {
   const queryClient = useQueryClient();
@@ -13,6 +14,24 @@ export function useQuoteSocket() {
 
   useEffect(() => {
     if (!socket) return;
+
+    // 🔔 Solicitar permiso nativo al navegador automáticamente al ingresar
+    if (typeof window !== "undefined" && "Notification" in window) {
+      if (Notification.permission === "default") {
+        Notification.requestPermission()
+          .then((perm) => {
+            if (perm === "granted") {
+              subscribeToPush().catch(() => {});
+            }
+          })
+          .catch(() => {});
+      } else if (Notification.permission === "granted") {
+        const alreadyRegistered = localStorage.getItem("grupoLeon_push_enabled") === "true";
+        if (!alreadyRegistered) {
+          subscribeToPush().catch(() => {});
+        }
+      }
+    }
 
     // SAP puede emitir quote:created, quote:updated y varias notificaciones por
     // una sola operación. Se agrupan para evitar ráfagas de HTTP y renders.
@@ -236,6 +255,14 @@ export function useQuoteSocket() {
         setTimeout(() => {
           displayedToastIdsRef.current.delete(toastId);
         }, 15000);
+
+        // 🔔 Notificación nativa en Windows / Celular + Sonido
+        showLocalNativeNotification({
+          title: notif.title,
+          body: notif.description || "Tienes una nueva actualización en cotizaciones.",
+          quoteId: notif.quoteId || notif.id,
+          url: notif.quoteId ? `/cotizaciones` : `/dashboard`,
+        });
 
         toast({
           id: toastId,

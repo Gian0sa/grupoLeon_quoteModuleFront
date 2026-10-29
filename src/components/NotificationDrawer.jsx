@@ -15,7 +15,8 @@ import {
   Flex,
   Button,
   IconButton,
-  Tooltip
+  Tooltip,
+  useToast
 } from "@chakra-ui/react";
 import { FiBell, FiCheckCircle, FiXCircle, FiEye, FiTrash2, FiClock, FiFileText, FiUser } from "react-icons/fi";
 import { QuoteDetailDrawer } from "../features/quotes/components/QuoteDetailDrawer";
@@ -29,6 +30,7 @@ import { Lock, Eye } from "lucide-react";
 import { useIsAdmin } from "../shared/utils/permissions";
 
 export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
+  const toast = useToast();
   const { username, userId, role } = useAuthStore();
   const queryClient = useQueryClient();
   const [selectedQuoteForDrawer, setSelectedQuoteForDrawer] = useState(null);

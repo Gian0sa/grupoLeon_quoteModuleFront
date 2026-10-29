@@ -138,3 +138,69 @@ self.addEventListener('fetch', (event) => {
     );
   }
 });
+
+
+// ═══════════════════════════════════════════════════════════════════════
+// 5. Web Push Notifications (Nivel 2 - Windows, Android & iOS PWA)
+// ═══════════════════════════════════════════════════════════════════════
+
+self.addEventListener('push', (event) => {
+  let data = {};
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch (_) {
+      data = {
+        title: 'Grupo León',
+        body: event.data.text() || 'Tienes una nueva notificación.',
+      };
+    }
+  } else {
+    data = {
+      title: 'Grupo León',
+      body: 'Nueva actualización en el sistema de cotizaciones.',
+    };
+  }
+
+  const title = data.title || 'Grupo León - Notificación';
+  const options = {
+    body: data.body || 'Tienes una nueva actualización en cotizaciones.',
+    icon: data.icon || '/icon-192.png',
+    badge: data.badge || '/icon-192.png',
+    vibrate: data.vibrate || [200, 100, 200],
+    tag: data.tag || 'grupo-leon-quote-notification',
+    renotify: true,
+    requireInteraction: false,
+    data: data.data || { url: '/cotizaciones' },
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  if (event.action === 'close') {
+    return;
+  }
+
+  const targetUrl = (event.notification.data && event.notification.data.url) || '/cotizaciones';
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // 1. Si ya existe una ventana abierta de la app, enfocarla y navegar
+      for (const client of clientList) {
+        if ('focus' in client) {
+          if (client.url && client.url.includes(self.location.origin)) {
+            client.postMessage({ type: 'NAVIGATE_TO', url: targetUrl });
+            return client.focus();
+          }
+        }
+      }
+      // 2. Si la app estaba cerrada, abrir una nueva ventana
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(targetUrl);
+      }
+    })
+  );
+});

@@ -15,6 +15,22 @@ function SoftwareUpdaterListener() {
   useAppUpdater();
   return null;
 }
+function NotificationNavigationListener() {
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+      const handleSwMessage = (event) => {
+        if (event.data?.type === 'NAVIGATE_TO' && event.data?.url) {
+          if (window.location.pathname !== event.data.url) {
+            window.location.href = event.data.url;
+          }
+        }
+      };
+      navigator.serviceWorker.addEventListener('message', handleSwMessage);
+      return () => navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+    }
+  }, []);
+  return null;
+}
 
 function RealtimeSocketConsumer() {
   useQuoteSocket();
@@ -99,6 +115,7 @@ function App() {
         <QueryClientProvider client={queryClient}>
           <NetworkAutoRefresher />
           <SoftwareUpdaterListener />
+          <NotificationNavigationListener />
           <RealtimeSocketListener />
           {/* La cola de visitas offline vive aquí para seguir sincronizando
               en cualquier pantalla, no solo en el módulo de registro. */}
