@@ -1481,6 +1481,8 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         lineDiscount: addDisc,
         discountPercent: totalDisc,
         DiscountPercent: totalDisc,
+        customPriceConIGV: p.customPriceConIGV || p.unitPriceConIGV || null,
+        discountedUnitPrice: p.discountedUnitPrice || null,
         U_TQC_DESL: sapDisc,
         U_TQC_DELP: valorDescLista,
         U_TQC_DESV: descVenta,
@@ -1502,6 +1504,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     const isAlreadyEmittedLocally = Boolean(currentQuoteObj.sapDocNum && Number(currentQuoteObj.sapDocNum) > 1000);
     const quotePayload = {
       ...currentQuoteObj,
+      grandTotalUSD: totals?.grandTotalUSD || grandTotal,
+      subtotalUSD: totals?.subtotalUSD || subtotal,
+      igvUSD: totals?.igvUSD || igv,
       id: activeDocNumber,
       docNumber: activeDocNumber,
       sapDocNum: isAlreadyEmittedLocally ? Number(currentQuoteObj.sapDocNum) : null,

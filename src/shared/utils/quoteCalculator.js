@@ -78,7 +78,8 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
       : null;
 
     // Regla de simulación matemática unificada 18% SUNAT / SAP B1 por línea:
-    // 1. Base neta unitaria (2 decimales): Si el usuario fija precio con IGV (ej: 98.50), la base imponible neta es 98.50 / 1.18 = 83.47
+    // 1. Base neta unitaria (hasta 6 decimales de precisión interna):
+    //    Si el usuario fija precio con IGV (ej: 98.50), la base imponible neta es 98.50 / 1.18 = 83.474576
     let netUnitPrice;
     let unitTax;
     let unitPriceConIGV;
@@ -88,17 +89,17 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
       unitTax = 0;
       unitPriceConIGV = 0;
     } else if (isLineFromSap && p.finalPrice) {
-      netUnitPrice = Number(Number(p.finalPrice).toFixed(2));
-      unitTax = Number((netUnitPrice * 0.18).toFixed(2));
+      netUnitPrice = Number(Number(p.finalPrice).toFixed(6));
+      unitTax = Number((netUnitPrice * 0.18).toFixed(6));
       unitPriceConIGV = Number((netUnitPrice + unitTax).toFixed(2));
     } else if (customPrice) {
-      netUnitPrice = Number((customPrice / 1.18).toFixed(2));
-      unitTax = Number((customPrice - netUnitPrice).toFixed(2));
-      unitPriceConIGV = customPrice;
+      netUnitPrice = Number((customPrice / 1.18).toFixed(6));
+      unitTax = Number((customPrice - netUnitPrice).toFixed(6));
+      unitPriceConIGV = Number(customPrice.toFixed(2));
     } else {
-      netUnitPrice = Number((listPrice * (1 - totalDisc / 100)).toFixed(2));
-      unitTax = Number((netUnitPrice * 0.18).toFixed(2));
-      unitPriceConIGV = Number((netUnitPrice + unitTax).toFixed(2));
+      netUnitPrice = Number((listPrice * (1 - totalDisc / 100)).toFixed(6));
+      unitTax = Number((netUnitPrice * 0.18).toFixed(6));
+      unitPriceConIGV = Number((netUnitPrice * 1.18).toFixed(2));
     }
 
     const netLine = isOutOfStock
@@ -300,9 +301,9 @@ export function calculateDiscountFromTargetPrice({
   const additionalDisc = totalDiscPct - Number(baseFixedDisc || 0);
 
   return {
-    netTarget: Number(netTarget.toFixed(4)),
-    totalDiscPct: Number(totalDiscPct.toFixed(2)),
-    additionalDisc: Number(additionalDisc.toFixed(2)),
+    netTarget: Number(netTarget.toFixed(6)),
+    totalDiscPct: Number(totalDiscPct.toFixed(4)),
+    additionalDisc: Number(additionalDisc.toFixed(4)),
     priceWithTax: Number((netTarget * (1 + taxRate)).toFixed(2)),
     taxAmount: Number((netTarget * taxRate).toFixed(2)),
   };

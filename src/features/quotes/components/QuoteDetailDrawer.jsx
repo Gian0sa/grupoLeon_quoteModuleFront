@@ -1375,6 +1375,8 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
           lineDiscount: addDisc,
           discountPercent: totalDisc,
           DiscountPercent: totalDisc,
+          customPriceConIGV: p.customPriceConIGV || p.unitPriceConIGV || null,
+          discountedUnitPrice: p.discountedUnitPrice || null,
           U_TQC_DESL: sapDisc,
           U_TQC_DELP: valorDescLista,
           U_TQC_DESV: descVenta,
@@ -1383,6 +1385,9 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
       const quotePayload = {
         ...effectiveQuote,
+        grandTotalUSD: calcRes?.grandTotalUSD || effectiveQuote.grandTotalUSD || effectiveQuote.totals?.grandTotalUSD || effectiveQuote.totalAmount,
+        subtotalUSD: calcRes?.subtotalUSD || effectiveQuote.subtotalUSD || effectiveQuote.totals?.subtotalUSD,
+        igvUSD: calcRes?.igvUSD || effectiveQuote.igvUSD || effectiveQuote.totals?.igvUSD,
         sapDocNum: null,
         DocNum: null,
         forceEmit: true,
