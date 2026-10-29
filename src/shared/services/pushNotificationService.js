@@ -151,7 +151,7 @@ export async function subscribeToPush(user = null) {
   showLocalNativeNotification({
     title: "🔔 ¡Notificaciones Activadas!",
     body: "Recibirás alertas de aprobaciones y pedidos directamente en tu pantalla.",
-    url: "/cotizaciones",
+    url: "/historyquotes",
   });
 
   return subscription;
@@ -195,7 +195,7 @@ export async function testPushNotification(username) {
  * Dispara una notificación nativa local inmediatamente en Windows / Móvil
  * (usada cuando la pestaña está en segundo plano o minimizada)
  */
-export async function showLocalNativeNotification({ title, body, quoteId, url = "/cotizaciones" }) {
+export async function showLocalNativeNotification({ title, body, quoteId, url }) {
   if (typeof window === "undefined" || !("Notification" in window)) return;
   if (Notification.permission !== "granted") return;
   // Respetar si el usuario desactivó explícitamente las alertas
@@ -203,6 +203,8 @@ export async function showLocalNativeNotification({ title, body, quoteId, url = 
 
   // Reproducir el sonido
   playNotificationChime();
+
+  const targetUrl = url || (quoteId ? `/historyquotes?search=${encodeURIComponent(quoteId)}` : `/historyquotes`);
 
   try {
     // Si tenemos Service Worker listo, usar registration.showNotification (mejor integración en Android / Windows)
@@ -216,7 +218,7 @@ export async function showLocalNativeNotification({ title, body, quoteId, url = 
           vibrate: [200, 100, 200],
           tag: quoteId ? `quote-${quoteId}` : `local-${Date.now()}`,
           renotify: true,
-          data: { url, quoteId },
+          data: { url: targetUrl, quoteId },
         });
       }
     }
@@ -226,11 +228,12 @@ export async function showLocalNativeNotification({ title, body, quoteId, url = 
       body,
       icon: "/icon-192.png",
       tag: quoteId ? `quote-${quoteId}` : `local-${Date.now()}`,
+      data: { url: targetUrl, quoteId },
     });
     n.onclick = () => {
       window.focus();
-      if (url && window.location.pathname !== url) {
-        window.location.href = url;
+      if (targetUrl) {
+        window.location.href = targetUrl;
       }
     };
   } catch (err) {

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'autopartes-pwa-v11';
+const CACHE_NAME = 'autopartes-pwa-v12';
 const MAX_STATIC_CACHE_ENTRIES = 30;
 
 async function trimCache(cacheName, maxItems) {
@@ -171,7 +171,7 @@ self.addEventListener('push', (event) => {
     tag: data.tag || 'grupo-leon-quote-notification',
     renotify: true,
     requireInteraction: false,
-    data: data.data || { url: '/cotizaciones' },
+    data: data.data || { url: '/historyquotes' },
   };
 
   event.waitUntil(self.registration.showNotification(title, options));
@@ -184,7 +184,15 @@ self.addEventListener('notificationclick', (event) => {
     return;
   }
 
-  const targetUrl = (event.notification.data && event.notification.data.url) || '/cotizaciones';
+  const notifData = event.notification.data || {};
+  let targetUrl = notifData.url || '/historyquotes';
+  const quoteId = notifData.quoteId;
+
+  // Si tiene quoteId y la url no tiene search param, agregarlo para abrir la cotización directamente
+  if (quoteId && !targetUrl.includes('search=')) {
+    const separator = targetUrl.includes('?') ? '&' : '?';
+    targetUrl = `${targetUrl}${separator}search=${encodeURIComponent(quoteId)}`;
+  }
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
@@ -192,7 +200,7 @@ self.addEventListener('notificationclick', (event) => {
       for (const client of clientList) {
         if ('focus' in client) {
           if (client.url && client.url.includes(self.location.origin)) {
-            client.postMessage({ type: 'NAVIGATE_TO', url: targetUrl });
+            client.postMessage({ type: 'NAVIGATE_TO', url: targetUrl, quoteId });
             return client.focus();
           }
         }

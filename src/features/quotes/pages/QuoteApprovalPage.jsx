@@ -72,7 +72,7 @@ import {
   Zap,
   Lock
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuoteStore } from "../stores/quoteStore";
 import { useHasAccess, useIsAdmin } from "../../../shared/utils/permissions";
 import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
@@ -843,17 +843,58 @@ export function QuoteApprovalPage() {
     icon: Zap,
   });
 
+  const [searchParams] = useSearchParams();
+  const searchParamValue = searchParams.get("search") || searchParams.get("quoteId") || searchParams.get("docNumber");
+
+  // Sincronizar automáticamente el término de búsqueda y apertura de detalle desde la URL (?search=... o ?quoteId=...)
+  useEffect(() => {
+    if (searchParamValue) {
+      const term = String(searchParamValue).trim();
+      if (term) {
+        setSearchQuery(term);
+        setSelectedTab("ALL");
+        setHighlightedDocId(term);
+
+        const match = quotes.find(q =>
+          isMatchingDoc(q, term) ||
+          String(q.docNumber || "").toLowerCase().includes(term.toLowerCase()) ||
+          String(q.id || "") === term
+        );
+        if (match) {
+          setSelectedQuote(match);
+          setIsDetailOpen(true);
+        }
+      }
+    }
+  }, [searchParamValue, quotes]);
+
   useEffect(() => {
     const handleHighlight = (e) => {
       const id = e?.detail?.docId || e?.detail?.id;
+      const shouldOpenDetail = e?.detail?.openDetail;
       if (id) {
-        setHighlightedDocId(String(id));
-        setTimeout(() => setHighlightedDocId(null), 4500);
+        const idStr = String(id).trim();
+        setHighlightedDocId(idStr);
+        setSearchQuery(idStr);
+        setSelectedTab("ALL");
+        setTimeout(() => setHighlightedDocId(null), 5500);
+
+        if (shouldOpenDetail) {
+          const match = quotes.find(q =>
+            isMatchingDoc(q, idStr) ||
+            String(q.docNumber || "").toLowerCase().includes(idStr.toLowerCase()) ||
+            String(q.id || "") === idStr
+          );
+          if (match) {
+            setSelectedQuote(match);
+            setIsDetailOpen(true);
+          }
+        }
       }
     };
     window.addEventListener("quoteHighlight", handleHighlight);
     return () => window.removeEventListener("quoteHighlight", handleHighlight);
-  }, []);
+  }, [quotes]);
 
   // Búsqueda profunda en servidor/SAP cuando se especifique un término relevante (mínimo 3 letras o número específico)
   useEffect(() => {
@@ -871,6 +912,18 @@ export function QuoteApprovalPage() {
         if (isCurrent) setIsDeepSearching(true);
         const results = await getQuotes({ search: queryTerm });
         if (isCurrent && Array.isArray(results) && results.length > 0) {
+          if (searchParamValue) {
+            const term = String(searchParamValue).trim();
+            const match = results.find(r =>
+              isMatchingDoc(r, term) ||
+              String(r.docNumber || "").toLowerCase().includes(term.toLowerCase()) ||
+              String(r.id || "") === term
+            );
+            if (match) {
+              setSelectedQuote(match);
+              setIsDetailOpen(true);
+            }
+          }
           setQuotes(prev => {
             const seen = new Set(prev.map(q => String(q.docNumber || q.id)));
             const added = [];

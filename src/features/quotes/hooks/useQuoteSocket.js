@@ -263,11 +263,12 @@ export function useQuoteSocket() {
         }, 15000);
 
         // 🔔 Notificación nativa en Windows / Celular + Sonido
+        const notifQuoteId = notif.quoteId || notif.id || null;
         showLocalNativeNotification({
           title: notif.title,
           body: notif.description || "Tienes una nueva actualización en cotizaciones.",
-          quoteId: notif.quoteId || notif.id,
-          url: notif.quoteId ? `/cotizaciones` : `/dashboard`,
+          quoteId: notifQuoteId,
+          url: notifQuoteId ? `/historyquotes?search=${encodeURIComponent(notifQuoteId)}` : `/historyquotes`,
         });
 
         toast({

@@ -1,5 +1,5 @@
 import { Component, lazy, Suspense } from "react";
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation, useParams } from "react-router-dom";
 import { Flex, Spinner, Text, Button } from "@chakra-ui/react";
 import { PrivateRoute } from "../app/middlewares/privateRoute.jsx";
 import { RoleRoute } from "../app/middlewares/roleRoute.jsx";
@@ -129,6 +129,16 @@ class RouteErrorBoundary extends Component {
   }
 }
 
+function CotizacionesRedirect() {
+  const location = useLocation();
+  return <Navigate to={`/historyquotes${location.search}`} replace />;
+}
+
+function CotizacionesIdRedirect() {
+  const { id } = useParams();
+  return <Navigate to={`/historyquotes?search=${encodeURIComponent(id || "")}`} replace />;
+}
+
 const AppRoutes = () => {
   return (
     <>
@@ -143,6 +153,8 @@ const AppRoutes = () => {
             <Route path="/statement/:token"      element={<ClientStatementPage />} />
 
             {/* Privados */}
+            <Route path="/cotizaciones"      element={<CotizacionesRedirect />} />
+            <Route path="/cotizaciones/:id"  element={<CotizacionesIdRedirect />} />
             <Route path="/client"            element={<PrivateRoute><ClientPage /></PrivateRoute>} />
             <Route path="/dashboard"         element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
             <Route path="/newquotes"         element={<RoleRoute requiredPermission="POST:/quotes"><NewQuotesPage /></RoleRoute>} />
