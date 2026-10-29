@@ -370,6 +370,15 @@ export function TopHeaderBanner({
                 _hover={{ bg: "whiteAlpha.300" }}
                 onClick={(e) => {
                   e.currentTarget?.blur();
+                  if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+                    Notification.requestPermission()
+                      .then((perm) => {
+                        if (perm === "granted") {
+                          import("../shared/services/pushNotificationService").then((m) => m.subscribeToPush()).catch(() => {});
+                        }
+                      })
+                      .catch(() => {});
+                  }
                   onOpenNotif();
                 }}
                 sx={

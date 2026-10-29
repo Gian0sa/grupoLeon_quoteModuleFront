@@ -15,23 +15,29 @@ export function useQuoteSocket() {
   useEffect(() => {
     if (!socket) return;
 
-    // 🔔 Solicitar permiso nativo al navegador automáticamente al ingresar
-    if (typeof window !== "undefined" && "Notification" in window) {
-      if (Notification.permission === "default") {
-        Notification.requestPermission()
-          .then((perm) => {
-            if (perm === "granted") {
-              subscribeToPush().catch(() => {});
-            }
-          })
-          .catch(() => {});
-      } else if (Notification.permission === "granted") {
-        const alreadyRegistered = localStorage.getItem("grupoLeon_push_enabled") === "true";
-        if (!alreadyRegistered) {
-          subscribeToPush().catch(() => {});
+    // 🔔 Solicitar permiso nativo al navegador (con soporte para User Gesture en HTTPS)
+    const handleNativePermission = () => {
+      if (typeof window !== "undefined" && "Notification" in window) {
+        if (Notification.permission === "default") {
+          Notification.requestPermission()
+            .then((perm) => {
+              if (perm === "granted") {
+                subscribeToPush().catch(() => {});
+              }
+            })
+            .catch(() => {});
+        } else if (Notification.permission === "granted") {
+          const alreadyRegistered = localStorage.getItem("grupoLeon_push_enabled") === "true";
+          if (!alreadyRegistered) {
+            subscribeToPush().catch(() => {});
+          }
         }
       }
-    }
+    };
+
+    handleNativePermission();
+    window.addEventListener("click", handleNativePermission, { once: true });
+    window.addEventListener("touchend", handleNativePermission, { once: true });
 
     // SAP puede emitir quote:created, quote:updated y varias notificaciones por
     // una sola operación. Se agrupan para evitar ráfagas de HTTP y renders.
@@ -401,6 +407,8 @@ export function useQuoteSocket() {
     socket.on("promotions:changed", handlePromotionsUpdated);
 
     return () => {
+      window.removeEventListener("click", handleNativePermission);
+      window.removeEventListener("touchend", handleNativePermission);
       if (refreshTimer) window.clearTimeout(refreshTimer);
       socket.off("quote:created", handleQuoteCreated);
       socket.off("quote:updated", handleQuoteUpdated);
