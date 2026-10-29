@@ -56,7 +56,7 @@ export default function SapItemGrid({
 
   const handleApplyDiscountFromModal = (itemId, newLineDiscount, customPriceConIGV) => {
     onUpdateProduct(itemId, { 
-      lineDiscount: Number(Number(newLineDiscount || 0).toFixed(2)),
+      lineDiscount: Number(Number(newLineDiscount || 0).toFixed(4)),
       customPriceConIGV: customPriceConIGV !== undefined ? customPriceConIGV : null,
     });
   };
@@ -181,18 +181,23 @@ export default function SapItemGrid({
             const customPrice = !isOutOfStock && item.customPriceConIGV && Number(item.customPriceConIGV) > 0
               ? Number(item.customPriceConIGV)
               : null;
-            let finalUnitPrice;
+            let netUnitPrice;
             let unitPriceConIGV;
             if (customPrice) {
-              finalUnitPrice = Number((customPrice / 1.18).toFixed(2));
-              unitPriceConIGV = Number((finalUnitPrice + Number((finalUnitPrice * 0.18).toFixed(2))).toFixed(2));
+              netUnitPrice = Number((customPrice / 1.18).toFixed(6));
+              unitPriceConIGV = Number(customPrice.toFixed(2));
             } else {
-              finalUnitPrice = Number((price * (1 - totalDisc / 100)).toFixed(2));
-              unitPriceConIGV = Number((finalUnitPrice + Number((finalUnitPrice * 0.18).toFixed(2))).toFixed(2));
+              netUnitPrice = Number((price * (1 - totalDisc / 100)).toFixed(6));
+              unitPriceConIGV = Number((netUnitPrice * 1.18).toFixed(2));
             }
-            const lineTotal = Number((qty * finalUnitPrice).toFixed(2));
-            const lineTax = Number((lineTotal * 0.18).toFixed(2));
-            const lineTotalConIGV = Number((lineTotal + lineTax).toFixed(2));
+            const finalUnitPrice = Number(netUnitPrice.toFixed(2));
+            const lineTotal = Number((qty * netUnitPrice).toFixed(2));
+            const lineTax = customPrice
+              ? Number((customPrice * qty - lineTotal).toFixed(2))
+              : Number((lineTotal * 0.18).toFixed(2));
+            const lineTotalConIGV = customPrice
+              ? Number((customPrice * qty).toFixed(2))
+              : Number((lineTotal + lineTax).toFixed(2));
             const lineSavings = isOutOfStock ? 0 : Math.max(0, (qty * price) - lineTotal);
             const hasAnyDiscount = !isOutOfStock && totalDisc > 0;
             const itemName = item.name || item.productName || item.description || item.ItemName || item.ItemDescription || "Artículo General";
@@ -480,18 +485,23 @@ export default function SapItemGrid({
                   const customPrice = !isOutOfStock && item.customPriceConIGV && Number(item.customPriceConIGV) > 0
                     ? Number(item.customPriceConIGV)
                     : null;
-                  let finalUnitPrice;
+                  let netUnitPrice;
                   let unitPriceConIGV;
                   if (customPrice) {
-                    finalUnitPrice = Number((customPrice / 1.18).toFixed(2));
-                    unitPriceConIGV = Number((finalUnitPrice + Number((finalUnitPrice * 0.18).toFixed(2))).toFixed(2));
+                    netUnitPrice = Number((customPrice / 1.18).toFixed(6));
+                    unitPriceConIGV = Number(customPrice.toFixed(2));
                   } else {
-                    finalUnitPrice = Number((price * (1 - totalDisc / 100)).toFixed(2));
-                    unitPriceConIGV = Number((finalUnitPrice + Number((finalUnitPrice * 0.18).toFixed(2))).toFixed(2));
+                    netUnitPrice = Number((price * (1 - totalDisc / 100)).toFixed(6));
+                    unitPriceConIGV = Number((netUnitPrice * 1.18).toFixed(2));
                   }
-                  const lineTotal = Number((qty * finalUnitPrice).toFixed(2));
-                  const lineTax = Number((lineTotal * 0.18).toFixed(2));
-                  const lineTotalConIGV = Number((lineTotal + lineTax).toFixed(2));
+                  const finalUnitPrice = Number(netUnitPrice.toFixed(2));
+                  const lineTotal = Number((qty * netUnitPrice).toFixed(2));
+                  const lineTax = customPrice
+                    ? Number((customPrice * qty - lineTotal).toFixed(2))
+                    : Number((lineTotal * 0.18).toFixed(2));
+                  const lineTotalConIGV = customPrice
+                    ? Number((customPrice * qty).toFixed(2))
+                    : Number((lineTotal + lineTax).toFixed(2));
                   const lineSavings = isOutOfStock ? 0 : Math.max(0, (qty * price) - lineTotal);
                   const hasAnyDiscount = !isOutOfStock && totalDisc > 0;
                   const itemName = item.name || item.productName || item.description || item.ItemName || item.ItemDescription || "Artículo General";

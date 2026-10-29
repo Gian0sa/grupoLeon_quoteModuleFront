@@ -78,25 +78,44 @@ export function useAuthMutations() {
     },
     onError: (error) => {
       const message =
-        error?.response?.data?.message || "Error al registrar";
+        error?.response?.data?.message || "Error al registrar usuario";
+      const lower = message.toLowerCase();
 
-      if (message.includes("email")) {
+      if (lower.includes("correo") || lower.includes("email")) {
         toast({
-          title: "Correo en uso",
-          description: "Este correo ya está registrado.",
-          status: "error",
+          title: "Correo no disponible",
+          description: message,
+          status: "warning",
+          duration: 5000,
+          isClosable: true,
+          position: "top",
         });
-      } else if (message.includes("username")) {
+      } else if (lower.includes("asesor") || lower.includes("vendedor")) {
+        toast({
+          title: "Vendedor ya asignado",
+          description: message,
+          status: "warning",
+          duration: 5000,
+          isClosable: true,
+          position: "top",
+        });
+      } else if (lower.includes("nombre") || lower.includes("username")) {
         toast({
           title: "Nombre en uso",
-          description: "Este nombre ya está registrado.",
-          status: "error",
+          description: message,
+          status: "warning",
+          duration: 5000,
+          isClosable: true,
+          position: "top",
         });
       } else {
         toast({
-          title: "Error",
+          title: "Error al registrar",
           description: message,
           status: "error",
+          duration: 5000,
+          isClosable: true,
+          position: "top",
         });
       }
     },
