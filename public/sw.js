@@ -1,4 +1,4 @@
-const CACHE_NAME = 'autopartes-pwa-v12';
+const CACHE_NAME = 'autopartes-pwa-v13';
 const MAX_STATIC_CACHE_ENTRIES = 30;
 
 async function trimCache(cacheName, maxItems) {

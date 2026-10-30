@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Box,
   Flex,
@@ -514,6 +514,15 @@ export const sortQuotesByPriority = (a, b) => {
   return numB - numA;
 };
 
+const cleanNumFast = (str) => {
+  if (!str) return null;
+  const s = String(str)
+    .replace(/^COT-(?:WEB-)?0*/i, "")
+    .replace(/^0+/, "")
+    .trim();
+  return s && !isNaN(Number(s)) ? Number(s) : null;
+};
+
 export const isMatchingDoc = (a, b) => {
   if (!a || !b) return false;
 
@@ -529,7 +538,23 @@ export const isMatchingDoc = (a, b) => {
       objVal.DocNum,
       objVal.quoteId,
     ].filter(Boolean).map(x => String(x).trim().toLowerCase());
-    return ids.includes(strVal);
+    if (ids.includes(strVal)) return true;
+
+    // Normalización de números ("COT-WEB-000324" <-> "COT-000324" <-> 324)
+    const strNum = cleanNumFast(strVal);
+    if (strNum !== null) {
+      for (const rawId of ids) {
+        if (cleanNumFast(rawId) === strNum) return true;
+      }
+    }
+
+    const cleanStrNoPrefix = strVal.replace(/^cot-web-|^cot-/, "");
+    for (const rawId of ids) {
+      const idNoPrefix = rawId.replace(/^cot-web-|^cot-/, "");
+      if (cleanStrNoPrefix && idNoPrefix && cleanStrNoPrefix === idNoPrefix) return true;
+    }
+
+    return false;
   }
 
   // Si ambos son objetos:
@@ -550,16 +575,6 @@ export const isMatchingDoc = (a, b) => {
   const aSap = a.sapDocNum || a.DocNum || a.totals?.sapDocNum || a.totals?.DocNum || null;
   const bSap = b.sapDocNum || b.DocNum || b.totals?.sapDocNum || b.totals?.DocNum || null;
   if (aSap && bSap && String(aSap).trim() === String(bSap).trim()) return true;
-
-  // Normalización de números quitando prefijos ("COT-", "COT-WEB-", ceros a la izquierda)
-  const cleanNumFast = (str) => {
-    if (!str) return null;
-    const s = String(str)
-      .replace(/^COT-(?:WEB-)?0*/i, "")
-      .replace(/^0+/, "")
-      .trim();
-    return s && !isNaN(Number(s)) ? Number(s) : null;
-  };
 
   const aCleanNum = cleanNumFast(aDoc) || aNumId;
   const bCleanNum = cleanNumFast(bDoc) || bNumId;
@@ -845,8 +860,9 @@ export function QuoteApprovalPage() {
 
   const [searchParams] = useSearchParams();
   const searchParamValue = searchParams.get("search") || searchParams.get("quoteId") || searchParams.get("docNumber");
+  const autoOpenedTargetRef = useRef(null);
 
-  // Sincronizar automáticamente el término de búsqueda y apertura de detalle desde la URL (?search=... o ?quoteId=...)
+  // Sincronizar automáticamente el término de búsqueda desde la URL (?search=... o ?quoteId=...)
   useEffect(() => {
     if (searchParamValue) {
       const term = String(searchParamValue).trim();
@@ -854,19 +870,9 @@ export function QuoteApprovalPage() {
         setSearchQuery(term);
         setSelectedTab("ALL");
         setHighlightedDocId(term);
-
-        const match = quotes.find(q =>
-          isMatchingDoc(q, term) ||
-          String(q.docNumber || "").toLowerCase().includes(term.toLowerCase()) ||
-          String(q.id || "") === term
-        );
-        if (match) {
-          setSelectedQuote(match);
-          setIsDetailOpen(true);
-        }
       }
     }
-  }, [searchParamValue, quotes]);
+  }, [searchParamValue]);
 
   useEffect(() => {
     const handleHighlight = (e) => {
@@ -880,21 +886,13 @@ export function QuoteApprovalPage() {
         setTimeout(() => setHighlightedDocId(null), 5500);
 
         if (shouldOpenDetail) {
-          const match = quotes.find(q =>
-            isMatchingDoc(q, idStr) ||
-            String(q.docNumber || "").toLowerCase().includes(idStr.toLowerCase()) ||
-            String(q.id || "") === idStr
-          );
-          if (match) {
-            setSelectedQuote(match);
-            setIsDetailOpen(true);
-          }
+          autoOpenedTargetRef.current = null;
         }
       }
     };
     window.addEventListener("quoteHighlight", handleHighlight);
     return () => window.removeEventListener("quoteHighlight", handleHighlight);
-  }, [quotes]);
+  }, []);
 
   // Búsqueda profunda en servidor/SAP cuando se especifique un término relevante (mínimo 3 letras o número específico)
   useEffect(() => {
@@ -920,6 +918,7 @@ export function QuoteApprovalPage() {
               String(r.id || "") === term
             );
             if (match) {
+              autoOpenedTargetRef.current = term;
               setSelectedQuote(match);
               setIsDetailOpen(true);
             }
@@ -2223,6 +2222,26 @@ export function QuoteApprovalPage() {
     setPageSize(size);
     setCurrentPage(1);
   };
+
+  // 🚀 Apertura automática inmediata del detalle de la cotización cuando se llega desde una notificación push
+  useEffect(() => {
+    const targetParam = searchParamValue || highlightedDocId;
+    if (targetParam) {
+      const term = String(targetParam).trim();
+      if (term && autoOpenedTargetRef.current !== term) {
+        const match =
+          filteredQuotes.find((q) => isMatchingDoc(q, term)) ||
+          quotes.find((q) => isMatchingDoc(q, term)) ||
+          (filteredQuotes.length === 1 ? filteredQuotes[0] : null);
+
+        if (match) {
+          autoOpenedTargetRef.current = term;
+          setSelectedQuote({ ...match });
+          setIsDetailOpen(true);
+        }
+      }
+    }
+  }, [searchParamValue, highlightedDocId, filteredQuotes, quotes]);
 
   // Contadores por Estado (Filtrados por rol y regla diaria operativa)
   const counts = useMemo(() => {
