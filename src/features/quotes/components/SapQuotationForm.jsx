@@ -704,25 +704,26 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
             }
           });
 
-          if (stockMap.size > 0) {
-            const updatedProducts = products.map((p) => {
-              const pKey = String(p.code || p.productCode || p.itemCode || p.id || "").trim().toUpperCase();
-              if (stockMap.has(pKey)) {
-                const info = stockMap.get(pKey);
-                return {
-                  ...p,
-                  stock: info.stock,
-                  isAgotado: info.isAgotado,
-                  stockChecked: true,
-                  marca: p.marca || info.marca || "",
-                  sigla: p.sigla || info.sigla || "",
-                };
-              }
-              return { ...p, stockChecked: true };
-            });
-
+          if (stockMap.size > 0 && isMounted) {
             if (typeof setProducts === "function") {
-              setProducts(updatedProducts);
+              setProducts((prevProducts) => {
+                const currentList = Array.isArray(prevProducts) ? prevProducts : products;
+                return currentList.map((p) => {
+                  const pKey = String(p.code || p.productCode || p.itemCode || p.id || "").trim().toUpperCase();
+                  if (stockMap.has(pKey)) {
+                    const info = stockMap.get(pKey);
+                    return {
+                      ...p,
+                      stock: info.stock,
+                      isAgotado: info.isAgotado,
+                      stockChecked: true,
+                      marca: p.marca || info.marca || "",
+                      sigla: p.sigla || info.sigla || "",
+                    };
+                  }
+                  return { ...p, stockChecked: true };
+                });
+              });
             }
           }
         }
@@ -854,6 +855,20 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       return false;
     }
 
+    const invalidQtyProduct = products.find(p => !p.quantity || Number(p.quantity) < 1 || isNaN(Number(p.quantity)));
+    if (invalidQtyProduct) {
+      if (!silent) {
+        toast({
+          title: "Cantidad requerida",
+          description: `El artículo "${invalidQtyProduct.name || invalidQtyProduct.description || 'seleccionado'}" tiene una cantidad vacía o en cero. La cantidad mínima es 1.`,
+          status: "warning",
+          duration: 3500,
+          isClosable: true,
+        });
+      }
+      return false;
+    }
+
     const activeDocNumber = quoteId || docNumber;
     const clientDocDigits = String(client?.FederalTaxID || client?.clientDocument || client?.documentNumber || client?.LicTradNum || client?.CardCode || "").replace(/\D/g, "");
     const effectiveDocType = clientDocDigits.length === 8 ? "BOLETA" : "FACTURA";
@@ -884,25 +899,6 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         const activeStr = String(activeDocNumber).trim();
         if (activeStr && ((qDocNum && qDocNum === activeStr) || (qId && qId === activeStr))) {
           return true;
-        }
-      }
-      // Detección de coincidencia de borrador por cliente y monto total aproximado
-      const qStatus = String(q.approvalStatus || q.state || q.status || "BORRADOR").toUpperCase();
-      if (["BORRADOR", "GENERADO"].includes(qStatus)) {
-        const qRuc = String(q.clientRuc || q.clientDocument || q.client?.LicTradNum || q.client?.CardCode || "").replace(/\D/g, "");
-        const currentRuc = String(client?.LicTradNum || client?.clientRuc || client?.clientDocument || client?.CardCode || "").replace(/\D/g, "");
-        const qName = String(q.clientName || q.client?.CardName || "").trim().toLowerCase();
-        const currentName = String(client?.CardName || client?.name || "").trim().toLowerCase();
-
-        const sameClient = (qRuc && currentRuc && qRuc === currentRuc) ||
-          (qName && currentName && (qName === currentName || (qName.length > 5 && currentName.includes(qName))));
-
-        if (sameClient) {
-          const qTotal = Number(q.totals?.grandTotalUSD || q.grandTotalUSD || 0);
-          const curTotal = Number(finalTotals?.grandTotalUSD || totals?.grandTotalUSD || 0);
-          if (Math.abs(qTotal - curTotal) < 0.15 || qTotal === 0 || curTotal === 0) {
-            return true;
-          }
         }
       }
       return false;
@@ -1544,7 +1540,8 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       creditTerm: creditTerm || (saleCondition === "CREDITO" ? "30 días" : null),
       isLetra: isLetra !== undefined ? isLetra : false,
       opNum: opNum || null,
-      refNumber: refNumber || null,
+      refNumber: null,
+      NumAtCard: null,
       contactPerson: contactPerson || null,
       whsCode: "014",
       products: inStockProductsForSap, // 🎯 A SAP SOLO LLEGAN LOS ARTÍCULOS QUE TIENEN STOCK

@@ -185,14 +185,7 @@ self.addEventListener('notificationclick', (event) => {
   }
 
   const notifData = event.notification.data || {};
-  let targetUrl = notifData.url || '/historyquotes';
-  const quoteId = notifData.quoteId;
-
-  // Si tiene quoteId y la url no tiene search param, agregarlo para abrir la cotización directamente
-  if (quoteId && !targetUrl.includes('search=')) {
-    const separator = targetUrl.includes('?') ? '&' : '?';
-    targetUrl = `${targetUrl}${separator}search=${encodeURIComponent(quoteId)}`;
-  }
+  const targetUrl = '/historyquotes';
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {

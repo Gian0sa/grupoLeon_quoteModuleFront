@@ -179,9 +179,11 @@ export function ProductPromotionsModal({ isOpen, onClose }) {
                   <Input
                     placeholder="Buscar por código, sigla o descripción..."
                     value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onChange={(e) => setSearchTerm(e.target.value.toUpperCase())}
                     borderRadius="xl"
                     fontSize="sm"
+                    textTransform="uppercase"
+                    _placeholder={{ color: "gray.400", textTransform: "none" }}
                     borderColor="#cbd5e1"
                     _hover={{ borderColor: "#94a3b8" }}
                     _focus={{ borderColor: "#0e572b", boxShadow: "0 0 0 1px #0e572b" }}

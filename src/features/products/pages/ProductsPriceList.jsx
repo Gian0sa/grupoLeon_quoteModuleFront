@@ -84,12 +84,13 @@ export function ProductList() {
 
   // Cambio de texto con limpieza automática
   const handleCardNameChange = (eOrValue) => {
-    const value =
+    const rawValue =
       typeof eOrValue === "object" && eOrValue !== null && eOrValue.target
         ? eOrValue.target.value
         : typeof eOrValue === "string"
         ? eOrValue
         : "";
+    const value = rawValue.toUpperCase();
     setCardName(value);
 
     // Si el usuario borra todo el texto, limpiamos el estado de resultados

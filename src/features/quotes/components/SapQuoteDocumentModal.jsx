@@ -61,7 +61,7 @@ const extractProducts = (q) => {
   return [];
 };
 
-const normalizeItem = (item) => {
+const normalizeItem = (item, isSol = false, tc = 1) => {
   if (!item) return null;
   const qty = Math.max(1, Number(item.quantity ?? item.Quantity ?? item.Cant ?? item.cant ?? 1));
 
@@ -105,6 +105,12 @@ const normalizeItem = (item) => {
     const totalDisc = Math.min(100.0, Math.max(0, Number(item.discountPercent ?? (sapDisc + promoDisc + addDisc))));
     finalUnitPrice = Number((listPrice * (1 - totalDisc / 100)).toFixed(2));
     lineTotalNum = Number((qty * finalUnitPrice).toFixed(2));
+  }
+
+  // 💱 Si el documento oficial es en Soles (PEN), convertir los montos unitarios y de línea con la tasa de cambio (TC)
+  if (isSol && tc > 0 && !isOutOfStock) {
+    finalUnitPrice = Number((finalUnitPrice * tc).toFixed(2));
+    lineTotalNum = Number((lineTotalNum * tc).toFixed(2));
   }
 
   const code = item.code || item.itemCode || item.ItemCode || item.productCode || item.id || "";
@@ -364,10 +370,10 @@ export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) 
   const col1Items = [];
   const col2Items = [];
   for (let i = 0; i < 15; i++) {
-    col1Items.push(normalizedList[i] ? normalizeItem(normalizedList[i]) : null);
+    col1Items.push(normalizedList[i] ? normalizeItem(normalizedList[i], isSol, tc) : null);
   }
   for (let i = 15; i < 30; i++) {
-    col2Items.push(normalizedList[i] ? normalizeItem(normalizedList[i]) : null);
+    col2Items.push(normalizedList[i] ? normalizeItem(normalizedList[i], isSol, tc) : null);
   }
 
   const handlePrint = () => {

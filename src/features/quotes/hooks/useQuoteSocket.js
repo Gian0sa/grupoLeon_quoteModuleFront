@@ -268,7 +268,7 @@ export function useQuoteSocket() {
           title: notif.title,
           body: notif.description || "Tienes una nueva actualización en cotizaciones.",
           quoteId: notifQuoteId,
-          url: notifQuoteId ? `/historyquotes?search=${encodeURIComponent(notifQuoteId)}` : `/historyquotes`,
+          url: "/historyquotes",
         });
 
         toast({

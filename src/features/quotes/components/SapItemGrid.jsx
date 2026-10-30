@@ -301,6 +301,11 @@ export default function SapItemGrid({
                         borderRadius="md"
                         px={1}
                         onFocus={(e) => e.target.select()}
+                        onBlur={() => {
+                          if (!item.quantity || Number(item.quantity) < 1) {
+                            onUpdateProduct(item.id, { quantity: 1 });
+                          }
+                        }}
                         onChange={(e) => {
                           const val = e.target.value.replace(/\D/g, "").slice(0, 6);
                           if (val === "") {
@@ -593,6 +598,11 @@ export default function SapItemGrid({
                               borderRadius="md"
                               px={1}
                               onFocus={(e) => e.target.select()}
+                              onBlur={() => {
+                                if (!item.quantity || Number(item.quantity) < 1) {
+                                  onUpdateProduct(item.id, { quantity: 1 });
+                                }
+                              }}
                               onChange={(e) => {
                                 const val = e.target.value.replace(/\D/g, "").slice(0, 6);
                                 if (val === "") {

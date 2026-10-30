@@ -204,7 +204,7 @@ export async function showLocalNativeNotification({ title, body, quoteId, url })
   // Reproducir el sonido
   playNotificationChime();
 
-  const targetUrl = url || (quoteId ? `/historyquotes?search=${encodeURIComponent(quoteId)}` : `/historyquotes`);
+  const targetUrl = url || "/historyquotes";
 
   try {
     // Si tenemos Service Worker listo, usar registration.showNotification (mejor integración en Android / Windows)

@@ -1423,7 +1423,8 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         creditTerm: effectiveQuote.creditTerm || effectiveQuote.totals?.creditTerm,
         isLetra: effectiveQuote.isLetra !== undefined ? effectiveQuote.isLetra : effectiveQuote.totals?.isLetra,
         opNum: effectiveQuote.opNum || effectiveQuote.totals?.opNum,
-        refNumber: effectiveQuote.refNumber || effectiveQuote.totals?.refNumber || effectiveQuote.NumAtCard || null,
+        refNumber: null,
+        NumAtCard: null,
         contactPerson: effectiveQuote.contactPerson || effectiveQuote.totals?.contactPerson || effectiveQuote.ContactPerson || null,
         whsCode: effectiveQuote.whsCode || effectiveQuote.totals?.whsCode || "014",
         observations: effectiveQuote.observations || effectiveQuote.totals?.observations || null,
@@ -3779,58 +3780,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
           <DrawerFooter bg="gray.50" borderTop="1px solid" borderColor="gray.200" py={3} px={{ base: 4, md: 6 }}>
             <Flex justify="space-between" align="center" w="100%" flexWrap="wrap" gap={3}>
               <HStack spacing={2.5} wrap="wrap" align="center">
-                {/* 
-                  ========================================================================
-                  ⚠️ RECORDATORIO / COMENTARIO PARA REACTIVAR LA SUBIDA DIRECTA A SAP:
-                  ========================================================================
-                  Actualmente se encuentra bloqueado el envío directo a SAP por temas de
-                  seguridad y control operativo (se utiliza exportación a Excel para importación).
-                  
-                  PARA VOLVER A ACTIVAR ESTE BOTÓN:
-                  1. Cambiar `isDisabled={true}` por `isDisabled={false}` (o quitar la propiedad).
-                  2. Restaurar el diseño visual verde:
-                     colorScheme="whatsapp"
-                     bg="#126C36"
-                     _hover={{ bg: "#0e572b" }}
-                     color="white"
-                     leftIcon={<Zap className="w-4 h-4" />}
-                  3. En `handleSyncToSap()`, cambiar `IS_SAP_DIRECT_SYNC_ENABLED = true`.
-                  ========================================================================
-                */}
-                {isAdminUser && isApprovedQuote && !isAlreadySyncedToSap && (
-                  <Button
-                    size="sm"
-                    colorScheme="whatsapp"
-                    bg="#126C36"
-                    _hover={{ bg: "#0e572b" }}
-                    color="white"
-                    leftIcon={<Zap className="w-4 h-4" />}
-                    isLoading={isSyncingSap}
-                    loadingText="Emitiendo a SAP..."
-                    onClick={handleSyncToSap}
-                    fontWeight="800"
-                    boxShadow="0 2px 6px rgba(18,108,54,0.3)"
-                  >
-                    ⚡ Aprobar y Sincronizar con SAP
-                  </Button>
-                )}
 
-                {isAdminUser && isApprovedQuote && isAlreadySyncedToSap && (
-                  <Button
-                    size="sm"
-                    colorScheme="green"
-                    variant="outline"
-                    borderColor="green.500"
-                    color="green.700"
-                    bg="green.50"
-                    leftIcon={<CheckCircle2 className="w-4 h-4 text-green-600" />}
-                    isDisabled={true}
-                    _disabled={{ opacity: 0.95, cursor: "default" }}
-                    fontWeight="800"
-                  >
-                    ✅ Emitido en SAP (Doc #{syncedDocNum || effectiveQuote.sapDocNum || "OK"})
-                  </Button>
-                )}
 
 
                 {/* Botón Unificado Compartir: Ver Talonario (PDF) y Enviar por WhatsApp */}
@@ -3900,9 +3850,45 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                   </Button>
                 )}
               </HStack>
-              <Button size="sm" onClick={onClose} fontWeight="700">
-                Cerrar
-              </Button>
+              <HStack spacing={2.5} align="center">
+                {isAdminUser && !isAlreadySyncedToSap && (isPendingQuote || isApprovedQuote) && (
+                  <Button
+                    size="sm"
+                    bg="#0f5132"
+                    _hover={{ bg: "#093822" }}
+                    color="white"
+                    leftIcon={<Zap className="w-4 h-4" />}
+                    isLoading={isSyncingSap}
+                    loadingText="Emitiendo a SAP..."
+                    onClick={handleSyncToSap}
+                    fontWeight="900"
+                    boxShadow="0 4px 12px rgba(15,81,50,0.3)"
+                  >
+                    ⚡ Aprobar y Emitir a SAP
+                  </Button>
+                )}
+
+                {isAdminUser && isAlreadySyncedToSap && (
+                  <Button
+                    size="sm"
+                    colorScheme="green"
+                    variant="outline"
+                    borderColor="green.500"
+                    color="green.700"
+                    bg="green.50"
+                    leftIcon={<CheckCircle2 className="w-4 h-4 text-green-600" />}
+                    isDisabled={true}
+                    _disabled={{ opacity: 0.95, cursor: "default" }}
+                    fontWeight="800"
+                  >
+                    ✅ Emitido en SAP (Doc #{syncedDocNum || effectiveQuote.sapDocNum || "OK"})
+                  </Button>
+                )}
+
+                <Button size="sm" onClick={onClose} fontWeight="700">
+                  Cerrar
+                </Button>
+              </HStack>
             </Flex>
           </DrawerFooter>
         </DrawerContent>
@@ -4151,7 +4137,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         motionPreset="slideInBottom"
       >
         <ModalOverlay bg="blackAlpha.700" />
-        <ModalContent borderRadius="3xl" overflow="hidden" boxShadow="0 25px 50px -12px rgba(5, 150, 105, 0.35)" border="1px solid" borderColor="#a7f3d0">
+        <ModalContent maxW={{ base: "95vw", md: "680px" }} borderRadius="3xl" overflow="hidden" boxShadow="0 25px 50px -12px rgba(5, 150, 105, 0.35)" border="1px solid" borderColor="#a7f3d0">
           {/* Header Superior con Gradiente Esmeralda */}
           <ModalHeader bg="linear-gradient(135deg, #059669 0%, #047857 50%, #0f766e 100%)" color="white" py={5} px={6}>
             <HStack justify="space-between" align="center">
@@ -4326,13 +4312,13 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
             </VStack>
           </ModalBody>
 
-          <ModalFooter bg="white" borderTop="1px solid" borderColor="gray.200" py={4} px={6}>
-            <HStack spacing={3} w="full" justify="space-between">
-              <HStack spacing={2.5}>
+          <ModalFooter bg="white" borderTop="1px solid" borderColor="gray.200" py={4} px={{ base: 4, md: 6 }}>
+            <Flex w="full" justify="space-between" align="center" flexWrap="wrap" gap={3}>
+              <HStack spacing={2.5} flexWrap="wrap">
                 <Button
                   variant="outline"
                   colorScheme="gray"
-                  size="md"
+                  size="sm"
                   fontWeight="700"
                   leftIcon={<ChakraIcon as={FileText} />}
                   onClick={() => {
@@ -4352,7 +4338,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                   <Button
                     variant="outline"
                     colorScheme="purple"
-                    size="md"
+                    size="sm"
                     fontWeight="800"
                     leftIcon={<ChakraIcon as={Code2} />}
                     onClick={() => setIsJsonModalOpen(true)}
@@ -4366,18 +4352,20 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                 color="white"
                 _hover={{ bg: "linear-gradient(135deg, #047857 0%, #065f46 100%)" }}
                 _active={{ bg: "#064e3b" }}
-                size="md"
+                size="sm"
                 fontWeight="900"
-                px={6}
+                px={5}
                 boxShadow="0 4px 14px rgba(5, 150, 105, 0.4)"
+                rightIcon={<ChakraIcon as={ArrowRight} />}
                 onClick={() => {
                   setIsSapSuccessModalOpen(false);
                   onClose();
+                  navigate("/historyquotes");
                 }}
               >
-                ✓ Aceptar y Cerrar
+                Ir al Historial de Cotizaciones
               </Button>
-            </HStack>
+            </Flex>
           </ModalFooter>
         </ModalContent>
       </Modal>

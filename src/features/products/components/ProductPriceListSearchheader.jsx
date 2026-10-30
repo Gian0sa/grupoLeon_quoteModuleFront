@@ -52,7 +52,8 @@ export function ProductPriceListSearchheader({
               fontWeight="500"
               border="1.5px solid"
               borderColor="gray.200"
-              _placeholder={{ color: "gray.400" }}
+              textTransform="uppercase"
+              _placeholder={{ color: "gray.400", textTransform: "none" }}
               _focus={{
                 borderColor: "emerald.500",
                 boxShadow: "0 0 0 1px #10b981",

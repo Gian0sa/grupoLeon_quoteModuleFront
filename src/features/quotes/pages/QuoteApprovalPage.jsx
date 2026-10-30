@@ -267,7 +267,7 @@ export const getTodayPeruDateString = () => {
  */
 export const getQuoteDateString = (q) => {
   if (!q) return "";
-  const rawDate = q.docDate || q.DocDate || q.createdAt || q.updatedAt || "";
+  const rawDate = q.docDate || q.DocDate || q.createdAt || "";
   if (!rawDate) return "";
   const str = String(rawDate).trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
@@ -313,38 +313,13 @@ export const diffDaysBetweenDateStrings = (startStr, endStr) => {
 
 /**
  * Obtiene la fecha en que una cotización fue aprobada o emitida a SAP en formato YYYY-MM-DD (hora Perú).
- * Revisa el historial de aprobaciones/emisiones, campos de timestamp y updatedAt.
+ * Revisa el historial de aprobaciones/emisiones y campos de timestamp de aprobación formal.
  */
 export const getQuoteApprovalOrUpdatedDateString = (q) => {
   if (!q) return "";
 
-  const today = getTodayPeruDateString();
-  const currentStatus = String(q.approvalStatus || q.state || q.status || "").toUpperCase().trim();
-  const isEmittedOrApproved = isQuoteEmittedToSap(q) || Boolean(q.sapDocNum || q.DocNum || q.isSapDirect || ["EMITIDO", "EMITIDO_SAP", "APROBADO", "APROBADO_COMERCIAL", "APROBADO_CREDITOS", "PEDIDO_EMITIDO", "FACTURADO", "COMPLETADO"].includes(currentStatus));
-
-  // 1. Si la cotización fue actualizada/aprobada hoy según su timestamp en base de datos
-  let updatedAtStr = "";
-  if (isEmittedOrApproved && q.updatedAt) {
-    const str = String(q.updatedAt).trim();
-    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
-      updatedAtStr = str;
-    } else {
-      try {
-        const d = new Date(str);
-        if (!isNaN(d.getTime())) {
-          updatedAtStr = d.toLocaleDateString("en-CA", { timeZone: "America/Lima" });
-        }
-      } catch {}
-    }
-  }
-
-  // Si su updatedAt en base de datos es de hoy, pertenece indudablemente al flujo operativo de hoy
-  if (updatedAtStr && updatedAtStr === today) {
-    return today;
-  }
-
-  // 2. Revisar campos específicos de aprobación/emisión si existen en el modelo
-  const rawApproval = q.approvedAt || q.emittedAt || q.sapEmittedAt || q.totals?.emittedAt || q.totals?.approvedAt;
+  // 1. Revisar campos específicos de aprobación/emisión si existen en el modelo
+  const rawApproval = q.approvedAt || q.emittedAt || q.sapEmittedAt || q.sapSyncDate || q.totals?.emittedAt || q.totals?.approvedAt;
   if (rawApproval) {
     const str = String(rawApproval).trim();
     if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
@@ -357,7 +332,7 @@ export const getQuoteApprovalOrUpdatedDateString = (q) => {
     return str.split("T")[0] || "";
   }
 
-  // 3. Buscar en el historial de eventos la última fecha de emisión o aprobación formal
+  // 2. Buscar en el historial de eventos la última fecha de emisión o aprobación formal
   const historyList = Array.isArray(q.history)
     ? q.history
     : (typeof q.history === "string" ? (() => { try { return JSON.parse(q.history); } catch { return []; } })() : (Array.isArray(q.historyLog) ? q.historyLog : []));
@@ -389,17 +364,15 @@ export const getQuoteApprovalOrUpdatedDateString = (q) => {
     }
   }
 
-  // Si no se encontró en historial pero tenemos updatedAt, retornarlo
-  if (updatedAtStr) return updatedAtStr;
-
-  return "";
+  // 3. Fallback a la fecha del documento o creación
+  return getQuoteDateString(q);
 };
 
 /**
  * Determina si una cotización cumple la regla operativa de visualización diaria:
  * 1. Cotizaciones Pendientes de Aprobación: SIEMPRE se muestran (sin importar antigüedad) hasta que sean formalmente aprobadas o canceladas.
- * 2. Cotizaciones Emitidas a SAP o Aprobadas: Se muestran durante todo el día en que fueron aprobadas/emitidas (o creadas si fue hoy).
- *    Al pasar la medianoche (11:59:59 PM PET) del día de su aprobación, pasan a consultarse en Histórico.
+ * 2. Cotizaciones Emitidas a SAP o Aprobadas: Se muestran durante todo el día calendario (hora Perú) en que fueron aprobadas/emitidas (o creadas si fue hoy).
+ *    Al pasar la medianoche (11:59:59 PM PET) del día de su aprobación/emisión, pertenecen al Histórico.
  */
 export const isQuoteOperationalDaily = (q, todayDateStr) => {
   if (!q) return false;
@@ -415,24 +388,13 @@ export const isQuoteOperationalDaily = (q, todayDateStr) => {
   if (isEmitted) {
     const today = todayDateStr || getTodayPeruDateString();
 
-    // Regla operativa diaria: si fue aprobada/emitida/actualizada hoy, pertenece a los pedidos aprobados del día
+    // Regla operativa diaria: si fue formalmente aprobada/emitida hoy, pertenece al flujo del día
     const approvalDate = getQuoteApprovalOrUpdatedDateString(q);
     if (approvalDate && approvalDate === today) {
       return true;
     }
 
-    // Si fue actualizada/aprobada hoy según updatedAt en base de datos
-    if (q.updatedAt) {
-      try {
-        const d = new Date(q.updatedAt);
-        if (!isNaN(d.getTime())) {
-          const updDate = d.toLocaleDateString("en-CA", { timeZone: "America/Lima" });
-          if (updDate === today) return true;
-        }
-      } catch {}
-    }
-
-    // O si su fecha de creación/documento es de hoy
+    // O si su fecha de creación/documento es de hoy (Día Completo)
     const qDate = getQuoteDateString(q);
     if (qDate === today) {
       return true;
@@ -580,75 +542,6 @@ export const isMatchingDoc = (a, b) => {
   const bCleanNum = cleanNumFast(bDoc) || bNumId;
   if (aCleanNum !== null && bCleanNum !== null && aCleanNum === bCleanNum) {
     return true;
-  }
-
-  // 🎯 Detección de borradores idénticos duplicados (mismo cliente, mismo total aproximado, ambos en estado borrador / pendiente)
-  const isADraft = isDraftState(a.approvalStatus || a.state || a.status) || !aDoc || aDoc.includes("PENDIENTE") || aDoc.startsWith("LOCAL-") || aDoc.startsWith("COT-WEB-");
-  const isBDraft = isDraftState(b.approvalStatus || b.state || b.status) || !bDoc || bDoc.includes("PENDIENTE") || bDoc.startsWith("LOCAL-") || bDoc.startsWith("COT-WEB-");
-
-  const aHasOfficialSap = Boolean(a.sapDocNum || a.DocNum || a.isSapDirect || (a.approvalStatus === "EMITIDO" && aDoc && !aDoc.includes("WEB") && !aDoc.includes("PENDIENTE")));
-  const bHasOfficialSap = Boolean(b.sapDocNum || b.DocNum || b.isSapDirect || (b.approvalStatus === "EMITIDO" && bDoc && !bDoc.includes("WEB") && !bDoc.includes("PENDIENTE")));
-
-  if ((isADraft || !aHasOfficialSap) && (isBDraft || !bHasOfficialSap)) {
-    const extractClientInfo = (q) => {
-      const docs = [
-        q.clientDocument,
-        q.clientRuc,
-        q.client?.LicTradNum,
-        q.client?.FederalTaxID,
-        q.client?.clientDocument,
-        q.client?.clientRuc,
-        q.client?.CardCode,
-        q.client?.cardCode,
-      ].filter(Boolean).map(x => String(x).trim().toLowerCase());
-
-      const digits = docs.map(d => d.replace(/\D/g, "")).filter(d => d.length >= 8);
-
-      const names = [
-        q.clientName,
-        q.client?.CardName,
-        q.client?.cardName,
-        q.client?.name,
-      ].filter(Boolean).map(x => String(x).trim().toLowerCase());
-
-      return { docs, digits, names };
-    };
-
-    const clientA = extractClientInfo(a);
-    const clientB = extractClientInfo(b);
-
-    const matchDigits = clientA.digits.some(dA => clientB.digits.some(dB => dA === dB));
-    const matchDocs = clientA.docs.some(dA => clientB.docs.some(dB => dA === dB));
-    const matchNames = clientA.names.some(nA => clientB.names.some(nB => {
-      if (!nA || !nB) return false;
-      if (nA === nB) return true;
-      if (nA.length > 5 && nB.length > 5 && (nA.includes(nB) || nB.includes(nA))) return true;
-      return false;
-    }));
-
-    const clientMatches = matchDigits || matchDocs || matchNames;
-
-    if (clientMatches) {
-      const aTotal = getQuoteTotalUSD(a);
-      const bTotal = getQuoteTotalUSD(b);
-
-      const totalMatches = Math.abs(aTotal - bTotal) < 0.15 && aTotal > 0 && bTotal > 0;
-
-      const aItems = a.products || a.items || [];
-      const bItems = b.products || b.items || [];
-      const shareItems = aItems.length > 0 && bItems.length > 0 && aItems.some(ai => {
-        const aCode = String(ai.productCode || ai.itemCode || ai.code || ai.ItemCode || "").trim().toLowerCase();
-        if (!aCode || aCode === "s/c") return false;
-        return bItems.some(bi => {
-          const bCode = String(bi.productCode || bi.itemCode || bi.code || bi.ItemCode || "").trim().toLowerCase();
-          return aCode === bCode;
-        });
-      });
-
-      if (totalMatches || (shareItems && (aTotal === 0 || bTotal === 0 || Math.abs(aTotal - bTotal) < 1.0))) {
-        return true;
-      }
-    }
   }
 
   // Extraer todos los identificadores posibles de cualquier entidad
@@ -820,6 +713,7 @@ export function QuoteApprovalPage() {
   const [pageSize, setPageSize] = useState(isAdminUser ? 10 : 10);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [highlightedDocId, setHighlightedDocId] = useState(null);
+  const [autoOpenDocId, setAutoOpenDocId] = useState(null);
   const { data: sellersResponse } = useSellersData();
   const sellersList = useMemo(() => {
     if (!sellersResponse) return [];
@@ -859,10 +753,10 @@ export function QuoteApprovalPage() {
   });
 
   const [searchParams] = useSearchParams();
-  const searchParamValue = searchParams.get("search") || searchParams.get("quoteId") || searchParams.get("docNumber");
+  const searchParamValue = searchParams.get("search");
   const autoOpenedTargetRef = useRef(null);
 
-  // Sincronizar automáticamente el término de búsqueda desde la URL (?search=... o ?quoteId=...)
+  // Sincronizar automáticamente el término de búsqueda solo si viene explícitamente en la URL (?search=...)
   useEffect(() => {
     if (searchParamValue) {
       const term = String(searchParamValue).trim();
@@ -877,16 +771,17 @@ export function QuoteApprovalPage() {
   useEffect(() => {
     const handleHighlight = (e) => {
       const id = e?.detail?.docId || e?.detail?.id;
-      const shouldOpenDetail = e?.detail?.openDetail;
+      const shouldOpenDetail = Boolean(e?.detail?.openDetail);
       if (id) {
         const idStr = String(id).trim();
         setHighlightedDocId(idStr);
-        setSearchQuery(idStr);
-        setSelectedTab("ALL");
+        // Resaltar la fila temporalmente en la tabla (5.5s) sin abrir modal
         setTimeout(() => setHighlightedDocId(null), 5500);
 
+        // SOLO abrir el drawer si el evento viene explícitamente con openDetail: true (ej: clic en notificación push)
         if (shouldOpenDetail) {
           autoOpenedTargetRef.current = null;
+          setAutoOpenDocId(idStr);
         }
       }
     };
@@ -2223,25 +2118,26 @@ export function QuoteApprovalPage() {
     setCurrentPage(1);
   };
 
-  // 🚀 Apertura automática inmediata del detalle de la cotización cuando se llega desde una notificación push
+  // 🚀 Apertura automática inmediata del detalle de la cotización ÚNICAMENTE cuando se llega desde una notificación push (?search=... o click con openDetail)
   useEffect(() => {
-    const targetParam = searchParamValue || highlightedDocId;
+    const targetParam = searchParamValue || autoOpenDocId;
     if (targetParam) {
       const term = String(targetParam).trim();
       if (term && autoOpenedTargetRef.current !== term) {
         const match =
           filteredQuotes.find((q) => isMatchingDoc(q, term)) ||
           quotes.find((q) => isMatchingDoc(q, term)) ||
-          (filteredQuotes.length === 1 ? filteredQuotes[0] : null);
+          (searchParamValue && filteredQuotes.length === 1 ? filteredQuotes[0] : null);
 
         if (match) {
           autoOpenedTargetRef.current = term;
           setSelectedQuote({ ...match });
           setIsDetailOpen(true);
+          if (autoOpenDocId) setAutoOpenDocId(null);
         }
       }
     }
-  }, [searchParamValue, highlightedDocId, filteredQuotes, quotes]);
+  }, [searchParamValue, autoOpenDocId, filteredQuotes, quotes]);
 
   // Contadores por Estado (Filtrados por rol y regla diaria operativa)
   const counts = useMemo(() => {
@@ -2440,7 +2336,7 @@ export function QuoteApprovalPage() {
       status === "PENDIENTE_FACTURACION" ||
       status === "EN_FACTURACION"
     );
-    const canViewPdfOrShare = Boolean(isApprovedOrder || isPendingApproval || isPendingBilling || status === "PENDIENTE" || status === "EN_VALIDACION" || status === "APROBADO_CREDITOS");
+    const canViewPdfOrShare = !isAdminUser && Boolean(isApprovedOrder || isPendingApproval || isPendingBilling || status === "PENDIENTE" || status === "EN_VALIDACION" || status === "APROBADO_CREDITOS");
     const canShowTrashIcon = false; // 🚫 SOLO BORRADORES PUEDEN ELIMINARSE (manejado arriba en isDraft)
 
     const lockCheck = checkQuoteLock(docId, authUserId, authUsername) || (q?.id ? checkQuoteLock(q.id, authUserId, authUsername) : { isLocked: false, isOwnLock: false, hasActiveLock: false });
@@ -3373,7 +3269,7 @@ export function QuoteApprovalPage() {
                     <Flex justify="space-between" align="center" bg="#f8fafc" borderRadius="lg" px={3} py={2} border="1px solid" borderColor="#e2e8f0">
                       <Box>
                         <Text fontSize="10px" fontWeight="700" color="gray.500" textTransform="uppercase">Fecha</Text>
-                        <Text fontSize="sm" color="gray.800" fontWeight="800">{q.docDate || (q.createdAt ? q.createdAt.split("T")[0] : "—")}</Text>
+                        <Text fontSize="sm" color="gray.800" fontWeight="800">{getQuoteDateString(q) || "—"}</Text>
                       </Box>
                       <Box textAlign="right">
                         <Text fontSize="10px" fontWeight="700" color="gray.500" textTransform="uppercase">Total (USD)</Text>

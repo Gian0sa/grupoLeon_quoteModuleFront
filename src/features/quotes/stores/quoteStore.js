@@ -350,12 +350,17 @@ export const useQuoteStore = create((set, get) => {
       customSet({ products: updated });
     },
 
-    setProducts: (products) => {
-      if (!Array.isArray(products)) {
+    setProducts: (productsOrUpdater) => {
+      const state = get();
+      const resolved = typeof productsOrUpdater === "function" 
+        ? productsOrUpdater(state.products) 
+        : productsOrUpdater;
+
+      if (!Array.isArray(resolved)) {
         customSet({ products: [] });
         return;
       }
-      const normalizedList = products.map(normalizeQuoteItem).filter(Boolean);
+      const normalizedList = resolved.map(normalizeQuoteItem).filter(Boolean);
       const uniqueMap = new Map();
       normalizedList.forEach((item) => {
         const key = String(item.code || item.id || "").trim().toUpperCase();

@@ -36,6 +36,7 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
   const [selectedQuoteForDrawer, setSelectedQuoteForDrawer] = useState(null);
   const [isQuoteDrawerOpen, setIsQuoteDrawerOpen] = useState(false);
   const [lockAlertTarget, setLockAlertTarget] = useState(null);
+  const [openingNotifId, setOpeningNotifId] = useState(null);
 
   const [localVersion, setLocalVersion] = useState(0);
   const [dismissedKeys, setDismissedKeys] = useState(() => new Set());
@@ -329,109 +330,128 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
     return `${date.toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit", year: "numeric" })} • ${timeStr}`;
   };
 
-  const handleOpenQuote = (quoteObj, quoteId, notifId) => {
-    let targetDoc = quoteObj ? { ...quoteObj } : null;
-    const targetId = quoteId || quoteObj?.docNumber || quoteObj?.id;
+  const handleOpenQuote = async (quoteObj, quoteId, notifId) => {
+    const clickId = String(notifId || quoteId || "");
+    setOpeningNotifId(clickId);
 
-    // Concurrencia de Digitación: Verificar si otro usuario ya la tiene abierta
-    if (targetId) {
-      const lockCheck = checkQuoteLock(targetId, userId, username);
-      if (lockCheck.isLocked && !isAdmin) {
-        setLockAlertTarget({ quoteId: targetId, lockInfo: lockCheck.lockInfo });
-        return;
-      }
-    }
+    try {
+      let targetDoc = quoteObj ? { ...quoteObj } : null;
+      const targetId = quoteId || quoteObj?.docNumber || quoteObj?.id;
 
-    const extractItems = (doc) => {
-      if (!doc) return [];
-      if (Array.isArray(doc.products) && doc.products.length > 0) return doc.products;
-      if (Array.isArray(doc.items) && doc.items.length > 0) return doc.items;
-      if (Array.isArray(doc.lines) && doc.lines.length > 0) return doc.lines;
-      if (doc.totals && Array.isArray(doc.totals.normalizedProducts) && doc.totals.normalizedProducts.length > 0) return doc.totals.normalizedProducts;
-      if (doc.totals && Array.isArray(doc.totals.products) && doc.totals.products.length > 0) return doc.totals.products;
-      return [];
-    };
-
-    // ⚡ 1. Resolución ultra rápida desde memoria / caché de React Query
-    let items = extractItems(targetDoc);
-
-    if (items.length === 0 && targetId) {
-      try {
-        const cachedQuotes = queryClient.getQueryData(["quotes"]);
-        if (Array.isArray(cachedQuotes)) {
-          const found = cachedQuotes.find((q) => 
-            String(q.id) === String(targetId) || 
-            String(q.docNumber) === String(targetId) ||
-            String(q.sapDocNum) === String(targetId)
-          );
-          if (found) {
-            targetDoc = { ...found, ...(targetDoc || {}) };
-            items = extractItems(found);
-          }
+      // Concurrencia de Digitación: Verificar si otro usuario ya la tiene abierta
+      if (targetId) {
+        const lockCheck = checkQuoteLock(targetId, userId, username);
+        if (lockCheck.isLocked && !isAdmin) {
+          setLockAlertTarget({ quoteId: targetId, lockInfo: lockCheck.lockInfo });
+          setOpeningNotifId(null);
+          return;
         }
-      } catch {}
+      }
 
-      // ⚡ 2. Fallback instantáneo en localStorage
-      if (items.length === 0) {
+      const extractItems = (doc) => {
+        if (!doc) return [];
+        if (Array.isArray(doc.products) && doc.products.length > 0) return doc.products;
+        if (Array.isArray(doc.items) && doc.items.length > 0) return doc.items;
+        if (Array.isArray(doc.lines) && doc.lines.length > 0) return doc.lines;
+        if (doc.totals && Array.isArray(doc.totals.normalizedProducts) && doc.totals.normalizedProducts.length > 0) return doc.totals.normalizedProducts;
+        if (doc.totals && Array.isArray(doc.totals.products) && doc.totals.products.length > 0) return doc.totals.products;
+        return [];
+      };
+
+      // ⚡ 1. Resolución ultra rápida desde memoria / caché de React Query
+      let items = extractItems(targetDoc);
+
+      if (items.length === 0 && targetId) {
         try {
-          const savedQuotes = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
-          const found = savedQuotes.find((q) => 
-            String(q.id) === String(targetId) || 
-            String(q.docNumber) === String(targetId) ||
-            String(q.sapDocNum) === String(targetId)
-          );
-          if (found) {
-            targetDoc = { ...found, ...(targetDoc || {}) };
-            items = extractItems(found);
+          const cachedQuotes = queryClient.getQueryData(["quotes"]);
+          if (Array.isArray(cachedQuotes)) {
+            const found = cachedQuotes.find((q) => 
+              String(q.id) === String(targetId) || 
+              String(q.docNumber) === String(targetId) ||
+              String(q.sapDocNum) === String(targetId)
+            );
+            if (found) {
+              targetDoc = { ...found, ...(targetDoc || {}) };
+              items = extractItems(found);
+            }
           }
         } catch {}
-      }
-    }
 
-    if (!targetDoc) {
-      targetDoc = { id: targetId, docNumber: targetId };
-    }
-    targetDoc.products = items;
-
-    // ⚡ 3. APERTURA INSTANTÁNEA (0ms): Cerrar campanita y desplegar el detalle inmediatamente
-    onClose();
-    setSelectedQuoteForDrawer(targetDoc);
-    setIsQuoteDrawerOpen(true);
-
-    // ⚡ 4. Marcar como leída de forma asíncrona sin bloquear la interfaz
-    try {
-      markNotificationAsRead(notifId, targetId);
-      queryClient.invalidateQueries({ queryKey: ["notifications"], refetchType: "none" });
-      const raw = localStorage.getItem("grupoLeon_notifications");
-      const all = raw ? JSON.parse(raw) : [];
-      const updated = all.map(n => {
-        if ((notifId && String(n.id) === String(notifId)) || (targetId && String(n.quoteId) === String(targetId))) {
-          return { ...n, read: true };
+        // ⚡ 2. Fallback instantáneo en localStorage
+        if (items.length === 0) {
+          try {
+            const savedQuotes = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
+            const found = savedQuotes.find((q) => 
+              String(q.id) === String(targetId) || 
+              String(q.docNumber) === String(targetId) ||
+              String(q.sapDocNum) === String(targetId)
+            );
+            if (found) {
+              targetDoc = { ...found, ...(targetDoc || {}) };
+              items = extractItems(found);
+            }
+          } catch {}
         }
-        return n;
-      });
-      localStorage.setItem("grupoLeon_notifications", JSON.stringify(updated));
-      window.dispatchEvent(new Event("localNotificationsUpdated"));
-      setLocalVersion(v => v + 1);
-    } catch (e) {}
 
-    // ⚡ 5. Sincronización en segundo plano con el servidor (sin congelar la pantalla del usuario)
-    if (targetId) {
-      getQuoteById(targetId)
-        .then((liveQuote) => {
-          if (liveQuote && (liveQuote.id || liveQuote.docNumber)) {
-            setSelectedQuoteForDrawer((prev) => {
-              if (!prev) return liveQuote;
-              const serverItems = extractItems(liveQuote);
-              return {
-                ...prev,
-                ...liveQuote,
-                products: serverItems.length > 0 ? serverItems : prev.products,
-              };
-            });
+        // ⚡ 3. Si no vino en memoria ni caché local, consultar al servidor
+        if (items.length === 0) {
+          try {
+            const live = await getQuoteById(targetId);
+            if (live) {
+              targetDoc = { ...live, ...(targetDoc || {}) };
+              items = extractItems(live);
+            }
+          } catch (_) {}
+        }
+      }
+
+      if (!targetDoc) {
+        targetDoc = { id: targetId, docNumber: targetId };
+      }
+      targetDoc.products = items;
+
+      // ⚡ 4. APERTURA: Desplegar el detalle de inmediato y cerrar la campanita
+      setSelectedQuoteForDrawer(targetDoc);
+      setIsQuoteDrawerOpen(true);
+      onClose();
+
+      // ⚡ 5. Marcar como leída de forma asíncrona sin bloquear la interfaz
+      try {
+        markNotificationAsRead(notifId, targetId);
+        queryClient.invalidateQueries({ queryKey: ["notifications"], refetchType: "none" });
+        const raw = localStorage.getItem("grupoLeon_notifications");
+        const all = raw ? JSON.parse(raw) : [];
+        const updated = all.map(n => {
+          if ((notifId && String(n.id) === String(notifId)) || (targetId && String(n.quoteId) === String(targetId))) {
+            return { ...n, read: true };
           }
-        })
-        .catch(() => {});
+          return n;
+        });
+        localStorage.setItem("grupoLeon_notifications", JSON.stringify(updated));
+        window.dispatchEvent(new Event("localNotificationsUpdated"));
+        setLocalVersion(v => v + 1);
+      } catch (e) {}
+
+      // ⚡ 6. Sincronización final en segundo plano con el servidor
+      if (targetId) {
+        getQuoteById(targetId)
+          .then((liveQuote) => {
+            if (liveQuote && (liveQuote.id || liveQuote.docNumber)) {
+              setSelectedQuoteForDrawer((prev) => {
+                if (!prev) return liveQuote;
+                const serverItems = extractItems(liveQuote);
+                return {
+                  ...prev,
+                  ...liveQuote,
+                  products: serverItems.length > 0 ? serverItems : prev.products,
+                };
+              });
+            }
+          })
+          .catch(() => {});
+      }
+    } finally {
+      setOpeningNotifId(null);
     }
   };
 
@@ -573,6 +593,8 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
                     statusBadge = <Badge colorScheme="red" fontSize="9px">❌ RECHAZADO</Badge>;
                   }
 
+                  const isOpeningThis = openingNotifId === String(item.id || item.quoteId || "");
+
                   return (
                     <Box
                       key={item.id}
@@ -586,7 +608,8 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
                       boxShadow={item.read ? "none" : "sm"}
                       _hover={{ boxShadow: "md", transform: "translateY(-1px)", borderColor: "emerald.400" }}
                       transition="all 0.2s"
-                      cursor="pointer"
+                      cursor={isOpeningThis ? "wait" : "pointer"}
+                      opacity={isOpeningThis ? 0.75 : 1}
                       onClick={() => handleOpenQuote(item.quoteObj, item.quoteId, item.id)}
                     >
                       <VStack align="stretch" spacing={2.5}>
@@ -693,6 +716,8 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
                             bg={!isEmitido && !isApproved && !isRejected && !isObservado ? "#0f766e" : undefined}
                             _hover={!isEmitido && !isApproved && !isRejected && !isObservado ? { bg: "#115e59" } : undefined}
                             leftIcon={<Icon as={FiEye} />}
+                            isLoading={isOpeningThis}
+                            loadingText="Abriendo..."
                             onClick={(e) => {
                               e.stopPropagation();
                               handleOpenQuote(item.quoteObj, item.quoteId, item.id);
