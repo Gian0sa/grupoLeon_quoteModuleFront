@@ -210,7 +210,7 @@ export function LateralMenu() {
     if (hasAccess("GET:/AdminQuotesSellers/:slpCode/:month") || (hasAccess("GET:/sellers") && hasAccess("GET:/visit-logs"))) {
       return "Supervisor Comercial";
     }
-    if (hasAccess("POST:/quotes/approval") || hasAccess("POST /quotes/approval") || hasAccess("POST:/quotes/sap/:id/copy-to-invoice")) {
+    if (hasAccess("POST:/quotes/approval") || hasAccess("POST /quotes/approval")) {
       return "Facturación y Créditos";
     }
     return "Asesor de Ventas";
