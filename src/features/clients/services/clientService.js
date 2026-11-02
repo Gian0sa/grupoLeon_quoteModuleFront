@@ -20,6 +20,13 @@ export const createClient = async (client) => {
   return response.data;
 }
 
+export const checkClientExists = async (documentNumber) => {
+  const cleanDoc = String(documentNumber || "").trim().replace(/\D/g, "");
+  if (!cleanDoc) return { exists: false, client: null };
+  const response = await axiosInstance.get(`/quoteModule/clients/check-exists/${cleanDoc}`);
+  return response.data;
+}
+
 export const updateClient = async (client) => {
   const response = await axiosInstance.put(`/quoteModule/clients/${client.id}`, client);
   return response.data;

@@ -191,6 +191,7 @@ const initialQuoteState = {
   documentType: "",   // Sin pre-marcar (el usuario elige FACTURA o BOLETA)
   isLetra: false,           // boolean
   creditTerm: "", // Sin pre-marcar
+  currency: "USD", // "USD" | "SOL"
   sellerName: null,
   createdByUsername: null,
   createdByUserId: null,
@@ -227,6 +228,7 @@ const saveDraftToStorage = (state) => {
         quoteId: state.quoteId,
         client: state.client,
         products: state.products,
+        currency: state.currency || "USD",
         opNum: state.opNum,
         selectedPoint: state.selectedPoint,
         selectedTransport: state.selectedTransport,
@@ -320,6 +322,7 @@ export const useQuoteStore = create((set, get) => {
     setDocumentType: (documentType) => customSet({ documentType }),
     setIsLetra: (isLetra) => customSet({ isLetra }),
     setCreditTerm: (creditTerm) => customSet({ creditTerm }),
+    setCurrency: (currency) => customSet({ currency: currency === "SOL" || currency === "PEN" ? "SOL" : "USD" }),
     setPaymentMethod: (method) => customSet({ paymentMethod: method }),
     setBankAccount: (account) => customSet({ bankAccount: account }),
     setSunatOpType: (type) => customSet({ sunatOpType: type }),
@@ -578,6 +581,7 @@ export const useQuoteStore = create((set, get) => {
         documentType: documentTypeVal,
         isLetra: isLetraVal,
         creditTerm: creditTermVal,
+        currency: (quoteData.currency === "SOL" || quoteData.currency === "PEN" || quoteData.DocCurrency === "SOL" || quoteData.DocCurrency === "PEN" || quoteData.totals?.currency === "SOL") ? "SOL" : (quoteData.currency || "USD"),
         approvalStatus: quoteData.approvalStatus || quoteData.state || quoteData.status || null,
         rejectionReason: quoteData.rejectionReason || quoteData.observations || null,
         observations: quoteData.observations || quoteData.rejectionReason || null,

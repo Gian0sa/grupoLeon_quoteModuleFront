@@ -1347,15 +1347,19 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
           : ((authSalesCode && !isNaN(Number(authSalesCode)) && Number(authSalesCode) > 0) ? Number(authSalesCode) : (isAdminUser ? 20 : 20));
       }
 
+      const isSol = effectiveQuote.currency === "SOL" || effectiveQuote.currency === "PEN" || effectiveQuote.DocCurrency === "SOL" || effectiveQuote.DocCurrency === "PEN" || effectiveQuote.totals?.currency === "SOL";
+      const rateMultiplier = isSol ? Number(effectiveQuote.DocRate || effectiveQuote.totals?.exchangeRate || effectiveQuote.totals?.tc || 3.43) : 1;
+
       const sanitizedProducts = (displayProducts || []).map((p) => {
         const itemCode = p.productCode || p.itemCode || p.ItemCode || p.code || (typeof p.id === "string" && isNaN(Number(p.id)) ? p.id : undefined);
         const sigla = p.sigla || p.Sigla || p.U_TQC_SIGLA;
         const rawPrice = Number(p.unitPrice ?? p.price ?? p.Price ?? 0);
+        const sapUnitPrice = Number((rawPrice * rateMultiplier).toFixed(4));
         const sapDisc = Number(p.sapDiscount ?? p.discount ?? p.Discount ?? 0);
         const promoDisc = Number(p.promoDiscount ?? p.PromoDiscount ?? 0);
         const addDisc = Number(Number(p.lineDiscount ?? p.LineDiscount ?? 0).toFixed(2));
         const totalDisc = Number(p.discountPercent ?? (sapDisc + promoDisc + addDisc));
-        const valorDescLista = Number((rawPrice * (1 - sapDisc / 100)).toFixed(2));
+        const valorDescLista = Number((sapUnitPrice * (1 - sapDisc / 100)).toFixed(2));
         const descVenta = Number(Math.max(0, totalDisc - sapDisc).toFixed(2));
 
         return {
@@ -1368,8 +1372,8 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
           U_TQC_SIGLA: sigla || undefined,
           productName: p.productName || p.description || p.name || p.ItemDescription,
           description: p.productName || p.description || p.name || p.ItemDescription,
-          unitPrice: rawPrice,
-          price: rawPrice,
+          unitPrice: sapUnitPrice,
+          price: sapUnitPrice,
           sapDiscount: sapDisc,
           promoDiscount: promoDisc,
           lineDiscount: addDisc,
@@ -1385,6 +1389,9 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
       const quotePayload = {
         ...effectiveQuote,
+        currency: isSol ? "SOL" : "USD",
+        DocCurrency: isSol ? "SOL" : "USD",
+        DocRate: rateMultiplier,
         grandTotalUSD: calcRes?.grandTotalUSD || effectiveQuote.grandTotalUSD || effectiveQuote.totals?.grandTotalUSD || effectiveQuote.totalAmount,
         subtotalUSD: calcRes?.subtotalUSD || effectiveQuote.subtotalUSD || effectiveQuote.totals?.subtotalUSD,
         igvUSD: calcRes?.igvUSD || effectiveQuote.igvUSD || effectiveQuote.totals?.igvUSD,
@@ -3885,9 +3892,27 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                   </Button>
                 )}
 
-                <Button size="sm" onClick={onClose} fontWeight="700">
-                  Cerrar
-                </Button>
+                {isAdminUser && isAlreadySyncedToSap ? (
+                  <Button
+                    size="sm"
+                    colorScheme="teal"
+                    bg="#0f5132"
+                    _hover={{ bg: "#093822" }}
+                    color="white"
+                    fontWeight="900"
+                    rightIcon={<ArrowRight className="w-4 h-4" />}
+                    onClick={() => {
+                      onClose();
+                      navigate("/historyquotes");
+                    }}
+                  >
+                    Ir al Historial de Cotizaciones
+                  </Button>
+                ) : (
+                  <Button size="sm" onClick={onClose} fontWeight="700">
+                    Cerrar
+                  </Button>
+                )}
               </HStack>
             </Flex>
           </DrawerFooter>

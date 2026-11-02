@@ -173,7 +173,7 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
 
   const noOptionsMessage = () => {
     if (!shouldSearch) return `Escribe al menos ${MIN_CHARS} caracteres...`;
-    if (isFetching) return "Buscando en SAP…";
+    if (isFetching) return "Buscando…";
     return "Sin resultados";
   };
 
@@ -200,7 +200,7 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
         value={null}
         placeholder={placeholder || "Escribe código o nombre del Artículo"}
         noOptionsMessage={noOptionsMessage}
-        loadingMessage={() => "Buscando en SAP…"}
+        loadingMessage={() => "Buscando…"}
         filterOption={null}
         formatOptionLabel={(option) => {
           const r = option.record;

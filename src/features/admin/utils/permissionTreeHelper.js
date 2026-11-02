@@ -215,6 +215,7 @@ export const ROLE_PRESETS = {
       "POST /quotes",
       "GET /quotes/:id",
       "PUT /quotes/:id",
+      "PUT /quotes/currency",
       "DELETE /quotes/:id",
       "POST /quotes/sap/create",
       "POST /quotes/sap/:id/copy-to-order",
