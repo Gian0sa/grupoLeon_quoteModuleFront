@@ -652,7 +652,7 @@ export function QuoteApprovalPage() {
     hasAccess("POST:/quotes/approval") ||
     hasAccess("POST:/quotes/sap/order");
 
-  const isMasterAdminId = [2, 10, 12, 15, 16, 17, 35, 42].includes(Number(authUserId || localStorage.getItem("userId")));
+  const isMasterAdminId = [2, 10, 12, 15, 16, 17, 35].includes(Number(authUserId || localStorage.getItem("userId")));
   const isRoleAdmin = isVerifierOrAdminRole || isAdmin;
   const isAdminUser = Boolean(isRoleAdmin || hasApprovalPrivileges || isMasterAdminId);
   const isSellerUser = !isAdminUser;

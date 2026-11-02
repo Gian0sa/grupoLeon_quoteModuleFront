@@ -249,125 +249,7 @@ export default function CreateBusinessPartnerModal({
     handleClose();
   };
 
-  // Trama JSON generada en tiempo real para visualización e inspección
-  const previewJsonPayload = useMemo(() => {
-    const cleanDoc = String(documentNumber || "").trim().replace(/\D/g, "");
-    const cardCode = `CL${cleanDoc}`;
-    const cleanAddress = String(address || "").trim().toUpperCase() || "LIMA";
-    const cleanDelivery = sameDeliveryAddress ? cleanAddress : String(deliveryAddress || cleanAddress).trim().toUpperCase();
 
-    return {
-      CardCode: cardCode,
-      CardName: effectiveCardName || "NOMBRE / RAZON SOCIAL",
-      CardForeignName: cardForeignName ? cardForeignName.trim().toUpperCase() : null,
-      CardType: "cCustomer",
-      GroupCode: 100,
-      Address: cleanAddress,
-      MailAddress: cleanAddress,
-      ContactPerson: contactPerson ? contactPerson.trim().toUpperCase() : null,
-      PayTermsGrpCode: Number(payTermsGrpCode || -1),
-      PriceListNum: Number(priceListNum || 1),
-      CreditLimit: Number(creditLimit || 0),
-      FederalTaxID: cleanDoc,
-      AdditionalID: additionalId ? additionalId.trim() : null,
-      SalesPersonCode: Number(assignedSellerCode || -1),
-      Currency: currency || "##",
-      DefaultCurrency: "SOL",
-      DebitorAccount: debitorAccount || "1212101",
-      DownPaymentClearAct: downPaymentClearAct || "1221101",
-      VatLiable: vatLiable || "vLiable",
-      Valid: validStatus === "tNO" ? "tNO" : "tYES",
-      Frozen: validStatus === "tNO" ? "tYES" : "tNO",
-      Phone1: phone || null,
-      Phone2: phone2 || null,
-      Cellular: cellular || phone || null,
-      EmailAddress: email || null,
-      U_BPP_BPTP: personType === "JURIDICO" ? "TPJ" : "TPN",
-      U_BPP_BPTD: String(documentType),
-      U_BPP_BPAP: personType === "NATURAL" && paternalSurname ? paternalSurname.trim().toUpperCase() : null,
-      U_BPP_BPAM: personType === "NATURAL" && maternalSurname ? maternalSurname.trim().toUpperCase() : null,
-      U_BPP_BPNO: personType === "NATURAL" && firstName ? firstName.trim().toUpperCase() : null,
-      U_BPP_BPN2: personType === "NATURAL" && secondName ? secondName.trim().toUpperCase() : null,
-      U_BPP_BPAT: isCarrier === "Sí" || isCarrier === "Y" ? "Y" : "N",
-      U_VS_NEGOCIO: hasBusiness === "Sí" || hasBusiness === "Y" ? "Y" : "N",
-      U_VS_EXCCOD: excludeCode === "Sí" || excludeCode === "Y" ? "Y" : "N",
-      U_VS_AFPRCP: agentType === "Ninguno" ? "C" : agentType,
-      U_VS_NOMCOM: commercialName ? commercialName.trim().toUpperCase() : effectiveCardName,
-      U_VS_CANAL: "C",
-      U_VS_MAIL_SEC: secondaryEmail ? secondaryEmail.trim().toLowerCase() : null,
-      U_VS_EMPLEADO: isEmployee === "Sí" || isEmployee === "Y" ? "Y" : "N",
-      U_VS_PM_PN: supplierWithDni === "Sí" || supplierWithDni === "Y" ? "Y" : "N",
-      U_VALIDC: validateIdc === "Sí" || validateIdc === "Y" ? "Y" : "N",
-      U_TQC_TPSN: "01",
-      U_TQC_LMCRED: Number(creditLimit || 0),
-      BPAddresses: [
-        {
-          AddressName: deliveryAddressName || "ALMACEN",
-          Street: cleanDelivery,
-          City: department || "LIMA",
-          County: district || province || "LIMA",
-          Country: "PE",
-          State: "15",
-          FederalTaxID: cleanDoc,
-          TaxCode: "I18",
-          AddressType: "bo_ShipTo",
-        },
-        {
-          AddressName: "FISCAL",
-          Street: cleanAddress,
-          City: department || "LIMA",
-          County: district || province || "LIMA",
-          Country: "PE",
-          State: "15",
-          TaxCode: "I18",
-          AddressType: "bo_BillTo",
-          GlobalLocationNumber: zipCode || "150140",
-        },
-      ],
-    };
-  }, [
-    documentNumber,
-    effectiveCardName,
-    cardForeignName,
-    currency,
-    validStatus,
-    debitorAccount,
-    downPaymentClearAct,
-    vatLiable,
-    isCarrier,
-    hasBusiness,
-    excludeCode,
-    agentType,
-    isEmployee,
-    supplierWithDni,
-    validateIdc,
-    address,
-    sameDeliveryAddress,
-    deliveryAddress,
-    deliveryAddressName,
-    department,
-    province,
-    district,
-    zipCode,
-    contactPerson,
-    payTermsGrpCode,
-    priceListNum,
-    creditLimit,
-    assignedSellerCode,
-    phone,
-    phone2,
-    cellular,
-    email,
-    secondaryEmail,
-    additionalId,
-    personType,
-    documentType,
-    paternalSurname,
-    maternalSurname,
-    firstName,
-    secondName,
-    commercialName,
-  ]);
 
   const handleSubmit = async (e) => {
     e?.preventDefault();
@@ -718,21 +600,6 @@ export default function CreateBusinessPartnerModal({
                   <HStack spacing={1.5} justify="center">
                     <FiDollarSign size={15} />
                     <Text whiteSpace="nowrap">5. Finanzas</Text>
-                  </HStack>
-                </Tab>
-                <Tab
-                  fontWeight="800"
-                  fontSize="xs"
-                  px={{ base: 2.5, md: 2 }}
-                  py={2}
-                  flex={{ base: "0 0 auto", md: 1 }}
-                  justifyContent="center"
-                  borderRadius="lg"
-                  _selected={{ color: "#166534", bg: "#f0fdf4", borderColor: "#86efac", borderBottomColor: "transparent" }}
-                >
-                  <HStack spacing={1.5} justify="center">
-                    <FiCode size={15} />
-                    <Text whiteSpace="nowrap">6. Trama JSON</Text>
                   </HStack>
                 </Tab>
               </TabList>
@@ -1526,21 +1393,6 @@ export default function CreateBusinessPartnerModal({
                       </Grid>
                     </Box>
                   </VStack>
-                </TabPanel>
-
-                {/* ── PESTAÑA 6: TRAMA JSON ODATA ── */}
-                <TabPanel p={0}>
-                  <Box bg="gray.900" p={4} borderRadius="xl" maxH="380px" overflowY="auto">
-                    <Flex justify="space-between" align="center" mb={2}>
-                      <Text fontSize="11px" fontWeight="800" color="emerald.300" textTransform="uppercase">
-                        Trama OData para POST /BusinessPartners (Service Layer)
-                      </Text>
-                      <Badge colorScheme="green" fontSize="9px">Listo para enviar</Badge>
-                    </Flex>
-                    <Code display="block" whiteSpace="pre" bg="transparent" color="emerald.200" fontSize="11px" fontFamily="mono">
-                      {JSON.stringify(previewJsonPayload, null, 2)}
-                    </Code>
-                  </Box>
                 </TabPanel>
               </TabPanels>
             </Tabs>
