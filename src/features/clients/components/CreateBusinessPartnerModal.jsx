@@ -265,10 +265,26 @@ export default function CreateBusinessPartnerModal({
     const isDocRuc = documentType === "6" || documentType === "RUC";
     const isDocDni = documentType === "1" || documentType === "DNI";
 
-    if (isDocRuc && cleanDoc.length !== 11) {
-      setErrorMessage("El RUC debe tener exactamente 11 dígitos numéricos.");
-      setActiveTabIndex(0);
-      return;
+    if (isDocRuc) {
+      if (cleanDoc.length !== 11) {
+        setErrorMessage("El RUC debe tener exactamente 11 dígitos numéricos.");
+        setActiveTabIndex(0);
+        return;
+      }
+      // Algoritmo oficial SUNAT Módulo 11 para dígito verificador
+      const weights = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
+      let sum = 0;
+      for (let i = 0; i < 10; i++) {
+        sum += parseInt(cleanDoc[i], 10) * weights[i];
+      }
+      const mod = sum % 11;
+      const diff = 11 - mod;
+      const expectedDigit = diff === 10 ? 0 : diff === 11 ? 1 : diff;
+      if (parseInt(cleanDoc[10], 10) !== expectedDigit) {
+        setErrorMessage(`El RUC ${cleanDoc} es incorrecto según SUNAT (el dígito verificador debería ser ${expectedDigit}, ej: ${cleanDoc.slice(0, 10)}${expectedDigit}).`);
+        setActiveTabIndex(0);
+        return;
+      }
     }
 
     if (isDocDni && cleanDoc.length !== 8) {
