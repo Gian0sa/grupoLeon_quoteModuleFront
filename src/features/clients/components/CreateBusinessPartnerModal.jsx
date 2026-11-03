@@ -1400,10 +1400,12 @@ export default function CreateBusinessPartnerModal({
                             size="sm"
                             borderRadius="md"
                             value={debitorAccount}
-                            onChange={(e) => setDebitorAccount(e.target.value)}
-                            placeholder="1212101"
-                            bg="white"
+                            isReadOnly
+                            bg="gray.100"
+                            color="gray.600"
+                            cursor="not-allowed"
                             fontWeight="700"
+                            borderColor="gray.300"
                           />
                           <Text fontSize="10px" color="gray.500" mt={1}>
                             1212101 - Facturas por cobrar comerciales
@@ -1418,10 +1420,12 @@ export default function CreateBusinessPartnerModal({
                             size="sm"
                             borderRadius="md"
                             value={downPaymentClearAct}
-                            onChange={(e) => setDownPaymentClearAct(e.target.value)}
-                            placeholder="1221101"
-                            bg="white"
+                            isReadOnly
+                            bg="gray.100"
+                            color="gray.600"
+                            cursor="not-allowed"
                             fontWeight="700"
+                            borderColor="gray.300"
                           />
                           <Text fontSize="10px" color="gray.500" mt={1}>
                             1221101 - Anticipos recibidos de clientes
