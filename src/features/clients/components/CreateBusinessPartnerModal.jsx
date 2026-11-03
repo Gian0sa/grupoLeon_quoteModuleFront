@@ -52,7 +52,12 @@ import {
 import { createClient, checkClientExists } from "../services/clientService";
 import { getPaymentType } from "../../quotes/services/quoteService";
 import { useDebounce } from "../../../shared/hooks/useDebounce";
-import { UBIGEO_DISTRICTS, getUbigeoByDistrict } from "../../../shared/utils/ubigeoData";
+import {
+  PERU_DEPARTMENTS,
+  getProvincesByDepartment,
+  UBIGEO_DISTRICTS,
+  getUbigeoByDistrict,
+} from "../../../shared/utils/ubigeoData";
 
 export default function CreateBusinessPartnerModal({
   isOpen,
@@ -242,6 +247,19 @@ export default function CreateBusinessPartnerModal({
       setZipCode(match.ubigeo);
       if (match.department) setDepartment(match.department);
       if (match.province) setProvince(match.province);
+    }
+  };
+
+  const availableProvinces = useMemo(() => {
+    return getProvincesByDepartment(department);
+  }, [department]);
+
+  const handleDepartmentChange = (value) => {
+    const upper = value.toUpperCase();
+    setDepartment(upper);
+    const provs = getProvincesByDepartment(upper);
+    if (provs && provs.length > 0 && (!province || !provs.includes(province))) {
+      setProvince(provs[0]);
     }
   };
 
@@ -1076,13 +1094,39 @@ export default function CreateBusinessPartnerModal({
                           <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1}>
                             Departamento
                           </FormLabel>
-                          <Input size="sm" borderRadius="md" value={department} onChange={(e) => setDepartment(e.target.value.toUpperCase())} bg="white" />
+                          <Input
+                            size="sm"
+                            borderRadius="md"
+                            value={department}
+                            onChange={(e) => handleDepartmentChange(e.target.value)}
+                            list="peru-departments-list"
+                            placeholder="LIMA"
+                            bg="white"
+                          />
+                          <datalist id="peru-departments-list">
+                            {PERU_DEPARTMENTS.map((dept) => (
+                              <option key={dept} value={dept} />
+                            ))}
+                          </datalist>
                         </FormControl>
                         <FormControl display="flex" flexDirection="column" justifyContent="space-between">
                           <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1}>
                             Provincia
                           </FormLabel>
-                          <Input size="sm" borderRadius="md" value={province} onChange={(e) => setProvince(e.target.value.toUpperCase())} bg="white" />
+                          <Input
+                            size="sm"
+                            borderRadius="md"
+                            value={province}
+                            onChange={(e) => setProvince(e.target.value.toUpperCase())}
+                            list="peru-provinces-list"
+                            placeholder="LIMA"
+                            bg="white"
+                          />
+                          <datalist id="peru-provinces-list">
+                            {availableProvinces.map((prov) => (
+                              <option key={prov} value={prov} />
+                            ))}
+                          </datalist>
                         </FormControl>
                         <FormControl display="flex" flexDirection="column" justifyContent="space-between">
                           <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1}>

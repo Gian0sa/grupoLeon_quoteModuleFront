@@ -2,6 +2,62 @@
  * Catálogo inteligente de Ubigeos SUNAT / INEI para Lima Metropolitana, Callao y principales provincias
  */
 
+export const PERU_DEPARTMENTS = [
+  "AMAZONAS",
+  "ANCASH",
+  "APURIMAC",
+  "AREQUIPA",
+  "AYACUCHO",
+  "CAJAMARCA",
+  "CALLAO",
+  "CUSCO",
+  "HUANCAVELICA",
+  "HUANUCO",
+  "ICA",
+  "JUNIN",
+  "LA LIBERTAD",
+  "LAMBAYEQUE",
+  "LIMA",
+  "LORETO",
+  "MADRE DE DIOS",
+  "MOQUEGUA",
+  "PASCO",
+  "PIURA",
+  "PUNO",
+  "SAN MARTIN",
+  "TACNA",
+  "TUMBES",
+  "UCAYALI"
+];
+
+export const PERU_PROVINCES_BY_DEPT = {
+  LIMA: ["LIMA", "BARRANCA", "CAJATAMBO", "CANTA", "CAÑETE", "HUARAL", "HUAROCHIRI", "HUAURA", "OYON", "YAUYOS"],
+  CALLAO: ["CALLAO"],
+  AREQUIPA: ["AREQUIPA", "CAMANA", "CARAVELI", "CASTILLA", "CAYLLOMA", "CONDESUYOS", "ISLAY", "LA UNION"],
+  "LA LIBERTAD": ["TRUJILLO", "ASCOPE", "BOLIVAR", "CHEPEN", "GRAN CHIMU", "JULCAN", "OTUZCO", "PACASMAYO", "PATAZ", "SANCHEZ CARRION", "SANTIAGO DE CHUCO", "VIRU"],
+  LAMBAYEQUE: ["CHICLAYO", "FERREÑAFE", "LAMBAYEQUE"],
+  PIURA: ["PIURA", "AYABACA", "HUANCABAMBA", "MORROPON", "PAITA", "SULLANA", "TALARA", "SECHURA"],
+  JUNIN: ["HUANCAYO", "CONCEPCION", "CHANCHAMAYO", "JAUJA", "JUNIN", "SATIPO", "TARMA", "YAULI", "CHUPACA"],
+  CUSCO: ["CUSCO", "ACOMAYO", "ANTA", "CALCA", "CANAS", "CANCHIS", "CHUMBIVILCAS", "ESPINAR", "LA CONVENCION", "PARURO", "PAUCARTAMBO", "QUISPICANCHI", "URUBAMBA"],
+  ICA: ["ICA", "CHINCHA", "NAZCA", "PALPA", "PISCO"],
+  ANCASH: ["HUARAZ", "AIJA", "ANTONIO RAYMONDI", "ASUNCION", "BOLOGNESI", "CARHUAZ", "CARLOS FERMIN FITZCARRALD", "CASMA", "CORONGO", "HUARI", "HUARMEY", "HUAYLAS", "MARISCAL LUZURIAGA", "OCROS", "PALLASCA", "POMABAMBA", "RECUAY", "SANTA", "SIHUAS", "YUNGAY"],
+  PUNO: ["PUNO", "AZANGARO", "CARABAYA", "CHUCUITO", "EL COLLAO", "HUANCANE", "LAMPA", "MELGAR", "MOHO", "SAN ANTONIO DE PUTINA", "SAN ROMAN", "SANDIA", "YUNGUYO"],
+  TACNA: ["TACNA", "CANDARAVE", "JORGE BASADRE", "TARATA"],
+  "SAN MARTIN": ["MOYOBAMBA", "BELLAVISTA", "EL DORADO", "HUALLAGA", "LAMAS", "MARISCAL CACERES", "PICOTA", "RIOJA", "SAN MARTIN", "TOCACHE"],
+  LORETO: ["MAYNAS", "ALTO AMAZONAS", "LORETO", "MARISCAL RAMON CASTILLA", "REQUENA", "UCAYALI", "DATEM DEL MARAÑON", "PUTUMAYO"],
+  UCAYALI: ["CORONEL PORTILLO", "ATALAYA", "PADRE ABAD", "PURUS"],
+  CAJAMARCA: ["CAJAMARCA", "CAJABAMBA", "CELENDIN", "CHOTA", "CONTUMAZA", "CUTERVO", "HUALGAYOC", "JAEN", "SAN IGNACIO", "SAN MARCOS", "SAN MIGUEL", "SAN PABLO", "SANTA CRUZ"],
+  HUANUCO: ["HUANUCO", "AMBO", "DOS DE MAYO", "HUACAYBAMBA", "HUAMALIES", "LEONCIO PRADO", "MARAÑON", "PACHITEA", "PUERTO INCA", "LAURICOCHA", "YAROWILCA"],
+  AYACUCHO: ["HUAMANGA", "CANGALLO", "HUANCA SANCOS", "HUANTA", "LA MAR", "LUCANAS", "PARINACOCHAS", "PAUCAR DEL SARA SARA", "SUCRE", "VICTOR FAJARDO", "VILCAS HUAMAN"],
+  AMAZONAS: ["CHACHAPOYAS", "BAGUA", "BONGARA", "CONDORCANQUI", "LUYA", "RODRIGUEZ DE MENDOZA", "UTCUBAMBA"],
+  APURIMAC: ["ABANCAY", "ANDAHUAYLAS", "ANTABAMBA", "AYMARAES", "COTABAMBAS", "CHINCHEROS", "GRAU"],
+  HUANCAVELICA: ["HUANCAVELICA", "ACOBAMBA", "ANGARAES", "CASTROVIRREYNA", "CHURCAMPA", "HUAYTARA", "TAYACAJA"],
+  "MADRE DE DIOS": ["TAMBOPATA", "MANU", "TAHUAMANU"],
+  MOQUEGUA: ["MARISCAL NIETO", "GENERAL SANCHEZ CERRO", "ILO"],
+  PASCO: ["PASCO", "DANIEL ALCIDES CARRION", "OXAPAMPA"],
+  TUMBES: ["TUMBES", "CONTRALMIRANTE VILLAR", "ZARUMILLA"]
+};
+
 export const UBIGEO_DISTRICTS = [
   // --- LIMA METROPOLITANA (1501xx) ---
   { district: "LIMA", department: "LIMA", province: "LIMA", ubigeo: "150101", aliases: ["CERCADO DE LIMA", "LIMA CERCADO", "CERCADO"] },
@@ -81,7 +137,7 @@ export const UBIGEO_DISTRICTS = [
 /**
  * Normaliza una cadena eliminando tildes y espacios dobles
  */
-function normalizeString(str) {
+export function normalizeString(str) {
   if (!str) return "";
   return str
     .trim()
@@ -89,6 +145,20 @@ function normalizeString(str) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/\s+/g, " ");
+}
+
+/**
+ * Obtiene las provincias correspondientes a un departamento
+ */
+export function getProvincesByDepartment(departmentName) {
+  if (!departmentName) return PERU_PROVINCES_BY_DEPT.LIMA || [];
+  const cleanDept = normalizeString(departmentName);
+  for (const [dept, provs] of Object.entries(PERU_PROVINCES_BY_DEPT)) {
+    if (normalizeString(dept) === cleanDept) {
+      return provs;
+    }
+  }
+  return [departmentName.toUpperCase()];
 }
 
 /**
@@ -114,4 +184,3 @@ export function getUbigeoByDistrict(inputDistrict) {
 
   return null;
 }
-
