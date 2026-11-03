@@ -52,6 +52,7 @@ import {
 import { createClient, checkClientExists } from "../services/clientService";
 import { getPaymentType } from "../../quotes/services/quoteService";
 import { useDebounce } from "../../../shared/hooks/useDebounce";
+import { UBIGEO_DISTRICTS, getUbigeoByDistrict } from "../../../shared/utils/ubigeoData";
 
 export default function CreateBusinessPartnerModal({
   isOpen,
@@ -233,6 +234,17 @@ export default function CreateBusinessPartnerModal({
     setExistingClient(null);
   };
 
+  const handleDistrictChange = (value) => {
+    const upper = value.toUpperCase();
+    setDistrict(upper);
+    const match = getUbigeoByDistrict(upper);
+    if (match) {
+      setZipCode(match.ubigeo);
+      if (match.department) setDepartment(match.department);
+      if (match.province) setProvince(match.province);
+    }
+  };
+
   const handleSelectExisting = () => {
     if (!existingClient) return;
     toast({
@@ -348,7 +360,7 @@ export default function CreateBusinessPartnerModal({
         department: department.trim().toUpperCase() || "LIMA",
         province: province.trim().toUpperCase() || "LIMA",
         district: district.trim().toUpperCase() || "LIMA",
-        zipCode: zipCode.trim() || "150140",
+        zipCode: zipCode.trim() || (district ? (getUbigeoByDistrict(district)?.ubigeo || "150140") : "150140"),
         phone: phone.trim(),
         phone2: phone2.trim(),
         cellular: cellular.trim() || phone.trim(),
@@ -1076,13 +1088,42 @@ export default function CreateBusinessPartnerModal({
                           <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1}>
                             Distrito
                           </FormLabel>
-                          <Input size="sm" borderRadius="md" placeholder="SANTIAGO DE SURCO" value={district} onChange={(e) => setDistrict(e.target.value.toUpperCase())} bg="white" />
+                          <Input
+                            size="sm"
+                            borderRadius="md"
+                            placeholder="Ej. LA VICTORIA, SURCO"
+                            value={district}
+                            onChange={(e) => handleDistrictChange(e.target.value)}
+                            list="peru-districts-list"
+                            bg="white"
+                          />
+                          <datalist id="peru-districts-list">
+                            {UBIGEO_DISTRICTS.map((item) => (
+                              <option key={item.ubigeo} value={item.district}>
+                                {item.district} ({item.province}) - {item.ubigeo}
+                              </option>
+                            ))}
+                          </datalist>
                         </FormControl>
                         <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1}>
-                            Ubigeo / GLN
-                          </FormLabel>
-                          <Input size="sm" borderRadius="md" placeholder="150140" value={zipCode} onChange={(e) => setZipCode(e.target.value)} bg="white" />
+                          <Flex justify="space-between" align="center" minH={{ base: "auto", sm: "24px" }} mb={1}>
+                            <FormLabel fontSize="xs" fontWeight="700" color="gray.700" m={0}>
+                              Ubigeo / GLN
+                            </FormLabel>
+                            {zipCode && (
+                              <Badge colorScheme="green" fontSize="9px" px={1.5} py={0.5} borderRadius="sm" textTransform="uppercase">
+                                AUTO
+                              </Badge>
+                            )}
+                          </Flex>
+                          <Input
+                            size="sm"
+                            borderRadius="md"
+                            placeholder="150115"
+                            value={zipCode}
+                            onChange={(e) => setZipCode(e.target.value)}
+                            bg="white"
+                          />
                         </FormControl>
                       </Grid>
                     </Box>
