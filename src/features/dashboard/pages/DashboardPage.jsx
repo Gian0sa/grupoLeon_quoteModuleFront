@@ -338,7 +338,7 @@ export function DashboardPage() {
                     </Badge>
                   </HStack>
                   <Text fontSize="xs" color="gray.500">
-                    Resumen de facturación, pedidos y meta por vendedor
+                    Resumen de avance de ventas, pedidos y meta por vendedor
                   </Text>
                 </VStack>
               </HStack>
@@ -541,7 +541,7 @@ export function DashboardPage() {
                 ¡Inicio de Mes {MONTH_NAMES[(new Date().getMonth())]}!
               </AlertTitle>
               <AlertDescription display="block" fontSize="xs" color="blue.700" mt={0.5}>
-                Aún no se registran facturas ni pedidos en el mes en curso. Puedes consultar la actividad y cumplimiento del mes anterior con un clic.
+                Aún no se registran pedidos ni avance de ventas en el mes en curso. Puedes consultar la actividad y cumplimiento del mes anterior con un clic.
               </AlertDescription>
             </Box>
             <Button

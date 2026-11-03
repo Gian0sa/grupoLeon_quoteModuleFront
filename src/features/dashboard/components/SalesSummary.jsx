@@ -165,7 +165,7 @@ export function SalesSummary({ data }) {
             <Icon as={TrendingUp} boxSize={5} />
           </Box>
           <Text fontSize="xs" color="gray.500" fontWeight="bold" textTransform="uppercase" letterSpacing="wider">
-            Total Facturado
+            Avance de Ventas
           </Text>
         </HStack>
 
@@ -182,7 +182,7 @@ export function SalesSummary({ data }) {
           ${pedidos}
         </Text>
         <Text fontSize={{ base: "11px", sm: "xs" }} color="gray.400" mt={1} fontWeight="medium">
-          Venta facturada hoy: <Text as="span" color="emerald.600" fontWeight="bold">${ventasHoy}</Text>
+          Venta de hoy: <Text as="span" color="emerald.600" fontWeight="bold">${ventasHoy}</Text>
         </Text>
       </VStack>
 

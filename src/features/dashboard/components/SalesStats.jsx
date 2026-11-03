@@ -42,7 +42,7 @@ export function SalesStats({ data }) {
     // 🏆 1. Facturación completa de pedidos (>= 100%)
     if (value >= 100) {
       const topPhrases = [
-        `🎉 ¡${cantidadPedidos} pedidos 100% facturados, ${firstName}!`,
+        `🎉 ¡${cantidadPedidos} pedidos 100% atendidos, ${firstName}!`,
         `⚡ ¡Despacho al día con ${cantidadPedidos} pedidos!`,
         `✨ ¡Flujo perfecto de pedidos, ${firstName}!`,
         `💎 ¡Eficiencia total en pedidos, ${firstName}!`,
