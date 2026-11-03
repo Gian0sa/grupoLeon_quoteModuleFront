@@ -36,7 +36,6 @@ export function Login() {
 
   const [showPassword, setShowPassword] = useState(false);
   const [captchaToken, setCaptchaToken] = useState(null);
-  const [captchaError, setCaptchaError] = useState(null);
   const [captchaKey, setCaptchaKey] = useState(0);
 
   const toast = useToast();
@@ -222,7 +221,14 @@ export function Login() {
 
   const onSubmit = (data) => {
     if (!captchaToken) {
-      setCaptchaError("Completa la verificación de seguridad para continuar.");
+      toast({
+        title: "Verificación requerida",
+        description: "Completa la verificación de seguridad para continuar.",
+        status: "warning",
+        duration: 3500,
+        isClosable: true,
+        position: "top",
+      });
       return;
     }
 
@@ -389,36 +395,15 @@ export function Login() {
                 options={{ retry: "never", refreshExpired: "auto" }}
                 onSuccess={(token) => {
                   setCaptchaToken(token);
-                  setCaptchaError(null);
                 }}
                 onError={() => {
                   setCaptchaToken(null);
-                  setCaptchaError(
-                    "No se pudo completar la verificación de seguridad (Error de Cloudflare Turnstile). Si usas Edge, permite el almacenamiento o cookies para este sitio y reintenta."
-                  );
                 }}
                 onExpire={() => {
                   resetCaptcha();
                 }}
               />
             </Center>
-
-            {captchaError && (
-              <VStack spacing={2} align="center">
-                <Box color="red.500" fontSize="xs" textAlign="center" px={2}>
-                  {captchaError}
-                </Box>
-                <Button
-                  size="xs"
-                  variant="outline"
-                  colorScheme="green"
-                  onClick={resetCaptcha}
-                  borderRadius="md"
-                >
-                  🔄 Reintentar verificación
-                </Button>
-              </VStack>
-            )}
 
             <Button
               colorScheme="green"
