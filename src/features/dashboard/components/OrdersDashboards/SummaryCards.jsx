@@ -125,7 +125,7 @@ export default function SummaryCards({ data, isLoading, error }) {
       color: "orange.600"
     },
     {
-      label: "Diferencia Fact vs Ped",
+      label: "Diferencia Avance vs Ped",
       value: Number(DIF_FACT_VS_PED_USD).toLocaleString("en-US", {
         style: "currency",
         currency: "USD",
@@ -133,7 +133,7 @@ export default function SummaryCards({ data, isLoading, error }) {
         maximumFractionDigits: 2,
       }),
       color: DIF_FACT_VS_PED_USD >= 0 ? "green.600" : "red.600",
-      help: `${PCT_FACT_VS_PED.toFixed(2)}% facturado`
+      help: `${PCT_FACT_VS_PED.toFixed(2)}% convertido`
     },
     { 
       label: "Periodo", 

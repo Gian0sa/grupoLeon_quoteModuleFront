@@ -28,7 +28,7 @@ import Select from "react-select";
 import CreatableSelect from "react-select/creatable";
 import { adaptBusinessPartner } from "../adapters/quotesAdapter";
 import { useQuoteMutations } from "../hooks/mutations/quotesMutations";
-import { Truck, CreditCard, Shield, MapPin, Plus } from "lucide-react";
+import { Truck, CreditCard, Shield, MapPin, Plus, Edit2 } from "lucide-react";
 import { SAP_TRANSPORTS_CATALOG } from "../constants/sapTransportsCatalog";
 import { DatePickerField } from "../../../components/DatePickerField";
 
@@ -832,7 +832,7 @@ export function NewSellTerms({
                     fontSize={{ base: "12px", sm: "11px" }}
                     fontWeight="800"
                     borderRadius="lg"
-                    leftIcon={<Plus className="w-3.5 h-3.5" />}
+                    leftIcon={selectedPoint?.isCustomAddress ? <Edit2 className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
                     onClick={handleOpenNewAddressModal}
                     {...(selectedPoint?.isCustomAddress
                       ? {
@@ -848,7 +848,7 @@ export function NewSellTerms({
                           _hover: { bg: "#f0fdf4" },
                         })}
                   >
-                    {selectedPoint?.isCustomAddress ? "✏️ Editar Dirección Nueva" : "➕ Registrar Nueva Dirección"}
+                    {selectedPoint?.isCustomAddress ? "Editar Dirección Nueva" : "Registrar Nueva Dirección"}
                   </Button>
                 )}
               </Flex>

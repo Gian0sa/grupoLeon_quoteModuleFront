@@ -48,10 +48,13 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
   const handleInputChange = (newVal, actionMeta) => {
     if (actionMeta.action === "input-change") {
       setImmediateTerm("");
-      setInputValue(newVal.replace(/[\r\n\t]+/g, " "));
+      const upper = newVal.replace(/[\r\n\t]+/g, " ").toUpperCase();
+      setInputValue(upper);
+      return upper;
     } else if (actionMeta.action === "clear") {
       setImmediateTerm("");
       setInputValue("");
+      return "";
     }
   };
 
@@ -60,7 +63,7 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
     const pastedText = e.clipboardData?.getData("text");
     if (pastedText) {
       e.preventDefault();
-      const clean = pastedText.replace(/[\r\n\t]+/g, " ").trim();
+      const clean = pastedText.replace(/[\r\n\t]+/g, " ").trim().toUpperCase();
       setInputValue(clean);
       setImmediateTerm(clean);
       if (selectRef.current) {
@@ -170,7 +173,7 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
 
   const noOptionsMessage = () => {
     if (!shouldSearch) return `Escribe al menos ${MIN_CHARS} caracteres...`;
-    if (isFetching) return "Buscando en SAP…";
+    if (isFetching) return "Buscando…";
     return "Sin resultados";
   };
 
@@ -197,7 +200,7 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
         value={null}
         placeholder={placeholder || "Escribe código o nombre del Artículo"}
         noOptionsMessage={noOptionsMessage}
-        loadingMessage={() => "Buscando en SAP…"}
+        loadingMessage={() => "Buscando…"}
         filterOption={null}
         formatOptionLabel={(option) => {
           const r = option.record;
@@ -256,10 +259,12 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
             color: "#1e293b",
             fontSize: "0.85rem",
             fontWeight: "600",
+            textTransform: "uppercase",
             "& input": {
               color: "#1e293b !important",
               fontFamily: "inherit",
               cursor: "text !important",
+              textTransform: "uppercase !important",
             },
           }),
           placeholder: (base) => ({
@@ -272,6 +277,7 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
             margin: 0,
             pointerEvents: "none",
             userSelect: "none",
+            textTransform: "none",
           }),
           indicatorsContainer: (base) => ({
             ...base,

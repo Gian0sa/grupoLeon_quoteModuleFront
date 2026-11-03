@@ -32,17 +32,20 @@ import {
   Alert,
   AlertIcon,
 } from "@chakra-ui/react";
-import { FiSearch, FiEdit, FiUser, FiMail, FiPhone, FiFileText } from "react-icons/fi";
+import { FiSearch, FiEdit, FiUser, FiMail, FiPhone, FiFileText, FiUserPlus } from "react-icons/fi";
 import { BackButton } from "../../../components/BackButton";
 import { useNewClientsQuery, useUpdateNewClientMutation } from "../hooks/queries/clientQueries";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
+import CreateBusinessPartnerModal from "../components/CreateBusinessPartnerModal";
 
 export function NewClientsPage() {
   const toast = useToast();
   const { salesEmployeeCode, username } = useAuthStore();
   const { dataNewClients, isLoadingNewClients, errorNewClients, refetchNewClients } = useNewClientsQuery(salesEmployeeCode, username);
   const updateMutation = useUpdateNewClientMutation();
+
+  const [isCreatePartnerOpen, setIsCreatePartnerOpen] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedClient, setSelectedClient] = useState(null);
@@ -227,21 +230,40 @@ export function NewClientsPage() {
       <Box maxW="1200px" mx="auto" px={{ base: 3, md: 6 }}>
         <VStack spacing={6} align="stretch">
 
-        {/* SEARCH BAR */}
+        {/* SEARCH BAR & BOTÓN NUEVO SOCIO SAP */}
         <Card border="1px solid" borderColor="gray.100" boxShadow="sm">
           <CardBody p={4}>
-            <InputGroup size="md">
-              <InputLeftElement pointerEvents="none">
-                <FiSearch color="gray.400" />
-              </InputLeftElement>
-              <Input
-                placeholder="Buscar por nombre, código SAP o documento..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+            <Flex direction={{ base: "column", sm: "row" }} gap={3} align="center">
+              <InputGroup size="md" flex="1">
+                <InputLeftElement pointerEvents="none">
+                  <FiSearch color="gray.400" />
+                </InputLeftElement>
+                <Input
+                  placeholder="Buscar por nombre, código SAP o documento..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  borderRadius="md"
+                  bg="white"
+                />
+              </InputGroup>
+              <Button
+                size="md"
+                bg="#166534"
+                color="white"
+                _hover={{ bg: "#0f5132" }}
+                _active={{ bg: "#14532d" }}
+                onClick={() => setIsCreatePartnerOpen(true)}
+                leftIcon={<FiUserPlus />}
+                fontWeight="800"
+                fontSize="xs"
                 borderRadius="md"
-                bg="white"
-              />
-            </InputGroup>
+                px={4}
+                flexShrink={0}
+                boxShadow="sm"
+              >
+                + Agregar Nuevo Socio en SAP
+              </Button>
+            </Flex>
           </CardBody>
         </Card>
 
@@ -432,6 +454,16 @@ export function NewClientsPage() {
           </ModalFooter>
         </ModalContent>
       </Modal>
+
+      {/* Modal flotante para crear nuevo socio de negocio en SAP Service Layer */}
+      <CreateBusinessPartnerModal
+        isOpen={isCreatePartnerOpen}
+        onClose={() => setIsCreatePartnerOpen(false)}
+        salesPersonCode={salesEmployeeCode}
+        onSuccess={() => {
+          refetchNewClients();
+        }}
+      />
     </Box>
   );
 }

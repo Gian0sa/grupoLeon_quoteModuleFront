@@ -23,7 +23,6 @@ export function checkIsAdmin(endpoints = [], username = "") {
     normUser.includes("edwin") ||
     normUser.includes("jimmy") ||
     normUser.includes("punkay") ||
-    normUser === "juan" ||
     ((normUser === "julio" || normUser.startsWith("julio ")) && !normUser.includes("flores"))
   );
 }

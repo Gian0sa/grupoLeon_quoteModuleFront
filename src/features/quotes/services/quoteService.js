@@ -55,17 +55,7 @@ export const createQuote = async (quote) => {
           const quoteTotal = Number(quote.totals?.grandTotalUSD || quote.grandTotalUSD || 0);
 
           const existsIdx = localQuotes.findIndex(q => {
-            const matchId = String(q.id || q.docNumber) === String(docId);
-            if (matchId) return true;
-            const isBothDraft = ["BORRADOR", "GENERADO"].includes(String(q.approvalStatus || q.state || "").toUpperCase());
-            if (isBothDraft && quoteRuc) {
-              const qRuc = String(q.clientRuc || q.clientDocument || q.client?.LicTradNum || "").replace(/\D/g, "");
-              const qTotal = Number(q.totals?.grandTotalUSD || q.grandTotalUSD || 0);
-              if (qRuc && qRuc === quoteRuc && (Math.abs(qTotal - quoteTotal) < 0.15 || qTotal === 0 || quoteTotal === 0)) {
-                return true;
-              }
-            }
-            return false;
+            return String(q.id || q.docNumber) === String(docId);
           });
           if (existsIdx >= 0) {
             localQuotes[existsIdx] = normalized;

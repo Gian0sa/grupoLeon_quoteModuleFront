@@ -183,6 +183,13 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
   const igvSOL = Number(Math.max(0, grandTotalSOL - subtotalSOL).toFixed(2));
   const discPct = grossSubtotalUSD > 0 ? (totalDiscountUSD / grossSubtotalUSD) * 100 : 0;
 
+  const selectedCurrency = (options.currency === "SOL" || options.currency === "PEN") ? "SOL" : "USD";
+  const isSol = selectedCurrency === "SOL";
+  const displayGrandTotal = isSol ? grandTotalSOL : grandTotalUSD;
+  const displaySubtotal = isSol ? subtotalSOL : subtotalUSD;
+  const displayIgv = isSol ? igvSOL : igvUSD;
+  const currencySymbol = isSol ? "S/ " : "$";
+
   return {
     normalizedProducts,
     inStockProducts,
@@ -197,6 +204,11 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
     subtotalSOL,
     igvSOL,
     grandTotalSOL,
+    currency: selectedCurrency,
+    currencySymbol,
+    displayGrandTotal,
+    displaySubtotal,
+    displayIgv,
     discPct: Number(discPct.toFixed(2)),
     tc,
     hasAdditionalDiscount,

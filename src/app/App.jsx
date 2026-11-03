@@ -1,5 +1,6 @@
 import "./App.css";
 import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "../shared/lib/queryClient";
 import AppRoutes from "./Routes";
@@ -13,6 +14,34 @@ import { useAppUpdater } from "../hooks/useAppUpdater";
 
 function SoftwareUpdaterListener() {
   useAppUpdater();
+  return null;
+}
+function NotificationNavigationListener() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+      const handleSwMessage = (event) => {
+        if (event.data?.type === 'NAVIGATE_TO' && event.data?.url) {
+          const targetUrl = event.data.url;
+          const quoteId = event.data.quoteId;
+
+          const currentFullUrl = window.location.pathname + window.location.search;
+          if (currentFullUrl !== targetUrl) {
+            navigate(targetUrl);
+          }
+
+          if (quoteId) {
+            window.dispatchEvent(new CustomEvent('quoteHighlight', {
+              detail: { docId: quoteId, openDetail: true },
+            }));
+          }
+        }
+      };
+      navigator.serviceWorker.addEventListener('message', handleSwMessage);
+      return () => navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+    }
+  }, [navigate]);
   return null;
 }
 
@@ -99,6 +128,7 @@ function App() {
         <QueryClientProvider client={queryClient}>
           <NetworkAutoRefresher />
           <SoftwareUpdaterListener />
+          <NotificationNavigationListener />
           <RealtimeSocketListener />
           {/* La cola de visitas offline vive aquí para seguir sincronizando
               en cualquier pantalla, no solo en el módulo de registro. */}

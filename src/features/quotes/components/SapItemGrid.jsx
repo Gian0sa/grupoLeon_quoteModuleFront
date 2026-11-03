@@ -14,9 +14,10 @@ import { useGetPromotions } from "../hooks/queries/quotesQueries";
 
 const money = (val, currency = "USD") => {
   const num = Number(val || 0);
-  return num.toLocaleString("en-US", {
+  const isSol = currency === "PEN" || currency === "SOL";
+  return num.toLocaleString(isSol ? "es-PE" : "en-US", {
     style: "currency",
-    currency: currency === "PEN" ? "PEN" : "USD",
+    currency: isSol ? "PEN" : "USD",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
@@ -38,6 +39,7 @@ export default function SapItemGrid({
   onRemoveProduct,
   onUpdateProduct,
   currency = "USD",
+  exchangeRate = 3.43,
   whsCode = "014",
   isReadOnly = false
 }) {
@@ -48,6 +50,9 @@ export default function SapItemGrid({
   const { promotionsMap = {} } = useGetPromotions();
   const inStockProducts = products.filter((p) => !isItemOutOfStock(p));
   const outOfStockProducts = products.filter(isItemOutOfStock);
+
+  const isSol = currency === "SOL" || currency === "PEN";
+  const rateMultiplier = isSol ? Number(exchangeRate || 3.43) : 1;
 
   const handleOpenDiscountModal = (item) => {
     setSelectedDiscountItem(item);
@@ -143,7 +148,7 @@ export default function SapItemGrid({
           <Flex align="center" gap={1.5} mb={2}>
             <Package className="w-4 h-4 text-emerald-800" />
             <Text fontSize="xs" fontWeight="800" color="#166534" textTransform="uppercase" letterSpacing="wider">
-              Buscar Artículo en SAP
+              Buscar Artículo
             </Text>
           </Flex>
           <ItemAutocomplete 
@@ -202,6 +207,12 @@ export default function SapItemGrid({
             const hasAnyDiscount = !isOutOfStock && totalDisc > 0;
             const itemName = item.name || item.productName || item.description || item.ItemName || item.ItemDescription || "Artículo General";
             const isVolume = !isOutOfStock && qty > 100 && totalDisc > 55;
+
+            const displayPrice = Number((price * rateMultiplier).toFixed(2));
+            const displayUnitPriceConIGV = Number((unitPriceConIGV * rateMultiplier).toFixed(2));
+            const displayFinalUnitPrice = Number((finalUnitPrice * rateMultiplier).toFixed(2));
+            const displayLineTotalConIGV = Number((lineTotalConIGV * rateMultiplier).toFixed(2));
+            const displayLineSavings = Number((lineSavings * rateMultiplier).toFixed(2));
 
             return (
               <Box key={item.id || index} p={3.5} bg="white" borderRadius="xl" border="1px solid" borderColor={isOutOfStock ? "red.300" : isVolume ? "orange.300" : promoDisc > 0 ? "amber.300" : "gray.200"} boxShadow="xs">
@@ -301,6 +312,11 @@ export default function SapItemGrid({
                         borderRadius="md"
                         px={1}
                         onFocus={(e) => e.target.select()}
+                        onBlur={() => {
+                          if (!item.quantity || Number(item.quantity) < 1) {
+                            onUpdateProduct(item.id, { quantity: 1 });
+                          }
+                        }}
                         onChange={(e) => {
                           const val = e.target.value.replace(/\D/g, "").slice(0, 6);
                           if (val === "") {
@@ -336,23 +352,23 @@ export default function SapItemGrid({
                         <HStack spacing={1}>
                           <Text fontSize="9px" color="gray.400" fontWeight="600">Antes:</Text>
                           <Text as="s" fontSize="10px" color="gray.400" fontWeight="600">
-                            {money(price * 1.18, currency)}
+                            {money(displayPrice * 1.18, currency)}
                           </Text>
                         </HStack>
                         <Text fontSize={{ base: "11px", sm: "xs" }} fontWeight="950" color="#047857" textAlign="right">
-                          {money(unitPriceConIGV, currency)}/u
+                          {money(displayUnitPriceConIGV, currency)}/u
                         </Text>
                         <Text fontSize="9px" color="gray.400" fontWeight="600">
-                          Neto: {money(finalUnitPrice, currency)}
+                          Neto: {money(displayFinalUnitPrice, currency)}
                         </Text>
                       </VStack>
                     ) : (
                       <VStack align="flex-end" spacing={0}>
                         <Text fontSize={{ base: "11px", sm: "xs" }} fontWeight="800" color="gray.900" textAlign="right">
-                          {money(unitPriceConIGV, currency)}/u
+                          {money(displayUnitPriceConIGV, currency)}/u
                         </Text>
                         <Text fontSize="9px" color="gray.400" fontWeight="600">
-                          Neto: {money(price, currency)}
+                          Neto: {money(displayPrice, currency)}
                         </Text>
                       </VStack>
                     )}
@@ -406,14 +422,14 @@ export default function SapItemGrid({
                   ) : (
                     <VStack align="flex-end" spacing={0.5}>
                       <HStack spacing={1.5}>
-                        <Text fontSize="sm" fontWeight="950" color="#166534">{money(lineTotalConIGV, currency)}</Text>
+                        <Text fontSize="sm" fontWeight="950" color="#166534">{money(displayLineTotalConIGV, currency)}</Text>
                         <Text fontSize="10px" color="gray.600" fontWeight="700">
-                          ({qty > 1 ? `${qty} uds × ${money(unitPriceConIGV, currency)}` : `1 ud × ${money(unitPriceConIGV, currency)}`})
+                          ({qty > 1 ? `${qty} uds × ${money(displayUnitPriceConIGV, currency)}` : `1 ud × ${money(displayUnitPriceConIGV, currency)}`})
                         </Text>
                       </HStack>
                       {lineSavings > 0.009 && (
                         <Badge colorScheme="red" bg="#fee2e2" color="#b91c1c" fontSize="9px" px={1.5} py={0.2} borderRadius="full" fontWeight="800">
-                          Descuento {money(lineSavings * 1.18, currency)}
+                          Descuento {money(displayLineSavings * 1.18, currency)}
                         </Badge>
                       )}
                     </VStack>
@@ -507,6 +523,12 @@ export default function SapItemGrid({
                   const itemName = item.name || item.productName || item.description || item.ItemName || item.ItemDescription || "Artículo General";
                   const isVolume = !isOutOfStock && qty > 100 && totalDisc > 55;
 
+                  const displayPrice = Number((price * rateMultiplier).toFixed(2));
+                  const displayUnitPriceConIGV = Number((unitPriceConIGV * rateMultiplier).toFixed(2));
+                  const displayFinalUnitPrice = Number((finalUnitPrice * rateMultiplier).toFixed(2));
+                  const displayLineTotalConIGV = Number((lineTotalConIGV * rateMultiplier).toFixed(2));
+                  const displayLineSavings = Number((lineSavings * rateMultiplier).toFixed(2));
+
                   return (
                     <Tr key={item.id || index} bg={isOutOfStock ? "#fff8f8" : "transparent"} _hover={{ bg: isOutOfStock ? "#fee2e2" : "gray.50" }} transition="background 0.2s">
                       <Td px={3} py={2.5}>
@@ -593,6 +615,11 @@ export default function SapItemGrid({
                               borderRadius="md"
                               px={1}
                               onFocus={(e) => e.target.select()}
+                              onBlur={() => {
+                                if (!item.quantity || Number(item.quantity) < 1) {
+                                  onUpdateProduct(item.id, { quantity: 1 });
+                                }
+                              }}
                               onChange={(e) => {
                                 const val = e.target.value.replace(/\D/g, "").slice(0, 6);
                                 if (val === "") {
@@ -625,34 +652,34 @@ export default function SapItemGrid({
                             <HStack spacing={1}>
                               <Text fontSize="10px" color="gray.400" fontWeight="600">Antes:</Text>
                               <Text as="s" fontSize="11px" color="gray.400" fontWeight="600" title="Precio original de lista con IGV">
-                                {money(price * 1.18, currency)}
+                                {money(displayPrice * 1.18, currency)}
                               </Text>
                             </HStack>
                             {/* Precio con descuento con IGV en grande */}
                             <HStack spacing={1} align="baseline">
                               <Text fontWeight="950" fontSize="sm" color="#047857" title="Precio con IGV">
-                                {money(unitPriceConIGV, currency)}
+                                {money(displayUnitPriceConIGV, currency)}
                               </Text>
                               <Text fontSize="10px" color="gray.500" fontWeight="700">
                                 /u
                               </Text>
                             </HStack>
                             <Text fontSize="9px" color="gray.400" fontWeight="600">
-                              Neto: {money(finalUnitPrice, currency)}
+                              Neto: {money(displayFinalUnitPrice, currency)}
                             </Text>
                           </VStack>
                         ) : (
                           <VStack align="flex-end" spacing={0}>
                             <HStack spacing={1} justify="flex-end" align="baseline">
                               <Text fontWeight="800" fontSize="xs" color="gray.800">
-                                {money(unitPriceConIGV, currency)}
+                                {money(displayUnitPriceConIGV, currency)}
                               </Text>
                               <Text fontSize="10px" color="gray.500" fontWeight="700">
                                 /u
                               </Text>
                             </HStack>
                             <Text fontSize="9px" color="gray.400" fontWeight="600">
-                              Neto: {money(price, currency)}
+                              Neto: {money(displayPrice, currency)}
                             </Text>
                           </VStack>
                         )}
@@ -706,11 +733,11 @@ export default function SapItemGrid({
                           <VStack align="flex-end" spacing={0.5}>
                             {/* Total final a pagar con IGV */}
                             <Text fontWeight="950" fontSize="sm" color="#166534" lineHeight="1" title="Total de línea con IGV incluido">
-                              {money(lineTotalConIGV, currency)}
+                              {money(displayLineTotalConIGV, currency)}
                             </Text>
                             {/* Multiplicador claro: cantidad x precio unitario con IGV */}
                             <Text fontSize="10px" color="gray.600" fontWeight="700">
-                              {qty > 1 ? `${qty} uds × ${money(unitPriceConIGV, currency)}` : `1 ud × ${money(unitPriceConIGV, currency)}`}
+                              {qty > 1 ? `${qty} uds × ${money(displayUnitPriceConIGV, currency)}` : `1 ud × ${money(displayUnitPriceConIGV, currency)}`}
                             </Text>
                             {/* Descuento estilo supermercado */}
                             {lineSavings > 0.009 && (
@@ -725,7 +752,7 @@ export default function SapItemGrid({
                                 borderRadius="full"
                                 fontWeight="800"
                               >
-                                Descuento {money(lineSavings * 1.18, currency)}
+                                Descuento {money(displayLineSavings * 1.18, currency)}
                               </Badge>
                             )}
                           </VStack>

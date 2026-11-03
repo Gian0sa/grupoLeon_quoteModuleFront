@@ -4,6 +4,7 @@ import { socket } from "../../../shared/lib/socket";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { checkIsAdmin } from "../../../shared/utils/permissions";
 import { useToast } from "@chakra-ui/react";
+import { showLocalNativeNotification, subscribeToPush } from "../../../shared/services/pushNotificationService";
 
 export function useQuoteSocket() {
   const queryClient = useQueryClient();
@@ -13,6 +14,30 @@ export function useQuoteSocket() {
 
   useEffect(() => {
     if (!socket) return;
+
+    // 🔔 Solicitar permiso nativo al navegador (con soporte para User Gesture en HTTPS)
+    const handleNativePermission = () => {
+      if (typeof window !== "undefined" && "Notification" in window) {
+        if (Notification.permission === "default") {
+          Notification.requestPermission()
+            .then((perm) => {
+              if (perm === "granted") {
+                subscribeToPush().catch(() => {});
+              }
+            })
+            .catch(() => {});
+        } else if (Notification.permission === "granted") {
+          const alreadyRegistered = localStorage.getItem("grupoLeon_push_enabled") === "true";
+          if (!alreadyRegistered) {
+            subscribeToPush().catch(() => {});
+          }
+        }
+      }
+    };
+
+    handleNativePermission();
+    window.addEventListener("click", handleNativePermission, { once: true });
+    window.addEventListener("touchend", handleNativePermission, { once: true });
 
     // SAP puede emitir quote:created, quote:updated y varias notificaciones por
     // una sola operación. Se agrupan para evitar ráfagas de HTTP y renders.
@@ -237,6 +262,15 @@ export function useQuoteSocket() {
           displayedToastIdsRef.current.delete(toastId);
         }, 15000);
 
+        // 🔔 Notificación nativa en Windows / Celular + Sonido
+        const notifQuoteId = notif.quoteId || notif.id || null;
+        showLocalNativeNotification({
+          title: notif.title,
+          body: notif.description || "Tienes una nueva actualización en cotizaciones.",
+          quoteId: notifQuoteId,
+          url: "/historyquotes",
+        });
+
         toast({
           id: toastId,
           title: notif.title,
@@ -374,6 +408,8 @@ export function useQuoteSocket() {
     socket.on("promotions:changed", handlePromotionsUpdated);
 
     return () => {
+      window.removeEventListener("click", handleNativePermission);
+      window.removeEventListener("touchend", handleNativePermission);
       if (refreshTimer) window.clearTimeout(refreshTimer);
       socket.off("quote:created", handleQuoteCreated);
       socket.off("quote:updated", handleQuoteUpdated);

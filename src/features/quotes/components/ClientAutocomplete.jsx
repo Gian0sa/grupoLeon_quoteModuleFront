@@ -2,19 +2,21 @@ import React, { useState, useEffect, useMemo } from "react";
 import {
   Box, Flex, Input, Button, Text, VStack, HStack, Spinner, Badge
 } from "@chakra-ui/react";
-import { FiSearch, FiX, FiCheckCircle } from "react-icons/fi";
+import { FiSearch, FiX, FiCheckCircle, FiUserPlus } from "react-icons/fi";
 import { useClientQueries, useClientQueriesByName } from "../../clients/hooks/queries/clientQueries";
 import { adaptClientFromApi } from "../../clients/adapters/clientAdapter";
 import { fetchClientByCode } from "../../clients/services/clientService";
 import { useDebounce } from "../../../shared/hooks/useDebounce";
 import { normalizeQuoteClient } from "../stores/quoteStore";
+import CreateBusinessPartnerModal from "../../clients/components/CreateBusinessPartnerModal";
 
 export default function ClientAutocomplete({ client, setClient, debtSummary }) {
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [isSearchingByCode, setIsSearchingByCode] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
-  // Debounce de 500ms para evitar saturar el Service Layer de SAP en cada pulsación
+  // Debounce de 500ms para evitar saturar el Service Layer en cada pulsación
   const debouncedSearchInput = useDebounce(searchInput, 500);
 
   useEffect(() => {
@@ -26,7 +28,7 @@ export default function ClientAutocomplete({ client, setClient, debtSummary }) {
 
     const isNumeric = /^\d+$/.test(trimmed) || /^CL/i.test(trimmed);
 
-    // Buenas prácticas ERP: No enviar búsquedas de 1 o 2 letras a SAP (provocan escaneo masivo de miles de clientes)
+    // Buenas prácticas ERP: No enviar búsquedas de 1 o 2 letras (provocan escaneo masivo de miles de clientes)
     if (!isNumeric && trimmed.length < 3) {
       return;
     }
@@ -53,7 +55,7 @@ export default function ClientAutocomplete({ client, setClient, debtSummary }) {
   const isSearching = isSearchingByCode ? isLoadingByCode : isLoadingByName;
   const searchError = isSearchingByCode ? errorByCode : errorByName;
 
-  // Extracción de la lista de clientes SAP
+  // Extracción de la lista de clientes
   const activeNameList = useMemo(() => {
     if (!dataByName) return [];
     if (Array.isArray(dataByName.value)) return dataByName.value;
@@ -99,25 +101,25 @@ export default function ClientAutocomplete({ client, setClient, debtSummary }) {
     setSearchTerm("");
     setSearchInput("");
 
-    // Cargar la ficha completa de SAP por CardCode para obtener ContactEmployees, ContactPerson y BPAddresses
+    // Cargar la ficha completa por CardCode para obtener ContactEmployees, ContactPerson y BPAddresses
     if (cardCode) {
       try {
-        const fullSapData = await fetchClientByCode(cardCode);
-        if (fullSapData) {
-          const fullAdapted = adaptClientFromApi(fullSapData);
+        const fullData = await fetchClientByCode(cardCode);
+        if (fullData) {
+          const fullAdapted = adaptClientFromApi(fullData);
           const fullNormalizedClient = normalizeQuoteClient({
-            ...fullSapData,
-            CardCode: fullAdapted.id || fullSapData.CardCode || cardCode,
-            CardName: fullAdapted.firstName || fullSapData.CardName || initialClient.CardName,
-            Address: fullAdapted.address || fullSapData.Address || initialClient.Address,
-            ContactEmployees: fullSapData.ContactEmployees || fullAdapted.contactEmployees || [],
-            ContactPerson: fullSapData.ContactPerson || fullAdapted.contactPerson || null,
-            raw: fullSapData,
+            ...fullData,
+            CardCode: fullAdapted.id || fullData.CardCode || cardCode,
+            CardName: fullAdapted.firstName || fullData.CardName || initialClient.CardName,
+            Address: fullAdapted.address || fullData.Address || initialClient.Address,
+            ContactEmployees: fullData.ContactEmployees || fullAdapted.contactEmployees || [],
+            ContactPerson: fullData.ContactPerson || fullAdapted.contactPerson || null,
+            raw: fullData,
           });
           setClient(fullNormalizedClient);
         }
       } catch (err) {
-        console.warn("No se pudieron cargar detalles adicionales de SAP:", err);
+        console.warn("No se pudieron cargar detalles adicionales de cliente:", err);
       }
     }
   };
@@ -146,7 +148,7 @@ export default function ClientAutocomplete({ client, setClient, debtSummary }) {
       >
         <Flex justify="space-between" align="center" wrap="wrap" gap={2} mb={2}>
           <Badge bg="#166534" color="white" px={2.5} py={0.5} borderRadius="full" fontSize="10px" fontWeight="700">
-            Cliente SAP Seleccionado
+            Cliente Seleccionado
           </Badge>
           <Button
             size="xs"
@@ -167,7 +169,7 @@ export default function ClientAutocomplete({ client, setClient, debtSummary }) {
 
         {(normalizedClient.CardCode || normalizedClient.LicTradNum) && (
           <Text fontSize="xs" color="gray.600" mb={0.5} wordBreak="break-word">
-            <strong style={{ color: "#334155" }}>Código SAP:</strong> {cardCode} <strong style={{ color: "#334155" }}>• RUC / Doc:</strong> {documentNumber}
+            <strong style={{ color: "#334155" }}>Código:</strong> {cardCode} <strong style={{ color: "#334155" }}>• RUC / Doc:</strong> {documentNumber}
           </Text>
         )}
 
@@ -183,7 +185,7 @@ export default function ClientAutocomplete({ client, setClient, debtSummary }) {
           </Text>
         ) : Number(normalizedClient.CurrentAccountBalance ?? normalizedClient.raw?.CurrentAccountBalance ?? 0) > 0 ? (
           <Text fontSize="xs" color="red.600" fontWeight="700" mt={1}>
-            ⚠️ Saldo deudor en SAP: ${(Number(normalizedClient.CurrentAccountBalance ?? normalizedClient.raw?.CurrentAccountBalance) / 3.564).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+            ⚠️ Saldo deudor: ${(Number(normalizedClient.CurrentAccountBalance ?? normalizedClient.raw?.CurrentAccountBalance) / 3.564).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
           </Text>
         ) : null}
       </Box>
@@ -195,16 +197,40 @@ export default function ClientAutocomplete({ client, setClient, debtSummary }) {
     searchTerm &&
     ((isSearchingByCode && !dataByCode) || (!isSearchingByCode && activeNameList.length === 0));
 
-  // 2. BUSCADOR ÚNICO INTELIGENTE SAP (Diseño Compacto y Elegante)
+  // 2. BUSCADOR ÚNICO INTELIGENTE (Diseño Limpio, Robusto y Original)
   return (
     <Box w="full">
-      <Box p={{ base: 2.5, md: 3 }} bg="white" borderRadius="xl" border="1px solid" borderColor="gray.200" boxShadow="xs">
-        <Flex align="center" gap={1.5} mb={2}>
-          <FiSearch className="text-emerald-700" size={13} />
-          <Text fontSize="11px" fontWeight="800" color="#166534" letterSpacing="wider" textTransform="uppercase">
-            Búsqueda Inteligente de Cliente SAP
-          </Text>
+      <Box p={{ base: 3, md: 3.5 }} bg="white" borderRadius="xl" border="1px solid" borderColor="gray.200" boxShadow="xs">
+        <Flex justify="space-between" align="center" wrap="wrap" gap={1} mb={2}>
+          <Flex align="center" gap={1.5}>
+            <FiSearch className="text-emerald-700" size={13} />
+            <Text fontSize="11px" fontWeight="800" color="#166534" letterSpacing="wider" textTransform="uppercase">
+              Búsqueda Inteligente de Cliente
+            </Text>
+          </Flex>
+          <HStack spacing={1.5} align="center">
+            <Button
+              size="xs"
+              h="22px"
+              bg="#dcfce7"
+              color="#166534"
+              _hover={{ bg: "#bbf7d0" }}
+              _active={{ bg: "#86efac" }}
+              onClick={() => setIsCreateModalOpen(true)}
+              leftIcon={<FiUserPlus size={11} />}
+              fontSize="10px"
+              fontWeight="800"
+              borderRadius="md"
+              px={2}
+            >
+              + Nuevo Socio
+            </Button>
+            <Badge colorScheme="emerald" variant="subtle" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="700">
+              RUC • DNI • RAZÓN SOCIAL
+            </Badge>
+          </HStack>
         </Flex>
+
         <Flex gap={2} align="center">
           <Input
             flex="1"
@@ -227,7 +253,7 @@ export default function ClientAutocomplete({ client, setClient, debtSummary }) {
             color="white"
             _hover={{ bg: "#0f5132" }}
             _active={{ bg: "#14532d" }}
-            px={3.5}
+            px={4}
             onClick={triggerSearch}
             leftIcon={isSearching ? <Spinner size="xs" color="white" speed="0.6s" /> : <FiSearch size={14} />}
             fontSize="xs"
@@ -238,6 +264,10 @@ export default function ClientAutocomplete({ client, setClient, debtSummary }) {
             Buscar
           </Button>
         </Flex>
+
+        <Text fontSize="10px" color="gray.500" fontWeight="500" mt={2}>
+          💡 Escribe el documento o nombre del cliente para consultar datos comerciales
+        </Text>
       </Box>
 
       {/* INDICADOR DE BÚSQUEDA EN CURSO */}
@@ -245,7 +275,7 @@ export default function ClientAutocomplete({ client, setClient, debtSummary }) {
         <Flex align="center" gap={2} mt={1.5} px={2.5} py={1.5} bg="#f8fafc" borderRadius="md" border="1px solid" borderColor="gray.200">
           <Spinner color="#166534" size="xs" speed="0.6s" flexShrink={0} />
           <Text fontSize="11px" color="#166534" fontWeight="700" isTruncated>
-            Consultando "{searchTerm || searchInput.trim()}" en SAP Business One...
+            Consultando "{searchTerm || searchInput.trim()}" en el sistema...
           </Text>
         </Flex>
       )}
@@ -254,10 +284,10 @@ export default function ClientAutocomplete({ client, setClient, debtSummary }) {
       {is404OrEmpty && (
         <Box p={3} bg="amber.50" borderRadius="md" border="1px solid" borderColor="amber.200" mt={2}>
           <Text color="amber.900" fontSize="xs" fontWeight="700">
-            Socio de negocio no encontrado en SAP
+            Cliente no encontrado
           </Text>
           <Text color="amber.800" fontSize="0.7rem" mt={0.5}>
-            No se encontraron coincidencias en SAP para la búsqueda ingresada.
+            No se encontraron coincidencias para la búsqueda ingresada.
           </Text>
         </Box>
       )}
@@ -282,7 +312,7 @@ export default function ClientAutocomplete({ client, setClient, debtSummary }) {
             <Text fontWeight="800" fontSize="xs" color="gray.900" flex="1" minW="140px" wordBreak="break-word">
               {dataByCode.CardName || dataByCode.firstName}
             </Text>
-            <Badge colorScheme="green" bg="#dcfce7" color="#166534" fontSize="0.65rem" flexShrink={0}>SAP</Badge>
+            <Badge colorScheme="green" bg="#dcfce7" color="#166534" fontSize="0.65rem" flexShrink={0}>ACTIVO</Badge>
           </Flex>
           <Text fontSize="0.75rem" color="gray.600" fontWeight="700">
             Código: {dataByCode.CardCode || dataByCode.id}
@@ -339,6 +369,14 @@ export default function ClientAutocomplete({ client, setClient, debtSummary }) {
           })}
         </VStack>
       )}
+
+      {/* Modal para crear nuevo socio de negocio en SAP Service Layer */}
+      <CreateBusinessPartnerModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        defaultDocument={searchInput}
+        onSuccess={(created) => handleSelectClient(created)}
+      />
     </Box>
   );
 }

@@ -151,6 +151,8 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
   // 🛡️ Permisos operativos para áreas financieras/logísticas (Facturación y Supervisión)
   const canManageFinance = isAdmin || roleUpper === "FACTURACION" || roleUpper === "SUPERVISOR";
+  // 🛡️ Permiso granular para modificar la moneda del documento (USD / Soles)
+  const canChangeCurrency = isAdmin || hasAccess("PUT:/quotes/currency");
 
   const localSeller = localStorage.getItem("username") || localStorage.getItem("userId");
 
@@ -191,6 +193,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     SlpCode: storeSlpCode,
     salesPersonCode: storeSalesPersonCode,
     salesEmployeeCode: storeSalesEmployeeCode,
+    currency, setCurrency,
     clear,
   } = useQuoteStore();
 
@@ -290,7 +293,6 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   const isObservedOrInCorrection = approvalStatus === "OBSERVADO" || approvalStatus === "EN_EDICION";
 
   const [tempImage, setTempImage] = useState(null);
-  const [currency] = useState("USD");
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showAdminConfirmModal, setShowAdminConfirmModal] = useState(false);
   const [isSapSuccessModalOpen, setIsSapSuccessModalOpen] = useState(false);
@@ -704,25 +706,26 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
             }
           });
 
-          if (stockMap.size > 0) {
-            const updatedProducts = products.map((p) => {
-              const pKey = String(p.code || p.productCode || p.itemCode || p.id || "").trim().toUpperCase();
-              if (stockMap.has(pKey)) {
-                const info = stockMap.get(pKey);
-                return {
-                  ...p,
-                  stock: info.stock,
-                  isAgotado: info.isAgotado,
-                  stockChecked: true,
-                  marca: p.marca || info.marca || "",
-                  sigla: p.sigla || info.sigla || "",
-                };
-              }
-              return { ...p, stockChecked: true };
-            });
-
+          if (stockMap.size > 0 && isMounted) {
             if (typeof setProducts === "function") {
-              setProducts(updatedProducts);
+              setProducts((prevProducts) => {
+                const currentList = Array.isArray(prevProducts) ? prevProducts : products;
+                return currentList.map((p) => {
+                  const pKey = String(p.code || p.productCode || p.itemCode || p.id || "").trim().toUpperCase();
+                  if (stockMap.has(pKey)) {
+                    const info = stockMap.get(pKey);
+                    return {
+                      ...p,
+                      stock: info.stock,
+                      isAgotado: info.isAgotado,
+                      stockChecked: true,
+                      marca: p.marca || info.marca || "",
+                      sigla: p.sigla || info.sigla || "",
+                    };
+                  }
+                  return { ...p, stockChecked: true };
+                });
+              });
             }
           }
         }
@@ -772,8 +775,8 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
   // Cálculos de totales estilo SAP B1 — unificados con la calculadora global
   const totals = useMemo(() => {
-    return calculateQuoteTotals(products, exchangeRate);
-  }, [products, exchangeRate]);
+    return calculateQuoteTotals(products, exchangeRate, { currency: currency || "USD" });
+  }, [products, exchangeRate, currency]);
 
   const currentQuoteObj = useMemo(() => ({
     id: docNumber || null,
@@ -782,6 +785,8 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     DocNum: null,
     client,
     products,
+    currency: currency || "USD",
+    DocCurrency: currency || "USD",
     totals,
     sellerName: activeSeller,
     SlpCode: selectedSlpCode || (isAdmin ? 20 : undefined),
@@ -808,6 +813,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     docNumber,
     client,
     products,
+    currency,
     totals,
     activeSeller,
     selectedSlpCode,
@@ -854,6 +860,20 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       return false;
     }
 
+    const invalidQtyProduct = products.find(p => !p.quantity || Number(p.quantity) < 1 || isNaN(Number(p.quantity)));
+    if (invalidQtyProduct) {
+      if (!silent) {
+        toast({
+          title: "Cantidad requerida",
+          description: `El artículo "${invalidQtyProduct.name || invalidQtyProduct.description || 'seleccionado'}" tiene una cantidad vacía o en cero. La cantidad mínima es 1.`,
+          status: "warning",
+          duration: 3500,
+          isClosable: true,
+        });
+      }
+      return false;
+    }
+
     const activeDocNumber = quoteId || docNumber;
     const clientDocDigits = String(client?.FederalTaxID || client?.clientDocument || client?.documentNumber || client?.LicTradNum || client?.CardCode || "").replace(/\D/g, "");
     const effectiveDocType = clientDocDigits.length === 8 ? "BOLETA" : "FACTURA";
@@ -884,25 +904,6 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         const activeStr = String(activeDocNumber).trim();
         if (activeStr && ((qDocNum && qDocNum === activeStr) || (qId && qId === activeStr))) {
           return true;
-        }
-      }
-      // Detección de coincidencia de borrador por cliente y monto total aproximado
-      const qStatus = String(q.approvalStatus || q.state || q.status || "BORRADOR").toUpperCase();
-      if (["BORRADOR", "GENERADO"].includes(qStatus)) {
-        const qRuc = String(q.clientRuc || q.clientDocument || q.client?.LicTradNum || q.client?.CardCode || "").replace(/\D/g, "");
-        const currentRuc = String(client?.LicTradNum || client?.clientRuc || client?.clientDocument || client?.CardCode || "").replace(/\D/g, "");
-        const qName = String(q.clientName || q.client?.CardName || "").trim().toLowerCase();
-        const currentName = String(client?.CardName || client?.name || "").trim().toLowerCase();
-
-        const sameClient = (qRuc && currentRuc && qRuc === currentRuc) ||
-          (qName && currentName && (qName === currentName || (qName.length > 5 && currentName.includes(qName))));
-
-        if (sameClient) {
-          const qTotal = Number(q.totals?.grandTotalUSD || q.grandTotalUSD || 0);
-          const curTotal = Number(finalTotals?.grandTotalUSD || totals?.grandTotalUSD || 0);
-          if (Math.abs(qTotal - curTotal) < 0.15 || qTotal === 0 || curTotal === 0) {
-            return true;
-          }
         }
       }
       return false;
@@ -999,7 +1000,8 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       clientRuc: clientRucVal,
       clientAddress: clientAddressVal,
       products,
-      currency: "USD",
+      currency: currency || "USD",
+      DocCurrency: currency || "USD",
       hasDebt: Boolean(clientDebtInfo?.hasTotalDebt),
       hasOverdueDebt: Boolean(clientDebtInfo?.hasOverdueDebt),
       debtSummary: clientDebtInfo?.debtSummary || null,
@@ -1007,6 +1009,8 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       backOrderItems: finalTotals.backOrderProducts || [],
       totals: {
         ...finalTotals,
+        currency: currency || "USD",
+        DocCurrency: currency || "USD",
         hasDebt: Boolean(clientDebtInfo?.hasTotalDebt),
         hasOverdueDebt: Boolean(clientDebtInfo?.hasOverdueDebt),
         debtSummary: clientDebtInfo?.debtSummary || null,
@@ -1460,6 +1464,11 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       const isOutOfStock = isAgotado || stk <= 0;
 
       const rawPrice = Number(p.unitPrice ?? p.price ?? 0);
+      const isSol = currency === "SOL" || currency === "PEN";
+      const rateMultiplier = isSol ? Number(exchangeRate || 3.43) : 1;
+      const sapUnitPrice = Number((rawPrice * rateMultiplier).toFixed(4));
+      const sapCustomPrice = p.customPriceConIGV && Number(p.customPriceConIGV) > 0 ? Number(p.customPriceConIGV) : null;
+
       const sapDisc = Number(p.sapDiscount ?? p.descuentoSAP ?? p.U_TQC_DESL ?? 0);
       const promoDisc = Number(p.promoDiscount ?? p.promoDisc ?? p.U_TQC_DELP ?? 0);
       const addDisc = Number(p.lineDiscount ?? p.manualDiscount ?? p.addDisc ?? p.descuentoManual ?? p.descuentoAdicional ?? p.U_TQC_DESV ?? 0);
@@ -1474,14 +1483,14 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         quantity: Math.min(999999, Math.max(1, Math.floor(Number(p.quantity || p.Quantity || 1)))),
         description: p.productName || p.description || p.name || p.ItemDescription,
         productName: p.productName || p.description || p.name || p.ItemDescription,
-        unitPrice: rawPrice,
-        price: rawPrice,
+        unitPrice: sapUnitPrice,
+        price: sapUnitPrice,
         sapDiscount: sapDisc,
         promoDiscount: promoDisc,
         lineDiscount: addDisc,
         discountPercent: totalDisc,
         DiscountPercent: totalDisc,
-        customPriceConIGV: p.customPriceConIGV || p.unitPriceConIGV || null,
+        customPriceConIGV: sapCustomPrice,
         discountedUnitPrice: p.discountedUnitPrice || null,
         U_TQC_DESL: sapDisc,
         U_TQC_DELP: valorDescLista,
@@ -1512,6 +1521,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       sapDocNum: isAlreadyEmittedLocally ? Number(currentQuoteObj.sapDocNum) : null,
       DocNum: isAlreadyEmittedLocally ? Number(currentQuoteObj.sapDocNum) : null,
       forceEmit: !isAlreadyEmittedLocally,
+      currency: currency || "USD",
+      DocCurrency: currency || "USD",
+      DocRate: exchangeRate,
       clientDocument: client?.CardCode || client?.clientDocument || client?.FederalTaxID || clientDocDigits,
       clientName: client?.CardName || client?.name || client?.clientName,
       sellerName: resolvedSellerName || activeSeller || sellerUsername,
@@ -1544,7 +1556,8 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       creditTerm: creditTerm || (saleCondition === "CREDITO" ? "30 días" : null),
       isLetra: isLetra !== undefined ? isLetra : false,
       opNum: opNum || null,
-      refNumber: refNumber || null,
+      refNumber: null,
+      NumAtCard: null,
       contactPerson: contactPerson || null,
       whsCode: "014",
       products: inStockProductsForSap, // 🎯 A SAP SOLO LLEGAN LOS ARTÍCULOS QUE TIENEN STOCK
@@ -2177,7 +2190,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         />
       )}
 
-      {/* ── CABECERA PRINCIPAL SAP B1 ── */}
+      {/* ── CABECERA PRINCIPAL ── */}
       <Box bg="white" p={{ base: 3, md: 6 }} borderRadius="2xl" border="1px solid" borderColor="gray.200" boxShadow="sm">
         <Flex
           direction={{ base: "column", md: "row" }}
@@ -2198,18 +2211,18 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                 ORDEN DE VENTA / PEDIDO COMERCIAL
               </Heading>
               <Text fontSize="xs" color="gray.500" display={{ base: "none", md: "block" }}>
-                Gestión comercial de requerimiento de pedido, logística y emisión a SAP Business One
+                Gestión comercial de requerimiento de pedido y logística
               </Text>
             </Box>
           </HStack>
 
           <Flex wrap="wrap" gap={2} align="center" w={{ base: "full", md: "auto" }}>
             <Badge bg="#f1f5f9" color="#1e293b" border="1px solid #cbd5e1" px={2.5} py={1} borderRadius="md" fontSize="xs" textTransform="uppercase" fontWeight="bold">
-              Nº {docNumber && String(docNumber).startsWith("COT-0") ? docNumber : (docNumber || "ORDEN-PENDIENTE (Al emitir a SAP)")}
+              Nº {docNumber && String(docNumber).startsWith("COT-0") ? docNumber : (docNumber || "ORDEN-PENDIENTE")}
             </Badge>
             {isApproved && (
               <Badge bg="#166534" color="white" px={2.5} py={1} borderRadius="md" fontSize="xs" fontWeight="900" boxShadow="xs">
-                🏛️ SAP DocNum Oficial
+                🏛️ Documento Oficial
               </Badge>
             )}
             <Badge
@@ -2282,16 +2295,16 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         </Flex>
 
         {/* ── BÚSQUEDA DE CLIENTE Y CAMPOS PROGRESIVOS NATIVOS ── */}
-        <Grid templateColumns={{ base: "1fr", lg: "repeat(2, 1fr)" }} gap={{ base: 4, lg: 6 }}>
-          {/* Columna Izquierda: Datos de Cliente SAP */}
+        <Grid templateColumns={{ base: "1fr", lg: "repeat(2, 1fr)" }} gap={{ base: 4, lg: 6 }} alignItems="start">
+          {/* Columna Izquierda: Datos de Cliente */}
           <VStack align="stretch" spacing={3}>
             {isSellerFieldsLocked ? (
               <Box p={3.5} bg="white" borderRadius="xl" border="1px solid" borderColor="gray.200" borderLeft="4px solid #166534" boxShadow="xs">
                 <Flex justify="space-between" align="center" wrap="wrap" gap={1} mb={1.5}>
                   <Text fontSize="10px" fontWeight="900" color="#166534" textTransform="uppercase" letterSpacing="wider">
-                    🤝 Cliente SAP (Bloqueado)
+                    🤝 Cliente (Bloqueado)
                   </Text>
-                  <Badge colorScheme="green" bg="#dcfce7" color="#166534" fontSize="10px">SAP OK</Badge>
+                  <Badge colorScheme="green" bg="#dcfce7" color="#166534" fontSize="10px">OK</Badge>
                 </Flex>
                 <Text fontSize="xs" color="gray.800" fontWeight="700" wordBreak="break-word">
                   {client?.CardName || client?.name || "Cliente General"}
@@ -2348,7 +2361,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                         borderRadius="full"
                         fontWeight="900"
                       >
-                        {clientDebtInfo.hasOverdueDebt ? "MORA / CUOTAS VENCIDAS" : "SALDO EN SAP"}
+                        {clientDebtInfo.hasOverdueDebt ? "MORA / CUOTAS VENCIDAS" : "SALDO PENDIENTE"}
                       </Badge>
                     </Flex>
 
@@ -2422,7 +2435,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                   isDisabled
                   bg="gray.100"
                   cursor="not-allowed"
-                  title="La fecha de contabilización es automática según la fecha de creación en SAP"
+                  title="La fecha de contabilización se asigna automáticamente"
                 />
               </FormControl>
 
@@ -2461,20 +2474,32 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                 )}
               </FormControl>
 
+              {/* Moneda del Pedido (USD / Soles) */}
               <FormControl>
-                <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="gray.700" mb={1}>
-                  Nº Referencia / Documento Web 🔒
-                </FormLabel>
-                <Input
+                <HStack justify="space-between" mb={1}>
+                  <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="gray.700" mb={0}>
+                    Moneda del Pedido {!canChangeCurrency && "🔒"}
+                  </FormLabel>
+                  {!canChangeCurrency && (
+                    <Badge colorScheme="gray" fontSize="9px" px={1.5} borderRadius="md" title="Requiere autorización para cotizar en Soles">
+                      BLOQUEADO
+                    </Badge>
+                  )}
+                </HStack>
+                <ChakraSelect
                   size="sm"
                   borderRadius="md"
-                  value={docNumber || refNumber || ""}
-                  isReadOnly
-                  isDisabled
-                  bg="gray.100"
-                  cursor="not-allowed"
-                  title="El número correlativo web se asigna automáticamente y se sincroniza con SAP"
-                />
+                  value={currency || "USD"}
+                  onChange={(e) => setCurrency(e.target.value)}
+                  bg={(!canChangeCurrency || isSellerFieldsLocked) ? "gray.100" : "white"}
+                  fontWeight="700"
+                  color={currency === "SOL" ? "#047857" : "gray.800"}
+                  isDisabled={!canChangeCurrency || isSellerFieldsLocked}
+                  cursor={(!canChangeCurrency || isSellerFieldsLocked) ? "not-allowed" : "pointer"}
+                >
+                  <option value="USD">USD ($) - Dólares Americanos</option>
+                  <option value="SOL">SOL (S/) - Soles Peruanos</option>
+                </ChakraSelect>
               </FormControl>
             </Grid>
           </VStack>
@@ -2568,7 +2593,8 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                 onAddProduct={addProduct}
                 onRemoveProduct={removeProduct}
                 onUpdateProduct={updateProduct}
-                currency="USD"
+                currency={currency || "USD"}
+                exchangeRate={exchangeRate}
                 whsCode="014"
                 isReadOnly={isSellerFieldsLocked}
               />
@@ -2636,7 +2662,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
             <FormControl>
               <Flex justify="space-between" align="center" mb={1.5}>
                 <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="gray.700" mb={0}>
-                  Empleado de Ventas / Asesor Comercial (SAP) {isSellerFieldsLocked && "🔒"}
+                  Empleado de Ventas / Asesor Comercial {isSellerFieldsLocked && "🔒"}
                 </FormLabel>
                 {canSelectSeller && (
                   <Badge colorScheme="purple" fontSize="10px" px={2} py={0.5} borderRadius="md">
@@ -2684,17 +2710,17 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
           <FormControl bg="white" p={{ base: 3, md: 4 }} borderRadius="xl" border="1px solid" borderColor="gray.200" boxShadow="sm">
             <Flex justify="space-between" align="center" mb={1.5}>
               <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="800" color="gray.700" mb={0}>
-                Comentarios u Observaciones del Pedido (`Comments` - SAP B1) {isSellerFieldsLocked && "🔒"}
+                Comentarios u Observaciones del Pedido {isSellerFieldsLocked && "🔒"}
               </FormLabel>
               <Badge colorScheme="emerald" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="800">
-                SAP B1 OFICIAL
+                OFICIAL
               </Badge>
             </Flex>
             <Textarea
               size="sm"
               borderRadius="md"
               rows={4}
-              placeholder="Ingrese especificaciones comerciales, notas de entrega, acuerdos o vigencia (se registrará directamente en el campo Comments de SAP B1)..."
+              placeholder="Ingrese especificaciones comerciales, notas de entrega, acuerdos o vigencia..."
               value={comment || ""}
               onChange={(e) => setComment && setComment(e.target.value)}
               isReadOnly={isSellerFieldsLocked}
@@ -2704,7 +2730,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
           </FormControl>
         </VStack>
 
-        {/* ── RESUMEN DEL DOCUMENTO — Moneda del documento: USD (igual que SAP B1) ── */}
+        {/* ── RESUMEN DEL DOCUMENTO — Moneda del documento: USD o SOL (según selección) ── */}
         <Box
           bg="linear-gradient(135deg, #064e3b 0%, #0f5132 100%)"
           color="#ffffff"
@@ -2728,7 +2754,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                 Valor Venta Neto ({(totals.inStockProducts ? totals.inStockProducts.length : products.length)} {(totals.inStockProducts ? totals.inStockProducts.length : products.length) === 1 ? 'ítem con stock' : 'ítems con stock'})
               </Text>
               <Text fontWeight="800" fontFamily="mono" whiteSpace="nowrap">
-                USD {formatThousands(totals.subtotalUSD)}
+                {currency === "SOL" ? `S/ ${formatThousands(totals.subtotalSOL)}` : `USD ${formatThousands(totals.subtotalUSD)}`}
               </Text>
             </Flex>
 
@@ -2747,7 +2773,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
             <Flex justify="space-between" align="center" color="#a7f3d0" gap={2}>
               <Text fontWeight="700">I.G.V. (18%)</Text>
               <Text fontWeight="800" fontFamily="mono" whiteSpace="nowrap">
-                +USD {formatThousands(totals.igvUSD)}
+                {currency === "SOL" ? `+S/ ${formatThousands(totals.igvSOL)}` : `+USD ${formatThousands(totals.igvUSD)}`}
               </Text>
             </Flex>
 
@@ -2775,7 +2801,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                 whiteSpace="nowrap"
                 textAlign="right"
               >
-                USD {formatThousands(totals.grandTotalUSD)}
+                {currency === "SOL" ? `S/ ${formatThousands(totals.grandTotalSOL)}` : `USD ${formatThousands(totals.grandTotalUSD)}`}
               </Text>
             </Flex>
           </VStack>
