@@ -14,8 +14,6 @@ import { History } from "lucide-react";
 import Pagination from "../../../components/Pagination";
 
 export function ReceivablePage() {
-  const [cliente, setCliente] = useState("");
-  const [clientecode, setClientecode] = useState("");
   const [searchValue, setSearchValue] = useState("");
   const [selectedSeller, setSelectedSeller] = useState(null);
   const [selectedClient, setSelectedClient] = useState(null);
@@ -66,28 +64,18 @@ export function ReceivablePage() {
   }, [isPureSeller, canViewAllReceivables, sellerCode, username]);
 
   const handleClientSearch = (value) => {
-    const trimmedValue = (value || "").trim();
-    if (/^\d+$/.test(trimmedValue)) {
-      setClientecode(`CL${trimmedValue}`);
-      setCliente("");
-    } else {
-      setCliente(trimmedValue);
-      setClientecode("");
-    }
-    setLastClient(null);
-    setCurrentSkip(0);
-    setAllClients([]);
     setSearchValue(value || "");
     setCurrentPage(1);
   };
 
-  const handleSearchInputChange = (value) => setSearchValue(value);
+  const handleSearchInputChange = (value) => {
+    setSearchValue(value || "");
+    setCurrentPage(1);
+  };
 
   const handleSellerChange = (seller) => {
     if (selectedSeller?.value !== seller?.value) {
       setSelectedSeller(seller);
-      setCliente("");
-      setClientecode("");
       setSearchValue("");
       setLastClient(null);
       setCurrentSkip(0);
@@ -123,14 +111,12 @@ export function ReceivablePage() {
 
   const vendedorNombre = isPureSeller
     ? username
-    : (cliente || clientecode)
-      ? "" // Si busca un cliente específico, buscar en toda la cartera
-      : (selectedSeller?.value ? (selectedSeller.label.includes(".") ? selectedSeller.label.split(".")[1].trim() : selectedSeller.label) : "");
+    : (selectedSeller?.value ? (selectedSeller.label.includes(".") ? selectedSeller.label.split(".")[1].trim() : selectedSeller.label) : "");
 
   const { data, isLoading, error } = useGetAccountsReceivable({
     vendedor: vendedorNombre,
-    cliente: cliente.toUpperCase(),
-    clientecode,
+    cliente: "",
+    clientecode: "",
     lastClient,
     skip: currentSkip,
   });
@@ -244,8 +230,23 @@ export function ReceivablePage() {
 
   // RN-FECHAS-03 y RN-FECHAS-04: Filtrado por tramo de días de mora y ordenación inteligente con useMemo
   const filteredClients = useMemo(() => {
+    const q = (searchValue || "").trim().toLowerCase();
+    const cleanNumQ = q.replace(/^cl/i, "");
+
     return allClients
       .filter((debt) => {
+        if (q) {
+          const name = (debt.clientName || debt.CARDNAME || "").toLowerCase();
+          const code = (debt.clientCode || debt.cardCode || debt.CARDCODE || "").toLowerCase();
+          const matchesDocs = (debt.documents || []).some((d) => {
+            const num = (d.numeroDocumento || d.NRO_DOC || "").toLowerCase();
+            return num.includes(q);
+          });
+          if (!name.includes(q) && !code.includes(q) && !code.includes(cleanNumQ) && !matchesDocs) {
+            return false;
+          }
+        }
+
         if (statusFilter === "rechazados") {
           if (!isClientOverdue(debt)) return false;
           const maxDays = getMaxOverdueDays(debt);
@@ -268,7 +269,7 @@ export function ReceivablePage() {
         }
         return 0;
       });
-  }, [allClients, statusFilter, ageFilter, sortBy]);
+  }, [allClients, statusFilter, ageFilter, sortBy, searchValue]);
 
   // Paginación fluida en frontend (20 clientes por página) para renderizado instantáneo
   const totalPages = Math.ceil(filteredClients.length / pageSize) || 1;
