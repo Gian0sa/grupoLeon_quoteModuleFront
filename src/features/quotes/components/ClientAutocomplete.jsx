@@ -201,33 +201,59 @@ export default function ClientAutocomplete({ client, setClient, debtSummary }) {
   return (
     <Box w="full">
       <Box p={{ base: 3, md: 3.5 }} bg="white" borderRadius="xl" border="1px solid" borderColor="gray.200" boxShadow="xs">
-        <Flex justify="space-between" align="center" wrap="wrap" gap={1} mb={2}>
-          <Flex align="center" gap={1.5}>
-            <FiSearch className="text-emerald-700" size={13} />
-            <Text fontSize="11px" fontWeight="800" color="#166534" letterSpacing="wider" textTransform="uppercase">
-              Búsqueda Inteligente de Cliente
-            </Text>
-          </Flex>
-          <HStack spacing={1.5} align="center">
-            <Button
-              size="xs"
-              h="22px"
-              bg="#dcfce7"
-              color="#166534"
-              _hover={{ bg: "#bbf7d0" }}
-              _active={{ bg: "#86efac" }}
-              onClick={() => setIsCreateModalOpen(true)}
-              leftIcon={<FiUserPlus size={11} />}
-              fontSize="10px"
+        <Flex justify="space-between" align="center" gap={2} mb={2.5}>
+          <Flex align="center" gap={1.5} minW="0" flex="1">
+            <Box color="#166534" flexShrink={0}>
+              <FiSearch size={14} />
+            </Box>
+            <Text
+              fontSize={{ base: "11px", md: "11px" }}
               fontWeight="800"
-              borderRadius="md"
-              px={2}
+              color="#166534"
+              letterSpacing="wider"
+              textTransform="uppercase"
+              isTruncated
             >
-              + Nuevo Socio
-            </Button>
-            <Badge colorScheme="emerald" variant="subtle" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="700">
+              Búsqueda Inteligente
+            </Text>
+            <Badge
+              display={{ base: "none", md: "inline-flex" }}
+              colorScheme="emerald"
+              variant="subtle"
+              fontSize="9px"
+              px={2}
+              py={0.5}
+              borderRadius="md"
+              fontWeight="700"
+            >
               RUC • DNI • RAZÓN SOCIAL
             </Badge>
+          </Flex>
+
+          <HStack
+            as="button"
+            type="button"
+            spacing={1}
+            h="20px"
+            px={2}
+            bg="#f0fdf4"
+            color="#166534"
+            border="1px solid"
+            borderColor="#86efac"
+            _hover={{ bg: "#dcfce7", borderColor: "#166534" }}
+            _active={{ bg: "#bbf7d0" }}
+            borderRadius="md"
+            fontSize="10px"
+            fontWeight="700"
+            cursor="pointer"
+            onClick={() => setIsCreateModalOpen(true)}
+            flexShrink={0}
+            transition="all 0.15s ease"
+          >
+            <FiUserPlus size={11} />
+            <Text as="span">
+              Nuevo<Text as="span" display={{ base: "none", sm: "inline" }}> Socio</Text>
+            </Text>
           </HStack>
         </Flex>
 

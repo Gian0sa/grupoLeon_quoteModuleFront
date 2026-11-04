@@ -2,33 +2,52 @@
  * Catálogo inteligente de Ubigeos SUNAT / INEI para Lima Metropolitana, Callao y principales provincias
  */
 
-export const PERU_DEPARTMENTS = [
-  "AMAZONAS",
-  "ANCASH",
-  "APURIMAC",
-  "AREQUIPA",
-  "AYACUCHO",
-  "CAJAMARCA",
-  "CALLAO",
-  "CUSCO",
-  "HUANCAVELICA",
-  "HUANUCO",
-  "ICA",
-  "JUNIN",
-  "LA LIBERTAD",
-  "LAMBAYEQUE",
-  "LIMA",
-  "LORETO",
-  "MADRE DE DIOS",
-  "MOQUEGUA",
-  "PASCO",
-  "PIURA",
-  "PUNO",
-  "SAN MARTIN",
-  "TACNA",
-  "TUMBES",
-  "UCAYALI"
+export const SAP_PERU_DEPARTMENTS = [
+  { code: "01", name: "AMAZONAS" },
+  { code: "02", name: "ANCASH" },
+  { code: "03", name: "APURÍMAC", cleanName: "APURIMAC" },
+  { code: "04", name: "AREQUIPA" },
+  { code: "05", name: "AYACUCHO" },
+  { code: "06", name: "CAJAMARCA" },
+  { code: "07", name: "CALLAO" },
+  { code: "08", name: "CUSCO" },
+  { code: "09", name: "HUANCAVELICA" },
+  { code: "10", name: "HUÁNUCO", cleanName: "HUANUCO" },
+  { code: "11", name: "ICA" },
+  { code: "12", name: "JUNÍN", cleanName: "JUNIN" },
+  { code: "13", name: "LA LIBERTAD" },
+  { code: "14", name: "LAMBAYEQUE" },
+  { code: "15", name: "LIMA" },
+  { code: "16", name: "LORETO" },
+  { code: "17", name: "MADRE DE DIOS" },
+  { code: "18", name: "MOQUEGUA" },
+  { code: "19", name: "PASCO" },
+  { code: "20", name: "PIURA" },
+  { code: "21", name: "PUNO" },
+  { code: "22", name: "SAN MARTIN" },
+  { code: "23", name: "TACNA" },
+  { code: "24", name: "TUMBES" },
+  { code: "25", name: "UCAYALI" },
 ];
+
+export const PERU_DEPARTMENTS = SAP_PERU_DEPARTMENTS.map((d) => d.name);
+
+export function getDepartmentByCode(code) {
+  if (!code) return null;
+  const cleanCode = String(code).trim().padStart(2, "0");
+  return SAP_PERU_DEPARTMENTS.find((d) => d.code === cleanCode) || null;
+}
+
+export function getDepartmentByName(name) {
+  if (!name) return null;
+  const clean = normalizeString(name);
+  return (
+    SAP_PERU_DEPARTMENTS.find(
+      (d) => normalizeString(d.name) === clean || (d.cleanName && normalizeString(d.cleanName) === clean)
+    ) || null
+  );
+}
+
 
 export const PERU_PROVINCES_BY_DEPT = {
   LIMA: ["LIMA", "BARRANCA", "CAJATAMBO", "CANTA", "CAÑETE", "HUARAL", "HUAROCHIRI", "HUAURA", "OYON", "YAUYOS"],
@@ -148,23 +167,28 @@ export function normalizeString(str) {
 }
 
 /**
- * Obtiene las provincias correspondientes a un departamento
+ * Obtiene las provincias correspondientes a un departamento (por nombre o código SAP)
  */
-export function getProvincesByDepartment(departmentName) {
-  if (!departmentName) return PERU_PROVINCES_BY_DEPT.LIMA || [];
-  const cleanDept = normalizeString(departmentName);
+export function getProvincesByDepartment(departmentNameOrCode) {
+  if (!departmentNameOrCode) return [];
+  let name = departmentNameOrCode;
+  if (/^\d{1,2}$/.test(String(departmentNameOrCode).trim())) {
+    const deptObj = getDepartmentByCode(departmentNameOrCode);
+    if (deptObj) name = deptObj.name;
+  }
+  const cleanDept = normalizeString(name);
   for (const [dept, provs] of Object.entries(PERU_PROVINCES_BY_DEPT)) {
     if (normalizeString(dept) === cleanDept) {
       return provs;
     }
   }
-  return [departmentName.toUpperCase()];
+  return [String(name).toUpperCase()];
 }
 
 /**
  * Busca el Ubigeo y datos geográficos correspondientes a un distrito ingresado
  * @param {string} inputDistrict Nombre del distrito o alias
- * @returns {object|null} { district, department, province, ubigeo }
+ * @returns {object|null} { district, department, province, ubigeo, departmentCode }
  */
 export function getUbigeoByDistrict(inputDistrict) {
   if (!inputDistrict) return null;
@@ -172,15 +196,28 @@ export function getUbigeoByDistrict(inputDistrict) {
   if (!cleanInput) return null;
 
   for (const item of UBIGEO_DISTRICTS) {
+    let matched = false;
     if (normalizeString(item.district) === cleanInput) {
-      return item;
-    }
-    for (const alias of item.aliases) {
-      if (normalizeString(alias) === cleanInput) {
-        return item;
+      matched = true;
+    } else {
+      for (const alias of item.aliases) {
+        if (normalizeString(alias) === cleanInput) {
+          matched = true;
+          break;
+        }
       }
+    }
+    if (matched) {
+      const code = item.ubigeo ? item.ubigeo.slice(0, 2) : "15";
+      const deptObj = getDepartmentByCode(code) || getDepartmentByName(item.department);
+      return {
+        ...item,
+        departmentCode: deptObj ? deptObj.code : code,
+        department: deptObj ? deptObj.name : item.department,
+      };
     }
   }
 
   return null;
 }
+

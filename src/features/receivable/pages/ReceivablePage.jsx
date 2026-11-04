@@ -11,10 +11,9 @@ import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { useHasAccess, useIsAdmin } from "../../../shared/utils/permissions";
 import { QUERY_KEYS } from "../../../shared/utils/queryKeys";
 import { History } from "lucide-react";
+import Pagination from "../../../components/Pagination";
 
 export function ReceivablePage() {
-  const [cliente, setCliente] = useState("");
-  const [clientecode, setClientecode] = useState("");
   const [searchValue, setSearchValue] = useState("");
   const [selectedSeller, setSelectedSeller] = useState(null);
   const [selectedClient, setSelectedClient] = useState(null);
@@ -23,6 +22,8 @@ export function ReceivablePage() {
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [historyTargetClient, setHistoryTargetClient] = useState(null);
   const [statusFilter, setStatusFilter] = useState("all"); // 'all' | 'overdue' | 'onTime'
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 20;
 
   const [lastClient, setLastClient] = useState(null); 
   const [currentSkip, setCurrentSkip] = useState(0);
@@ -63,31 +64,23 @@ export function ReceivablePage() {
   }, [isPureSeller, canViewAllReceivables, sellerCode, username]);
 
   const handleClientSearch = (value) => {
-    const trimmedValue = (value || "").trim();
-    if (/^\d+$/.test(trimmedValue)) {
-      setClientecode(`CL${trimmedValue}`);
-      setCliente("");
-    } else {
-      setCliente(trimmedValue);
-      setClientecode("");
-    }
-    setLastClient(null);
-    setCurrentSkip(0);
-    setAllClients([]);
     setSearchValue(value || "");
+    setCurrentPage(1);
   };
 
-  const handleSearchInputChange = (value) => setSearchValue(value);
+  const handleSearchInputChange = (value) => {
+    setSearchValue(value || "");
+    setCurrentPage(1);
+  };
 
   const handleSellerChange = (seller) => {
     if (selectedSeller?.value !== seller?.value) {
       setSelectedSeller(seller);
-      setCliente("");
-      setClientecode("");
       setSearchValue("");
       setLastClient(null);
       setCurrentSkip(0);
       setAllClients([]);
+      setCurrentPage(1);
     }
   };
 
@@ -118,14 +111,12 @@ export function ReceivablePage() {
 
   const vendedorNombre = isPureSeller
     ? username
-    : (cliente || clientecode)
-      ? "" // Si busca un cliente específico, buscar en toda la cartera
-      : (selectedSeller?.value ? (selectedSeller.label.includes(".") ? selectedSeller.label.split(".")[1].trim() : selectedSeller.label) : "");
+    : (selectedSeller?.value ? (selectedSeller.label.includes(".") ? selectedSeller.label.split(".")[1].trim() : selectedSeller.label) : "");
 
   const { data, isLoading, error } = useGetAccountsReceivable({
     vendedor: vendedorNombre,
-    cliente: cliente.toUpperCase(),
-    clientecode,
+    cliente: "",
+    clientecode: "",
     lastClient,
     skip: currentSkip,
   });
@@ -239,8 +230,23 @@ export function ReceivablePage() {
 
   // RN-FECHAS-03 y RN-FECHAS-04: Filtrado por tramo de días de mora y ordenación inteligente con useMemo
   const filteredClients = useMemo(() => {
+    const q = (searchValue || "").trim().toLowerCase();
+    const cleanNumQ = q.replace(/^cl/i, "");
+
     return allClients
       .filter((debt) => {
+        if (q) {
+          const name = (debt.clientName || debt.CARDNAME || "").toLowerCase();
+          const code = (debt.clientCode || debt.cardCode || debt.CARDCODE || "").toLowerCase();
+          const matchesDocs = (debt.documents || []).some((d) => {
+            const num = (d.numeroDocumento || d.NRO_DOC || "").toLowerCase();
+            return num.includes(q);
+          });
+          if (!name.includes(q) && !code.includes(q) && !code.includes(cleanNumQ) && !matchesDocs) {
+            return false;
+          }
+        }
+
         if (statusFilter === "rechazados") {
           if (!isClientOverdue(debt)) return false;
           const maxDays = getMaxOverdueDays(debt);
@@ -263,7 +269,14 @@ export function ReceivablePage() {
         }
         return 0;
       });
-  }, [allClients, statusFilter, ageFilter, sortBy]);
+  }, [allClients, statusFilter, ageFilter, sortBy, searchValue]);
+
+  // Paginación fluida en frontend (20 clientes por página) para renderizado instantáneo
+  const totalPages = Math.ceil(filteredClients.length / pageSize) || 1;
+  const paginatedClients = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredClients.slice(start, start + pageSize);
+  }, [filteredClients, currentPage, pageSize]);
 
   if ((isLoading || (isInitialFetching && data?.hasMore)) && allClients.length === 0) {
     return (
@@ -341,15 +354,24 @@ export function ReceivablePage() {
       <Box maxW="1200px" mx="auto" pt={3} px={4}>
         <ReceivableStatusFilter
           activeFilter={statusFilter}
-          onFilterChange={setStatusFilter}
+          onFilterChange={(newStatus) => {
+            setStatusFilter(newStatus);
+            setCurrentPage(1);
+          }}
           totalCount={totalCount}
           overdueCount={overdueCount}
           onTimeCount={onTimeCount}
           creditCount={creditCount}
           ageFilter={ageFilter}
-          onAgeFilterChange={setAgeFilter}
+          onAgeFilterChange={(newAge) => {
+            setAgeFilter(newAge);
+            setCurrentPage(1);
+          }}
           sortBy={sortBy}
-          onSortByChange={setSortBy}
+          onSortByChange={(newSort) => {
+            setSortBy(newSort);
+            setCurrentPage(1);
+          }}
         />
       </Box>
 
@@ -401,11 +423,22 @@ export function ReceivablePage() {
 
       <Box maxW="1200px" mx="auto" p={4} pt={2}>
         <DebtList
-          debts={filteredClients}
+          debts={paginatedClients}
           onViewInvoices={handleViewInvoices}
           onViewHistory={handleViewHistory}
           onViewDetails={() => {}}
         />
+
+        {/* Paginación numerada suave */}
+        {totalPages > 1 && (
+          <Box mt={6} pb={2}>
+            <Pagination
+              page={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+            />
+          </Box>
+        )}
 
         {data?.hasMore && !isInitialFetching && (
           <Center mt={4}>
@@ -421,7 +454,7 @@ export function ReceivablePage() {
               }}
               isLoading={isLoading}
             >
-              Cargar más
+              Cargar más cartera de SAP ({allClients.length} cargados)
             </Button>
           </Center>
         )}
