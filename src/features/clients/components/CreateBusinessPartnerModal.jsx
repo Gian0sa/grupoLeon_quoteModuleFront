@@ -493,9 +493,28 @@ export default function CreateBusinessPartnerModal({
             setCommercialName(fullUpper);
           }
 
+          if (data.direccion && data.direccion !== "-") setAddress(data.direccion.toUpperCase());
+          if (data.departamento) {
+            const depUpper = data.departamento.toUpperCase();
+            const found = (sapDepartments || SAP_PERU_DEPARTMENTS).find(
+              (d) => d.name.toUpperCase() === depUpper || depUpper.includes(d.name.toUpperCase())
+            );
+            if (found) {
+              setDepartmentCode(found.code);
+              setDepartment(found.name);
+            }
+          }
+          if (data.provincia) setProvince(data.provincia.toUpperCase());
+          if (data.distrito) {
+            setDistrict(data.distrito.toUpperCase());
+            const matchUbi = getUbigeoByDistrict(data.distrito.toUpperCase());
+            if (matchUbi?.ubigeo) setZipCode(matchUbi.ubigeo);
+          }
+          if (data.ubigeo && data.ubigeo !== "-") setZipCode(data.ubigeo);
+
           toast({
-            title: "Datos de RENIEC obtenidos",
-            description: data.nombreCompleto,
+            title: "Datos de RENIEC/SUNAT obtenidos",
+            description: `${data.nombreCompleto}${data.distrito ? ` - ${data.distrito}` : ""}`,
             status: "success",
             duration: 4000,
             isClosable: true,
