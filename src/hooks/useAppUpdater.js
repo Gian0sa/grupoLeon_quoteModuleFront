@@ -129,7 +129,10 @@ export function useAppUpdater() {
       const isNewerVersion = remoteData.version && installedVersion && remoteData.version !== installedVersion;
 
       if (isNewerBuild || isNewerVersion) {
-        console.log('🚀 [AutoUpdater] Nueva versión detectada en servidor:', remoteData.version);
+        if (pendingUpdateRef.current && pendingUpdateRef.current.buildTime === remoteData.buildTime) {
+          return;
+        }
+        console.log('🚀 [AutoUpdater] Nueva versión detectada en servidor:', remoteData.version || '2.4.0');
 
         const currentPath = locationRef.current;
         const isLoginPage = currentPath === '/' || currentPath === '/login';

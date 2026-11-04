@@ -20,12 +20,37 @@ export const createClient = async (client) => {
   return response.data;
 }
 
+export const fetchSapStates = async () => {
+  try {
+    const response = await axiosInstance.get(`/quoteModule/clients/states`);
+    return response.data || [];
+  } catch (err) {
+    console.warn("⚠️ No se pudieron obtener departamentos desde SAP:", err.message);
+    return [];
+  }
+}
+
+
 export const checkClientExists = async (documentNumber) => {
   const cleanDoc = String(documentNumber || "").trim().replace(/\D/g, "");
   if (!cleanDoc) return { exists: false, client: null };
   const response = await axiosInstance.get(`/quoteModule/clients/check-exists/${cleanDoc}`);
   return response.data;
-}
+};
+
+export const consultSunatRuc = async (ruc) => {
+  const cleanRuc = String(ruc || "").trim().replace(/\D/g, "");
+  if (!cleanRuc || cleanRuc.length !== 11) return null;
+  const response = await axiosInstance.get(`/quoteModule/clients/sunat/ruc/${cleanRuc}`);
+  return response.data;
+};
+
+export const consultSunatDni = async (dni) => {
+  const cleanDni = String(dni || "").trim().replace(/\D/g, "");
+  if (!cleanDni || cleanDni.length !== 8) return null;
+  const response = await axiosInstance.get(`/quoteModule/clients/sunat/dni/${cleanDni}`);
+  return response.data;
+};
 
 export const updateClient = async (client) => {
   const response = await axiosInstance.put(`/quoteModule/clients/${client.id}`, client);

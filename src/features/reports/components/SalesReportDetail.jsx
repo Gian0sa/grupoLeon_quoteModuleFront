@@ -106,13 +106,15 @@ export default function TrackingPage({ orden, data }) {
   const pendingRowBg = useColorModeValue("amber.50", "orange.950");
 
   // Extraer moneda y tipo de cambio oficial
-  const orderCurrency = String(
+  const rawOrderCurrency =
     orden?.currency ||
     orden?.MoneyDocument ||
-    orden?.DocCurrency ||
-    (orden?.totals?.grandTotalUSD ? "USD" : "USD")
+    orden?.DocCurrency;
+  const orderCurrency = String(
+    rawOrderCurrency ||
+    (orden?.totals?.grandTotalUSD && !orden?.totals?.grandTotalSOL ? "USD" : "SOL")
   ).toUpperCase();
-  const isUSD = orderCurrency === "USD";
+  const isUSD = orderCurrency === "USD" || orderCurrency === "$" || orderCurrency === "US$";
   const docRate = Number(orden?.DocRate || orden?.totals?.tc || 3.49);
 
   // Extraer monto USD asegurando que traiga con prioridad absoluta el monto oficial registrado en SAP
@@ -167,6 +169,7 @@ export default function TrackingPage({ orden, data }) {
         {
           id: seguimientoData.DELIVERY_ENTRY,
           docNum: seguimientoData.DELIVERY_DOC_NUM,
+          currency: seguimientoData.DELIVERY_CURRENCY,
           fecha: new Date(seguimientoData.DELIVERY_DATE).toLocaleDateString(
             "es-ES"
           ),
@@ -180,10 +183,11 @@ export default function TrackingPage({ orden, data }) {
           id: seguimientoData.INVOICE_ENTRY,
           numAtCard: seguimientoData.INVOICE_NUM_AT_CARD,
           docNum: seguimientoData.INVOICE_DOC_NUM,
+          currency: seguimientoData.INVOICE_CURRENCY,
           fecha: new Date(seguimientoData.INVOICE_DATE).toLocaleDateString(
             "es-ES"
           ),
-          montoUsd: seguimientoData.MONTO_INVOICE || 0,
+          monto: seguimientoData.MONTO_INVOICE || 0,
         },
       ]
     : [];
@@ -195,8 +199,20 @@ export default function TrackingPage({ orden, data }) {
 
   const { data: orderDetail } = useGetOrderByCode(orderId, Boolean(orderId));
 
-  const resolvedCurrency = String(orderDetail?.currency || orderCurrency).toUpperCase();
-  const resolvedIsUSD = resolvedCurrency === "USD";
+  const resolvedCurrency = String(orderDetail?.currency || orderCurrency || "SOL").toUpperCase().trim();
+  const resolvedIsUSD = resolvedCurrency === "USD" || resolvedCurrency === "$" || resolvedCurrency === "US$";
+
+  // Formateador universal respetando la moneda real de cada documento (SOL o USD)
+  const formatDocumentMoney = (amount, curr = resolvedCurrency) => {
+    const num = Number(amount || 0);
+    const cleanCurr = String(curr || "").toUpperCase().trim();
+    const currIsUSD = cleanCurr === "USD" || cleanCurr === "$" || cleanCurr === "US$";
+
+    if (currIsUSD) {
+      return `$${num.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`;
+    }
+    return `S/ ${num.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SOL`;
+  };
 
   const resolvedOrderTotal = orderDetail?.total != null
     ? Number(orderDetail.total)
@@ -207,14 +223,10 @@ export default function TrackingPage({ orden, data }) {
         : Number(orden?.totals?.grandTotalSOL || orden?.DocTotal || orden?.OrderAmount || 0));
 
   const displayOrderTotal = resolvedOrderTotal > 0
-    ? (resolvedIsUSD
-        ? `$${resolvedOrderTotal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`
-        : `S/ ${resolvedOrderTotal.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SOL`)
-    : (ordenData?.montoUsd && resolvedIsUSD
-        ? `$${Number(ordenData.montoUsd).toFixed(2)} USD`
-        : (orden?.DocTotal
-            ? `S/ ${Number(orden.DocTotal).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SOL`
-            : "--"));
+    ? formatDocumentMoney(resolvedOrderTotal, resolvedCurrency)
+    : (orden?.DocTotal
+        ? formatDocumentMoney(orden.DocTotal, resolvedCurrency)
+        : "--");
 
   const { data: comparisonData, isLoading } =
     useGetCompareOrderAndDeliveryNote(orderId, entregaId, {
@@ -429,20 +441,20 @@ export default function TrackingPage({ orden, data }) {
                       <Text fontSize="13px" color="gray.600">Fecha del documento:</Text>
                       <Text fontSize="13px" fontWeight="700" color="gray.800">{e.fecha}</Text>
                     </Flex>
-                    {(entregaDetalle?.totalUsd !== undefined || entregaDetalle?.total !== undefined) && (
-                      <Flex justify="space-between" align="center">
-                        <Text fontSize="13px" color="gray.600">Monto entregado:</Text>
-                        <Text fontSize="13px" fontWeight="800" color="green.600">
-                          ${Number(
-                            entregaDetalle?.totalUsd !== undefined
-                              ? entregaDetalle.totalUsd
-                              : (entregaDetalle?.currency === 'USD' && entregaDetalle?.docRate
-                                  ? entregaDetalle.total / entregaDetalle.docRate
-                                  : (ordenData?.montoUsd || entregaDetalle?.total || 0))
-                          ).toFixed(2)} USD
-                        </Text>
-                      </Flex>
-                    )}
+                    {(entregaDetalle?.total !== undefined || entregaDetalle?.totalUsd !== undefined) && (() => {
+                      const entregaCurrency = entregaDetalle?.currency || e.currency || resolvedCurrency;
+                      const entregaMonto = entregaDetalle?.total != null
+                        ? Number(entregaDetalle.total)
+                        : Number(entregaDetalle?.totalUsd || ordenData?.montoUsd || 0);
+                      return (
+                        <Flex justify="space-between" align="center">
+                          <Text fontSize="13px" color="gray.600">Monto entregado:</Text>
+                          <Text fontSize="13px" fontWeight="800" color="green.600">
+                            {formatDocumentMoney(entregaMonto, entregaCurrency)}
+                          </Text>
+                        </Flex>
+                      );
+                    })()}
                   </VStack>
                 ))
               ) : (
@@ -491,10 +503,20 @@ export default function TrackingPage({ orden, data }) {
                       <Text fontSize="13px" color="gray.600">Fecha factura:</Text>
                       <Text fontSize="13px" fontWeight="700" color="gray.800">{f.fecha}</Text>
                     </Flex>
-                    <Flex justify="space-between" align="center">
-                      <Text fontSize="13px" color="gray.600">Monto facturado:</Text>
-                      <Text fontSize="13px" fontWeight="800" color="green.600">${Number(f.montoUsd).toFixed(2)} USD</Text>
-                    </Flex>
+                    {(() => {
+                      const facturaCurrency = facturaDetalle?.currency || f.currency || resolvedCurrency;
+                      const facturaMonto = facturaDetalle?.total != null
+                        ? Number(facturaDetalle.total)
+                        : Number(f.monto || 0);
+                      return (
+                        <Flex justify="space-between" align="center">
+                          <Text fontSize="13px" color="gray.600">Monto facturado:</Text>
+                          <Text fontSize="13px" fontWeight="800" color="green.600">
+                            {formatDocumentMoney(facturaMonto, facturaCurrency)}
+                          </Text>
+                        </Flex>
+                      );
+                    })()}
                     <Button
                       size="sm"
                       colorScheme="green"

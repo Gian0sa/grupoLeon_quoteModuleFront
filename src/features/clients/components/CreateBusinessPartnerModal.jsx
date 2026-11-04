@@ -25,15 +25,12 @@ import {
   Box,
   Flex,
   useToast,
-  Tabs,
-  TabList,
-  TabPanels,
-  Tab,
-  TabPanel,
   Switch,
   Textarea,
   Code,
   Divider,
+  IconButton,
+  Tooltip,
 } from "@chakra-ui/react";
 import {
   FiUserPlus,
@@ -44,20 +41,26 @@ import {
   FiArrowRight,
   FiMapPin,
   FiPhone,
-  FiDollarSign,
   FiCode,
   FiFileText,
-  FiSliders,
+  FiSearch,
+  FiRotateCcw,
 } from "react-icons/fi";
-import { createClient, checkClientExists } from "../services/clientService";
+import { createClient, checkClientExists, fetchSapStates, consultSunatRuc, consultSunatDni } from "../services/clientService";
 import { getPaymentType } from "../../quotes/services/quoteService";
 import { useDebounce } from "../../../shared/hooks/useDebounce";
 import {
+  SAP_PERU_DEPARTMENTS,
   PERU_DEPARTMENTS,
+  getDepartmentByCode,
+  getDepartmentByName,
   getProvincesByDepartment,
   UBIGEO_DISTRICTS,
   getUbigeoByDistrict,
 } from "../../../shared/utils/ubigeoData";
+import { useAuthStore } from "../../auth/stores/useAuthStore";
+import { useSellersData } from "../../auth/hooks/queries/authQueries";
+import { useIsAdmin } from "../../../shared/utils/permissions";
 
 export default function CreateBusinessPartnerModal({
   isOpen,
@@ -72,11 +75,13 @@ export default function CreateBusinessPartnerModal({
   const [personType, setPersonType] = useState("JURIDICO"); // JURIDICO / NATURAL
   const [documentType, setDocumentType] = useState("6"); // 6 - RUC, 1 - DNI, 4 - CE, 7 - PAS, A - DIP, 0 - OTROS
   const [documentNumber, setDocumentNumber] = useState(defaultDocument || "");
+  const [isAutoFilled, setIsAutoFilled] = useState(false);
   const [cardName, setCardName] = useState("");
   const [commercialName, setCommercialName] = useState("");
   const [cardForeignName, setCardForeignName] = useState("");
   const [currency, setCurrency] = useState("##");
   const [validStatus, setValidStatus] = useState("tYES");
+  const [typeSN, setTypeSN] = useState(""); // 01 - B2C, 02 - IMPORTADOR, 03 - CONCESIONARIO, 04 - TALLER, 05 - LUBRICENTRO, 06 - TIENDA
 
   // Campos para persona natural
   const [paternalSurname, setPaternalSurname] = useState("");
@@ -109,10 +114,12 @@ export default function CreateBusinessPartnerModal({
 
   // 2. Direcciones
   const [address, setAddress] = useState("");
-  const [department, setDepartment] = useState("LIMA");
-  const [province, setProvince] = useState("LIMA");
+  const [departmentCode, setDepartmentCode] = useState("");
+  const [department, setDepartment] = useState("");
+  const [province, setProvince] = useState("");
+
   const [district, setDistrict] = useState("");
-  const [zipCode, setZipCode] = useState("150140");
+  const [zipCode, setZipCode] = useState("");
   const [sameDeliveryAddress, setSameDeliveryAddress] = useState(true);
   const [deliveryAddressName, setDeliveryAddressName] = useState("ALMACEN");
   const [deliveryAddress, setDeliveryAddress] = useState("");
@@ -131,40 +138,103 @@ export default function CreateBusinessPartnerModal({
   const [contactEmail, setContactEmail] = useState("");
   const [notes, setNotes] = useState("");
 
+  // Sesión y Catálogos SAP
+  const isAdmin = useIsAdmin();
+  const { salesEmployeeCode: authSalesCode, username: authUsername } = useAuthStore();
+  const { data: sellersResponse } = useSellersData();
+
+  const sellersList = useMemo(() => {
+    const list = Array.isArray(sellersResponse) ? sellersResponse : (sellersResponse?.sellers || []);
+    const parsed = list
+      .filter((s) => {
+        const code = Number(s.SalesEmployeeCode ?? s.value ?? -1);
+        const active = String(s.Active ?? "tYES").toUpperCase();
+        return code > 0 && (active === "TYES" || active === "Y" || active === "TRUE");
+      })
+      .map((s) => ({
+        value: Number(s.SalesEmployeeCode ?? s.value),
+        label: s.SalesEmployeeName ?? s.label,
+        email: s.Email ?? s.email,
+      }));
+
+    if (parsed.length > 0) {
+      try {
+        localStorage.setItem("cached_sap_sellers", JSON.stringify(parsed));
+      } catch {}
+      return parsed;
+    }
+
+    try {
+      const saved = localStorage.getItem("cached_sap_sellers");
+      if (saved) return JSON.parse(saved);
+    } catch {}
+
+    return [];
+  }, [sellersResponse]);
+
+  // Vendedor logueado que crea el registro
+  const resolvedLoggedSellerCode = useMemo(() => {
+    const propCode = Number(salesPersonCode);
+    if (!isNaN(propCode) && propCode > 0) return propCode;
+
+    const storeCode = Number(authSalesCode ?? localStorage.getItem("salesEmployeeCode"));
+    if (!isNaN(storeCode) && storeCode > 0) return storeCode;
+
+    const currentUsername = String(authUsername || localStorage.getItem("username") || "").trim().toLowerCase();
+    if (currentUsername && sellersList.length > 0) {
+      const found = sellersList.find((s) => {
+        const sLabel = String(s.label || "").toLowerCase();
+        const sEmail = String(s.email || "").toLowerCase();
+        return (
+          sLabel.includes(currentUsername) ||
+          (currentUsername.length >= 3 && sLabel.includes(currentUsername.slice(0, 4))) ||
+          (sEmail && sEmail.includes(currentUsername))
+        );
+      });
+      if (found) return Number(found.value);
+    }
+
+    return -1;
+  }, [salesPersonCode, authSalesCode, authUsername, sellersList]);
+
   // 4. Condiciones Comerciales
   const [payTermsGrpCode, setPayTermsGrpCode] = useState("-1");
   const [priceListNum, setPriceListNum] = useState("1");
   const [creditLimit, setCreditLimit] = useState("0");
-  const [assignedSellerCode, setAssignedSellerCode] = useState(salesPersonCode || -1);
+  const [assignedSellerCode, setAssignedSellerCode] = useState(
+    resolvedLoggedSellerCode > 0 ? resolvedLoggedSellerCode : (salesPersonCode || -1)
+  );
 
-  // Catálogos SAP
   const [paymentTermsList, setPaymentTermsList] = useState([]);
-  const [sellersList, setSellersList] = useState([]);
+  const [sapDepartments, setSapDepartments] = useState(SAP_PERU_DEPARTMENTS);
 
   // Estados de control
   const [isCheckingExists, setIsCheckingExists] = useState(false);
   const [existingClient, setExistingClient] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [activeTabIndex, setActiveTabIndex] = useState(0);
+  const [isConsultingSunat, setIsConsultingSunat] = useState(false);
 
   const debouncedDoc = useDebounce(documentNumber, 600);
 
-  // Cargar condiciones de pago y vendedores desde SAP
+  // Cargar condiciones de pago, departamentos y sincronizar vendedor logueado
   useEffect(() => {
     if (isOpen) {
+      if (resolvedLoggedSellerCode > 0) {
+        setAssignedSellerCode(resolvedLoggedSellerCode);
+      }
+
       getPaymentType().then((terms) => {
         if (Array.isArray(terms) && terms.length > 0) {
           setPaymentTermsList(terms);
         }
       });
 
-      try {
-        const cachedSellers = localStorage.getItem("cached_sap_sellers");
-        if (cachedSellers) {
-          setSellersList(JSON.parse(cachedSellers));
+      fetchSapStates().then((states) => {
+        if (Array.isArray(states) && states.length > 0) {
+          setSapDepartments(states);
         }
-      } catch {}
+      });
 
       if (defaultDocument) {
         setDocumentNumber(defaultDocument);
@@ -175,10 +245,28 @@ export default function CreateBusinessPartnerModal({
           setPersonType("JURIDICO");
           setDocumentType("6");
         }
+      } else {
+        setIsAutoFilled(false);
+        setDocumentNumber("");
+        setCardName("");
+        setCommercialName("");
+        setCardForeignName("");
+        setFirstName("");
+        setSecondName("");
+        setPaternalSurname("");
+        setMaternalSurname("");
+        setAddress("");
+        setDepartmentCode("");
+        setDepartment("");
+        setProvince("");
+        setDistrict("");
+        setZipCode("");
+        setTypeSN("");
       }
       setErrorMessage("");
     }
-  }, [isOpen, defaultDocument]);
+  }, [isOpen, defaultDocument, resolvedLoggedSellerCode]);
+
 
   // Sincronizar nombre concatenado si es persona natural
   const computedNaturalName = useMemo(() => {
@@ -239,29 +327,256 @@ export default function CreateBusinessPartnerModal({
     setExistingClient(null);
   };
 
+  const handleClearForm = () => {
+    setIsAutoFilled(false);
+    setDocumentNumber("");
+    setCardName("");
+    setCommercialName("");
+    setCardForeignName("");
+    setFirstName("");
+    setSecondName("");
+    setPaternalSurname("");
+    setMaternalSurname("");
+    setAddress("");
+    setDepartmentCode("");
+    setDepartment("");
+    setProvince("");
+    setDistrict("");
+    setZipCode("");
+    setTypeSN("");
+    setContribState("ACTIVO");
+    setContribCondition("HABIDO");
+    setPhone("");
+    setPhone2("");
+    setCellular("");
+    setEmail("");
+    setSecondaryEmail("");
+    setContactPerson("");
+    setContactPosition("");
+    setContactPhone("");
+    setContactEmail("");
+    setNotes("");
+    toast({
+      title: "Campos limpios",
+      description: "Se restableció el formulario para un nuevo ingreso.",
+      status: "info",
+      duration: 2000,
+      isClosable: true,
+    });
+  };
+
+  const handleConsultSunat = async () => {
+    const cleanDoc = String(documentNumber || "").trim().replace(/\D/g, "");
+    const isRuc = documentType === "6" || documentType === "RUC" || cleanDoc.length === 11;
+    const isDni = documentType === "1" || documentType === "DNI" || cleanDoc.length === 8;
+
+    if (!cleanDoc) {
+      toast({
+        title: "Número de documento vacío",
+        description: "Ingresa un número de RUC (11 dígitos) o DNI (8 dígitos) para consultar.",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    if (isRuc && cleanDoc.length !== 11) {
+      toast({
+        title: "RUC incompleto",
+        description: "El RUC debe tener exactamente 11 dígitos.",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    if (isDni && cleanDoc.length !== 8) {
+      toast({
+        title: "DNI incompleto",
+        description: "El DNI debe tener exactamente 8 dígitos.",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    // Auto-limpieza de información anterior al iniciar una nueva búsqueda
+    setIsAutoFilled(false);
+    setCardName("");
+    setCommercialName("");
+    setFirstName("");
+    setSecondName("");
+    setPaternalSurname("");
+    setMaternalSurname("");
+    setAddress("");
+    setDepartmentCode("");
+    setDepartment("");
+    setProvince("");
+    setDistrict("");
+    setZipCode("");
+    setContribState("ACTIVO");
+    setContribCondition("HABIDO");
+
+    setIsConsultingSunat(true);
+
+    try {
+      if (isRuc) {
+        if (cleanDoc.startsWith("20")) {
+          setPersonType("JURIDICO");
+        } else if (cleanDoc.startsWith("10")) {
+          setPersonType("NATURAL");
+        }
+        const data = await consultSunatRuc(cleanDoc);
+        if (data?.success) {
+          setIsAutoFilled(true);
+          if (data.razonSocial) {
+            const rzUpper = data.razonSocial.toUpperCase();
+            setCardName(rzUpper);
+            setCommercialName(rzUpper);
+          }
+          if (data.direccion) setAddress(data.direccion.toUpperCase());
+          if (data.estado) setContribState(data.estado.toUpperCase());
+          if (data.condicion) setContribCondition(data.condicion.toUpperCase());
+
+          if (data.departamento) {
+            const depUpper = data.departamento.toUpperCase();
+            const found = (sapDepartments || SAP_PERU_DEPARTMENTS).find(
+              (d) => d.name.toUpperCase() === depUpper || depUpper.includes(d.name.toUpperCase())
+            );
+            if (found) {
+              setDepartmentCode(found.code);
+              setDepartment(found.name);
+            }
+          }
+          if (data.provincia) setProvince(data.provincia.toUpperCase());
+          if (data.distrito) {
+            setDistrict(data.distrito.toUpperCase());
+            const matchUbi = getUbigeoByDistrict(data.distrito.toUpperCase());
+            if (matchUbi?.ubigeo) setZipCode(matchUbi.ubigeo);
+          }
+          if (data.ubigeo) setZipCode(data.ubigeo);
+
+          toast({
+            title: "Datos de SUNAT obtenidos",
+            description: `${data.razonSocial} (${data.estado || "ACTIVO"} - ${data.condicion || "HABIDO"})`,
+            status: "success",
+            duration: 4000,
+            isClosable: true,
+          });
+        } else {
+          toast({
+            title: "No se encontraron datos",
+            description: data?.message || "No se pudo recuperar información automática de SUNAT.",
+            status: "info",
+            duration: 3500,
+            isClosable: true,
+          });
+        }
+      } else if (isDni) {
+        setPersonType("NATURAL");
+        const data = await consultSunatDni(cleanDoc);
+        if (data?.success) {
+          setIsAutoFilled(true);
+          if (data.apellidoPaterno) setPaternalSurname(data.apellidoPaterno.toUpperCase());
+          if (data.apellidoMaterno) setMaternalSurname(data.apellidoMaterno.toUpperCase());
+          if (data.nombres) {
+            const parts = data.nombres.trim().split(/\s+/);
+            setFirstName(parts[0].toUpperCase());
+            setSecondName(parts.slice(1).join(" ").toUpperCase());
+          }
+          if (data.nombreCompleto) {
+            const fullUpper = data.nombreCompleto.toUpperCase();
+            setCardName(fullUpper);
+            setCommercialName(fullUpper);
+          }
+
+          toast({
+            title: "Datos de RENIEC obtenidos",
+            description: data.nombreCompleto,
+            status: "success",
+            duration: 4000,
+            isClosable: true,
+          });
+        } else {
+          toast({
+            title: "No se encontraron datos",
+            description: data?.message || "No se pudo recuperar información de RENIEC.",
+            status: "info",
+            duration: 3500,
+            isClosable: true,
+          });
+        }
+      }
+    } catch (err) {
+      console.warn("Error consultando documento:", err.message);
+      toast({
+        title: "Consulta no disponible",
+        description: "El servicio de consulta pública no respondió. Puedes ingresar los datos manualmente.",
+        status: "info",
+        duration: 3500,
+        isClosable: true,
+      });
+    } finally {
+      setIsConsultingSunat(false);
+    }
+  };
+
   const handleDistrictChange = (value) => {
     const upper = value.toUpperCase();
     setDistrict(upper);
     const match = getUbigeoByDistrict(upper);
     if (match) {
       setZipCode(match.ubigeo);
+      if (match.departmentCode) setDepartmentCode(match.departmentCode);
       if (match.department) setDepartment(match.department);
       if (match.province) setProvince(match.province);
     }
   };
 
-  const availableProvinces = useMemo(() => {
-    return getProvincesByDepartment(department);
-  }, [department]);
-
-  const handleDepartmentChange = (value) => {
-    const upper = value.toUpperCase();
-    setDepartment(upper);
-    const provs = getProvincesByDepartment(upper);
-    if (provs && provs.length > 0 && (!province || !provs.includes(province))) {
-      setProvince(provs[0]);
+  const handleZipCodeChange = (value) => {
+    setZipCode(value);
+    const clean = String(value || "").trim();
+    if (clean.length >= 2) {
+      const prefix = clean.slice(0, 2);
+      const dept = getDepartmentByCode(prefix);
+      if (dept && dept.code !== departmentCode) {
+        setDepartmentCode(dept.code);
+        setDepartment(dept.name);
+        const provs = getProvincesByDepartment(dept.code);
+        if (provs && provs.length > 0 && (!province || !provs.includes(province))) {
+          setProvince(provs[0]);
+        }
+      }
     }
   };
+
+  const availableProvinces = useMemo(() => {
+    return getProvincesByDepartment(departmentCode || department);
+  }, [departmentCode, department]);
+
+  const handleDepartmentChange = (selectedCode) => {
+    if (!selectedCode) {
+      setDepartmentCode("");
+      setDepartment("");
+      setProvince("");
+      return;
+    }
+    const dept = (sapDepartments && sapDepartments.find((d) => d.code === selectedCode)) || SAP_PERU_DEPARTMENTS.find((d) => d.code === selectedCode) || getDepartmentByCode(selectedCode);
+    const deptName = dept ? dept.name : "";
+    const deptCode = dept ? dept.code : selectedCode;
+    setDepartmentCode(deptCode);
+    setDepartment(deptName);
+    const provs = getProvincesByDepartment(deptCode);
+    if (provs && provs.length > 0) {
+      setProvince(provs[0]);
+    } else {
+      setProvince("");
+    }
+  };
+
 
   const handleSelectExisting = () => {
     if (!existingClient) return;
@@ -288,7 +603,6 @@ export default function CreateBusinessPartnerModal({
     const cleanDoc = String(documentNumber || "").trim().replace(/\D/g, "");
     if (!cleanDoc) {
       setErrorMessage("Por favor ingresa el número de documento.");
-      setActiveTabIndex(0);
       return;
     }
 
@@ -298,7 +612,6 @@ export default function CreateBusinessPartnerModal({
     if (isDocRuc) {
       if (cleanDoc.length !== 11) {
         setErrorMessage("El RUC debe tener exactamente 11 dígitos numéricos.");
-        setActiveTabIndex(0);
         return;
       }
       // Algoritmo oficial SUNAT Módulo 11 para dígito verificador
@@ -312,26 +625,37 @@ export default function CreateBusinessPartnerModal({
       const expectedDigit = diff === 10 ? 0 : diff === 11 ? 1 : diff;
       if (parseInt(cleanDoc[10], 10) !== expectedDigit) {
         setErrorMessage(`El RUC ${cleanDoc} es incorrecto según SUNAT (el dígito verificador debería ser ${expectedDigit}, ej: ${cleanDoc.slice(0, 10)}${expectedDigit}).`);
-        setActiveTabIndex(0);
         return;
       }
     }
 
     if (isDocDni && cleanDoc.length !== 8) {
       setErrorMessage("El DNI debe tener exactamente 8 dígitos numéricos.");
-      setActiveTabIndex(0);
       return;
     }
 
     if (!effectiveCardName || !effectiveCardName.trim()) {
       setErrorMessage(personType === "JURIDICO" ? "La Razón Social es obligatoria." : "Los Nombres y Apellidos son obligatorios.");
-      setActiveTabIndex(0);
       return;
     }
 
     if (!address.trim()) {
       setErrorMessage("La Dirección Fiscal es obligatoria.");
-      setActiveTabIndex(2);
+      return;
+    }
+
+    if (!typeSN) {
+      setErrorMessage("Por favor selecciona el Tipo SN (Segmento).");
+      return;
+    }
+
+    if (!cellular.trim() && !phone.trim()) {
+      setErrorMessage("SAP requiere registrar al menos un número de contacto (Teléfono Móvil o Fijo).");
+      return;
+    }
+
+    if (!email.trim()) {
+      setErrorMessage("SAP requiere registrar un Correo Electrónico para el socio de negocio.");
       return;
     }
 
@@ -348,26 +672,27 @@ export default function CreateBusinessPartnerModal({
         documentType,
         documentNumber: cleanDoc,
         cardName: effectiveCardName.trim().toUpperCase(),
-        cardForeignName: cardForeignName.trim().toUpperCase(),
-        commercialName: commercialName.trim().toUpperCase() || effectiveCardName.trim().toUpperCase(),
-        currency,
-        valid: validStatus,
+        cardForeignName: "",
+        currency: "##",
+        valid: "tYES",
+        channel: "C",
+        typeSN: typeSN || "01",
         debitorAccount: debitorAccount.trim() || "1212101",
         downPaymentClearAct: downPaymentClearAct.trim() || "1221101",
         vatLiable: vatLiable || "vLiable",
-        isCarrier: isCarrier === "Sí" || isCarrier === "Y" ? "Y" : "N",
-        isc: isc === "Sí" || isc === "Y" ? "Y" : "N",
-        hasBusiness: hasBusiness === "Sí" || hasBusiness === "Y" ? "Y" : "N",
-        excludeCode: excludeCode === "Sí" || excludeCode === "Y" ? "Y" : "N",
-        agentType: agentType === "Ninguno" ? "C" : agentType,
-        isEmployee: isEmployee === "Sí" || isEmployee === "Y" ? "Y" : "N",
-        supplierWithDni: supplierWithDni === "Sí" || supplierWithDni === "Y" ? "Y" : "N",
-        validateIdc: validateIdc === "Sí" || validateIdc === "Y" ? "Y" : "N",
-        contribState,
-        contribCondition,
-        isRetentionAgent: isRetentionAgent === "Sí" || isRetentionAgent === "Y" ? "Y" : "N",
-        isPerceptionAgent: isPerceptionAgent === "Sí" || isPerceptionAgent === "Y" ? "Y" : "N",
-        isGoodTaxpayer: isGoodTaxpayer === "Sí" || isGoodTaxpayer === "Y" ? "Y" : "N",
+        isCarrier: "N",
+        isc: "N",
+        hasBusiness: "Y",
+        excludeCode: "N",
+        agentType: "C",
+        isEmployee: "N",
+        supplierWithDni: "N",
+        validateIdc: "N",
+        contribState: "ACTIVO",
+        contribCondition: "HABIDO",
+        isRetentionAgent: "N",
+        isPerceptionAgent: "N",
+        isGoodTaxpayer: "N",
         paternalSurname: paternalSurname.trim().toUpperCase(),
         maternalSurname: maternalSurname.trim().toUpperCase(),
         firstName: firstName.trim().toUpperCase(),
@@ -375,6 +700,7 @@ export default function CreateBusinessPartnerModal({
         address: address.trim().toUpperCase(),
         deliveryAddress: (sameDeliveryAddress ? address : deliveryAddress || address).trim().toUpperCase(),
         deliveryAddressName: deliveryAddressName || "ALMACEN",
+        departmentCode: departmentCode || "15",
         department: department.trim().toUpperCase() || "LIMA",
         province: province.trim().toUpperCase() || "LIMA",
         district: district.trim().toUpperCase() || "LIMA",
@@ -394,7 +720,9 @@ export default function CreateBusinessPartnerModal({
         payTermsGrpCode: Number(payTermsGrpCode || -1),
         priceListNum: Number(priceListNum || 1),
         creditLimit: Number(creditLimit || 0),
-        salesPersonCode: assignedSellerCode && !isNaN(Number(assignedSellerCode)) ? Number(assignedSellerCode) : -1,
+        salesPersonCode: assignedSellerCode && !isNaN(Number(assignedSellerCode)) && Number(assignedSellerCode) > 0
+          ? Number(assignedSellerCode)
+          : (resolvedLoggedSellerCode > 0 ? resolvedLoggedSellerCode : -1),
       };
 
       const result = await createClient(payload);
@@ -447,9 +775,14 @@ export default function CreateBusinessPartnerModal({
     setMaternalSurname("");
     setFirstName("");
     setSecondName("");
+    setIsAutoFilled(false);
     setAddress("");
     setDeliveryAddress("");
+    setDepartmentCode("");
+    setDepartment("");
+    setProvince("");
     setDistrict("");
+    setZipCode("");
     setContactPerson("");
     setContactPosition("");
     setPhone("");
@@ -475,45 +808,87 @@ export default function CreateBusinessPartnerModal({
     setDebitorAccount("1212101");
     setDownPaymentClearAct("1221101");
     setVatLiable("vLiable");
+    setTypeSN("");
     setExistingClient(null);
     setErrorMessage("");
-    setActiveTabIndex(0);
     onClose();
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} size={{ base: "full", md: "5xl" }} isCentered scrollBehavior="inside">
+    <Modal isOpen={isOpen} onClose={handleClose} size={{ base: "full", md: "5xl" }} scrollBehavior="inside">
       <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" />
-      <ModalContent borderRadius={{ base: "none", md: "2xl" }} border="1px solid" borderColor="gray.200" boxShadow="2xl" maxH={{ base: "100vh", md: "92vh" }}>
-        <ModalHeader borderBottom="1px solid" borderColor="gray.100" pb={3} bg="gray.50" borderTopRadius={{ base: "none", md: "2xl" }}>
-          <Flex justify="space-between" align="center" wrap="wrap" gap={2} pr={{ base: 6, md: 8 }}>
-            <Flex align="center" gap={2.5}>
-              <Flex w="36px" h="36px" borderRadius="xl" bg="#166534" align="center" justify="center" color="white" boxShadow="xs" flexShrink={0}>
-                <FiUserPlus size={20} />
+      <ModalContent
+        borderRadius={{ base: "none", md: "2xl" }}
+        border="1px solid"
+        borderColor="gray.200"
+        boxShadow="2xl"
+        my={{ base: 0, md: "auto" }}
+        h={{ base: "100dvh", md: "auto" }}
+        maxH={{ base: "100dvh", md: "92vh" }}
+        overflow="hidden"
+      >
+        <ModalHeader
+          borderBottom="1px solid"
+          borderColor="gray.100"
+          pt={{ base: "max(14px, env(safe-area-inset-top, 14px))", md: 3 }}
+          pb={{ base: 2.5, md: 3 }}
+          px={{ base: 3.5, md: 6 }}
+          bg="gray.50"
+          borderTopRadius={{ base: "none", md: "2xl" }}
+          position="relative"
+          zIndex={2}
+        >
+          <Flex justify="space-between" align="center" wrap="wrap" gap={2} pr={{ base: 10, md: 8 }}>
+            <Flex align="center" gap={{ base: 2, md: 2.5 }} minW="0" flex="1">
+              <Flex
+                w={{ base: "30px", md: "36px" }}
+                h={{ base: "30px", md: "36px" }}
+                borderRadius={{ base: "lg", md: "xl" }}
+                bg="#166534"
+                align="center"
+                justify="center"
+                color="white"
+                boxShadow="xs"
+                flexShrink={0}
+              >
+                <FiUserPlus size={16} />
               </Flex>
-              <Box>
-                <Text fontSize={{ base: "sm", sm: "md" }} fontWeight="900" color="#166534" letterSpacing="tight">
-                  Datos Maestros del Socio de Negocio (Cliente)
+              <Box minW="0" flex="1">
+                <Text
+                  fontSize={{ base: "13px", sm: "15px", md: "md" }}
+                  fontWeight="900"
+                  color="#166534"
+                  letterSpacing="tight"
+                  lineHeight="short"
+                  isTruncated
+                >
+                  Datos Maestros del Socio de Negocio
                 </Text>
-                <Text fontSize="xs" color="gray.500" fontWeight="500">
-                  Registro oficial en SAP Business One vía Service Layer OData
+                <Text fontSize={{ base: "10.5px", md: "xs" }} color="gray.500" fontWeight="500" noOfLines={1}>
+                  Registro oficial en SAP Business One vía Service Layer
                 </Text>
               </Box>
             </Flex>
 
             {documentNumber && (
-              <HStack spacing={1.5} mt={{ base: 1, sm: 0 }}>
-                <Badge bg="#dcfce7" color="#166534" fontSize="11px" fontWeight="900" px={2.5} py={1} borderRadius="md" border="1px solid #86efac">
-                  Cód. SAP: CL{documentNumber.replace(/\D/g, "")}
+              <HStack spacing={1.5} mt={{ base: 1, sm: 0 }} wrap="wrap">
+                <Badge bg="#dcfce7" color="#166534" fontSize={{ base: "10px", md: "11px" }} fontWeight="800" px={2} py={0.5} borderRadius="md" border="1px solid #86efac">
+                  Cód: CL{documentNumber.replace(/\D/g, "")}
                 </Badge>
-                <Badge colorScheme="blue" fontSize="10px" px={2} py={1} borderRadius="md">
-                  Grupo 100 - Clientes
+                <Badge colorScheme="blue" fontSize={{ base: "9.5px", md: "10px" }} px={1.5} py={0.5} borderRadius="md">
+                  Grupo 100
                 </Badge>
               </HStack>
             )}
           </Flex>
         </ModalHeader>
-        <ModalCloseButton top={3} right={3} />
+        <ModalCloseButton
+          top={{ base: "max(12px, env(safe-area-inset-top, 12px))", md: 3 }}
+          right={{ base: 3, md: 3 }}
+          size="sm"
+          zIndex={10}
+          borderRadius="full"
+        />
 
         <ModalBody py={{ base: 3, md: 4 }} px={{ base: 3, md: 6 }}>
           <VStack spacing={4} align="stretch">
@@ -557,954 +932,574 @@ export default function CreateBusinessPartnerModal({
               </Alert>
             )}
 
-            {/* PESTAÑAS IDÉNTICAS AL MAESTRO DE SAP BUSINESS ONE */}
-            <Tabs index={activeTabIndex} onChange={(i) => setActiveTabIndex(i)} colorScheme="emerald" variant="enclosed">
-              <TabList
-                borderBottom="2px solid"
-                borderColor="gray.200"
-                w="full"
-                display="flex"
-                overflowX={{ base: "auto", md: "visible" }}
-                gap={{ base: 1, md: 1.5 }}
-                pb={1}
-                sx={{
-                  scrollbarWidth: "thin",
-                  "&::-webkit-scrollbar": { height: "4px" },
-                  "&::-webkit-scrollbar-thumb": { background: "#cbd5e1", borderRadius: "4px" },
-                }}
-              >
-                <Tab
-                  fontWeight="800"
-                  fontSize="xs"
-                  px={{ base: 2.5, md: 2 }}
-                  py={2}
-                  flex={{ base: "0 0 auto", md: 1 }}
-                  justifyContent="center"
-                  borderRadius="lg"
-                  _selected={{ color: "#166534", bg: "#f0fdf4", borderColor: "#86efac", borderBottomColor: "transparent" }}
-                >
-                  <HStack spacing={1.5} justify="center">
-                    <FiFileText size={15} />
-                    <Text whiteSpace="nowrap">1. General</Text>
-                  </HStack>
-                </Tab>
-                <Tab
-                  fontWeight="800"
-                  fontSize="xs"
-                  px={{ base: 2.5, md: 2 }}
-                  py={2}
-                  flex={{ base: "0 0 auto", md: 1 }}
-                  justifyContent="center"
-                  borderRadius="lg"
-                  _selected={{ color: "#166534", bg: "#f0fdf4", borderColor: "#86efac", borderBottomColor: "transparent" }}
-                >
-                  <HStack spacing={1.5} justify="center">
-                    <FiSliders size={15} />
-                    <Text whiteSpace="nowrap">2. Panel SAP</Text>
-                  </HStack>
-                </Tab>
-                <Tab
-                  fontWeight="800"
-                  fontSize="xs"
-                  px={{ base: 2.5, md: 2 }}
-                  py={2}
-                  flex={{ base: "0 0 auto", md: 1 }}
-                  justifyContent="center"
-                  borderRadius="lg"
-                  _selected={{ color: "#166534", bg: "#f0fdf4", borderColor: "#86efac", borderBottomColor: "transparent" }}
-                >
-                  <HStack spacing={1.5} justify="center">
-                    <FiMapPin size={15} />
-                    <Text whiteSpace="nowrap">3. Direcciones</Text>
-                  </HStack>
-                </Tab>
-                <Tab
-                  fontWeight="800"
-                  fontSize="xs"
-                  px={{ base: 2.5, md: 2 }}
-                  py={2}
-                  flex={{ base: "0 0 auto", md: 1 }}
-                  justifyContent="center"
-                  borderRadius="lg"
-                  _selected={{ color: "#166534", bg: "#f0fdf4", borderColor: "#86efac", borderBottomColor: "transparent" }}
-                >
-                  <HStack spacing={1.5} justify="center">
-                    <FiPhone size={15} />
-                    <Text whiteSpace="nowrap">4. Contacto</Text>
-                  </HStack>
-                </Tab>
-                <Tab
-                  fontWeight="800"
-                  fontSize="xs"
-                  px={{ base: 2.5, md: 2 }}
-                  py={2}
-                  flex={{ base: "0 0 auto", md: 1 }}
-                  justifyContent="center"
-                  borderRadius="lg"
-                  _selected={{ color: "#166534", bg: "#f0fdf4", borderColor: "#86efac", borderBottomColor: "transparent" }}
-                >
-                  <HStack spacing={1.5} justify="center">
-                    <FiDollarSign size={15} />
-                    <Text whiteSpace="nowrap">5. Finanzas</Text>
-                  </HStack>
-                </Tab>
-              </TabList>
+            {/* ── SECCIÓN 1: IDENTIFICACIÓN Y DATOS FISCALES (SUNAT) ── */}
+            <Box bg="gray.50" p={{ base: 3.5, md: 4 }} borderRadius="xl" border="1px solid" borderColor="gray.200">
+              <Flex align="center" gap={2} mb={3}>
+                <Flex w="24px" h="24px" borderRadius="md" bg="#dcfce7" color="#166534" align="center" justify="center" flexShrink={0}>
+                  <FiFileText size={14} />
+                </Flex>
+                <Text fontSize="12px" fontWeight="900" color="#166534" textTransform="uppercase" letterSpacing="wider">
+                  1. Identificación y Datos Fiscales (SUNAT)
+                </Text>
+              </Flex>
 
-              <TabPanels pt={4}>
-                {/* ── PESTAÑA 1: GENERAL & BÁSICO ── */}
-                <TabPanel p={0}>
-                  <VStack spacing={4} align="stretch">
-                    <Box bg="gray.50" p={4} borderRadius="xl" border="1px solid" borderColor="gray.200">
-                      <Text fontSize="11px" fontWeight="900" color="#166534" textTransform="uppercase" letterSpacing="wider" mb={3}>
-                        Tipo de Persona & Identificación Fiscal (SUNAT)
-                      </Text>
+              <Grid templateColumns={{ base: "1fr", sm: "repeat(2, 1fr)", md: "140px 160px 1fr 180px" }} gap={3}>
+                <FormControl isRequired>
+                  <FormLabel fontSize="xs" fontWeight="700" color="gray.700">Tipo Persona</FormLabel>
+                  <Select
+                    size={{ base: "md", md: "sm" }}
+                    borderRadius="md"
+                    value={personType}
+                    onChange={(e) => handlePersonTypeChange(e.target.value)}
+                    bg={isAutoFilled ? "gray.100" : "white"}
+                    isDisabled={isAutoFilled}
+                    cursor={isAutoFilled ? "not-allowed" : "pointer"}
+                    fontWeight="700"
+                  >
+                    <option value="JURIDICO">Jurídica (Empresa)</option>
+                    <option value="NATURAL">Natural (Persona)</option>
+                  </Select>
+                </FormControl>
 
-                      <Grid templateColumns={{ base: "1fr", sm: "160px 180px 1fr" }} gap={3}>
-                        <FormControl isRequired>
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700">Tipo Persona</FormLabel>
-                          <Select
-                            size="sm"
-                            borderRadius="md"
-                            value={personType}
-                            onChange={(e) => handlePersonTypeChange(e.target.value)}
-                            bg="white"
-                            fontWeight="700"
-                          >
-                            <option value="JURIDICO">Jurídica (Empresa)</option>
-                            <option value="NATURAL">Natural (Persona)</option>
-                          </Select>
-                        </FormControl>
+                <FormControl isRequired>
+                  <FormLabel fontSize="xs" fontWeight="700" color="gray.700">Tipo Documento</FormLabel>
+                  <Select
+                    size={{ base: "md", md: "sm" }}
+                    borderRadius="md"
+                    value={documentType}
+                    onChange={(e) => setDocumentType(e.target.value)}
+                    bg={isAutoFilled ? "gray.100" : "white"}
+                    isDisabled={isAutoFilled}
+                    cursor={isAutoFilled ? "not-allowed" : "pointer"}
+                    fontWeight="600"
+                  >
+                    <option value="6">6 - REGISTRO ÚNICO DE CONTRIBUYENTES (RUC)</option>
+                    <option value="1">1 - DOCUMENTO NACIONAL DE IDENTIDAD (DNI)</option>
+                    <option value="4">4 - CARNET DE EXTRANJERIA</option>
+                    <option value="7">7 - PASAPORTE</option>
+                    <option value="A">A - CÉDULA DIPLOMÁTICA</option>
+                    <option value="0">0 - OTROS</option>
+                  </Select>
+                </FormControl>
 
-                        <FormControl isRequired>
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700">Tipo Documento</FormLabel>
-                          <Select
-                            size="sm"
-                            borderRadius="md"
-                            value={documentType}
-                            onChange={(e) => setDocumentType(e.target.value)}
-                            bg="white"
-                            fontWeight="600"
-                          >
-                            <option value="6">6 - REGISTRO ÚNICO DE CONTRIBUYENTES (RUC)</option>
-                            <option value="1">1 - DOCUMENTO NACIONAL DE IDENTIDAD (DNI)</option>
-                            <option value="4">4 - CARNET DE EXTRANJERIA</option>
-                            <option value="7">7 - PASAPORTE</option>
-                            <option value="A">A - CÉDULA DIPLOMÁTICA</option>
-                            <option value="0">0 - OTROS</option>
-                          </Select>
-                        </FormControl>
-
-                        <FormControl isRequired>
-                          <Flex justify="space-between" align="center" mb={1}>
-                            <FormLabel fontSize="xs" fontWeight="700" color="gray.700" mb={0}>
-                              Nº Documento {documentType === "6" || documentType === "RUC" ? "(11 dígitos)" : (documentType === "1" || documentType === "DNI" ? "(8 dígitos)" : "")}
-                            </FormLabel>
-                            {isCheckingExists && (
-                              <HStack spacing={1}>
-                                <Spinner size="xs" color="#166534" />
-                                <Text fontSize="10px" color="gray.500">Verificando en SAP...</Text>
-                              </HStack>
-                            )}
-                            {!isCheckingExists && !existingClient && documentNumber.length >= (documentType === "6" || documentType === "RUC" ? 11 : (documentType === "1" || documentType === "DNI" ? 8 : 4)) && (
-                              <Badge colorScheme="green" fontSize="9px" px={1.5} borderRadius="sm">
-                                ✓ Disponible
-                              </Badge>
-                            )}
-                          </Flex>
-                          <Input
-                            size="sm"
-                            borderRadius="md"
-                            placeholder={documentType === "6" || documentType === "RUC" ? "20100144922" : (documentType === "1" || documentType === "DNI" ? "72435405" : "Nº Documento")}
-                            value={documentNumber}
-                            maxLength={documentType === "6" || documentType === "RUC" ? 11 : (documentType === "1" || documentType === "DNI" ? 8 : 15)}
-                            onChange={(e) => setDocumentNumber(e.target.value.replace(/\D/g, ""))}
-                            bg="white"
-                            fontWeight="800"
-                            borderColor={existingClient ? "red.400" : "gray.300"}
-                          />
-                        </FormControl>
-                      </Grid>
-
-                      {/* CAMPOS DEPENDIENDO DE SI ES PERSONA JURÍDICA O NATURAL */}
-                      {personType === "JURIDICO" ? (
-                        <Grid templateColumns={{ base: "1fr", md: "1.4fr 1fr 1fr" }} gap={3} mt={3}>
-                          <FormControl isRequired>
-                            <FormLabel fontSize="xs" fontWeight="700" color="gray.700">Razón Social</FormLabel>
-                            <Input
-                              size="sm"
-                              borderRadius="md"
-                              placeholder="Ej. GRUPO PANA S.A."
-                              value={cardName}
-                              onChange={(e) => setCardName(e.target.value.toUpperCase())}
-                              bg="white"
-                              fontWeight="700"
-                            />
-                          </FormControl>
-
-                          <FormControl>
-                            <FormLabel fontSize="xs" fontWeight="700" color="gray.700">
-                              Nombre Comercial <Text as="span" color="gray.400" fontWeight="normal">(U_VS_NOMCOM)</Text>
-                            </FormLabel>
-                            <Input
-                              size="sm"
-                              borderRadius="md"
-                              placeholder="Ej. GRUPO PANA"
-                              value={commercialName}
-                              onChange={(e) => setCommercialName(e.target.value.toUpperCase())}
-                              bg="white"
-                            />
-                          </FormControl>
-
-                          <FormControl>
-                            <FormLabel fontSize="xs" fontWeight="700" color="gray.700">
-                              Nombre Extranjero <Text as="span" color="gray.400" fontWeight="normal">(ForeignName)</Text>
-                            </FormLabel>
-                            <Input
-                              size="sm"
-                              borderRadius="md"
-                              placeholder="Ej. PANA GROUP CORP"
-                              value={cardForeignName}
-                              onChange={(e) => setCardForeignName(e.target.value.toUpperCase())}
-                              bg="white"
-                            />
-                          </FormControl>
-                        </Grid>
-                      ) : (
-                        <Box mt={3}>
-                          <Grid templateColumns={{ base: "1fr", sm: "repeat(4, 1fr)" }} gap={2}>
-                            <FormControl isRequired>
-                              <FormLabel fontSize="xs" fontWeight="700" color="gray.700">Ap. Paterno</FormLabel>
-                              <Input
-                                size="sm"
-                                borderRadius="md"
-                                placeholder="Pérez"
-                                value={paternalSurname}
-                                onChange={(e) => setPaternalSurname(e.target.value.toUpperCase())}
-                                bg="white"
-                                fontWeight="600"
-                              />
-                            </FormControl>
-                            <FormControl isRequired>
-                              <FormLabel fontSize="xs" fontWeight="700" color="gray.700">Ap. Materno</FormLabel>
-                              <Input
-                                size="sm"
-                                borderRadius="md"
-                                placeholder="Gómez"
-                                value={maternalSurname}
-                                onChange={(e) => setMaternalSurname(e.target.value.toUpperCase())}
-                                bg="white"
-                                fontWeight="600"
-                              />
-                            </FormControl>
-                            <FormControl isRequired>
-                              <FormLabel fontSize="xs" fontWeight="700" color="gray.700">Primer Nombre</FormLabel>
-                              <Input
-                                size="sm"
-                                borderRadius="md"
-                                placeholder="Juan"
-                                value={firstName}
-                                onChange={(e) => setFirstName(e.target.value.toUpperCase())}
-                                bg="white"
-                                fontWeight="600"
-                              />
-                            </FormControl>
-                            <FormControl>
-                              <FormLabel fontSize="xs" fontWeight="700" color="gray.700">Segundo Nombre</FormLabel>
-                              <Input
-                                size="sm"
-                                borderRadius="md"
-                                placeholder="Carlos"
-                                value={secondName}
-                                onChange={(e) => setSecondName(e.target.value.toUpperCase())}
-                                bg="white"
-                              />
-                            </FormControl>
-                          </Grid>
-                          {computedNaturalName && (
-                            <Box mt={2} p={2} bg="emerald.50" borderRadius="md" border="1px dashed" borderColor="emerald.300">
-                              <Text fontSize="11px" color="emerald.900" fontWeight="700">
-                                👁️ Nombre registrado en SAP: <strong>{computedNaturalName}</strong>
-                              </Text>
-                            </Box>
-                          )}
-                        </Box>
-                      )}
-
-                      <Grid templateColumns={{ base: "repeat(2, 1fr)", sm: "repeat(4, 1fr)" }} gap={3} mt={3}>
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1.5}>
-                            Moneda SN
-                          </FormLabel>
-                          <Select
-                            size="sm"
-                            borderRadius="md"
-                            value={currency}
-                            onChange={(e) => setCurrency(e.target.value)}
-                            bg="white"
-                            fontWeight="600"
-                          >
-                            <option value="##">## - Monedas (Todas)</option>
-                            <option value="SOL">SOL - Soles Peruanos</option>
-                            <option value="USD">USD - Dólares Americanos</option>
-                          </Select>
-                        </FormControl>
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1.5}>
-                            Estado SN
-                          </FormLabel>
-                          <Select
-                            size="sm"
-                            borderRadius="md"
-                            value={validStatus}
-                            onChange={(e) => setValidStatus(e.target.value)}
-                            bg="white"
-                            fontWeight="600"
-                          >
-                            <option value="tYES">Activo</option>
-                            <option value="tNO">Inactivo / Bloqueado</option>
-                          </Select>
-                        </FormControl>
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1.5}>
-                            Canal de Origen
-                          </FormLabel>
-                          <Input size="sm" borderRadius="md" value="C - Cliente" isReadOnly bg="gray.100" />
-                        </FormControl>
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1.5}>
-                            Tipo SN
-                          </FormLabel>
-                          <Input size="sm" borderRadius="md" value="01 - Comercial" isReadOnly bg="gray.100" />
-                        </FormControl>
-                      </Grid>
-                    </Box>
-                  </VStack>
-                </TabPanel>
-
-                {/* ── PESTAÑA 2: PANEL LATERAL SAP (CAMPOS SUNAT UDFs) ── */}
-                <TabPanel p={0}>
-                  <VStack spacing={4} align="stretch">
-                    {/* 1. SECCIÓN AVAL */}
-                    <Box bg="gray.50" p={{ base: 3, sm: 4 }} borderRadius="xl" border="1px solid" borderColor="gray.200">
-                      <Text fontSize="11px" fontWeight="900" color="#166534" textTransform="uppercase" letterSpacing="wider" mb={3}>
-                        1. Garantías & Datos de Aval
-                      </Text>
-                      <Grid templateColumns={{ base: "1fr", sm: "repeat(3, 1fr)" }} gap={3}>
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1.5}>
-                            Doc. Identidad Aval
-                          </FormLabel>
-                          <Input size="sm" borderRadius="md" placeholder="DNI o RUC del Aval" value={avalDoc} onChange={(e) => setAvalDoc(e.target.value)} bg="white" />
-                        </FormControl>
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1.5}>
-                            Teléfono de Aval
-                          </FormLabel>
-                          <Input size="sm" borderRadius="md" placeholder="Teléfono o Celular" value={avalPhone} onChange={(e) => setAvalPhone(e.target.value)} bg="white" />
-                        </FormControl>
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1.5}>
-                            Localidad de Aval
-                          </FormLabel>
-                          <Input size="sm" borderRadius="md" placeholder="Ciudad o Distrito" value={avalLoc} onChange={(e) => setAvalLoc(e.target.value.toUpperCase())} bg="white" />
-                        </FormControl>
-                      </Grid>
-                    </Box>
-
-                    {/* 2. PARÁMETROS TRIBUTARIOS Y ROLES SUNAT */}
-                    <Box bg="gray.50" p={{ base: 3, sm: 4 }} borderRadius="xl" border="1px solid" borderColor="gray.200">
-                      <Text fontSize="11px" fontWeight="900" color="#166534" textTransform="uppercase" letterSpacing="wider" mb={3}>
-                        2. Parámetros Tributarios & Roles (Panel Lateral SAP B1)
-                      </Text>
-                      <Grid templateColumns={{ base: "repeat(2, 1fr)", md: "repeat(4, 1fr)" }} gap={3}>
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "32px" }} display="flex" alignItems="flex-end" mb={1.5}>
-                            Acreedor Transportista
-                          </FormLabel>
-                          <Select size="sm" borderRadius="md" value={isCarrier} onChange={(e) => setIsCarrier(e.target.value)} bg="white" fontWeight="600">
-                            <option value="No">No</option>
-                            <option value="Sí">Sí</option>
-                          </Select>
-                        </FormControl>
-
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "32px" }} display="flex" alignItems="flex-end" mb={1.5}>
-                            Impuesto ISC (Consumo)
-                          </FormLabel>
-                          <Select size="sm" borderRadius="md" value={isc} onChange={(e) => setIsc(e.target.value)} bg="white" fontWeight="600">
-                            <option value="No">No</option>
-                            <option value="Sí">Sí</option>
-                          </Select>
-                        </FormControl>
-
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "32px" }} display="flex" alignItems="flex-end" mb={1.5}>
-                            ¿Tiene Negocio?
-                          </FormLabel>
-                          <Select size="sm" borderRadius="md" value={hasBusiness} onChange={(e) => setHasBusiness(e.target.value)} bg="white" fontWeight="600">
-                            <option value="No">No</option>
-                            <option value="Sí">Sí</option>
-                          </Select>
-                        </FormControl>
-
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "32px" }} display="flex" alignItems="flex-end" mb={1.5}>
-                            ¿Excluir Código?
-                          </FormLabel>
-                          <Select size="sm" borderRadius="md" value={excludeCode} onChange={(e) => setExcludeCode(e.target.value)} bg="white" fontWeight="600">
-                            <option value="No">No</option>
-                            <option value="Sí">Sí</option>
-                          </Select>
-                        </FormControl>
-
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "32px" }} display="flex" alignItems="flex-end" mb={1.5}>
-                            Tipo de Agente
-                          </FormLabel>
-                          <Select size="sm" borderRadius="md" value={agentType} onChange={(e) => setAgentType(e.target.value)} bg="white" fontWeight="600">
-                            <option value="Ninguno">Ninguno</option>
-                            <option value="R">Agente de Retención</option>
-                            <option value="P">Agente de Percepción</option>
-                            <option value="B">Buen Contribuyente</option>
-                          </Select>
-                        </FormControl>
-
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "32px" }} display="flex" alignItems="flex-end" mb={1.5}>
-                            ¿SN Empleado?
-                          </FormLabel>
-                          <Select size="sm" borderRadius="md" value={isEmployee} onChange={(e) => setIsEmployee(e.target.value)} bg="white" fontWeight="600">
-                            <option value="No">No</option>
-                            <option value="Sí">Sí</option>
-                          </Select>
-                        </FormControl>
-
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "32px" }} display="flex" alignItems="flex-end" mb={1.5}>
-                            Proveedor con DNI
-                          </FormLabel>
-                          <Select size="sm" borderRadius="md" value={supplierWithDni} onChange={(e) => setSupplierWithDni(e.target.value)} bg="white" fontWeight="600">
-                            <option value="No">No</option>
-                            <option value="Sí">Sí</option>
-                          </Select>
-                        </FormControl>
-
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "32px" }} display="flex" alignItems="flex-end" mb={1.5}>
-                            Validar IDC
-                          </FormLabel>
-                          <Select size="sm" borderRadius="md" value={validateIdc} onChange={(e) => setValidateIdc(e.target.value)} bg="white" fontWeight="600">
-                            <option value="No">No</option>
-                            <option value="Sí">Sí</option>
-                          </Select>
-                        </FormControl>
-                      </Grid>
-                    </Box>
-
-                    {/* 3. CONDICIÓN SUNAT & CONTRIBUYENTE */}
-                    <Box bg="gray.50" p={{ base: 3, sm: 4 }} borderRadius="xl" border="1px solid" borderColor="gray.200">
-                      <Text fontSize="11px" fontWeight="900" color="#166534" textTransform="uppercase" letterSpacing="wider" mb={3}>
-                        3. Estado & Condición Contribuyente SUNAT
-                      </Text>
-                      <Grid templateColumns={{ base: "repeat(2, 1fr)", sm: "repeat(3, 1fr)", lg: "repeat(5, 1fr)" }} gap={3}>
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "32px" }} display="flex" alignItems="flex-end" mb={1.5}>
-                            Estado Contribuyente
-                          </FormLabel>
-                          <Select size="sm" borderRadius="md" value={contribState} onChange={(e) => setContribState(e.target.value)} bg="white" fontWeight="600">
-                            <option value="ACTIVO">ACTIVO</option>
-                            <option value="BAJA PROVISIONAL">BAJA PROVISIONAL</option>
-                            <option value="BAJA DEFINITIVA">BAJA DEFINITIVA</option>
-                            <option value="SUSPENSION TEMPORAL">SUSPENSIÓN TEMPORAL</option>
-                          </Select>
-                        </FormControl>
-
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "32px" }} display="flex" alignItems="flex-end" mb={1.5}>
-                            Condición Contribuyente
-                          </FormLabel>
-                          <Select size="sm" borderRadius="md" value={contribCondition} onChange={(e) => setContribCondition(e.target.value)} bg="white" fontWeight="600">
-                            <option value="HABIDO">HABIDO</option>
-                            <option value="NO HABIDO">NO HABIDO</option>
-                            <option value="NO HALLADO">NO HALLADO</option>
-                          </Select>
-                        </FormControl>
-
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "32px" }} display="flex" alignItems="flex-end" mb={1.5}>
-                            Agente Retención
-                          </FormLabel>
-                          <Select size="sm" borderRadius="md" value={isRetentionAgent} onChange={(e) => setIsRetentionAgent(e.target.value)} bg="white" fontWeight="600">
-                            <option value="No">No</option>
-                            <option value="Sí">Sí</option>
-                          </Select>
-                        </FormControl>
-
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "32px" }} display="flex" alignItems="flex-end" mb={1.5}>
-                            Agente Percepción
-                          </FormLabel>
-                          <Select size="sm" borderRadius="md" value={isPerceptionAgent} onChange={(e) => setIsPerceptionAgent(e.target.value)} bg="white" fontWeight="600">
-                            <option value="No">No</option>
-                            <option value="Sí">Sí</option>
-                          </Select>
-                        </FormControl>
-
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between" gridColumn={{ base: "span 2", sm: "span 1" }}>
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "32px" }} display="flex" alignItems="flex-end" mb={1.5}>
-                            Buen Contribuyente
-                          </FormLabel>
-                          <Select size="sm" borderRadius="md" value={isGoodTaxpayer} onChange={(e) => setIsGoodTaxpayer(e.target.value)} bg="white" fontWeight="600">
-                            <option value="No">No</option>
-                            <option value="Sí">Sí</option>
-                          </Select>
-                        </FormControl>
-                      </Grid>
-                    </Box>
-                  </VStack>
-                </TabPanel>
-
-                {/* ── PESTAÑA 3: DIRECCIONES (FISCAL Y DESPACHO) ── */}
-                <TabPanel p={0}>
-                  <VStack spacing={4} align="stretch">
-                    {/* DIRECCIÓN FISCAL */}
-                    <Box bg="gray.50" p={4} borderRadius="xl" border="1px solid" borderColor="gray.200">
-                      <Flex justify="space-between" align="center" mb={2}>
-                        <Text fontSize="11px" fontWeight="900" color="#166534" textTransform="uppercase" letterSpacing="wider">
-                          Dirección Fiscal Oficial (bo_BillTo - FISCAL)
-                        </Text>
-                        <Badge colorScheme="purple" fontSize="9px">Facturación</Badge>
-                      </Flex>
-
-                      <FormControl isRequired>
-                        <FormLabel fontSize="xs" fontWeight="700" color="gray.700">Dirección (Calle / Av. / Jr. / Nro / Urb.)</FormLabel>
-                        <Input
-                          size="sm"
-                          borderRadius="md"
-                          placeholder="Ej. AV. AVIACION 4928 HIGUERETA"
-                          value={address}
-                          onChange={(e) => setAddress(e.target.value.toUpperCase())}
-                          bg="white"
+                <FormControl isRequired>
+                  <Flex justify="space-between" align="center" mb={1}>
+                    <FormLabel fontSize="xs" fontWeight="700" color="gray.700" mb={0}>
+                      Nº Documento {documentType === "6" || documentType === "RUC" ? "(11 dígitos)" : (documentType === "1" || documentType === "DNI" ? "(8 dígitos)" : "")}
+                    </FormLabel>
+                    <HStack spacing={1.5} align="center">
+                      {(documentNumber || cardName || firstName || address) && (
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          colorScheme="red"
+                          leftIcon={<FiRotateCcw size={10} />}
+                          onClick={handleClearForm}
+                          height="18px"
+                          fontSize="10px"
+                          px={1.5}
                           fontWeight="600"
-                        />
-                      </FormControl>
-
-                      <Grid templateColumns={{ base: "repeat(2, 1fr)", sm: "repeat(4, 1fr)" }} gap={2} mt={3}>
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1}>
-                            Departamento
-                          </FormLabel>
-                          <Input
-                            size="sm"
-                            borderRadius="md"
-                            value={department}
-                            onChange={(e) => handleDepartmentChange(e.target.value)}
-                            list="peru-departments-list"
-                            placeholder="LIMA"
-                            bg="white"
-                          />
-                          <datalist id="peru-departments-list">
-                            {PERU_DEPARTMENTS.map((dept) => (
-                              <option key={dept} value={dept} />
-                            ))}
-                          </datalist>
-                        </FormControl>
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1}>
-                            Provincia
-                          </FormLabel>
-                          <Input
-                            size="sm"
-                            borderRadius="md"
-                            value={province}
-                            onChange={(e) => setProvince(e.target.value.toUpperCase())}
-                            list="peru-provinces-list"
-                            placeholder="LIMA"
-                            bg="white"
-                          />
-                          <datalist id="peru-provinces-list">
-                            {availableProvinces.map((prov) => (
-                              <option key={prov} value={prov} />
-                            ))}
-                          </datalist>
-                        </FormControl>
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1}>
-                            Distrito
-                          </FormLabel>
-                          <Input
-                            size="sm"
-                            borderRadius="md"
-                            placeholder="Ej. LA VICTORIA, SURCO"
-                            value={district}
-                            onChange={(e) => handleDistrictChange(e.target.value)}
-                            list="peru-districts-list"
-                            bg="white"
-                          />
-                          <datalist id="peru-districts-list">
-                            {UBIGEO_DISTRICTS.map((item) => (
-                              <option key={item.ubigeo} value={item.district}>
-                                {item.district} ({item.province}) - {item.ubigeo}
-                              </option>
-                            ))}
-                          </datalist>
-                        </FormControl>
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <Flex justify="space-between" align="center" minH={{ base: "auto", sm: "24px" }} mb={1}>
-                            <FormLabel fontSize="xs" fontWeight="700" color="gray.700" m={0}>
-                              Ubigeo / GLN
-                            </FormLabel>
-                            {zipCode && (
-                              <Badge colorScheme="green" fontSize="9px" px={1.5} py={0.5} borderRadius="sm" textTransform="uppercase">
-                                AUTO
-                              </Badge>
-                            )}
-                          </Flex>
-                          <Input
-                            size="sm"
-                            borderRadius="md"
-                            placeholder="150115"
-                            value={zipCode}
-                            onChange={(e) => setZipCode(e.target.value)}
-                            bg="white"
-                          />
-                        </FormControl>
-                      </Grid>
-                    </Box>
-
-                    {/* DIRECCIÓN DE DESPACHO */}
-                    <Box bg="gray.50" p={4} borderRadius="xl" border="1px solid" borderColor="gray.200">
-                      <Flex justify="space-between" align="center" wrap="wrap" gap={2} mb={2}>
-                        <Text fontSize="11px" fontWeight="900" color="#166534" textTransform="uppercase" letterSpacing="wider">
-                          Punto de Entrega / Despacho (bo_ShipTo - ALMACEN)
-                        </Text>
-                        <HStack spacing={2}>
-                          <Text fontSize="xs" color="gray.600" fontWeight="600">Misma que dirección fiscal</Text>
-                          <Switch
-                            colorScheme="emerald"
-                            isChecked={sameDeliveryAddress}
-                            onChange={(e) => setSameDeliveryAddress(e.target.checked)}
-                          />
-                        </HStack>
-                      </Flex>
-
-                      {!sameDeliveryAddress && (
-                        <Grid templateColumns={{ base: "1fr", sm: "180px 1fr" }} gap={3} mt={3}>
-                          <FormControl>
-                            <FormLabel fontSize="xs" fontWeight="700" color="gray.700">Nombre Sede / Almacén</FormLabel>
-                            <Input
-                              size="sm"
-                              borderRadius="md"
-                              placeholder="ALMACEN CENTRAL"
-                              value={deliveryAddressName}
-                              onChange={(e) => setDeliveryAddressName(e.target.value.toUpperCase())}
-                              bg="white"
-                            />
-                          </FormControl>
-                          <FormControl>
-                            <FormLabel fontSize="xs" fontWeight="700" color="gray.700">Dirección de Despacho</FormLabel>
-                            <Input
-                              size="sm"
-                              borderRadius="md"
-                              placeholder="Dirección exacta de almacén o punto de entrega"
-                              value={deliveryAddress}
-                              onChange={(e) => setDeliveryAddress(e.target.value.toUpperCase())}
-                              bg="white"
-                            />
-                          </FormControl>
-                        </Grid>
+                          title="Limpiar campos del formulario"
+                        >
+                          Limpiar
+                        </Button>
                       )}
-                    </Box>
-                  </VStack>
-                </TabPanel>
-
-                {/* ── PESTAÑA 4: CONTACTO & COMUNICACIÓN ── */}
-                <TabPanel p={0}>
-                  <VStack spacing={4} align="stretch">
-                    <Box bg="gray.50" p={4} borderRadius="xl" border="1px solid" borderColor="gray.200">
-                      <Text fontSize="11px" fontWeight="900" color="#166534" textTransform="uppercase" letterSpacing="wider" mb={3}>
-                        Canales de Contacto Directo
-                      </Text>
-
-                      <Grid templateColumns={{ base: "repeat(2, 1fr)", sm: "repeat(4, 1fr)" }} gap={3}>
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1}>
-                            Teléfono Móvil
-                          </FormLabel>
-                          <Input size="sm" borderRadius="md" placeholder="905468311" value={cellular} onChange={(e) => setCellular(e.target.value)} bg="white" />
-                        </FormControl>
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1}>
-                            Teléfono Fijo
-                          </FormLabel>
-                          <Input size="sm" borderRadius="md" placeholder="014928000" value={phone} onChange={(e) => setPhone(e.target.value)} bg="white" />
-                        </FormControl>
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1}>
-                            Anexo / Teléf. 2
-                          </FormLabel>
-                          <Input size="sm" borderRadius="md" placeholder="Anexo 104" value={phone2} onChange={(e) => setPhone2(e.target.value)} bg="white" />
-                        </FormControl>
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1}>
-                            Sitio Web
-                          </FormLabel>
-                          <Input size="sm" borderRadius="md" placeholder="www.grupopana.com.pe" value={website} onChange={(e) => setWebsite(e.target.value)} bg="white" />
-                        </FormControl>
-                      </Grid>
-
-                      <Grid templateColumns={{ base: "1fr", sm: "1.2fr 1.2fr 1fr" }} gap={3} mt={3}>
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1}>
-                            Correo Principal
-                          </FormLabel>
-                          <Input size="sm" borderRadius="md" type="email" placeholder="contacto@empresa.com" value={email} onChange={(e) => setEmail(e.target.value)} bg="white" />
-                        </FormControl>
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1}>
-                            Correo Secundario
-                          </FormLabel>
-                          <Input size="sm" borderRadius="md" type="email" placeholder="facturacion@empresa.com" value={secondaryEmail} onChange={(e) => setSecondaryEmail(e.target.value)} bg="white" />
-                        </FormControl>
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1}>
-                            ID Número 2
-                          </FormLabel>
-                          <Input size="sm" borderRadius="md" placeholder="Ej. ID-9941" value={additionalId} onChange={(e) => setAdditionalId(e.target.value)} bg="white" />
-                        </FormControl>
-                      </Grid>
-                    </Box>
-
-                    {/* PERSONA DE CONTACTO PRINCIPAL */}
-                    <Box bg="gray.50" p={{ base: 3, sm: 4 }} borderRadius="xl" border="1px solid" borderColor="gray.200">
-                      <Text fontSize="11px" fontWeight="900" color="#166534" textTransform="uppercase" letterSpacing="wider" mb={3}>
-                        Persona de Contacto en la Empresa (ContactEmployees)
-                      </Text>
-
-                      <Grid templateColumns={{ base: "1fr", sm: "repeat(2, 1fr)", md: "1.5fr 1fr 1fr 1fr" }} gap={3}>
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1}>
-                            Nombres y Apellidos
-                          </FormLabel>
-                          <Input size="sm" borderRadius="md" placeholder="KEVIN MORI" value={contactPerson} onChange={(e) => setContactPerson(e.target.value.toUpperCase())} bg="white" />
-                        </FormControl>
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1}>
-                            Cargo / Posición
-                          </FormLabel>
-                          <Input size="sm" borderRadius="md" placeholder="JEFE DE COMPRAS" value={contactPosition} onChange={(e) => setContactPosition(e.target.value.toUpperCase())} bg="white" />
-                        </FormControl>
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1}>
-                            Celular de Contacto
-                          </FormLabel>
-                          <Input size="sm" borderRadius="md" placeholder="905468311" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} bg="white" />
-                        </FormControl>
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1}>
-                            Email de Contacto
-                          </FormLabel>
-                          <Input size="sm" borderRadius="md" type="email" placeholder="kmori@empresa.com" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} bg="white" />
-                        </FormControl>
-                      </Grid>
-
-                      <FormControl mt={3}>
-                        <FormLabel fontSize="xs" fontWeight="700" color="gray.700">Comentarios u Observaciones Comerciales</FormLabel>
-                        <Textarea
-                          size="sm"
-                          borderRadius="md"
-                          rows={2}
-                          placeholder="Observaciones de despacho, horarios de atención, restricciones..."
-                          value={notes}
-                          onChange={(e) => setNotes(e.target.value)}
-                          bg="white"
-                        />
-                      </FormControl>
-                    </Box>
-                  </VStack>
-                </TabPanel>
-
-                {/* ── PESTAÑA 5: CONDICIONES COMERCIALES & FINANZAS ── */}
-                <TabPanel p={0}>
-                  <VStack spacing={4} align="stretch">
-                    <Box bg="gray.50" p={4} borderRadius="xl" border="1px solid" borderColor="gray.200">
-                      <Text fontSize="11px" fontWeight="900" color="#166534" textTransform="uppercase" letterSpacing="wider" mb={3}>
-                        Condiciones de Pago & Precios
-                      </Text>
-
-                      <Grid templateColumns={{ base: "1fr", sm: "repeat(3, 1fr)" }} gap={3}>
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1}>
-                            Condición de Pago
-                          </FormLabel>
-                          <Select
-                            size="sm"
-                            borderRadius="md"
-                            value={payTermsGrpCode}
-                            onChange={(e) => setPayTermsGrpCode(e.target.value)}
-                            bg="white"
-                            fontWeight="600"
-                          >
-                            <option value="-1">-1 - Contado</option>
-                            {paymentTermsList.map((pt) => (
-                              <option key={pt.GroupNumber ?? pt.GroupNum} value={pt.GroupNumber ?? pt.GroupNum}>
-                                {pt.PaymentTermsGroupName || pt.PymntGroup || `Condición ${pt.GroupNum}`}
-                              </option>
-                            ))}
-                          </Select>
-                        </FormControl>
-
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1}>
-                            Lista de Precios
-                          </FormLabel>
-                          <Select
-                            size="sm"
-                            borderRadius="md"
-                            value={priceListNum}
-                            onChange={(e) => setPriceListNum(e.target.value)}
-                            bg="white"
-                            fontWeight="600"
-                          >
-                            <option value="1">1 - Base Mayorista</option>
-                            <option value="2">2 - Distribuidor</option>
-                            <option value="3">3 - Especial</option>
-                          </Select>
-                        </FormControl>
-
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1}>
-                            Límite de Crédito USD
-                          </FormLabel>
-                          <Input
-                            size="sm"
-                            borderRadius="md"
-                            type="number"
-                            placeholder="0"
-                            value={creditLimit}
-                            onChange={(e) => setCreditLimit(e.target.value)}
-                            bg="white"
-                            fontWeight="700"
-                          />
-                        </FormControl>
-                      </Grid>
-
-                      <Grid templateColumns={{ base: "1fr", sm: "1fr 1fr" }} gap={3} mt={3}>
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1}>
-                            Vendedor Asignado (SAP)
-                          </FormLabel>
-                          <Select
-                            size="sm"
-                            borderRadius="md"
-                            value={assignedSellerCode}
-                            onChange={(e) => setAssignedSellerCode(e.target.value)}
-                            bg="white"
-                            fontWeight="600"
-                          >
-                            <option value="-1">-1 - Sin vendedor asignado</option>
-                            {sellersList.map((s) => (
-                              <option key={s.value} value={s.value}>
-                                {s.value} - {s.label}
-                              </option>
-                            ))}
-                          </Select>
-                        </FormControl>
-
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1}>
-                            Moneda del Socio
-                          </FormLabel>
-                          <Input size="sm" borderRadius="md" value="## - Multimoneda (Soles / USD / EUR)" isReadOnly bg="gray.100" fontWeight="700" />
-                        </FormControl>
-                      </Grid>
-
-                      <Divider my={3} />
-
-                      <Flex justify="space-between" align="center" wrap="wrap" gap={2} mb={2}>
-                        <Box>
-                          <Text fontSize="11px" fontWeight="900" color="#166534" textTransform="uppercase" letterSpacing="wider">
-                            Cuentas Contables y Retenciones (SAP B1)
-                          </Text>
-                          <Text fontSize="10px" color="gray.500">
-                            Valores oficiales predeterminados del plan contable de SAP Perú. Se generan automáticamente y son editables si contabilidad lo requiere.
-                          </Text>
-                        </Box>
-                        <Badge bg="#dcfce7" color="#166534" fontSize="10px" fontWeight="800" px={2} py={0.5} borderRadius="md" border="1px solid #86efac">
-                          ⚡ Se genera en automático
+                      {isCheckingExists && (
+                        <HStack spacing={1}>
+                          <Spinner size="xs" color="#166534" />
+                          <Text fontSize="10px" color="gray.500">Verificando en SAP...</Text>
+                        </HStack>
+                      )}
+                      {!isCheckingExists && !existingClient && documentNumber.length >= (documentType === "6" || documentType === "RUC" ? 11 : (documentType === "1" || documentType === "DNI" ? 8 : 4)) && (
+                        <Badge colorScheme="green" fontSize="9px" px={1.5} borderRadius="sm">
+                          ✓ Disponible
                         </Badge>
-                      </Flex>
+                      )}
+                    </HStack>
+                  </Flex>
+                  <Flex gap={1.5} align="center">
+                    <Input
+                      flex="1"
+                      size={{ base: "md", md: "sm" }}
+                      borderRadius="md"
+                      placeholder={documentType === "6" || documentType === "RUC" ? "20100144922" : (documentType === "1" || documentType === "DNI" ? "72435405" : "Nº Documento")}
+                      value={documentNumber}
+                      maxLength={documentType === "6" || documentType === "RUC" ? 11 : (documentType === "1" || documentType === "DNI" ? 8 : 15)}
+                      onChange={(e) => {
+                        setDocumentNumber(e.target.value.replace(/\D/g, ""));
+                        if (isAutoFilled) setIsAutoFilled(false);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleConsultSunat();
+                        }
+                      }}
+                      bg="white"
+                      fontWeight="800"
+                      borderColor={existingClient ? "red.400" : "gray.300"}
+                    />
+                    <Tooltip label="Consultar datos en SUNAT / RENIEC" placement="top" hasArrow>
+                      <IconButton
+                        size={{ base: "md", md: "sm" }}
+                        bg="#e6f7ed"
+                        color="#166534"
+                        border="1px solid"
+                        borderColor="#38a169"
+                        _hover={{ bg: "#d1fae5", borderColor: "#2f855a" }}
+                        _active={{ bg: "#bbf7d0" }}
+                        onClick={handleConsultSunat}
+                        isLoading={isConsultingSunat}
+                        icon={<FiSearch size={15} />}
+                        aria-label="Buscar en SUNAT o RENIEC"
+                        borderRadius="md"
+                        px={3}
+                        flexShrink={0}
+                        boxShadow="xs"
+                      />
+                    </Tooltip>
+                    {(documentNumber || cardName) && (
+                      <Tooltip label="Limpiar todos los datos" placement="top" hasArrow>
+                        <IconButton
+                          size={{ base: "md", md: "sm" }}
+                          variant="ghost"
+                          color="gray.400"
+                          _hover={{ bg: "red.50", color: "red.600" }}
+                          _active={{ bg: "red.100" }}
+                          onClick={handleClearForm}
+                          icon={<FiRotateCcw size={14} />}
+                          aria-label="Limpiar formulario"
+                          borderRadius="md"
+                          flexShrink={0}
+                        />
+                      </Tooltip>
+                    )}
+                  </Flex>
+                </FormControl>
 
-                      <Grid templateColumns={{ base: "1fr", sm: "repeat(3, 1fr)" }} gap={3}>
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1}>
-                            Cuenta Deudora (DebitorAccount)
-                          </FormLabel>
-                          <Input
-                            size="sm"
-                            borderRadius="md"
-                            value={debitorAccount}
-                            isReadOnly
-                            bg="gray.100"
-                            color="gray.600"
-                            cursor="not-allowed"
-                            fontWeight="700"
-                            borderColor="gray.300"
-                          />
-                          <Text fontSize="10px" color="gray.500" mt={1}>
-                            1212101 - Facturas por cobrar comerciales
-                          </Text>
-                        </FormControl>
+                <FormControl isRequired>
+                  <FormLabel fontSize="xs" fontWeight="700" color="gray.700">Tipo SN (Segmento)</FormLabel>
+                  <Select
+                    size={{ base: "md", md: "sm" }}
+                    borderRadius="md"
+                    placeholder="-- Seleccionar --"
+                    value={typeSN}
+                    onChange={(e) => setTypeSN(e.target.value)}
+                    bg="white"
+                    fontWeight="700"
+                  >
+                    <option value="01">01 - B2C</option>
+                    <option value="02">02 - IMPORTADOR</option>
+                    <option value="03">03 - CONCESIONARIO</option>
+                    <option value="04">04 - TALLER</option>
+                    <option value="05">05 - LUBRICENTRO</option>
+                    <option value="06">06 - TIENDA</option>
+                  </Select>
+                </FormControl>
+              </Grid>
 
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1}>
-                            Cuenta Anticipos (DownPaymentClearAct)
-                          </FormLabel>
-                          <Input
-                            size="sm"
-                            borderRadius="md"
-                            value={downPaymentClearAct}
-                            isReadOnly
-                            bg="gray.100"
-                            color="gray.600"
-                            cursor="not-allowed"
-                            fontWeight="700"
-                            borderColor="gray.300"
-                          />
-                          <Text fontSize="10px" color="gray.500" mt={1}>
-                            1221101 - Anticipos recibidos de clientes
-                          </Text>
-                        </FormControl>
+              {/* CAMPOS DEPENDIENDO DE SI ES PERSONA JURÍDICA O NATURAL */}
+              {personType === "JURIDICO" ? (
+                <Grid templateColumns={{ base: "1fr", md: "1.5fr 1fr" }} gap={3} mt={3}>
+                  <FormControl isRequired>
+                    <FormLabel fontSize="xs" fontWeight="700" color="gray.700">Razón Social</FormLabel>
+                    <Input
+                      size={{ base: "md", md: "sm" }}
+                      borderRadius="md"
+                      placeholder="Ej. GRUPO PANA S.A."
+                      value={cardName}
+                      onChange={(e) => {
+                        const val = e.target.value.toUpperCase();
+                        setCardName(val);
+                        if (!commercialName || commercialName === cardName) {
+                          setCommercialName(val);
+                        }
+                      }}
+                      bg={isAutoFilled && cardName ? "gray.100" : "white"}
+                      isReadOnly={isAutoFilled && !!cardName}
+                      cursor={isAutoFilled && cardName ? "not-allowed" : "text"}
+                      borderColor={isAutoFilled && cardName ? "gray.300" : "gray.200"}
+                      _focus={isAutoFilled && cardName ? { borderColor: "gray.300", boxShadow: "none" } : undefined}
+                      fontWeight="700"
+                    />
+                  </FormControl>
 
-                        <FormControl display="flex" flexDirection="column" justifyContent="space-between">
-                          <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "24px" }} display="flex" alignItems="flex-end" mb={1}>
-                            Sujeto a Impuesto (VatLiable)
-                          </FormLabel>
-                          <Select
-                            size="sm"
-                            borderRadius="md"
-                            value={vatLiable}
-                            onChange={(e) => setVatLiable(e.target.value)}
-                            bg="white"
-                            fontWeight="700"
-                          >
-                            <option value="vLiable">vLiable - Sujeto a IGV (18%)</option>
-                            <option value="vExempt">vExempt - Exonerado / Inafecto</option>
-                          </Select>
-                          <Text fontSize="10px" color="gray.500" mt={1}>
-                            Afectación al régimen de IGV
-                          </Text>
-                        </FormControl>
-                      </Grid>
+                  <FormControl>
+                    <FormLabel fontSize="xs" fontWeight="700" color="gray.700">
+                      Nombre Comercial <Text as="span" color="gray.400" fontWeight="normal">(U_VS_NOMCOM)</Text>
+                    </FormLabel>
+                    <Input
+                      size={{ base: "md", md: "sm" }}
+                      borderRadius="md"
+                      placeholder="Ej. GRUPO PANA"
+                      value={commercialName}
+                      onChange={(e) => setCommercialName(e.target.value.toUpperCase())}
+                      bg="white"
+                      fontWeight="600"
+                    />
+                  </FormControl>
+                </Grid>
+              ) : (
+                <Box mt={3}>
+                  <Grid templateColumns={{ base: "1fr", sm: "repeat(2, 1fr)", md: "repeat(4, 1fr)" }} gap={2}>
+                    <FormControl isRequired>
+                      <FormLabel fontSize="xs" fontWeight="700" color="gray.700">Ap. Paterno</FormLabel>
+                      <Input
+                        size={{ base: "md", md: "sm" }}
+                        borderRadius="md"
+                        placeholder="Pérez"
+                        value={paternalSurname}
+                        onChange={(e) => setPaternalSurname(e.target.value.toUpperCase())}
+                        bg={isAutoFilled && paternalSurname ? "gray.100" : "white"}
+                        isReadOnly={isAutoFilled && !!paternalSurname}
+                        cursor={isAutoFilled && paternalSurname ? "not-allowed" : "text"}
+                        borderColor={isAutoFilled && paternalSurname ? "gray.300" : "gray.200"}
+                        _focus={isAutoFilled && paternalSurname ? { borderColor: "gray.300", boxShadow: "none" } : undefined}
+                        fontWeight="600"
+                      />
+                    </FormControl>
+                    <FormControl isRequired>
+                      <FormLabel fontSize="xs" fontWeight="700" color="gray.700">Ap. Materno</FormLabel>
+                      <Input
+                        size={{ base: "md", md: "sm" }}
+                        borderRadius="md"
+                        placeholder="Gómez"
+                        value={maternalSurname}
+                        onChange={(e) => setMaternalSurname(e.target.value.toUpperCase())}
+                        bg={isAutoFilled && maternalSurname ? "gray.100" : "white"}
+                        isReadOnly={isAutoFilled && !!maternalSurname}
+                        cursor={isAutoFilled && maternalSurname ? "not-allowed" : "text"}
+                        borderColor={isAutoFilled && maternalSurname ? "gray.300" : "gray.200"}
+                        _focus={isAutoFilled && maternalSurname ? { borderColor: "gray.300", boxShadow: "none" } : undefined}
+                        fontWeight="600"
+                      />
+                    </FormControl>
+                    <FormControl isRequired>
+                      <FormLabel fontSize="xs" fontWeight="700" color="gray.700">Primer Nombre</FormLabel>
+                      <Input
+                        size={{ base: "md", md: "sm" }}
+                        borderRadius="md"
+                        placeholder="Juan"
+                        value={firstName}
+                        onChange={(e) => setFirstName(e.target.value.toUpperCase())}
+                        bg={isAutoFilled && firstName ? "gray.100" : "white"}
+                        isReadOnly={isAutoFilled && !!firstName}
+                        cursor={isAutoFilled && firstName ? "not-allowed" : "text"}
+                        borderColor={isAutoFilled && firstName ? "gray.300" : "gray.200"}
+                        _focus={isAutoFilled && firstName ? { borderColor: "gray.300", boxShadow: "none" } : undefined}
+                        fontWeight="600"
+                      />
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel fontSize="xs" fontWeight="700" color="gray.700">Segundo Nombre</FormLabel>
+                      <Input
+                        size={{ base: "md", md: "sm" }}
+                        borderRadius="md"
+                        placeholder="Carlos"
+                        value={secondName}
+                        onChange={(e) => setSecondName(e.target.value.toUpperCase())}
+                        bg={isAutoFilled && secondName ? "gray.100" : "white"}
+                        isReadOnly={isAutoFilled && !!secondName}
+                        cursor={isAutoFilled && secondName ? "not-allowed" : "text"}
+                        borderColor={isAutoFilled && secondName ? "gray.300" : "gray.200"}
+                        _focus={isAutoFilled && secondName ? { borderColor: "gray.300", boxShadow: "none" } : undefined}
+                      />
+                    </FormControl>
+                  </Grid>
+                  {computedNaturalName && (
+                    <Box mt={2} p={2} bg="blue.50" borderRadius="md" border="1px dashed" borderColor="blue.200">
+                      <Text fontSize="11px" color="blue.900" fontWeight="600">
+                        ℹ️ Vista previa (así se guardará al registrar en SAP): <strong>{computedNaturalName}</strong>
+                      </Text>
                     </Box>
-                  </VStack>
-                </TabPanel>
-              </TabPanels>
-            </Tabs>
+                  )}
+                </Box>
+              )}
+
+              {/* ASIGNACIÓN DE VENDEDOR EN SAP (SOLO SE MUESTRA A ADMINS O USUARIOS SIN CÓDIGO ASIGNADO) */}
+              {(isAdmin || resolvedLoggedSellerCode <= 0) && (
+                <Box mt={3} pt={3} borderTop="1px dashed" borderColor="gray.300">
+                  <FormControl>
+                    <Flex justify="space-between" align="center" mb={1}>
+                      <FormLabel fontSize="xs" fontWeight="700" color="gray.700" m={0}>
+                        Vendedor Asignado (SAP)
+                      </FormLabel>
+                      <Badge colorScheme="purple" fontSize="9px" px={1.5} py={0.5} borderRadius="sm">
+                        Asignación Comercial
+                      </Badge>
+                    </Flex>
+                    <Select
+                      size={{ base: "md", md: "sm" }}
+                      borderRadius="md"
+                      value={assignedSellerCode}
+                      onChange={(e) => setAssignedSellerCode(e.target.value)}
+                      bg="white"
+                      fontWeight="600"
+                    >
+                      <option value="-1">-1 - Sin vendedor asignado</option>
+                      {sellersList.map((s) => (
+                        <option key={s.value} value={s.value}>
+                          {s.value} - {s.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Box>
+              )}
+            </Box>
+
+            {/* ── SECCIÓN 2: DIRECCIONES (FISCAL Y DESPACHO) ── */}
+            <Box bg="gray.50" p={{ base: 3.5, md: 4 }} borderRadius="xl" border="1px solid" borderColor="gray.200">
+              <Flex justify="space-between" align="center" mb={3} wrap="wrap" gap={1}>
+                <Flex align="center" gap={2}>
+                  <Flex w="24px" h="24px" borderRadius="md" bg="#dcfce7" color="#166534" align="center" justify="center" flexShrink={0}>
+                    <FiMapPin size={14} />
+                  </Flex>
+                  <Text fontSize="12px" fontWeight="900" color="#166534" textTransform="uppercase" letterSpacing="wider">
+                    2. Dirección Fiscal Oficial (bo_BillTo)
+                  </Text>
+                </Flex>
+                <Badge colorScheme="purple" fontSize="9px">Facturación</Badge>
+              </Flex>
+
+              <FormControl isRequired>
+                <FormLabel fontSize="xs" fontWeight="700" color="gray.700">Dirección (Calle / Av. / Jr. / Nro / Urb.)</FormLabel>
+                <Input
+                  size={{ base: "md", md: "sm" }}
+                  borderRadius="md"
+                  placeholder="Ej. AV. AVIACION 4928 HIGUERETA"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value.toUpperCase())}
+                  bg="white"
+                  fontWeight="600"
+                />
+              </FormControl>
+
+              <Grid templateColumns={{ base: "1fr", sm: "repeat(2, 1fr)", md: "1.2fr 1fr 1fr 110px" }} gap={2.5} mt={3}>
+                <FormControl isRequired display="flex" flexDirection="column" justifyContent="space-between">
+                  <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "20px" }} display="flex" alignItems="flex-end" mb={1}>
+                    Departamento
+                  </FormLabel>
+                  <Select
+                    size={{ base: "md", md: "sm" }}
+                    borderRadius="md"
+                    placeholder="-- Seleccionar --"
+                    value={departmentCode}
+                    onChange={(e) => handleDepartmentChange(e.target.value)}
+                    bg="white"
+                    fontWeight="600"
+                  >
+                    {(sapDepartments || SAP_PERU_DEPARTMENTS).map((dept) => (
+                      <option key={dept.code} value={dept.code}>
+                        {dept.code} - {dept.name}
+                      </option>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                <FormControl isRequired display="flex" flexDirection="column" justifyContent="space-between">
+                  <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "20px" }} display="flex" alignItems="flex-end" mb={1}>
+                    Provincia
+                  </FormLabel>
+                  <Select
+                    size={{ base: "md", md: "sm" }}
+                    borderRadius="md"
+                    placeholder="-- Seleccionar --"
+                    value={province}
+                    onChange={(e) => setProvince(e.target.value.toUpperCase())}
+                    bg="white"
+                    fontWeight="600"
+                  >
+                    {availableProvinces.map((prov) => (
+                      <option key={prov} value={prov}>
+                        {prov}
+                      </option>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                <FormControl display="flex" flexDirection="column" justifyContent="space-between">
+                  <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "20px" }} display="flex" alignItems="flex-end" mb={1}>
+                    Distrito
+                  </FormLabel>
+                  <Input
+                    size={{ base: "md", md: "sm" }}
+                    borderRadius="md"
+                    placeholder="Ej. LA VICTORIA, SURCO"
+                    value={district}
+                    onChange={(e) => handleDistrictChange(e.target.value)}
+                    list="peru-districts-list"
+                    bg="white"
+                    fontWeight="600"
+                  />
+                  <datalist id="peru-districts-list">
+                    {UBIGEO_DISTRICTS.map((item) => (
+                      <option key={item.ubigeo} value={item.district}>
+                        {item.district} ({item.province}) - {item.ubigeo}
+                      </option>
+                    ))}
+                  </datalist>
+                </FormControl>
+
+                <FormControl display="flex" flexDirection="column" justifyContent="space-between">
+                  <Flex justify="space-between" align="center" minH={{ base: "auto", sm: "20px" }} mb={1}>
+                    <FormLabel fontSize="xs" fontWeight="700" color="gray.700" m={0}>
+                      Ubigeo / GLN
+                    </FormLabel>
+                    {zipCode && (
+                      <Badge colorScheme="green" fontSize="9px" px={1.5} py={0.5} borderRadius="sm" textTransform="uppercase">
+                        AUTO
+                      </Badge>
+                    )}
+                  </Flex>
+                  <Input
+                    size={{ base: "md", md: "sm" }}
+                    borderRadius="md"
+                    placeholder="150115"
+                    value={zipCode}
+                    onChange={(e) => handleZipCodeChange(e.target.value)}
+                    bg="white"
+                    fontWeight="600"
+                  />
+                </FormControl>
+              </Grid>
+
+              {/* PUNTO DE ENTREGA / DESPACHO */}
+              <Box mt={3.5} pt={3} borderTop="1px dashed" borderColor="gray.300">
+                <Flex justify="space-between" align="center" wrap="wrap" gap={2} mb={2}>
+                  <Text fontSize="11px" fontWeight="800" color="#166534" textTransform="uppercase">
+                    Punto de Entrega / Despacho (bo_ShipTo - ALMACEN)
+                  </Text>
+                  <HStack spacing={2}>
+                    <Text fontSize="xs" color="gray.600" fontWeight="600">Misma que fiscal</Text>
+                    <Switch
+                      colorScheme="emerald"
+                      isChecked={sameDeliveryAddress}
+                      onChange={(e) => setSameDeliveryAddress(e.target.checked)}
+                    />
+                  </HStack>
+                </Flex>
+
+                {!sameDeliveryAddress && (
+                  <Grid templateColumns={{ base: "1fr", sm: "180px 1fr" }} gap={3} mt={2}>
+                    <FormControl>
+                      <FormLabel fontSize="xs" fontWeight="700" color="gray.700">Nombre Sede / Almacén</FormLabel>
+                      <Input
+                        size={{ base: "md", md: "sm" }}
+                        borderRadius="md"
+                        placeholder="ALMACEN CENTRAL"
+                        value={deliveryAddressName}
+                        onChange={(e) => setDeliveryAddressName(e.target.value.toUpperCase())}
+                        bg="white"
+                      />
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel fontSize="xs" fontWeight="700" color="gray.700">Dirección de Despacho</FormLabel>
+                      <Input
+                        size={{ base: "md", md: "sm" }}
+                        borderRadius="md"
+                        placeholder="Dirección exacta de almacén o punto de entrega"
+                        value={deliveryAddress}
+                        onChange={(e) => setDeliveryAddress(e.target.value.toUpperCase())}
+                        bg="white"
+                      />
+                    </FormControl>
+                  </Grid>
+                )}
+              </Box>
+            </Box>
+
+            {/* ── SECCIÓN 3: CONTACTO Y OBSERVACIONES ── */}
+            <Box bg="gray.50" p={{ base: 3.5, md: 4 }} borderRadius="xl" border="1px solid" borderColor="gray.200">
+              <Flex align="center" gap={2} mb={3}>
+                <Flex w="24px" h="24px" borderRadius="md" bg="#dcfce7" color="#166534" align="center" justify="center" flexShrink={0}>
+                  <FiPhone size={14} />
+                </Flex>
+                <Text fontSize="12px" fontWeight="900" color="#166534" textTransform="uppercase" letterSpacing="wider">
+                  3. Canales de Contacto Directo
+                </Text>
+              </Flex>
+
+              <Grid templateColumns={{ base: "1fr", sm: "1fr 1fr", md: "1fr 1fr 1.4fr" }} gap={3}>
+                <FormControl isRequired display="flex" flexDirection="column" justifyContent="space-between">
+                  <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "20px" }} display="flex" alignItems="flex-end" mb={1}>
+                    Teléfono Móvil
+                  </FormLabel>
+                  <Input size={{ base: "md", md: "sm" }} borderRadius="md" placeholder="905468311" value={cellular} onChange={(e) => setCellular(e.target.value)} bg="white" />
+                </FormControl>
+                <FormControl display="flex" flexDirection="column" justifyContent="space-between">
+                  <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "20px" }} display="flex" alignItems="flex-end" mb={1}>
+                    Teléfono Fijo
+                  </FormLabel>
+                  <Input size={{ base: "md", md: "sm" }} borderRadius="md" placeholder="014928000" value={phone} onChange={(e) => setPhone(e.target.value)} bg="white" />
+                </FormControl>
+                <FormControl isRequired display="flex" flexDirection="column" justifyContent="space-between">
+                  <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "20px" }} display="flex" alignItems="flex-end" mb={1}>
+                    Correo Principal
+                  </FormLabel>
+                  <Input size={{ base: "md", md: "sm" }} borderRadius="md" type="email" placeholder="contacto@empresa.com" value={email} onChange={(e) => setEmail(e.target.value)} bg="white" />
+                </FormControl>
+              </Grid>
+
+              {/* PERSONA DE CONTACTO PRINCIPAL */}
+              <Box mt={3.5} pt={3} borderTop="1px dashed" borderColor="gray.300">
+                <Text fontSize="11px" fontWeight="800" color="#166534" textTransform="uppercase" mb={3}>
+                  Persona de Contacto en la Empresa (ContactEmployees)
+                </Text>
+
+                <Grid templateColumns={{ base: "1fr", sm: "repeat(2, 1fr)", md: "1.5fr 1fr 1fr 1fr" }} gap={3}>
+                  <FormControl display="flex" flexDirection="column" justifyContent="space-between">
+                    <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "20px" }} display="flex" alignItems="flex-end" mb={1}>
+                      Nombres y Apellidos
+                    </FormLabel>
+                    <Input size={{ base: "md", md: "sm" }} borderRadius="md" placeholder="KEVIN MORI" value={contactPerson} onChange={(e) => setContactPerson(e.target.value.toUpperCase())} bg="white" />
+                  </FormControl>
+                  <FormControl display="flex" flexDirection="column" justifyContent="space-between">
+                    <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "20px" }} display="flex" alignItems="flex-end" mb={1}>
+                      Cargo / Posición
+                    </FormLabel>
+                    <Input size={{ base: "md", md: "sm" }} borderRadius="md" placeholder="JEFE DE COMPRAS" value={contactPosition} onChange={(e) => setContactPosition(e.target.value.toUpperCase())} bg="white" />
+                  </FormControl>
+                  <FormControl display="flex" flexDirection="column" justifyContent="space-between">
+                    <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "20px" }} display="flex" alignItems="flex-end" mb={1}>
+                      Celular de Contacto
+                    </FormLabel>
+                    <Input size={{ base: "md", md: "sm" }} borderRadius="md" placeholder="905468311" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} bg="white" />
+                  </FormControl>
+                  <FormControl display="flex" flexDirection="column" justifyContent="space-between">
+                    <FormLabel fontSize="xs" fontWeight="700" color="gray.700" minH={{ base: "auto", sm: "20px" }} display="flex" alignItems="flex-end" mb={1}>
+                      Email de Contacto
+                    </FormLabel>
+                    <Input size={{ base: "md", md: "sm" }} borderRadius="md" type="email" placeholder="kmori@empresa.com" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} bg="white" />
+                  </FormControl>
+                </Grid>
+
+                <FormControl mt={3}>
+                  <FormLabel fontSize="xs" fontWeight="700" color="gray.700">Comentarios u Observaciones Comerciales</FormLabel>
+                  <Textarea
+                    size={{ base: "md", md: "sm" }}
+                    borderRadius="md"
+                    rows={2}
+                    placeholder="Observaciones de despacho, horarios de atención, restricciones..."
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    bg="white"
+                  />
+                </FormControl>
+              </Box>
+            </Box>
           </VStack>
         </ModalBody>
 
-        <ModalFooter borderTop="1px solid" borderColor="gray.100" pt={3} pb={{ base: 4, md: 3 }} bg="gray.50" borderBottomRadius={{ base: "none", md: "2xl" }}>
+        <ModalFooter
+          borderTop="1px solid"
+          borderColor="gray.100"
+          pt={{ base: 3, md: 3 }}
+          pb={{ base: "max(14px, env(safe-area-inset-bottom, 14px))", md: 3 }}
+          px={{ base: 3.5, md: 6 }}
+          bg="gray.50"
+          borderBottomRadius={{ base: "none", md: "2xl" }}
+        >
           <Flex justify="space-between" align="center" direction={{ base: "column-reverse", sm: "row" }} gap={3} w="full">
             <HStack spacing={2} justify={{ base: "center", sm: "flex-start" }} w={{ base: "full", sm: "auto" }}>
               <Badge colorScheme="gray" fontSize="10px">
@@ -1518,11 +1513,17 @@ export default function CreateBusinessPartnerModal({
             </HStack>
 
             <HStack spacing={2} justify={{ base: "stretch", sm: "flex-end" }} w={{ base: "full", sm: "auto" }}>
-              <Button size="sm" variant="ghost" onClick={handleClose} isDisabled={isSubmitting} flex={{ base: 1, sm: "initial" }}>
+              <Button
+                size={{ base: "md", md: "sm" }}
+                variant="ghost"
+                onClick={handleClose}
+                isDisabled={isSubmitting}
+                flex={{ base: 1, sm: "initial" }}
+              >
                 Cancelar
               </Button>
               <Button
-                size="sm"
+                size={{ base: "md", md: "sm" }}
                 bg="#166534"
                 color="white"
                 _hover={{ bg: "#0f5132" }}
@@ -1534,7 +1535,7 @@ export default function CreateBusinessPartnerModal({
                 isDisabled={Boolean(existingClient) || !documentNumber || !effectiveCardName || !address}
                 fontWeight="900"
                 boxShadow="sm"
-                px={4}
+                px={5}
                 flex={{ base: 2, sm: "initial" }}
               >
                 Registrar Socio en SAP
