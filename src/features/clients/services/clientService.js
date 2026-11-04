@@ -45,11 +45,63 @@ export const consultSunatRuc = async (ruc) => {
   return response.data;
 };
 
+/**
+ * Consulta DNI vía RENIEC.
+ * Estrategia dual:
+ *  1. Llama al backend (que usa eldni.com scraper + apis.net.pe)
+ *  2. Si el backend falla (IP del servidor bloqueada/429), hace fallback
+ *     directo desde el browser del usuario a apis.net.pe v1 — el browser
+ *     no tiene la IP bloqueada.
+ */
 export const consultSunatDni = async (dni) => {
   const cleanDni = String(dni || "").trim().replace(/\D/g, "");
   if (!cleanDni || cleanDni.length !== 8) return null;
-  const response = await axiosInstance.get(`/quoteModule/clients/sunat/dni/${cleanDni}`);
-  return response.data;
+
+  // 1. Intentar vía backend (scraper eldni + apis.net.pe v2 con token si está configurado)
+  try {
+    const response = await axiosInstance.get(`/quoteModule/clients/sunat/dni/${cleanDni}`);
+    if (response.data?.success) {
+      return response.data;
+    }
+    // Backend respondió pero sin datos — intentar fallback browser-side
+    console.info(`[DNI] Backend no devolvió datos para DNI ${cleanDni}, intentando fallback desde browser...`);
+  } catch (err) {
+    console.warn(`[DNI] Error en backend para DNI ${cleanDni}:`, err.message);
+  }
+
+  // 2. Fallback: consulta directa desde el browser del usuario (evita bloqueo de IP del servidor)
+  try {
+    const res = await fetch(`https://api.apis.net.pe/v1/dni?numero=${cleanDni}`, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(7000),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && (data.nombre || data.nombres)) {
+        const nombres = data.nombres ? data.nombres.trim() : "";
+        const apellidoPaterno = data.apellidoPaterno ? data.apellidoPaterno.trim() : "";
+        const apellidoMaterno = data.apellidoMaterno ? data.apellidoMaterno.trim() : "";
+        const nombreCompleto = data.nombre
+          ? data.nombre.trim()
+          : `${nombres} ${apellidoPaterno} ${apellidoMaterno}`.trim();
+        return {
+          success: true,
+          source: "api_reniec_browser",
+          dni: data.numeroDocumento || cleanDni,
+          nombreCompleto,
+          nombres,
+          apellidoPaterno,
+          apellidoMaterno,
+        };
+      }
+    } else if (res.status === 429) {
+      console.warn(`[DNI] apis.net.pe también devolvió 429 desde el browser para DNI ${cleanDni}`);
+    }
+  } catch (err) {
+    console.warn(`[DNI] Fallback browser-side también falló para DNI ${cleanDni}:`, err.message);
+  }
+
+  return { success: false, message: `No se encontraron datos automáticos de RENIEC para el DNI ${cleanDni}. Puedes ingresar los nombres manualmente.` };
 };
 
 export const updateClient = async (client) => {
