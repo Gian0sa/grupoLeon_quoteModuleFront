@@ -502,10 +502,10 @@ export default function CreateBusinessPartnerModal({
           });
         } else {
           toast({
-            title: "No se encontraron datos",
-            description: data?.message || "No se pudo recuperar información de RENIEC.",
+            title: "Consulta RENIEC",
+            description: data?.message || "No se pudo autocompletar desde RENIEC. Puedes ingresar los nombres y apellidos manualmente abajo.",
             status: "info",
-            duration: 3500,
+            duration: 4500,
             isClosable: true,
           });
         }
