@@ -57,6 +57,7 @@ import {
   getProvincesByDepartment,
   UBIGEO_DISTRICTS,
   getUbigeoByDistrict,
+  parseSunatPersonName,
 } from "../../../shared/utils/ubigeoData";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { useSellersData } from "../../auth/hooks/queries/authQueries";
@@ -424,9 +425,10 @@ export default function CreateBusinessPartnerModal({
 
     try {
       if (isRuc) {
+        const isRuc10 = cleanDoc.startsWith("10");
         if (cleanDoc.startsWith("20")) {
           setPersonType("JURIDICO");
-        } else if (cleanDoc.startsWith("10")) {
+        } else if (isRuc10) {
           setPersonType("NATURAL");
         }
         const data = await consultSunatRuc(cleanDoc);
@@ -437,7 +439,32 @@ export default function CreateBusinessPartnerModal({
             setCardName(rzUpper);
             setCommercialName(rzUpper);
           }
-          if (data.direccion) setAddress(data.direccion.toUpperCase());
+
+          // 👤 Si es RUC 10 (Persona Natural con RUC), desglosar y rellenar nombres y apellidos en los campos individuales
+          if (isRuc10 || cleanDoc.startsWith("10") || data.isPersonaNatural) {
+            setPersonType("NATURAL");
+            const fullName = data.nombreCompleto || data.razonSocial || "";
+            let pPaterno = data.apellidoPaterno || "";
+            let pMaterno = data.apellidoMaterno || "";
+            let pNombres = data.nombres || "";
+
+            if (!pPaterno && !pNombres && fullName) {
+              const parsed = parseSunatPersonName(fullName);
+              pPaterno = parsed.apellidoPaterno;
+              pMaterno = parsed.apellidoMaterno;
+              pNombres = parsed.nombres;
+            }
+
+            if (pPaterno) setPaternalSurname(pPaterno.toUpperCase());
+            if (pMaterno) setMaternalSurname(pMaterno.toUpperCase());
+            if (pNombres) {
+              const nParts = pNombres.trim().split(/\s+/);
+              setFirstName(nParts[0].toUpperCase());
+              setSecondName(nParts.slice(1).join(" ").toUpperCase());
+            }
+          }
+
+          if (data.direccion && data.direccion !== "-") setAddress(data.direccion.toUpperCase());
           if (data.estado) setContribState(data.estado.toUpperCase());
           if (data.condicion) setContribCondition(data.condicion.toUpperCase());
 
