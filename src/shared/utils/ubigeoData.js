@@ -221,3 +221,51 @@ export function getUbigeoByDistrict(inputDistrict) {
   return null;
 }
 
+/**
+ * Desglosa el formato legal de SUNAT (APELLIDO_PAT APELLIDO_MAT NOMBRES) en partes individuales
+ */
+export function parseSunatPersonName(fullName) {
+  const clean = String(fullName || "").trim().replace(/\s+/g, " ");
+  if (!clean) return { nombreCompleto: "", apellidoPaterno: "", apellidoMaterno: "", nombres: "" };
+
+  const compoundPrefixes = ["DE LA", "DE LAS", "DE LOS", "DEL", "DE", "SAN", "SANTA", "VON", "VAN", "DA", "DI", "MAC", "MC"];
+  const words = clean.split(" ");
+
+  function extractSurname(wordList) {
+    if (wordList.length === 0) return "";
+    for (const prefix of compoundPrefixes) {
+      const pWords = prefix.split(" ");
+      if (wordList.length >= pWords.length + 1) {
+        const matches = pWords.every((pw, idx) => wordList[idx].toUpperCase() === pw);
+        if (matches) {
+          return wordList.splice(0, pWords.length + 1).join(" ");
+        }
+      }
+    }
+    return wordList.shift();
+  }
+
+  const remaining = [...words];
+  let apPaterno = "";
+  let apMaterno = "";
+  let nombres = "";
+
+  if (remaining.length === 1) {
+    nombres = remaining[0];
+  } else if (remaining.length === 2) {
+    apPaterno = remaining[0];
+    nombres = remaining[1];
+  } else {
+    apPaterno = extractSurname(remaining);
+    apMaterno = extractSurname(remaining);
+    nombres = remaining.join(" ");
+  }
+
+  const nombreCompleto = [nombres, apPaterno, apMaterno].filter(Boolean).join(" ");
+  return {
+    nombreCompleto: nombreCompleto || clean,
+    apellidoPaterno: apPaterno,
+    apellidoMaterno: apMaterno,
+    nombres: nombres,
+  };
+}
