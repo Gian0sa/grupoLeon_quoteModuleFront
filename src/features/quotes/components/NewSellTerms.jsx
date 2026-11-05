@@ -256,8 +256,9 @@ export function NewSellTerms({
   });
 
   const [addressError, setAddressError] = useState("");
+  const [deliverySearchText, setDeliverySearchText] = useState("");
 
-  const handleOpenNewAddressModal = () => {
+  const handleOpenNewAddressModal = (initialStreet = "") => {
     if (selectedPoint && typeof selectedPoint === "object" && selectedPoint.isCustomAddress) {
       setCustomAddrForm({
         addressName: selectedPoint.AddressName || "",
@@ -269,9 +270,10 @@ export function NewSellTerms({
         saveToClient: Boolean(selectedPoint.saveToClient),
       });
     } else {
+      const streetToUse = typeof initialStreet === "string" && initialStreet ? initialStreet : deliverySearchText;
       setCustomAddrForm({
         addressName: "",
-        street: "",
+        street: streetToUse || "",
         department: "15",
         city: "LIMA",
         county: "",
@@ -291,11 +293,17 @@ export function NewSellTerms({
     }
 
     const deptObj = PERU_DEPARTMENTS.find(d => d.code === customAddrForm.department) || { code: "15", name: "LIMA" };
-    const cleanCity = String(customAddrForm.city || "LIMA").trim().toUpperCase();
+    const cleanCity = String(customAddrForm.city || deptObj.name || "LIMA").trim().toUpperCase();
     const cleanCounty = String(customAddrForm.county || "").trim().toUpperCase();
-    const cleanName = String(
-      customAddrForm.addressName || (cleanCounty ? `DESTINO ${cleanCounty}` : "DESTINO NUEVO")
-    ).trim().toUpperCase().slice(0, 50);
+
+    // 📍 El nombre de destino para SAP y Guía: si el usuario no escribió un Alias, se usa directamente la Ciudad (ej. TARAPOTO, LIMA, TRUJILLO)
+    const fallbackDestinationCity = cleanCity || cleanCounty || deptObj.name || "LIMA";
+    const rawName = customAddrForm.addressName || fallbackDestinationCity;
+    const cleanName = String(rawName)
+      .trim()
+      .toUpperCase()
+      .replace(/^DESTINO\s+/i, "") // Limpiar prefijo 'DESTINO ' si fue escrito
+      .slice(0, 50);
 
     const newPoint = {
       AddressName: cleanName,
@@ -307,11 +315,12 @@ export function NewSellTerms({
       BuildingFloorRoom: String(customAddrForm.reference || "").trim(),
       isCustomAddress: true,
       saveToClient: Boolean(customAddrForm.saveToClient),
-      label: `📍 [NUEVA] ${cleanName} - ${cleanStreet} (${cleanCounty || cleanCity}, ${deptObj.name})`,
+      label: `📍 [NUEVA] ${cleanName} - ${cleanStreet} (${cleanCounty ? `${cleanCounty}, ` : ""}${cleanCity})`,
       value: cleanName,
     };
 
     setSelectedPoint(newPoint);
+    setDeliverySearchText("");
     onCloseAddressModal();
   };
 
@@ -654,10 +663,12 @@ export function NewSellTerms({
   const handleDeliveryPointChange = (selected) => {
     if (!selected) {
       setSelectedPoint(null);
+      setDeliverySearchText("");
       return;
     }
     if (selected.raw) {
       setSelectedPoint(selected.raw);
+      setDeliverySearchText("");
       return;
     }
     const found = allDeliveryPoints.find(
@@ -665,7 +676,12 @@ export function NewSellTerms({
         (p.AddressName || "").toLowerCase() === String(selected.value || "").toLowerCase() ||
         (p.Street || p.Address || "").toLowerCase() === String(selected.value || "").toLowerCase()
     );
-    setSelectedPoint(found || { AddressName: selected.value, Street: selected.label || selected.value, label: selected.label });
+    if (found) {
+      setSelectedPoint(found);
+    } else {
+      setSelectedPoint(null);
+    }
+    setDeliverySearchText("");
   };
 
   const handleTransportChange = (selected) => {
@@ -833,7 +849,7 @@ export function NewSellTerms({
                     fontWeight="800"
                     borderRadius="lg"
                     leftIcon={selectedPoint?.isCustomAddress ? <Edit2 className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
-                    onClick={handleOpenNewAddressModal}
+                    onClick={() => handleOpenNewAddressModal(deliverySearchText)}
                     {...(selectedPoint?.isCustomAddress
                       ? {
                           bg: "#0d6334",
@@ -909,7 +925,7 @@ export function NewSellTerms({
                           _hover={{ bg: "#bbf7d0" }}
                           fontWeight="700"
                           borderRadius="md"
-                          onClick={handleOpenNewAddressModal}
+                          onClick={() => handleOpenNewAddressModal()}
                         >
                           Editar
                         </Button>
@@ -932,30 +948,61 @@ export function NewSellTerms({
                 </Box>
               ) : (
                 <>
-                  <CreatableSelect
+                  <Select
                     isDisabled={isDeliveryLocked}
                     isLoading={isLoadingDeliveryPoints}
                     isClearable={!isDeliveryLocked}
+                    isSearchable={true}
                     options={deliveryOptions}
                     value={normalizeDeliveryPointValue(selectedPoint)}
                     onChange={handleDeliveryPointChange}
+                    onInputChange={(newInput, actionMeta) => {
+                      if (actionMeta.action === "input-change") {
+                        setDeliverySearchText(newInput);
+                      }
+                    }}
                     placeholder={
                       isLoadingDeliveryPoints
                         ? "Cargando direcciones registradas..."
                         : client
-                        ? "Selecciona o escribe un destino de entrega..."
-                        : "Selecciona un cliente o escribe un destino libre..."
+                        ? "Buscar o seleccionar dirección registrada..."
+                        : "Selecciona primero un cliente para ver sus direcciones..."
                     }
                     noOptionsMessage={({ inputValue }) =>
-                      inputValue
-                        ? `Presiona Enter para usar: "${inputValue}" como destino`
-                        : isLoadingDeliveryPoints
-                        ? "Cargando direcciones registradas..."
-                        : client
-                        ? "Escribe la dirección o ciudad de destino..."
-                        : "Selecciona primero un cliente en la pestaña Cotización o escribe un destino libre..."
+                      inputValue ? (
+                        <Box py={2} px={1} textAlign="center">
+                          <Text fontSize="xs" color="gray.600" mb={2}>
+                            No se encontró dirección registrada para: <b>"{inputValue}"</b>
+                          </Text>
+                          <Button
+                            size="xs"
+                            colorScheme="green"
+                            leftIcon={<Plus className="w-3.5 h-3.5" />}
+                            onClick={() => handleOpenNewAddressModal(inputValue)}
+                          >
+                            Registrar nueva dirección
+                          </Button>
+                        </Box>
+                      ) : isLoadingDeliveryPoints ? (
+                        "Cargando direcciones registradas..."
+                      ) : client ? (
+                        <Box py={2} px={1} textAlign="center">
+                          <Text fontSize="xs" color="gray.600" mb={2}>
+                            El cliente no tiene sucursales registradas.
+                          </Text>
+                          <Button
+                            size="xs"
+                            colorScheme="green"
+                            leftIcon={<Plus className="w-3.5 h-3.5" />}
+                            onClick={() => handleOpenNewAddressModal("")}
+                          >
+                            Registrar nueva dirección
+                          </Button>
+                        </Box>
+                      ) : (
+                        "Selecciona primero un cliente en la pestaña Cotización"
+                      )
                     }
-                    formatCreateLabel={(inputValue) => `Escribir destino libre: "${inputValue}"`}
                     styles={getCustomSelectStyles(isDeliveryLocked)}
                     menuPortalTarget={typeof document !== "undefined" ? document.body : null}
                     menuPosition="fixed"
@@ -973,11 +1020,11 @@ export function NewSellTerms({
                     </HStack>
                   ) : deliveryOptions.length > 0 ? (
                     <Text fontSize="11px" color="emerald.700" fontWeight="600" mt={1}>
-                      🏢 <b>{deliveryOptions.length}</b> {deliveryOptions.length === 1 ? "dirección registrada" : "direcciones registradas"} para este cliente.
+                      🏢 <b>{deliveryOptions.length}</b> {deliveryOptions.length === 1 ? "dirección registrada" : "direcciones registradas"} para este cliente. Si requiere una ubicación diferente, pulsa <b>+ Registrar Nueva Dirección</b>.
                     </Text>
                   ) : (
                     <Text fontSize="11px" color="gray.600" mt={1}>
-                      ℹ️ El cliente no tiene sucursales adicionales registradas. Puedes pulsar <b>+ Registrar Nueva Dirección</b> o escribir un destino libre.
+                      ℹ️ El cliente no tiene sucursales registradas. Pulsa <b>+ Registrar Nueva Dirección</b> para ingresar la ubicación exacta de entrega.
                     </Text>
                   )}
                 </>
@@ -1325,7 +1372,17 @@ export function NewSellTerms({
                     fontSize={{ base: "14px", sm: "sm" }}
                     borderRadius="lg"
                     value={customAddrForm.department}
-                    onChange={(e) => setCustomAddrForm({ ...customAddrForm, department: e.target.value })}
+                    onChange={(e) => {
+                      const newDeptCode = e.target.value;
+                      const foundDept = PERU_DEPARTMENTS.find(d => d.code === newDeptCode);
+                      const prevDept = PERU_DEPARTMENTS.find(d => d.code === customAddrForm.department);
+                      const shouldUpdateCity = !customAddrForm.city || customAddrForm.city === "LIMA" || (prevDept && customAddrForm.city === prevDept.name);
+                      setCustomAddrForm({
+                        ...customAddrForm,
+                        department: newDeptCode,
+                        ...(shouldUpdateCity && foundDept ? { city: foundDept.name } : {})
+                      });
+                    }}
                   >
                     {PERU_DEPARTMENTS.map((d) => (
                       <option key={d.code} value={d.code}>
@@ -1335,9 +1392,9 @@ export function NewSellTerms({
                   </ChakraSelect>
                 </FormControl>
 
-                <FormControl>
+                <FormControl isRequired>
                   <FormLabel fontSize={{ base: "13px", sm: "xs" }} fontWeight="800" color="gray.700" mb={1}>
-                    Provincia
+                    Provincia / Ciudad *
                   </FormLabel>
                   <Input
                     bg="white"
@@ -1346,7 +1403,7 @@ export function NewSellTerms({
                     h={{ base: "44px", sm: "38px" }}
                     fontSize={{ base: "14px", sm: "sm" }}
                     borderRadius="lg"
-                    placeholder="Ej: LIMA"
+                    placeholder="Ej: TARAPOTO, LIMA, TRUJILLO"
                     value={customAddrForm.city}
                     onChange={(e) => setCustomAddrForm({ ...customAddrForm, city: e.target.value.toUpperCase() })}
                   />
@@ -1365,7 +1422,7 @@ export function NewSellTerms({
                     h={{ base: "44px", sm: "38px" }}
                     fontSize={{ base: "14px", sm: "sm" }}
                     borderRadius="lg"
-                    placeholder="Ej: LOS OLIVOS"
+                    placeholder="Ej: MORALES, LOS OLIVOS"
                     value={customAddrForm.county}
                     onChange={(e) => setCustomAddrForm({ ...customAddrForm, county: e.target.value.toUpperCase() })}
                   />
@@ -1373,7 +1430,7 @@ export function NewSellTerms({
 
                 <FormControl>
                   <FormLabel fontSize={{ base: "13px", sm: "xs" }} fontWeight="800" color="gray.700" mb={1}>
-                    Alias / Nombre Destino
+                    Alias / Nombre Destino (Opcional)
                   </FormLabel>
                   <Input
                     bg="white"
@@ -1382,10 +1439,13 @@ export function NewSellTerms({
                     h={{ base: "44px", sm: "38px" }}
                     fontSize={{ base: "14px", sm: "sm" }}
                     borderRadius="lg"
-                    placeholder="Ej: TALLER NORTE"
+                    placeholder="Ej: TALLER NORTE, ALMACÉN"
                     value={customAddrForm.addressName}
                     onChange={(e) => setCustomAddrForm({ ...customAddrForm, addressName: e.target.value.toUpperCase() })}
                   />
+                  <Text fontSize="10px" color="gray.500" mt={1}>
+                    💡 Si se deja vacío, en SAP y Guías saldrá con el nombre de la <b>Ciudad</b> (ej. TARAPOTO, LIMA).
+                  </Text>
                 </FormControl>
               </Grid>
 
