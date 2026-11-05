@@ -225,7 +225,10 @@ export const formatDeliveryPoint = (point, clientAddress) => {
 
   if (typeof parsed === "object" && parsed !== null) {
     const street = parsed.Street || parsed.address || parsed.label || "";
-    const name = parsed.AddressName || parsed.name || "";
+    let name = parsed.AddressName || parsed.name || "";
+    if (name.toUpperCase() === "DESTINO NUEVO" || name.toUpperCase() === "NUEVO DESTINO") {
+      name = parsed.City || parsed.County || "";
+    }
     if (street && name && street !== name) {
       return `${name} - ${street}`;
     }
