@@ -535,7 +535,7 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
   doc.text("VENCE", 29, headerY + 4);
   doc.text("CONDICIÓN DE PAGO", 50, headerY + 4);
   doc.text("SERIE - DOCUMENTO", 78, headerY + 4);
-  doc.text("CODIGO UNICO", 122, headerY + 4);
+  doc.text("CODIGO UNICO", 124, headerY + 4);
 
   if (hasPen && hasUsd) {
     doc.text("MONTO", 162, headerY + 4, { align: "right" });
@@ -599,10 +599,16 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
     const ubicacion = safeText(d.ubicacion || d.UBICACION || d.ESTADO, "").toUpperCase();
     const ubicacionRaw = String(d.ubicacion || d.UBICACION || d.ESTADO || "").trim().toUpperCase();
     const condUpper = condicion.toUpperCase();
+    const isDeCaminoAlBanco = isLetra && Boolean(
+      ubicacionRaw === "1" ||
+      ubicacionRaw.includes("CAMINO") ||
+      ubicacionRaw.includes("TRANSITO") ||
+      ubicacionRaw.includes("TRÁNSITO")
+    );
     const enBanco = Boolean(
       d.enBanco ||
-      (isLetra && (
-        ubicacionRaw === "1" ||
+      (isLetra && !isDeCaminoAlBanco && (
+        ubicacionRaw === "3" ||
         ubicacionRaw.includes("BANCO") ||
         ubicacionRaw.includes("COBRANZA") ||
         condUpper.includes("BANCO")
@@ -610,7 +616,7 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
     );
     const isVD = Boolean(
       d.isVD ||
-      (isLetra && !enBanco && (
+      (isLetra && !enBanco && !isDeCaminoAlBanco && (
         ubicacionRaw === "0" ||
         ubicacionRaw === "VD" ||
         ubicacionRaw.includes("CARTERA") ||
@@ -625,13 +631,13 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
     let displayCodigo = codigoUnico;
     if (isLetra) {
       const isNumOnly = /^\d+$/.test(codigoUnico);
-      const isBank = isNumOnly && codigoUnico.length >= 6 && (enBanco || codigoUnico.length >= 7);
+      const isBank = isNumOnly && (codigoUnico.length >= 7 || (codigoUnico.length >= 6 && enBanco));
       if (isBank) {
         displayCodigo = codigoUnico;
       } else if (codigoUnico && codigoUnico !== "0" && codigoUnico.toLowerCase() !== "null" && codigoUnico !== "—") {
-        displayCodigo = `Cart. ${codigoUnico}`;
+        displayCodigo = "1";
       } else {
-        displayCodigo = isVD ? "Falta Recoger" : "—";
+        displayCodigo = isVD ? "VD" : "—";
       }
     }
 
@@ -706,14 +712,14 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
       : [["—", "—", "Sin documentos pendientes", "", "—", "—", "—", "0.00", "0.00"]];
     colStyles = {
       0: { cellWidth: 19, halign: "left" },
-      1: { cellWidth: 21, halign: "left" },
-      2: { cellWidth: 21, halign: "left" },
+      1: { cellWidth: 20, halign: "left" },
+      2: { cellWidth: 20, halign: "left" },
       3: { cellWidth: 7, halign: "center", fontStyle: "bold" },
       4: { cellWidth: 44, halign: "left" },
-      5: { cellWidth: 20, halign: "left" },
-      6: { cellWidth: 20, halign: "right" },
-      7: { cellWidth: 19, halign: "right" },
-      8: { cellWidth: 19, halign: "right" },
+      5: { cellWidth: 24, halign: "left" },
+      6: { cellWidth: 19, halign: "right" },
+      7: { cellWidth: 18.5, halign: "right" },
+      8: { cellWidth: 18.5, halign: "right" },
     };
   } else if (hasPen) {
     bodyData = tableRows.length > 0
@@ -733,8 +739,8 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
       1: { cellWidth: 22, halign: "left" },
       2: { cellWidth: 22, halign: "left" },
       3: { cellWidth: 7, halign: "center", fontStyle: "bold" },
-      4: { cellWidth: 50, halign: "left" },
-      5: { cellWidth: 23, halign: "left" },
+      4: { cellWidth: 48, halign: "left" },
+      5: { cellWidth: 25, halign: "left" },
       6: { cellWidth: 23, halign: "right" },
       7: { cellWidth: 23, halign: "right" },
     };
@@ -757,8 +763,8 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
       1: { cellWidth: 22, halign: "left" },
       2: { cellWidth: 22, halign: "left" },
       3: { cellWidth: 7, halign: "center", fontStyle: "bold" },
-      4: { cellWidth: 50, halign: "left" },
-      5: { cellWidth: 23, halign: "left" },
+      4: { cellWidth: 48, halign: "left" },
+      5: { cellWidth: 25, halign: "left" },
       6: { cellWidth: 23, halign: "right" },
       7: { cellWidth: 23, halign: "right" },
     };

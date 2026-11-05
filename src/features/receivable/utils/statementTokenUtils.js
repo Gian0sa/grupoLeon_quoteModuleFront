@@ -119,19 +119,26 @@ export const buildStatementPayload = (debtData) => {
       numDocUpper.startsWith("LT-")
     );
     
-    // Identificar si la letra está en Cartera (Vía Directa = VD) o en el Banco
+    // Identificar si la letra está en Cartera (Vía Directa = VD), De Camino al Banco (1 / Cartilla) o en el Banco (3)
     const idUnico = (d.idUnico || d.ID_UNICO || d.letraSAP || "").trim();
     const ubicacionRaw = String(d.ubicacion || d.UBICACION || d.ESTADO || "").trim().toUpperCase();
     const condicion = String(d.condicionPago || d.CONDICION || "").toUpperCase();
-    
-    const enBanco = isLetra && Boolean(
+
+    const isDeCaminoAlBanco = isLetra && Boolean(
       ubicacionRaw === "1" ||
+      ubicacionRaw.includes("CAMINO") ||
+      ubicacionRaw.includes("TRANSITO") ||
+      ubicacionRaw.includes("TRÁNSITO")
+    );
+    
+    const enBanco = isLetra && !isDeCaminoAlBanco && Boolean(
+      ubicacionRaw === "3" ||
       ubicacionRaw.includes("BANCO") ||
       ubicacionRaw.includes("COBRANZA") ||
       condicion.includes("BANCO")
     );
 
-    const isVD = isLetra && !enBanco && Boolean(
+    const isVD = isLetra && !enBanco && !isDeCaminoAlBanco && Boolean(
       ubicacionRaw === "0" ||
       ubicacionRaw === "VD" ||
       ubicacionRaw.includes("CARTERA") ||
@@ -320,12 +327,24 @@ export const getLetraBadgeInfo = (doc) => {
   const loc = String(doc.ubicacion || doc.UBICACION || doc.ESTADO || "").trim().toUpperCase();
   const cond = String(doc.condicionPago || doc.CONDICION || doc.con || "").toUpperCase();
 
-  const isEnBanco = Boolean(
+  // 1 = De Camino al Banco (En Tránsito al banco con Cartilla física enviada, todavía sin N° Único)
+  const isDeCaminoAlBanco = Boolean(
     loc === "1" ||
-    loc.includes("BANCO") ||
-    loc.includes("COBRANZA") ||
-    cond.includes("BANCO")
+    loc.includes("CAMINO") ||
+    loc.includes("TRANSITO") ||
+    loc.includes("TRÁNSITO")
   );
+
+  // 3 o explícito BANCO / COBRANZA = Procesada en Banco (con N° Único Bancario asignado)
+  const isEnBanco = Boolean(
+    !isDeCaminoAlBanco && (
+      loc === "3" ||
+      loc.includes("BANCO") ||
+      loc.includes("COBRANZA") ||
+      cond.includes("BANCO")
+    )
+  );
+
   const isEnCustodia = Boolean(loc === "2" || loc.includes("CUSTODIA"));
   const isVDExplicit = Boolean(
     loc === "0" ||
@@ -338,7 +357,10 @@ export const getLetraBadgeInfo = (doc) => {
 
   let ubicacionLabel = "";
   let ubicacionColor = "blue";
-  if (isEnBanco) {
+  if (isDeCaminoAlBanco) {
+    ubicacionLabel = "De Camino al Banco";
+    ubicacionColor = "blue";
+  } else if (isEnBanco) {
     ubicacionLabel = "Banco";
     ubicacionColor = "purple";
   } else if (isEnCustodia) {
@@ -349,12 +371,14 @@ export const getLetraBadgeInfo = (doc) => {
     ubicacionColor = "blue";
   }
 
-  // Un número único bancario real suele tener al rededor de 7 dígitos (ej: >= 6 dígitos puramente numéricos)
-  // o está asignado explícitamente a banco.
+  // Un número único bancario real suele tener alrededor de 7-8 dígitos (ej: >= 7 dígitos numéricos o >= 6 si está formalmente en Banco/Custodia)
   const isNumericOnly = /^\d+$/.test(rawNum);
-  const isBankUnique = isNumericOnly && rawNum.length >= 6 && (isEnBanco || isEnCustodia || rawNum.length >= 7);
+  const isBankUnique = isNumericOnly && (rawNum.length >= 7 || (rawNum.length >= 6 && (isEnBanco || isEnCustodia)));
 
+  // ── ESTADO 2 / 3: En Banco (Procesada / Custodia) con N° Único Bancario ──
   if (isBankUnique) {
+    const uLabel = isEnCustodia ? "Custodia" : (ubicacionLabel || "Banco");
+    const uColor = isEnCustodia ? "teal" : "purple";
     return {
       type: "NUMERO_UNICO",
       badgeText: `🏛️ N° Único: ${rawNum}`,
@@ -363,43 +387,45 @@ export const getLetraBadgeInfo = (doc) => {
       colorScheme: "purple",
       bg: "purple.700",
       color: "white",
-      ubicacionLabel: isEnBanco ? "Banco" : isEnCustodia ? "Custodia" : ubicacionLabel,
-      ubicacionColor: isEnCustodia ? "teal" : "purple",
+      ubicacionLabel: uLabel,
+      ubicacionColor: uColor,
       isBankUnique: true,
       isVD: false,
     };
   }
 
-  // Si tiene un número pero es corto (<= 5 dígitos, como 4236) o proviene de Cartera/VD/Cartilla
+  // ── ESTADO 1: De Camino al Banco (En Tránsito con Cartilla) ──
   if (rawNum && rawNum !== "0" && rawNum.toLowerCase() !== "null" && rawNum !== "—") {
+    const uLabel = isVDExplicit ? "VD" : (ubicacionLabel || "De Camino al Banco");
+    const uColor = isVDExplicit ? "orange" : "blue";
     return {
       type: "CARTILLA",
       badgeText: `📋 Cartilla: ${rawNum}`,
       mobileTitle: "Cartilla:",
       valueText: rawNum,
-      colorScheme: "blue",
-      bg: "blue.700",
+      colorScheme: isVDExplicit ? "orange" : "blue",
+      bg: isVDExplicit ? "orange.700" : "blue.700",
       color: "white",
-      ubicacionLabel,
-      ubicacionColor,
+      ubicacionLabel: uLabel,
+      ubicacionColor: uColor,
       isBankUnique: false,
       isVD: isVDExplicit,
     };
   }
 
-  // Si no tiene número o está pendiente de recojo físico en Cartera/VD
+  // ── ESTADO 0: En Cartera / VD (Falta Recoger) ──
   return {
     type: "FALTA_RECOGER",
-    badgeText: isVDExplicit ? "📂 Falta Recoger (VD)" : "📂 Falta Recoger",
+    badgeText: "📂 VD / Falta Recoger",
     mobileTitle: "Estado Letra:",
-    valueText: isVDExplicit ? "Falta Recoger (VD)" : "Falta Recoger",
+    valueText: "VD / Falta Recoger",
     colorScheme: "orange",
     bg: "orange.600",
     color: "white",
-    ubicacionLabel,
-    ubicacionColor,
+    ubicacionLabel: "VD",
+    ubicacionColor: "orange",
     isBankUnique: false,
-    isVD: isVDExplicit,
+    isVD: true,
   };
 };
 
