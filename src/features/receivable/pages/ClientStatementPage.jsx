@@ -891,10 +891,10 @@ export function ClientStatementPage() {
                               return doc.uni ? `• Cód. Único: ${doc.uni}` : "";
                             }
                             const isNum = /^\d+$/.test(doc.uni || "");
-                            const isBank = isNum && (doc.uni || "").length >= 6 && (doc.enBanco || (doc.uni || "").length >= 7);
-                            if (isBank) return `• 🏛️ N° Único: ${doc.uni}`;
-                            if (doc.uni && doc.uni !== "0" && doc.uni.toLowerCase() !== "null") return `• 📋 Cartilla: ${doc.uni}`;
-                            return doc.isVD ? "• 📂 Falta Recoger (VD)" : "";
+                            const isBank = isNum && ((doc.uni || "").length >= 7 || ((doc.uni || "").length >= 6 && doc.enBanco));
+                            if (isBank) return `• 🏛️ N° Único: ${doc.uni} (Banco)`;
+                            if (doc.uni && doc.uni !== "0" && doc.uni.toLowerCase() !== "null") return "• Cód. Único: 1";
+                            return "• 📂 VD";
                           })()}
                         </Text>
                       </Box>
@@ -1025,10 +1025,10 @@ export function ClientStatementPage() {
                               return doc.uni || "—";
                             }
                             const isNum = /^\d+$/.test(doc.uni || "");
-                            const isBank = isNum && (doc.uni || "").length >= 6 && (doc.enBanco || (doc.uni || "").length >= 7);
+                            const isBank = isNum && ((doc.uni || "").length >= 7 || ((doc.uni || "").length >= 6 && doc.enBanco));
                             if (isBank) return doc.uni;
-                            if (doc.uni && doc.uni !== "0" && doc.uni.toLowerCase() !== "null") return `Cart. ${doc.uni}`;
-                            return doc.isVD ? "Falta Recoger" : "—";
+                            if (doc.uni && doc.uni !== "0" && doc.uni.toLowerCase() !== "null") return "1";
+                            return doc.isVD ? "VD" : "—";
                           })()}
                         </Td>
                         <Td px={2} py={1.5} fontSize="11px" textAlign="right" fontFamily="mono">

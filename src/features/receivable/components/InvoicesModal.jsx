@@ -794,7 +794,7 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
                               >
                                 {letraInfo.valueText}
                               </Badge>
-                              {letraInfo.ubicacionLabel && (
+                              {letraInfo.ubicacionLabel && letraInfo.type !== "FALTA_RECOGER" && (
                                 <Badge
                                   colorScheme={letraInfo.ubicacionColor}
                                   variant="subtle"
@@ -1012,7 +1012,7 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
                                 >
                                   {letraInfo.badgeText}
                                 </Badge>
-                                {letraInfo.ubicacionLabel && (
+                                {letraInfo.ubicacionLabel && letraInfo.type !== "FALTA_RECOGER" && (
                                   <Badge
                                     colorScheme={letraInfo.ubicacionColor}
                                     variant="subtle"
