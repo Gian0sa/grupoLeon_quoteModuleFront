@@ -210,7 +210,7 @@ export function SurfaceChartCard({ data, isCurrentMonth = true }) {
 
       {/* ── Gráfico de Olas Fluidas (AreaChart Natural) sin líneas rígidas ni puntos ── */}
       <Box w="full" h="150px" minH="150px" mt={1} mb={0}>
-        <ResponsiveContainer width="100%" height={150}>
+        <ResponsiveContainer width="100%" height={150} minWidth={100} minHeight={150} debounce={50}>
           <AreaChart data={waveData} margin={{ top: 10, right: 8, left: 8, bottom: 0 }}>
             <defs>
               {/* Gradiente Ola Verde Esmeralda (Ventas Hoy) */}

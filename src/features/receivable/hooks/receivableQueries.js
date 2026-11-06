@@ -6,8 +6,9 @@ export const useGetAccountsReceivable = ({ vendedor, cliente, clientecode, lastC
     queryKey: ["accountsReceivable", vendedor, cliente, clientecode, lastClient, skip],
     queryFn: () => getAccountsReceivable({ vendedor, cliente, clientecode, lastClient, skip }),
     enabled: Boolean(enabled),
-    staleTime: 30 * 1000, // 30 segundos de frescura para reflejar cambios rápidos
-    refetchOnMount: true, // Recargar datos frescos al entrar a la pantalla
-    refetchOnWindowFocus: false, // Evita disparar peticiones pesadas por eventos táctiles/focus en navegadores móviles (iOS/Chrome)
+    staleTime: 10 * 60 * 1000, // 10 minutos de frescura para navegación ultra fluida
+    gcTime: 30 * 60 * 1000, // 30 minutos de persistencia en caché de memoria
+    refetchOnMount: false, // Reutiliza datos si están en memoria en vez de recargar pesadamente
+    refetchOnWindowFocus: false, // Evita disparar peticiones pesadas por focus o toques de pantalla
   });
 };
