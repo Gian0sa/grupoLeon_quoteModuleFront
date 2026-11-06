@@ -173,6 +173,8 @@ export default function TrackingPage({ orden, data }) {
           fecha: new Date(seguimientoData.DELIVERY_DATE).toLocaleDateString(
             "es-ES"
           ),
+          monto: seguimientoData.MONTO_DELIVERYNOTE || 0,
+          montoUsd: seguimientoData.MONTO_DELIVERYNOTE_USD,
         },
       ]
     : [];
@@ -188,6 +190,7 @@ export default function TrackingPage({ orden, data }) {
             "es-ES"
           ),
           monto: seguimientoData.MONTO_INVOICE || 0,
+          montoUsd: seguimientoData.MONTO_INVOICE_USD,
         },
       ]
     : [];
@@ -441,11 +444,35 @@ export default function TrackingPage({ orden, data }) {
                       <Text fontSize="13px" color="gray.600">Fecha del documento:</Text>
                       <Text fontSize="13px" fontWeight="700" color="gray.800">{e.fecha}</Text>
                     </Flex>
-                    {(entregaDetalle?.total !== undefined || entregaDetalle?.totalUsd !== undefined) && (() => {
+                    {(entregaDetalle?.total !== undefined || entregaDetalle?.totalUsd !== undefined || e.monto !== undefined) && (() => {
                       const entregaCurrency = entregaDetalle?.currency || e.currency || resolvedCurrency;
-                      const entregaMonto = entregaDetalle?.total != null
-                        ? Number(entregaDetalle.total)
-                        : Number(entregaDetalle?.totalUsd || ordenData?.montoUsd || 0);
+                      const isEntregaUSD = String(entregaCurrency || "").toUpperCase().trim() === "USD" || String(entregaCurrency || "").includes("$");
+
+                      let entregaMonto = 0;
+                      if (isEntregaUSD) {
+                        if (entregaDetalle?.totalUsd != null && Number(entregaDetalle.totalUsd) > 0) {
+                          entregaMonto = Number(entregaDetalle.totalUsd);
+                        } else if (entregaDetalle?.totalFc != null && Number(entregaDetalle.totalFc) > 0) {
+                          entregaMonto = Number(entregaDetalle.totalFc);
+                        } else if (entregaDetalle?.total != null) {
+                          const rawTot = Number(entregaDetalle.total);
+                          entregaMonto = (rawTot > 0 && docRate > 1.2 && rawTot > (ordenData?.montoUsd || 0) * 1.5)
+                            ? Number((rawTot / docRate).toFixed(2))
+                            : rawTot;
+                        } else if (e.montoUsd != null && Number(e.montoUsd) > 0) {
+                          entregaMonto = Number(e.montoUsd);
+                        } else if (e.monto != null) {
+                          const rawM = Number(e.monto);
+                          entregaMonto = (rawM > 0 && docRate > 1.2 && rawM > (ordenData?.montoUsd || 0) * 1.5)
+                            ? Number((rawM / docRate).toFixed(2))
+                            : rawM;
+                        } else {
+                          entregaMonto = Number(ordenData?.montoUsd || 0);
+                        }
+                      } else {
+                        entregaMonto = Number(entregaDetalle?.total ?? entregaDetalle?.totalLocal ?? e.monto ?? 0);
+                      }
+
                       return (
                         <Flex justify="space-between" align="center">
                           <Text fontSize="13px" color="gray.600">Monto entregado:</Text>
@@ -505,9 +532,33 @@ export default function TrackingPage({ orden, data }) {
                     </Flex>
                     {(() => {
                       const facturaCurrency = facturaDetalle?.currency || f.currency || resolvedCurrency;
-                      const facturaMonto = facturaDetalle?.total != null
-                        ? Number(facturaDetalle.total)
-                        : Number(f.monto || 0);
+                      const isFacturaUSD = String(facturaCurrency || "").toUpperCase().trim() === "USD" || String(facturaCurrency || "").includes("$");
+
+                      let facturaMonto = 0;
+                      if (isFacturaUSD) {
+                        if (facturaDetalle?.totalUsd != null && Number(facturaDetalle.totalUsd) > 0) {
+                          facturaMonto = Number(facturaDetalle.totalUsd);
+                        } else if (facturaDetalle?.totalFc != null && Number(facturaDetalle.totalFc) > 0) {
+                          facturaMonto = Number(facturaDetalle.totalFc);
+                        } else if (facturaDetalle?.total != null) {
+                          const rawTot = Number(facturaDetalle.total);
+                          facturaMonto = (rawTot > 0 && docRate > 1.2 && rawTot > (ordenData?.montoUsd || 0) * 1.5)
+                            ? Number((rawTot / docRate).toFixed(2))
+                            : rawTot;
+                        } else if (f.montoUsd != null && Number(f.montoUsd) > 0) {
+                          facturaMonto = Number(f.montoUsd);
+                        } else if (f.monto != null) {
+                          const rawM = Number(f.monto);
+                          facturaMonto = (rawM > 0 && docRate > 1.2 && rawM > (ordenData?.montoUsd || 0) * 1.5)
+                            ? Number((rawM / docRate).toFixed(2))
+                            : rawM;
+                        } else {
+                          facturaMonto = Number(ordenData?.montoUsd || 0);
+                        }
+                      } else {
+                        facturaMonto = Number(facturaDetalle?.total ?? facturaDetalle?.totalLocal ?? f.monto ?? 0);
+                      }
+
                       return (
                         <Flex justify="space-between" align="center">
                           <Text fontSize="13px" color="gray.600">Monto facturado:</Text>
