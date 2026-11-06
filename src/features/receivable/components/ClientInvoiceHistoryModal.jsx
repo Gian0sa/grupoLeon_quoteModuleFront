@@ -77,9 +77,11 @@ export function ClientInvoiceHistoryModal({
       const res = await getClientInvoicesHistory(doc, { top: 20, skip: newSkip });
       setData((prev) => {
         if (!isAppend || !prev) return res;
+        const mergedInvoices = [...(prev.invoices || []), ...(res.invoices || [])];
         return {
           ...res,
-          invoices: [...(prev.invoices || []), ...(res.invoices || [])],
+          totalCount: mergedInvoices.length,
+          invoices: mergedInvoices,
         };
       });
     } catch (err) {
