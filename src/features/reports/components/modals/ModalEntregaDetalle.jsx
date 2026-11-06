@@ -41,7 +41,7 @@ export default function ModalEntregaDetalle({ isOpen, onClose, entregaId }) {
                 <Text><strong>Cliente:</strong> {data.cardName}</Text>
                 <Text><strong>Dirección:</strong> {data.address}</Text>
                 <Text><strong>Moneda:</strong> {data.currency}</Text>
-                <Text><strong>Total c. IGV:</strong> {data.total}</Text>
+                <Text><strong>Total c. IGV:</strong> {data.currency === "USD" ? "$" : "S/"} {Number(data.currency === "USD" && data.totalUsd ? data.totalUsd : data.total).toFixed(2)} {data.currency}</Text>
               </Box>
 
               <Box overflowX="auto">

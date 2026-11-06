@@ -116,7 +116,7 @@ export default function ModalFacturaDetalle({ isOpen, onClose, facturaId }) {
             <Text><strong>Dirección:</strong> {data.address}</Text>
             <Text><strong>Fecha:</strong> {new Date(data.docDate).toLocaleDateString()}</Text>
             <Text><strong>Moneda:</strong> {data.currency}</Text>
-            <Text><strong>Total:</strong> ${data.total.toFixed(2)}</Text>
+            <Text><strong>Total:</strong> {data.currency === "USD" ? "$" : "S/"} {Number(data.currency === "USD" && data.totalUsd ? data.totalUsd : data.total).toFixed(2)} {data.currency}</Text>
           </Box>
 
           <Box overflowX="auto">
