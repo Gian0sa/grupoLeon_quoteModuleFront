@@ -385,6 +385,3 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
 }
 
 export default ProductPriceListModal;
-
-export default ProductPriceListModal;
-}
