@@ -1,3 +1,4 @@
+import React from "react";
 import {
   Modal,
   ModalOverlay,
@@ -14,6 +15,7 @@ import {
   Divider,
   Image
 } from "@chakra-ui/react";
+import { Star, Check } from "lucide-react";
 import { useGetPromotions } from "../../quotes/hooks/queries/quotesQueries";
 
 export function ProductPriceListModal({ product, isOpen, onClose }) {
@@ -53,34 +55,29 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
   const regularPriceConIgv = hasDiscount ? precioDescConIgv : precioListaConIgv;
 
   const hasPromo = Boolean(promo && (Number(promo.promoPriceConIGV || promo.promoPrice || promo.U_US_PROMO || 0) > 0));
-  // En SAP, U_US_PROMO es el precio final CON IGV (ej. $51.79 USD)
+  // En SAP, U_US_PROMO es el precio final CON IGV
   const promoPriceConIgv = hasPromo
     ? Number(promo.promoPriceConIGV ?? promo.U_US_PROMO ?? (promo.promoPrice ? (promo.promoPrice * 1.18).toFixed(2) : 0))
     : null;
-  const promoPriceNeto = hasPromo
-    ? Number(promo.promoPriceNeto ?? promo.promoPrice ?? (promoPriceConIgv ? (promoPriceConIgv / 1.18).toFixed(2) : 0))
-    : null;
+
   const totalDiscountPct = hasPromo
     ? Number(promo.totalDiscountPct || (precioListaConIgv > 0 ? (((precioListaConIgv - promoPriceConIgv) / precioListaConIgv) * 100).toFixed(2) : 0))
     : Number(DESCUENTO_PCT || 0);
 
   // Desglose de Descuentos para productos en Promoción:
   const baseDiscountPct = Number(DESCUENTO_PCT > 0 ? DESCUENTO_PCT : (promo?.discountPct ? (totalDiscountPct - Number(promo.discountPct)).toFixed(2) : 43.3));
-  const extraDiscountPct = hasPromo
-    ? Number(promo?.discountPct || (totalDiscountPct > baseDiscountPct ? (totalDiscountPct - baseDiscountPct).toFixed(2) : 0))
-    : 0;
 
-  // Precio anterior regular con IGV (ej. $70.47):
+  // Precio normal/anterior regular con IGV:
   const anteriorPriceConIgv = Number(PRECIO_DESCUENTO_CON_IGV ?? (precioListaConIgv > 0 ? (precioListaConIgv * (1 - baseDiscountPct / 100)).toFixed(2) : regularPriceConIgv));
+  const effectiveRegularPrice = Number(anteriorPriceConIgv || regularPriceConIgv || 0);
 
-  // El Precio Final a cobrar es el de Oferta ($51.79 con IGV) si existe, sino el regular ($70.47 con IGV):
-  const finalPriceConIgv = hasPromo ? promoPriceConIgv : regularPriceConIgv;
-  const displayDiscount = baseDiscountPct;
-  const showDiscountBadge = displayDiscount > 0;
+  // Descuento total acumulado desde el precio de lista (ej. 59.0% DTO para que refleje el descuento total mayor):
+  const displayPromoDiscountPct = (hasPromo && precioListaConIgv > 0 && promoPriceConIgv > 0)
+    ? (((precioListaConIgv - promoPriceConIgv) / precioListaConIgv) * 100).toFixed(1)
+    : (Number(totalDiscountPct || promo?.totalDiscountPct || 0)).toFixed(1);
 
+  const showDiscountBadge = baseDiscountPct > 0;
   const currencySymbol = product.CURRENCY === "SOL" || product.MONEDA === "SOL" || product.DocCur === "SOL" ? "S/" : "$";
-  const priceDisplayStr = `${currencySymbol} ${promoPriceConIgv?.toFixed(2) || "0.00"}`;
-  const priceFontSize = priceDisplayStr.length > 9 ? 102 : priceDisplayStr.length > 7 ? 116 : 130;
 
   const formatNumber = (num, decimals = 0) =>
     num?.toLocaleString("es-PE", {
@@ -91,317 +88,320 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
   const getRotacionColor = (rotacion) => {
     switch (rotacion) {
       case "A":
-        return { bg: "green.800", color: "white" }; // Verde oscuro
+        return { bg: "#15803d", color: "white" };
       case "B":
-        return { bg: "green.400", color: "white" }; // Verde claro
+        return { bg: "#22c55e", color: "white" };
       case "C":
-        return { bg: "orange.400", color: "white" }; // Naranja
+        return { bg: "#f97316", color: "white" };
       case "D":
-        return { bg: "red.600", color: "white" }; // Rojo
+        return { bg: "#dc2626", color: "white" };
       case "N":
-        return { bg: "gray.700", color: "white" }; // Gris oscuro
+        return { bg: "#334155", color: "white" };
       default:
-        return { bg: "gray.400", color: "white" };
+        return { bg: "#94a3b8", color: "white" };
     }
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size={{ base: "full", sm: "xl", md: "2xl" }} isCentered>
-      <ModalOverlay />
-      <ModalContent maxW={{ base: "95vw", sm: "600px", md: "660px" }} borderRadius="2xl">
-        <ModalHeader
-          fontWeight="bold"
-          fontSize="lg"
-          color="gray.800"
-          lineHeight="1.2"
-          pb={2}
-          width="95%"
-        >
-          {SIGLA && (
-            <Badge colorScheme="teal" variant="subtle" px={2} py={0.5} borderRadius="md" fontSize="12px" fontWeight="800" mr={2} verticalAlign="middle">
-              {SIGLA}
-            </Badge>
-          )}
-          {promo && (
-            <Text as="span" fontSize="14px" mr={1.5} title="Artículo en oferta">
-              ⭐
+    <Modal isOpen={isOpen} onClose={onClose} size={{ base: "md", sm: "lg", md: "2xl", lg: "3xl" }} isCentered>
+      <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(3px)" />
+      <ModalContent
+        w={{ base: "92vw", sm: "88vw", md: "700px" }}
+        maxW="700px"
+        my="auto"
+        mx="auto"
+        borderRadius={{ base: "2xl", md: "3xl" }}
+        p={{ base: 4, sm: 5, md: 6 }}
+        boxShadow="2xl"
+        overflow="hidden"
+      >
+        {/* Cabecera: Sigla + Estrella + Nombre + Cerrar */}
+        <ModalHeader p={0} mb={{ base: 3, md: 4 }}>
+          <HStack spacing={2} align="center" wrap="wrap" pr={{ base: 8, md: 10 }}>
+            {SIGLA && (
+              <Badge
+                bg="#dcfce7"
+                color="#15803d"
+                px={2.5}
+                py="2px"
+                borderRadius="lg"
+                fontSize={{ base: "13px", md: "14px" }}
+                fontWeight="900"
+                letterSpacing="0.3px"
+              >
+                {SIGLA}
+              </Badge>
+            )}
+            {hasPromo && (
+              <Star size={20} fill="#facc15" color="#facc15" stroke="#facc15" />
+            )}
+            <Text fontSize={{ base: "15px", md: "18px" }} fontWeight="800" color="#0f172a" noOfLines={1} title={ITEM_NAME}>
+              {ITEM_NAME || SIGLA || "Producto sin descripción"}
             </Text>
-          )}
-          {ITEM_NAME || SIGLA || "Producto sin descripción"}
+          </HStack>
         </ModalHeader>
-        <ModalCloseButton />
-        <ModalBody pb={6}>
-          <VStack align="stretch" spacing={4}>
+        <ModalCloseButton top={{ base: 3, md: 4 }} right={{ base: 3, md: 4 }} size="md" borderRadius="full" />
 
-            {/* Información del producto + Cartilla En Promoción al lado derecho */}
+        <ModalBody p={0}>
+          <VStack align="stretch" spacing={{ base: 3.5, md: 3 }}>
+            {/* Sección superior: En móvil se apila verticalmente con buena altura, en desktop 2 columnas lado a lado */}
             <Flex
-              direction={{ base: "column", sm: "row" }}
+              direction={{ base: "column", md: "row" }}
               justify="space-between"
-              align="center"
-              gap={{ base: 5, sm: 4 }}
+              align={{ base: "stretch", md: "center" }}
+              gap={{ base: 3.5, md: 5 }}
             >
-              {/* Atributos del producto con letras más grandes (16px), negrita y alineación perfecta */}
-              <VStack spacing={2.5} align="stretch" flex="1" minW={{ sm: "185px" }}>
-                {/* Rotacion */}
-                {ROTACION && (
-                  <HStack align="center" spacing={2.5}>
-                    <Text
-                      fontSize="16px"
-                      color="green.800"
-                      fontWeight="800"
-                      minW="80px"
-                    >
-                      Clasif:
-                    </Text>
+              {/* Columna Izquierda: Atributos con líneas divisorias */}
+              <VStack spacing={0} align="stretch" flex="1" w="full" minW="0">
+                {/* Clasificación */}
+                <HStack spacing={3} py={{ base: "6px", md: "7px" }} borderBottom="1px solid #e2e8f0" align="center">
+                  <Text fontSize="14px" fontWeight="600" color="#1e293b" minW="105px" whiteSpace="nowrap">
+                    Clasificación:
+                  </Text>
+                  <Badge
+                    bg={getRotacionColor(ROTACION || "D").bg}
+                    color="white"
+                    fontSize="13px"
+                    fontWeight="900"
+                    px={3.5}
+                    py={0.5}
+                    borderRadius="full"
+                  >
+                    {ROTACION || "D"}
+                  </Badge>
+                </HStack>
 
-                    <Badge
-                      bg={getRotacionColor(ROTACION).bg}
-                      color={getRotacionColor(ROTACION).color}
-                      fontSize="13px"
-                      px={3.5}
-                      py={0.8}
-                      borderRadius="full"
-                      fontWeight="800"
-                    >
-                      {ROTACION}
-                    </Badge>
-                  </HStack>
-                )}
-
-                {/* Sigla */}
-                {SIGLA && (
-                  <HStack align="center" spacing={2.5}>
-                    <Text fontSize="16px" color="green.800" fontWeight="800" minW="80px">
-                      Sigla:
-                    </Text>
-                    <Text fontSize="16px" color="gray.900" fontWeight="700">
-                      {SIGLA}
-                    </Text>
-                  </HStack>
-                )}
-
-                {ITEM_CODE && (
-                  <HStack align="center" spacing={2.5}>
-                    <Text fontSize="16px" color="green.800" fontWeight="800" minW="80px">
-                      Codigo:
-                    </Text>
-                    <Text fontSize="16px" color="gray.900" fontWeight="700">
-                      {ITEM_CODE}
-                    </Text>
-                  </HStack>
-                )}
+                {/* Código */}
+                <HStack spacing={3} py={{ base: "6px", md: "7px" }} borderBottom="1px solid #e2e8f0" align="center">
+                  <Text fontSize="14px" fontWeight="600" color="#1e293b" minW="105px" whiteSpace="nowrap">
+                    Código:
+                  </Text>
+                  <Text fontSize="14.5px" fontWeight="800" color="#0f172a" whiteSpace="nowrap">
+                    {ITEM_CODE || "—"}
+                  </Text>
+                </HStack>
 
                 {/* Marca */}
-                <HStack align="center" spacing={2.5}>
-                  <Text fontSize="16px" color="green.800" fontWeight="800" minW="80px">
+                <HStack spacing={3} py={{ base: "6px", md: "7px" }} borderBottom="1px solid #e2e8f0" align="center">
+                  <Text fontSize="14px" fontWeight="600" color="#1e293b" minW="105px" whiteSpace="nowrap">
                     Marca:
                   </Text>
-                  <Text fontSize="16px" color="gray.900" fontWeight="700">
+                  <Text fontSize="14.5px" fontWeight="800" color="#0f172a" textTransform="uppercase" whiteSpace="nowrap">
                     {MARCA || "Sin marca"}
                   </Text>
                 </HStack>
 
                 {/* Tipo */}
-                {TIPO && (
-                  <HStack align="center" spacing={2.5}>
-                    <Text fontSize="16px" color="green.800" fontWeight="800" minW="80px">
-                      Tipo:
-                    </Text>
-                    <Text fontSize="16px" color="gray.900" fontWeight="700">
-                      {TIPO}
-                    </Text>
-                  </HStack>
-                )}
-
-                {/* Subtipo */}
-                {SUBTIPO && (
-                  <HStack align="center" spacing={2.5}>
-                    <Text fontSize="16px" color="green.800" fontWeight="800" minW="80px">
-                      Subtipo:
-                    </Text>
-                    <Text fontSize="16px" color="gray.900" fontWeight="700">
-                      {SUBTIPO}
-                    </Text>
-                  </HStack>
-                )}
+                <HStack spacing={3} py={{ base: "6px", md: "7px" }} align="center">
+                  <Text fontSize="14px" fontWeight="600" color="#1e293b" minW="105px" whiteSpace="nowrap">
+                    Tipo:
+                  </Text>
+                  <Text fontSize="14.5px" fontWeight="800" color="#0f172a" whiteSpace="nowrap">
+                    {TIPO || SUBTIPO || "Bujías"}
+                  </Text>
+                </HStack>
               </VStack>
 
-              {/* Cartilla de Promoción estilo limpio con bujía, precio grande y tag PRECIO FINAL */}
-              {hasPromo && promoPriceConIgv && (
-                <Box
-                  position="relative"
-                  bg="#eaf6ee"
-                  border="2.5px solid #235d43"
-                  borderRadius="24px"
-                  pt={5}
-                  pb={3}
-                  px={3.5}
-                  w={{ base: "100%", sm: "275px", md: "295px" }}
-                  boxShadow="0 4px 14px rgba(35, 93, 67, 0.12)"
-                  transition="transform 0.2s ease"
-                  _hover={{ transform: "scale(1.02)" }}
-                  flexShrink={0}
-                  mt={{ base: 3, sm: 0 }}
-                >
-                  {/* Píldora superior centrada: EN PROMOCIÓN */}
+              {/* Cartilla Verde con Bujía y Precio */}
+              <Box
+                position="relative"
+                bg="#eaf6ee"
+                border="2px solid #14532d"
+                borderRadius="2xl"
+                pt={{ base: hasPromo ? "18px" : "14px", md: hasPromo ? "20px" : "16px" }}
+                pb="12px"
+                px="16px"
+                w={{ base: "100%", md: "315px" }}
+                flexShrink={0}
+              >
+                {/* Píldora superior centrada: EN PROMOCIÓN */}
+                {hasPromo && (
                   <Box
                     position="absolute"
-                    top="-13px"
+                    top="-12px"
                     left="50%"
                     transform="translateX(-50%)"
-                    bg="#235d43"
+                    bg="#14532d"
                     color="white"
                     fontSize="11.5px"
-                    fontWeight="800"
-                    px={4}
+                    fontWeight="900"
+                    px={3.5}
                     py="2px"
                     borderRadius="full"
-                    letterSpacing="0.5px"
-                    boxShadow="0 2px 4px rgba(0,0,0,0.15)"
+                    letterSpacing="0.4px"
                     whiteSpace="nowrap"
+                    boxShadow="sm"
                   >
                     EN PROMOCIÓN
                   </Box>
+                )}
 
-                  {/* Fila central: Ícono Bujía + Precio Gigante + Tag PRECIO FINAL */}
-                  <Flex justify="center" align="center" gap={2.5} mt={1}>
-                    {/* Ícono bujía + tuerca */}
-                    <Image
-                      src="/assets/spark_plug_icon.png"
-                      alt="Bujía y tuerca"
-                      w="38px"
-                      h="auto"
-                      flexShrink={0}
-                    />
+                {/* Fila central: Ícono Bujía + Precio + Badge lateral */}
+                <HStack spacing={3} justify="center" align="center" wrap="nowrap" mt={hasPromo ? 1 : 0}>
+                  <Image
+                    src="/assets/spark_plug_icon.png"
+                    alt="Bujía y tuerca"
+                    w={{ base: "32px", md: "36px" }}
+                    h="auto"
+                    flexShrink={0}
+                  />
 
-                    {/* Precio destacado */}
-                    <Text
-                      fontSize={{ base: "30px", sm: "34px" }}
-                      fontWeight="900"
-                      color="#192e24"
-                      lineHeight="1"
-                      letterSpacing="-0.03em"
-                    >
-                      $ {promoPriceConIgv?.toFixed(2)}
-                    </Text>
-
-                    {/* Tag PRECIO FINAL con flecha izquierda */}
-                    <Box
-                      position="relative"
-                      bg="#2d8557"
-                      color="white"
-                      fontSize="10px"
-                      fontWeight="800"
-                      letterSpacing="0.4px"
-                      px={2}
-                      py="3px"
-                      borderRadius="md"
-                      display="inline-flex"
-                      alignItems="center"
-                      flexShrink={0}
-                      boxShadow="0 1px 3px rgba(0,0,0,0.12)"
-                    >
-                      {/* Flecha triangular apuntando hacia el precio */}
-                      <Box
-                        position="absolute"
-                        left="-5px"
-                        top="50%"
-                        transform="translateY(-50%)"
-                        w="0"
-                        h="0"
-                        borderTop="5px solid transparent"
-                        borderBottom="5px solid transparent"
-                        borderRight="6px solid #2d8557"
-                      />
-                      PRECIO FINAL
-                    </Box>
-                  </Flex>
-
-                  {/* Texto inferior explicativo */}
                   <Text
-                    fontSize="10.5px"
-                    fontWeight="600"
-                    color="#4b6d5b"
-                    textAlign="center"
-                    mt={2}
+                    fontSize={{ base: "32px", md: "38px" }}
+                    fontWeight="900"
+                    color="#0f291e"
+                    lineHeight="1"
+                    letterSpacing="-0.02em"
+                    whiteSpace="nowrap"
                   >
-                    Aplica sobre precio regular (Inc. IGV)
+                    {currencySymbol}&nbsp;{(hasPromo ? promoPriceConIgv : regularPriceConIgv)?.toFixed(2)}
                   </Text>
-                </Box>
+
+                  {hasPromo ? (
+                    <Badge
+                      bg="#eab308"
+                      color="white"
+                      fontSize="13px"
+                      fontWeight="900"
+                      px={2.5}
+                      py={1}
+                      borderRadius="lg"
+                      letterSpacing="0.3px"
+                      whiteSpace="nowrap"
+                      textShadow="0px 1px 2px rgba(0,0,0,0.35)"
+                      boxShadow="sm"
+                      flexShrink={0}
+                    >
+                      -{displayPromoDiscountPct}%
+                    </Badge>
+                  ) : (
+                    <VStack
+                      spacing={0}
+                      bg="#14532d"
+                      color="white"
+                      px={2.5}
+                      py={1}
+                      borderRadius="lg"
+                      align="center"
+                      justify="center"
+                      flexShrink={0}
+                    >
+                      <Text fontSize="9.5px" fontWeight="900" lineHeight="1.1" letterSpacing="0.3px" whiteSpace="nowrap">
+                        PRECIO
+                      </Text>
+                      <Text fontSize="9.5px" fontWeight="900" lineHeight="1.1" letterSpacing="0.3px" whiteSpace="nowrap">
+                        FINAL
+                      </Text>
+                    </VStack>
+                  )}
+                </HStack>
+
+                {/* Subtexto */}
+                <Text
+                  fontSize="11.5px"
+                  fontWeight="600"
+                  color="#1e3a2b"
+                  textAlign="center"
+                  mt={2}
+                  whiteSpace="nowrap"
+                >
+                  {hasPromo ? "Aplica sobre precio normal (Inc. IGV)" : "Precio normal (Inc. IGV)"}
+                </Text>
+              </Box>
+            </Flex>
+
+            {/* Barra Central: Precios (Sin scroll horizontal, responsivo y ordenado) */}
+            <Divider borderColor="#e2e8f0" />
+
+            <Flex
+              direction={{ base: "column", md: "row" }}
+              align={{ base: "stretch", md: "center" }}
+              justify={{ base: "flex-start", md: hasPromo ? "space-between" : "flex-start" }}
+              gap={{ base: 2, md: 4 }}
+              py={{ base: 1, md: 1 }}
+              w="full"
+            >
+              {/* Precio listado + Descuento lista */}
+              <HStack spacing={2} align="center" justify={{ base: "space-between", md: "flex-start" }}>
+                <HStack spacing={2} align="center">
+                  <Text fontSize={{ base: "13.5px", md: "14px" }} fontWeight="600" color="#334155" whiteSpace="nowrap">
+                    Precio de lista:
+                  </Text>
+                  <Text fontSize={{ base: "14.5px", md: "15px" }} fontWeight="800" color="#0f172a" whiteSpace="nowrap">
+                    {currencySymbol}&nbsp;{precioListaConIgv?.toFixed(2) || "0.00"}
+                  </Text>
+                </HStack>
+                {showDiscountBadge && (
+                  <Badge
+                    bg="#7f1d1d"
+                    color="white"
+                    fontSize={{ base: "11px", md: "12px" }}
+                    fontWeight="800"
+                    px={2.5}
+                    py="1.5px"
+                    borderRadius="full"
+                    textTransform="none"
+                    whiteSpace="nowrap"
+                  >
+                    Descuento lista: {baseDiscountPct}%
+                  </Badge>
+                )}
+              </HStack>
+
+              {/* Precio normal (solo si tiene promoción) */}
+              {hasPromo && (
+                <HStack spacing={2} align="center" justify={{ base: "flex-start", md: "flex-start" }}>
+                  <Box h="16px" w="1px" bg="#cbd5e1" display={{ base: "none", md: "block" }} />
+                  <Text fontSize={{ base: "13.5px", md: "14px" }} fontWeight="600" color="#334155" whiteSpace="nowrap">
+                    Precio normal:
+                  </Text>
+                  <Text fontSize={{ base: "14.5px", md: "15px" }} fontWeight="800" color="#0f172a" whiteSpace="nowrap">
+                    {currencySymbol}&nbsp;{(anteriorPriceConIgv || regularPriceConIgv)?.toFixed(2) || "0.00"}
+                  </Text>
+                  <Text fontSize={{ base: "12px", md: "13px" }} fontWeight="600" color="#475569" whiteSpace="nowrap">
+                    (Inc. IGV)
+                  </Text>
+                </HStack>
               )}
             </Flex>
 
-            <Divider />
+            <Divider borderColor="#e2e8f0" />
 
-            {/* Precios */}
-            <VStack spacing={2} align="stretch">
-              {/* Precio Listado y Descuento */}
-              <Flex align="center" justify="space-between" gap={2}>
-                <Box
-                  bg="blue.200"
-                  fontSize="xs"
-                  px={4}
-                  py={2}
-                  borderRadius="full"
-                  fontWeight="bold"
-                  color="gray.900"
-                >
-                  Precio Listado: $ {precioListaConIgv?.toFixed(2) || "0.00"}
-                </Box>
-                {showDiscountBadge && (
-                  <Box
-                    bg="red.800"
-                    color="white"
-                    fontSize="xs"
-                    px={4}
-                    py={2}
-                    borderRadius="full"
-                    fontWeight="bold"
-                  >
-                    Descuento: {baseDiscountPct}%
-                  </Box>
-                )}
-              </Flex>
-
-              {/* Precio Normal / Final (Diseño original completo) */}
-              <Box
-                bg="green.700"
-                color="white"
-                fontSize="lg"
-                fontWeight="extrabold"
-                py={3}
-                px={4}
-                borderRadius="full"
-                textAlign="center"
-                boxShadow="sm"
-              >
-                {hasPromo ? "Precio Normal" : "Precio Final"}: $ {(anteriorPriceConIgv || regularPriceConIgv)?.toFixed(2) || "0.00"} (Inc. IGV)
-              </Box>
-            </VStack>
-
-            {/* Stock */}
+            {/* Barra Inferior: Stock disponible */}
             <Box
-              bg="gray.50"
-              px={2}
-              py={2}
-              borderRadius="md"
-              border="1px"
-              borderColor="gray.200"
+              bg="#eaf6ee"
+              borderRadius="xl"
+              py={{ base: 2, md: 2.5 }}
+              px={3.5}
+              border="1px solid #d1fae5"
             >
-              <HStack justify="space-between" align="center">
-                <Text fontSize="xs" color="green.600" fontWeight="bold">
-                  Stock:
+              <HStack spacing={3} align="center">
+                <Flex
+                  w="24px"
+                  h="24px"
+                  borderRadius="full"
+                  bg="#15803d"
+                  color="white"
+                  align="center"
+                  justify="center"
+                  flexShrink={0}
+                >
+                  <Check size={15} strokeWidth={3} />
+                </Flex>
+                <Text fontSize="15px" fontWeight="800" color="#0f291e" whiteSpace="nowrap">
+                  Stock disponible:
                 </Text>
                 <Badge
-                  colorScheme={STOCK_DISPONIBLE === 0 ? "red" : STOCK_DISPONIBLE <= 5 ? "yellow" : "green"}
-                  variant="solid"
-                  fontSize="xs"
-                  px={2}
-                  py={1}
-                  borderRadius="md"
-                  fontWeight="bold"
+                  bg="#14532d"
+                  color="white"
+                  fontSize="13px"
+                  fontWeight="900"
+                  px={3.5}
+                  py={0.5}
+                  borderRadius="lg"
+                  whiteSpace="nowrap"
                 >
-                  {formatNumber(STOCK_DISPONIBLE)} und.
+                  {formatNumber(STOCK_DISPONIBLE)} UND.
                 </Badge>
               </HStack>
             </Box>
@@ -411,3 +411,5 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
     </Modal>
   );
 }
+
+export default ProductPriceListModal;
