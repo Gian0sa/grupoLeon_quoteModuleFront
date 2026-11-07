@@ -57,8 +57,8 @@ export function ProductPriceListCard({ product, tipoPrecio }) {
   const totalDiscountPct = promo
     ? Number(promo.totalDiscountPct || (precioListaConIgv > 0 && promoPriceConIgv ? (((precioListaConIgv - promoPriceConIgv) / precioListaConIgv) * 100).toFixed(2) : DESCUENTO_PCT))
     : Number(DESCUENTO_PCT || 0);
-  const displayDiscount = promo ? totalDiscountPct : Number(DESCUENTO_PCT || 0);
-  const showDiscountBadge = displayDiscount > 0;
+  const baseDiscountPct = Number(DESCUENTO_PCT > 0 ? DESCUENTO_PCT : (promo?.discountPct ? (totalDiscountPct - Number(promo.discountPct)).toFixed(2) : 43.3));
+  const showDiscountBadge = baseDiscountPct > 0;
 
   const priceColorMap = {
     CONTADO: { bg: "blue.50", color: "blue.700", borderColor: "blue.200", label: "Precio contado" },
@@ -142,7 +142,12 @@ export function ProductPriceListCard({ product, tipoPrecio }) {
               </Badge>
               {showDiscountBadge && (
                 <Badge colorScheme="orange" fontSize="10px" fontWeight="800">
-                  -{displayDiscount}% DESC
+                  -{baseDiscountPct}% DESC
+                </Badge>
+              )}
+              {promo && (
+                <Badge bg="yellow.400" color="yellow.950" fontSize="10px" fontWeight="900" borderRadius="md" px={1.5}>
+                  🔥 PROMO
                 </Badge>
               )}
             </HStack>

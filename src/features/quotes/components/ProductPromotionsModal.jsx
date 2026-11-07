@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   Modal,
   ModalOverlay,
@@ -26,6 +26,7 @@ import {
   InputGroup,
   InputLeftElement,
   Tooltip,
+  Select,
 } from "@chakra-ui/react";
 import {
   Tag,
@@ -59,6 +60,47 @@ export function ProductPromotionsModal({ isOpen, onClose }) {
       return code.includes(cleanTerm) || sigla.includes(cleanTerm) || name.includes(cleanTerm);
     });
   }, [promotions, searchTerm]);
+
+  // Paginación
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  // Al cambiar la búsqueda o datos, volver a página 1
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, promotions]);
+
+  const totalPages = Math.ceil(filteredPromotions.length / itemsPerPage) || 1;
+
+  const paginatedPromotions = useMemo(() => {
+    if (itemsPerPage >= filteredPromotions.length) return filteredPromotions;
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredPromotions.slice(start, start + itemsPerPage);
+  }, [filteredPromotions, currentPage, itemsPerPage]);
+
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxVisible = 5;
+    if (totalPages <= maxVisible) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      let start = Math.max(1, currentPage - 2);
+      let end = Math.min(totalPages, start + maxVisible - 1);
+      if (end - start < maxVisible - 1) {
+        start = Math.max(1, end - maxVisible + 1);
+      }
+      if (start > 1) {
+        pages.push(1);
+        if (start > 2) pages.push("...");
+      }
+      for (let i = start; i <= end; i++) pages.push(i);
+      if (end < totalPages) {
+        if (end < totalPages - 1) pages.push("...");
+        pages.push(totalPages);
+      }
+    }
+    return pages;
+  };
 
   // Recarga forzada desde SAP Service Layer
   const handleRefreshFromSap = async () => {
@@ -261,7 +303,7 @@ export function ProductPromotionsModal({ isOpen, onClose }) {
                           </Tr>
                         </Thead>
                         <Tbody fontSize="xs">
-                          {filteredPromotions.map((p) => {
+                          {paginatedPromotions.map((p) => {
                             const pLista = Number(p.listPrice || 0);
                             const pPromo = Number(p.promoPrice || 0);
                             const pListaConIgv = Number(p.listPriceConIGV || (pLista * 1.18).toFixed(2));
@@ -366,7 +408,7 @@ export function ProductPromotionsModal({ isOpen, onClose }) {
 
                   {/* Vista Móvil (< md) */}
                   <VStack spacing={3} align="stretch" display={{ base: "flex", md: "none" }} p={3}>
-                    {filteredPromotions.map((p) => {
+                    {paginatedPromotions.map((p) => {
                       const pLista = Number(p.listPrice || 0);
                       const pPromo = Number(p.promoPrice || 0);
                       const pListaConIgv = Number(p.listPriceConIGV || (pLista * 1.18).toFixed(2));
@@ -419,6 +461,93 @@ export function ProductPromotionsModal({ isOpen, onClose }) {
                       );
                     })}
                   </VStack>
+
+                  {/* ── BARRA DE PAGINACIÓN ── */}
+                  {filteredPromotions.length > 0 && (
+                    <Flex
+                      direction={{ base: "column", sm: "row" }}
+                      justify="space-between"
+                      align="center"
+                      py={3}
+                      px={4}
+                      bg="#f8fafc"
+                      borderTop="1.5px solid #e2e8f0"
+                      gap={3}
+                    >
+                      <HStack spacing={2} align="center" flexWrap="wrap">
+                        <Text fontSize="xs" color="gray.600" fontWeight="700">
+                          Mostrando {Math.min((currentPage - 1) * itemsPerPage + 1, filteredPromotions.length)} - {Math.min(currentPage * itemsPerPage, filteredPromotions.length)} de {filteredPromotions.length} ofertas
+                        </Text>
+                        <Select
+                          size="xs"
+                          w="110px"
+                          borderRadius="lg"
+                          value={itemsPerPage}
+                          onChange={(e) => {
+                            setItemsPerPage(Number(e.target.value));
+                            setCurrentPage(1);
+                          }}
+                          bg="white"
+                          fontWeight="700"
+                          borderColor="#cbd5e1"
+                        >
+                          <option value={10}>10 por pág.</option>
+                          <option value={20}>20 por pág.</option>
+                          <option value={50}>50 por pág.</option>
+                          <option value={filteredPromotions.length}>Todas ({filteredPromotions.length})</option>
+                        </Select>
+                      </HStack>
+
+                      {totalPages > 1 && (
+                        <HStack spacing={1.5} align="center" flexWrap="wrap">
+                          <Button
+                            size="xs"
+                            variant="outline"
+                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                            isDisabled={currentPage === 1}
+                            borderRadius="md"
+                            fontWeight="800"
+                            h="28px"
+                            px={2.5}
+                          >
+                            Anterior
+                          </Button>
+
+                          {getPageNumbers().map((p, idx) => (
+                            <Button
+                              key={idx}
+                              size="xs"
+                              variant={p === currentPage ? "solid" : "ghost"}
+                              bg={p === currentPage ? "#0e572b" : "transparent"}
+                              color={p === currentPage ? "white" : "gray.700"}
+                              _hover={{ bg: p === currentPage ? "#064e3b" : "gray.100" }}
+                              onClick={() => typeof p === "number" && setCurrentPage(p)}
+                              isDisabled={typeof p !== "number"}
+                              borderRadius="md"
+                              fontWeight="800"
+                              minW="28px"
+                              h="28px"
+                            >
+                              {p}
+                            </Button>
+                          ))}
+
+                          <Button
+                            size="xs"
+                            variant="outline"
+                            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                            isDisabled={currentPage === totalPages}
+                            borderRadius="md"
+                            fontWeight="800"
+                            h="28px"
+                            px={2.5}
+                          >
+                            Siguiente
+                          </Button>
+                        </HStack>
+                      )}
+                    </Flex>
+                  )}
                 </>
               )}
             </Box>
