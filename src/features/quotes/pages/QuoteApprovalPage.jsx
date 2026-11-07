@@ -2362,7 +2362,7 @@ export function QuoteApprovalPage() {
     if (!stack) {
       return (
         <Flex gap={2} justify="flex-end" align="center" wrap="nowrap">
-          {/* Si es Borrador: Editar y Borrar */}
+          {/* Si es Borrador: Editar, Compartir y Borrar */}
           {isDraft ? (
             <>
               <Button
@@ -2381,6 +2381,54 @@ export function QuoteApprovalPage() {
               >
                 Editar
               </Button>
+
+              {/* Botón Compartir para Borrador (Talonario PDF y WhatsApp) */}
+              <Menu isLazy placement="bottom-end">
+                <MenuButton
+                  as={Button}
+                  size="xs"
+                  h="30px"
+                  variant="outline"
+                  borderColor="#bbf7d0"
+                  color="#15803d"
+                  bg="#f0fdf4"
+                  _hover={{ bg: "#dcfce7", borderColor: "#86efac", transform: "translateY(-1px)" }}
+                  leftIcon={<Share2 className="w-3.5 h-3.5 text-emerald-600" />}
+                  rightIcon={<ChevronDown className="w-3 h-3 text-emerald-600" />}
+                  fontWeight="700"
+                  borderRadius="lg"
+                  px={2}
+                >
+                  Compartir
+                </MenuButton>
+                <MenuList minW="190px" py={1.5} borderRadius="xl" boxShadow="xl" borderColor="gray.200" zIndex={30}>
+                  <MenuItem
+                    icon={<FileText className="w-4 h-4 text-teal-600" />}
+                    onClick={() => {
+                      markAsViewedByAdmin(q);
+                      setPdfQuote(q);
+                    }}
+                    fontSize="xs"
+                    fontWeight="700"
+                    py={2}
+                  >
+                    Ver Talonario (PDF)
+                  </MenuItem>
+                  <MenuItem
+                    icon={<MessageSquare className="w-4 h-4 text-green-600" />}
+                    onClick={() => {
+                      markAsViewedByAdmin(q);
+                      setWhatsAppQuote(q);
+                    }}
+                    fontSize="xs"
+                    fontWeight="700"
+                    py={2}
+                  >
+                    Enviar por WhatsApp
+                  </MenuItem>
+                </MenuList>
+              </Menu>
+
               <IconButton
                 size="xs"
                 h="30px"
@@ -2625,7 +2673,7 @@ export function QuoteApprovalPage() {
     return (
       <VStack spacing={2} align="stretch" w="full">
         {isDraft ? (
-          <Grid templateColumns="1fr auto" gap={2} w="full">
+          <Grid templateColumns="1fr 1fr auto" gap={2} w="full">
             <Button
               size="sm"
               h="40px"
@@ -2639,6 +2687,53 @@ export function QuoteApprovalPage() {
             >
               Editar Borrador
             </Button>
+
+            {/* Botón Compartir para Borrador Mobile (Talonario PDF y WhatsApp) */}
+            <Menu isLazy placement="bottom-end">
+              <MenuButton
+                as={Button}
+                size="sm"
+                h="40px"
+                variant="outline"
+                borderColor="#bbf7d0"
+                color="#15803d"
+                bg="#f0fdf4"
+                _hover={{ bg: "#dcfce7", borderColor: "#86efac" }}
+                leftIcon={<Share2 className="w-4 h-4 text-emerald-600" />}
+                rightIcon={<ChevronDown className="w-3.5 h-3.5 text-emerald-600" />}
+                fontWeight="800"
+                borderRadius="xl"
+              >
+                Compartir
+              </MenuButton>
+              <MenuList minW="200px" py={1.5} borderRadius="xl" boxShadow="xl" borderColor="gray.200" zIndex={30}>
+                <MenuItem
+                  icon={<FileText className="w-4 h-4 text-teal-600" />}
+                  onClick={() => {
+                    markAsViewedByAdmin(q);
+                    setPdfQuote(q);
+                  }}
+                  fontSize="sm"
+                  fontWeight="700"
+                  py={2.5}
+                >
+                  Ver Talonario (PDF)
+                </MenuItem>
+                <MenuItem
+                  icon={<MessageSquare className="w-4 h-4 text-green-600" />}
+                  onClick={() => {
+                    markAsViewedByAdmin(q);
+                    setWhatsAppQuote(q);
+                  }}
+                  fontSize="sm"
+                  fontWeight="700"
+                  py={2.5}
+                >
+                  Enviar por WhatsApp
+                </MenuItem>
+              </MenuList>
+            </Menu>
+
             <IconButton
               size="sm"
               h="40px"
@@ -2988,7 +3083,7 @@ export function QuoteApprovalPage() {
                 <Th py={3.5} px={3} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" minW="95px" whiteSpace="nowrap">FECHA</Th>
                 <Th py={3.5} px={3} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="right" minW="110px" whiteSpace="nowrap">TOTAL (USD)</Th>
                 <Th py={3.5} px={4} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="center" minW="210px" whiteSpace="nowrap">ESTADO DE APROBACIÓN</Th>
-                <Th py={3.5} px={4} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="right" minW="180px" whiteSpace="nowrap">ACCIONES DISPONIBLES</Th>
+                <Th py={3.5} px={4} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="right" minW="220px" whiteSpace="nowrap">ACCIONES DISPONIBLES</Th>
               </Tr>
             </Thead>
             <Tbody>

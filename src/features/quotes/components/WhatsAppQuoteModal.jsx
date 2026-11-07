@@ -153,6 +153,28 @@ export function WhatsAppQuoteModal({ isOpen, onClose, quote }) {
     return calc.grandTotalSOL || Number((totalUSD * tcVal).toFixed(2));
   }, [quote, calc, totalUSD, tcVal]);
 
+  // Moneda del Documento (Soles o Dólares)
+  const isSol = useMemo(() => {
+    if (!quote) return false;
+    const rawCur = String(
+      quote.DocCurrency ||
+      quote.currency ||
+      quote.totals?.currency ||
+      quote.docCurrency ||
+      quote.moneda ||
+      ""
+    ).toUpperCase();
+    return rawCur === "SOL" || rawCur === "PEN" || rawCur === "SOLES" || rawCur === "S/.";
+  }, [quote]);
+
+  // Total formateado según la moneda original de cotización (sin conversiones cruzadas no deseadas)
+  const totalFormatted = useMemo(() => {
+    if (isSol) {
+      return `S/ ${totalPEN.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+    return `$ ${totalUSD.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`;
+  }, [isSol, totalUSD, totalPEN]);
+
   // Estado del teléfono y origen
   const [phoneNumber, setPhoneNumber] = useState("");
   const [sapOfficialPhone, setSapOfficialPhone] = useState("");
@@ -298,16 +320,13 @@ export function WhatsAppQuoteModal({ isOpen, onClose, quote }) {
       itemsText = `\n📦 *Detalle de Artículos:*\n${lines.join("\n")}\n`;
     }
 
-    const totalUsdFormatted = `$ ${totalUSD.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`;
-    const totalPenFormatted = `S/ ${totalPEN.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
     if (messageTone === "formal") {
       return (
 `Estimado(a) *${clientName}*,
 
 Por medio de la presente, *Autopartes S.A.* y su asesor comercial *${sellerName}* le remiten su *${docTypeName} Oficial Nº ${docNumber}*.
 ${itemsText}
-💰 *Monto Total:* *${totalUsdFormatted}* (Equivalente referencial: ${totalPenFormatted})
+💰 *Monto Total:* *${totalFormatted}*
 💳 *Condición Comercial:* ${paymentDesc}
 🚚 *Modalidad de Entrega:* ${deliveryDesc}
 
@@ -326,7 +345,7 @@ Estimado(a) *${clientName}*, le saluda *${sellerName}* de *Autopartes S.A.*
 
 Le compartimos su *${docTypeName} Nº ${docNumber}* con confirmación de stock:
 ${itemsText}
-💰 *Importe Total:* *${totalUsdFormatted}* (${totalPenFormatted})
+💰 *Importe Total:* *${totalFormatted}*
 ⏰ *Validez de Precios y Stock:* Sujeto a rotación y disponibilidad inmediata en almacén.
 💳 *Condición de Pago:* ${paymentDesc}
 
@@ -341,14 +360,14 @@ Quedo a su disposición para coordinar el despacho.`
 
 Le compartimos el detalle de su *${docTypeName} Nº ${docNumber}*:
 ${itemsText}
-💰 *Total:* *${totalUsdFormatted}* (Aprox. ${totalPenFormatted})
+💰 *Total:* *${totalFormatted}*
 💳 *Forma de Pago:* ${paymentDesc}
 🚚 *Entrega:* ${deliveryDesc}
 
 Le adjuntamos el archivo PDF con las especificaciones completas. Cualquier duda o consulta con el pedido, estoy a su completa disposición. ¡Que tenga un excelente día!`
       );
     }
-  }, [quote, products, totalUSD, totalPEN, docTypeName, docNumber, clientName, sellerName, messageTone]);
+  }, [quote, products, totalFormatted, docTypeName, docNumber, clientName, sellerName, messageTone]);
 
   // Manejar apertura de WhatsApp
   const handleOpenWhatsApp = () => {
@@ -474,10 +493,7 @@ Le adjuntamos el archivo PDF con las especificaciones completas. Cualquier duda 
                   </HStack>
                   <VStack align={{ base: "flex-start", sm: "flex-end" }} spacing={0}>
                     <Text fontSize="sm" fontWeight="900" color="emerald.700">
-                      Total: $ {totalUSD.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
-                    </Text>
-                    <Text fontSize="11px" color="gray.500" fontWeight="600">
-                      (~ S/ {totalPEN.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                      Total: {totalFormatted}
                     </Text>
                   </VStack>
                 </Flex>
