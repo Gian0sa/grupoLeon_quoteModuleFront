@@ -758,16 +758,25 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
       const livePromo = promotionsMap[code];
       const livePromoDisc = livePromo ? Number(livePromo.discountPct || 0) : 0;
-      const liveCampaign = livePromo?.campaignName || (livePromoDisc > 0 ? "Oferta del Mes" : undefined);
+      const livePromoPriceConIGV = livePromo ? Number(livePromo.promoPriceConIGV || livePromo.U_US_PROMO || 0) : null;
+      const livePromoPrice = livePromo ? Number(livePromo.promoPrice || livePromo.promoPriceNeto || 0) : null;
+      const liveCampaign = livePromo?.campaignName || (livePromoDisc > 0 || livePromoPriceConIGV > 0 ? "Oferta del Mes" : undefined);
+      const liveTotalDisc = livePromo ? Number(livePromo.totalDiscountPct || 0) : 0;
 
       const currentPromoDisc = Number(p.promoDiscount || 0);
+      const currentPromoPriceConIGV = Number(p.promoPriceConIGV || p.U_US_PROMO || 0);
       const currentCampaign = p.campaignName;
 
-      if (currentPromoDisc !== livePromoDisc || currentCampaign !== liveCampaign) {
+      if (currentPromoDisc !== livePromoDisc || currentPromoPriceConIGV !== (livePromoPriceConIGV || 0) || currentCampaign !== liveCampaign) {
         hasChanges = true;
         return {
           ...p,
           promoDiscount: livePromoDisc,
+          promoPrice: livePromoPrice,
+          promoPriceNeto: livePromoPrice,
+          promoPriceConIGV: livePromoPriceConIGV,
+          U_US_PROMO: livePromoPriceConIGV || livePromoPrice,
+          totalDiscountPct: liveTotalDisc,
           campaignName: liveCampaign,
         };
       }
@@ -944,9 +953,14 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     
     let updatedHistory = [...prevHistory];
     
-    if (targetStatus === "ENVIADO" && !prevHistory.some(h => h.status === "ENVIADO")) {
-      updatedHistory.push({ status: "ENVIADO", timestamp: nowIso, user: activeSeller, note: "Cotización enviada a validación" });
-    } else if (targetStatus === "BORRADOR" && prevHistory.length === 0) {
+    if (targetStatus === "ENVIADO") {
+      // Al enviar formalmente a validación, se purgan entradas internas de borrador previo para mantener limpia la línea de tiempo oficial
+      updatedHistory = updatedHistory.filter(h => h.status !== "BORRADOR" && h.note !== "Borrador guardado");
+      if (!updatedHistory.some(h => h.status === "ENVIADO")) {
+        updatedHistory.push({ status: "ENVIADO", timestamp: nowIso, user: activeSeller, note: "Cotización enviada a validación" });
+      }
+    } else if (targetStatus === "BORRADOR" && !options?.silent && prevHistory.length === 0) {
+      // Solo registrar entrada explícita si el vendedor pulsa manualmente "Guardar como Borrador" (nunca por autoguardado silencioso)
       updatedHistory.push({ status: "BORRADOR", timestamp: nowIso, user: activeSeller, note: "Borrador guardado" });
     }
 
@@ -1606,9 +1620,35 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       const sapDisc = Number(p.sapDiscount ?? p.descuentoSAP ?? p.U_TQC_DESL ?? 0);
       const promoDisc = Number(p.promoDiscount ?? p.promoDisc ?? p.U_TQC_DELP ?? 0);
       const addDisc = Number(p.lineDiscount ?? p.manualDiscount ?? p.addDisc ?? p.descuentoManual ?? p.descuentoAdicional ?? p.U_TQC_DESV ?? 0);
-      const totalDisc = Number(p.discountPercent ?? p.DiscountPercent ?? p.totalDiscount ?? (sapDisc + promoDisc + addDisc));
-      const valorDescLista = Number(p.valorDescLista ?? p.U_TQC_DELP ?? promoDisc);
-      const descVenta = Number(p.descuentoVenta ?? p.descuentoManual ?? p.U_TQC_DESV ?? addDisc);
+
+      const targetPromoPriceConIGV = !isOutOfStock && (
+        (p.promoPriceConIGV && Number(p.promoPriceConIGV) > 0) ? Number(p.promoPriceConIGV) :
+        (p.U_US_PROMO && Number(p.U_US_PROMO) > 0) ? Number(p.U_US_PROMO) :
+        (p.promoPrice && Number(p.promoPrice) > 0 && !p.promoPriceNeto) ? Number((Number(p.promoPrice) * 1.18).toFixed(2)) :
+        null
+      );
+      const targetPromoNeto = targetPromoPriceConIGV
+        ? Number((targetPromoPriceConIGV / 1.18).toFixed(6))
+        : (p.promoPriceNeto && Number(p.promoPriceNeto) > 0 ? Number(p.promoPriceNeto) : (p.promoPrice && Number(p.promoPrice) > 0 ? Number(p.promoPrice) : null));
+      const hasPromoPrice = Boolean(!isOutOfStock && (targetPromoNeto > 0 || targetPromoPriceConIGV > 0));
+
+      let netUnitPrice;
+      let totalDisc;
+      if (sapCustomPrice) {
+        netUnitPrice = Number((sapCustomPrice / 1.18).toFixed(6));
+        totalDisc = sapUnitPrice > 0 ? Math.min(100, Math.max(0, Number((((sapUnitPrice - netUnitPrice) / sapUnitPrice) * 100).toFixed(2)))) : 0;
+      } else if (hasPromoPrice && targetPromoNeto > 0) {
+        netUnitPrice = Number((targetPromoNeto * (1 - addDisc / 100)).toFixed(6));
+        totalDisc = sapUnitPrice > 0
+          ? Math.min(100, Math.max(0, Number((((sapUnitPrice - netUnitPrice) / sapUnitPrice) * 100).toFixed(2))))
+          : Number(p.totalDiscountPct || (sapDisc + promoDisc).toFixed(2));
+      } else {
+        totalDisc = Number(p.discountPercent ?? p.DiscountPercent ?? p.totalDiscount ?? (sapDisc + promoDisc + addDisc));
+        netUnitPrice = Number((sapUnitPrice * (1 - totalDisc / 100)).toFixed(6));
+      }
+
+      const valorDescLista = Number((sapUnitPrice * (1 - sapDisc / 100)).toFixed(2));
+      const descVenta = Number(Math.max(0, totalDisc - sapDisc).toFixed(2));
 
       const itemClean = {
         id: p.id || p.code || p.productCode,
@@ -1625,7 +1665,12 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         discountPercent: totalDisc,
         DiscountPercent: totalDisc,
         customPriceConIGV: sapCustomPrice,
-        discountedUnitPrice: p.discountedUnitPrice || null,
+        discountedUnitPrice: Number(netUnitPrice.toFixed(2)),
+        promoPriceConIGV: targetPromoPriceConIGV,
+        promoPriceNeto: targetPromoNeto,
+        promoPrice: targetPromoNeto,
+        U_US_PROMO: targetPromoPriceConIGV,
+        totalDiscountPct: totalDisc,
         U_TQC_DESL: sapDisc,
         U_TQC_DELP: valorDescLista,
         U_TQC_DESV: descVenta,

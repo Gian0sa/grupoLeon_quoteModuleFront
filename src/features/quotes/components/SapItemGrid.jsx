@@ -74,8 +74,9 @@ export default function SapItemGrid({
 
     const promoInfo = promotionsMap[selectedItem.id] || promotionsMap[selectedItem.code] || null;
     const promoDiscount = selectedItem.promoDiscount || promoInfo?.discountPct || 0;
-    const promoPrice = selectedItem.promoPrice || promoInfo?.promoPrice || null;
-    const campaignName = selectedItem.campaignName || promoInfo?.campaignName || (promoDiscount > 0 ? "Oferta del Mes" : undefined);
+    const promoPrice = selectedItem.promoPrice || promoInfo?.promoPrice || promoInfo?.promoPriceNeto || null;
+    const promoPriceConIGV = selectedItem.promoPriceConIGV || promoInfo?.promoPriceConIGV || promoInfo?.U_US_PROMO || (promoPrice ? Number((promoPrice * 1.18).toFixed(2)) : null);
+    const campaignName = selectedItem.campaignName || promoInfo?.campaignName || (promoDiscount > 0 || promoPriceConIGV > 0 ? "Oferta del Mes" : undefined);
 
     onAddProduct({
       id: selectedItem.id,
@@ -89,7 +90,10 @@ export default function SapItemGrid({
       discount: selectedItem.discount || 0,
       promoDiscount,
       promoPrice,
-      U_US_PROMO: promoPrice,
+      promoPriceConIGV,
+      promoPriceNeto: promoPrice,
+      totalDiscountPct: selectedItem.totalDiscountPct || promoInfo?.totalDiscountPct || 0,
+      U_US_PROMO: promoPriceConIGV || promoPrice,
       campaignName,
       whsCode: whsCode || "014",
       taxCode: "I18",
@@ -177,22 +181,42 @@ export default function SapItemGrid({
             const price = isOutOfStock ? 0 : Number(item.price ?? item.unitPrice ?? 0);
             const sapDisc = isOutOfStock ? 0 : Number(item.discount || item.sapDiscount || 0);
             const itemCode = item.code || item.productCode || item.itemCode || item.id || "";
-            const promoInfo = promotionsMap[itemCode] || null;
-            const promoDisc = isOutOfStock ? 0 : Number(item.promoDiscount || promoInfo?.discountPct || 0);
-            const promoPrice = item.promoPrice || promoInfo?.promoPrice || null;
+            const targetPromoPriceConIGV = !isOutOfStock && (
+              (item.promoPriceConIGV && Number(item.promoPriceConIGV) > 0) ? Number(item.promoPriceConIGV) :
+              (promoInfo?.promoPriceConIGV && Number(promoInfo.promoPriceConIGV) > 0) ? Number(promoInfo.promoPriceConIGV) :
+              (item.U_US_PROMO && Number(item.U_US_PROMO) > 0) ? Number(item.U_US_PROMO) :
+              (promoInfo?.U_US_PROMO && Number(promoInfo.U_US_PROMO) > 0) ? Number(promoInfo.U_US_PROMO) :
+              (item.promoPrice && Number(item.promoPrice) > 0 && !item.promoPriceNeto) ? Number((Number(item.promoPrice) * 1.18).toFixed(2)) :
+              (promoInfo?.promoPrice && Number(promoInfo.promoPrice) > 0 && !promoInfo?.promoPriceNeto) ? Number((Number(promoInfo.promoPrice) * 1.18).toFixed(2)) :
+              null
+            );
+            const targetPromoNeto = targetPromoPriceConIGV
+              ? Number((targetPromoPriceConIGV / 1.18).toFixed(6))
+              : (item.promoPriceNeto && Number(item.promoPriceNeto) > 0 ? Number(item.promoPriceNeto) : (promoInfo?.promoPriceNeto && Number(promoInfo.promoPriceNeto) > 0 ? Number(promoInfo.promoPriceNeto) : null));
+            const hasPromoPrice = Boolean(!isOutOfStock && (targetPromoNeto > 0 || targetPromoPriceConIGV > 0));
             const addDisc = isOutOfStock ? 0 : Number(Number(item.lineDiscount || 0).toFixed(2));
-            const hasPromo = Boolean(promoDisc > 0 || promoPrice || item.promoPrice || item.U_US_PROMO);
-            const maxAllowedCeiling = hasPromo ? Math.max(55.0, Number((sapDisc + promoDisc).toFixed(2))) : 55.0;
-            const totalDisc = isOutOfStock ? 0 : Math.min(maxAllowedCeiling, Math.max(0, sapDisc + promoDisc + addDisc));
+            const hasPromo = Boolean(hasPromoPrice || promoDisc > 0);
+
             const customPrice = !isOutOfStock && item.customPriceConIGV && Number(item.customPriceConIGV) > 0
               ? Number(item.customPriceConIGV)
               : null;
             let netUnitPrice;
             let unitPriceConIGV;
+            let totalDisc;
+
             if (customPrice) {
               netUnitPrice = Number((customPrice / 1.18).toFixed(6));
               unitPriceConIGV = Number(customPrice.toFixed(2));
+              totalDisc = price > 0 ? Math.min(100, Math.max(0, Number((((price - netUnitPrice) / price) * 100).toFixed(2)))) : 0;
+            } else if (hasPromoPrice && targetPromoNeto > 0) {
+              netUnitPrice = Number((targetPromoNeto * (1 - addDisc / 100)).toFixed(6));
+              unitPriceConIGV = Number((netUnitPrice * 1.18).toFixed(2));
+              totalDisc = price > 0
+                ? Math.min(100, Math.max(0, Number((((price - netUnitPrice) / price) * 100).toFixed(2))))
+                : Number(item.totalDiscountPct || promoInfo?.totalDiscountPct || (sapDisc + promoDisc));
             } else {
+              const maxAllowedCeiling = hasPromo ? Math.max(80.0, Number((sapDisc + promoDisc).toFixed(2))) : 55.0;
+              totalDisc = isOutOfStock ? 0 : Math.min(maxAllowedCeiling, Math.max(0, sapDisc + promoDisc + addDisc));
               netUnitPrice = Number((price * (1 - totalDisc / 100)).toFixed(6));
               unitPriceConIGV = Number((netUnitPrice * 1.18).toFixed(2));
             }
@@ -244,14 +268,14 @@ export default function SapItemGrid({
                         </Badge>
                       )}
                     </Flex>
-                    {!isOutOfStock && promoDisc > 0 && (
+                    {!isOutOfStock && hasPromo && (
                       <Box w="full" bg="#fffbeb" border="1px dashed #f59e0b" p={1.5} borderRadius="md" mt={1.5}>
                         <Flex justify="space-between" align="center" wrap="wrap" gap={1}>
                           <Badge bg="amber.400" color="amber.950" fontSize="10px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
-                            🏷️ {(item.campaignName || promoInfo?.campaignName || "OFERTA DEL MES").toUpperCase()}: -{promoDisc}% EXTRA
+                            🏷️ {(item.campaignName || promoInfo?.campaignName || "OFERTA DEL MES").toUpperCase()}: -{totalDisc}% DTO
                           </Badge>
                           <Text fontSize="10px" color="gray.600">
-                            P. Reg: <Text as="s">${formatThousands(sapDisc > 0 ? (price * (1 - sapDisc / 100) * 1.18) : (price * 1.18))}</Text> ➔ Oferta: <strong style={{ color: "#b45309" }}>${formatThousands(promoInfo?.promoPriceConIGV || (unitPriceConIGV))} c/IGV</strong> <Text as="span" fontSize="9px" color="gray.500">(${formatThousands(finalUnitPrice)} neto)</Text>
+                            P. Reg: <Text as="s">${formatThousands((sapDisc > 0 ? (price * (1 - sapDisc / 100) * 1.18) : (price * 1.18)) * rateMultiplier)}</Text> ➔ Oferta: <strong style={{ color: "#b45309" }}>${formatThousands(displayUnitPriceConIGV)} c/IGV</strong> <Text as="span" fontSize="9px" color="gray.500">(${formatThousands(displayFinalUnitPrice)} neto)</Text>
                           </Text>
                         </Flex>
                       </Box>
@@ -491,13 +515,21 @@ export default function SapItemGrid({
                   const price = isOutOfStock ? 0 : Number(item.price ?? item.unitPrice ?? 0);
                   const sapDisc = isOutOfStock ? 0 : Number(item.discount || item.sapDiscount || 0);
                   const itemCode = item.code || item.productCode || item.itemCode || item.id || "";
-                  const promoInfo = promotionsMap[itemCode] || null;
-                  const promoDisc = isOutOfStock ? 0 : Number(item.promoDiscount || promoInfo?.discountPct || 0);
-                  const promoPrice = item.promoPrice || promoInfo?.promoPrice || null;
+                  const targetPromoPriceConIGV = !isOutOfStock && (
+                    (item.promoPriceConIGV && Number(item.promoPriceConIGV) > 0) ? Number(item.promoPriceConIGV) :
+                    (promoInfo?.promoPriceConIGV && Number(promoInfo.promoPriceConIGV) > 0) ? Number(promoInfo.promoPriceConIGV) :
+                    (item.U_US_PROMO && Number(item.U_US_PROMO) > 0) ? Number(item.U_US_PROMO) :
+                    (promoInfo?.U_US_PROMO && Number(promoInfo.U_US_PROMO) > 0) ? Number(promoInfo.U_US_PROMO) :
+                    (item.promoPrice && Number(item.promoPrice) > 0 && !item.promoPriceNeto) ? Number((Number(item.promoPrice) * 1.18).toFixed(2)) :
+                    (promoInfo?.promoPrice && Number(promoInfo.promoPrice) > 0 && !promoInfo?.promoPriceNeto) ? Number((Number(promoInfo.promoPrice) * 1.18).toFixed(2)) :
+                    null
+                  );
+                  const targetPromoNeto = targetPromoPriceConIGV
+                    ? Number((targetPromoPriceConIGV / 1.18).toFixed(6))
+                    : (item.promoPriceNeto && Number(item.promoPriceNeto) > 0 ? Number(item.promoPriceNeto) : (promoInfo?.promoPriceNeto && Number(promoInfo.promoPriceNeto) > 0 ? Number(promoInfo.promoPriceNeto) : null));
+                  const hasPromoPrice = Boolean(!isOutOfStock && (targetPromoNeto > 0 || targetPromoPriceConIGV > 0));
                   const addDisc = isOutOfStock ? 0 : Number(Number(item.lineDiscount || 0).toFixed(2));
-                  const hasPromo = Boolean(promoDisc > 0 || promoPrice || item.promoPrice || item.U_US_PROMO);
-                  const maxAllowedCeiling = hasPromo ? Math.max(55.0, Number((sapDisc + promoDisc).toFixed(2))) : 55.0;
-                  const totalDisc = isOutOfStock ? 0 : Math.min(maxAllowedCeiling, Math.max(0, sapDisc + promoDisc + addDisc));
+                  const hasPromo = Boolean(hasPromoPrice || promoDisc > 0);
 
                   // Si el usuario fijó un precio unitario con IGV exacto (ej. $10.00 exactos), respetarlo fielmente
                   const customPrice = !isOutOfStock && item.customPriceConIGV && Number(item.customPriceConIGV) > 0
@@ -505,10 +537,21 @@ export default function SapItemGrid({
                     : null;
                   let netUnitPrice;
                   let unitPriceConIGV;
+                  let totalDisc;
+
                   if (customPrice) {
                     netUnitPrice = Number((customPrice / 1.18).toFixed(6));
                     unitPriceConIGV = Number(customPrice.toFixed(2));
+                    totalDisc = price > 0 ? Math.min(100, Math.max(0, Number((((price - netUnitPrice) / price) * 100).toFixed(2)))) : 0;
+                  } else if (hasPromoPrice && targetPromoNeto > 0) {
+                    netUnitPrice = Number((targetPromoNeto * (1 - addDisc / 100)).toFixed(6));
+                    unitPriceConIGV = Number((netUnitPrice * 1.18).toFixed(2));
+                    totalDisc = price > 0
+                      ? Math.min(100, Math.max(0, Number((((price - netUnitPrice) / price) * 100).toFixed(2))))
+                      : Number(item.totalDiscountPct || promoInfo?.totalDiscountPct || (sapDisc + promoDisc));
                   } else {
+                    const maxAllowedCeiling = hasPromo ? Math.max(80.0, Number((sapDisc + promoDisc).toFixed(2))) : 55.0;
+                    totalDisc = isOutOfStock ? 0 : Math.min(maxAllowedCeiling, Math.max(0, sapDisc + promoDisc + addDisc));
                     netUnitPrice = Number((price * (1 - totalDisc / 100)).toFixed(6));
                     unitPriceConIGV = Number((netUnitPrice * 1.18).toFixed(2));
                   }
@@ -560,14 +603,14 @@ export default function SapItemGrid({
                               </Badge>
                             )}
                           </HStack>
-                          {!isOutOfStock && promoDisc > 0 && (
-                            <Box bg="#fffbeb" border="1px dashed #f59e0b" p={1.5} borderRadius="md" mt={1} maxW="420px">
+                          {!isOutOfStock && hasPromo && (
+                            <Box bg="#fffbeb" border="1px dashed #f59e0b" p={1.5} borderRadius="md" mt={1} maxW="440px">
                               <Flex justify="space-between" align="center" gap={1.5}>
                                 <Badge bg="amber.400" color="amber.950" fontSize="9px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
-                                  🏷️ {(item.campaignName || promoInfo?.campaignName || "OFERTA DEL MES").toUpperCase()}: -{promoDisc}% EXTRA
+                                  🏷️ {(item.campaignName || promoInfo?.campaignName || "OFERTA DEL MES").toUpperCase()}: -{totalDisc}% DTO
                                 </Badge>
                                 <Text fontSize="10px" color="gray.600">
-                                  P. Reg: <Text as="s">${formatThousands(sapDisc > 0 ? (price * (1 - sapDisc / 100) * 1.18) : (price * 1.18))}</Text> ➔ Oferta: <strong style={{ color: "#b45309" }}>${formatThousands(promoInfo?.promoPriceConIGV || (unitPriceConIGV))} c/IGV</strong> <Text as="span" fontSize="9px" color="gray.500">(${formatThousands(finalUnitPrice)} neto)</Text>
+                                  P. Reg: <Text as="s">${formatThousands((sapDisc > 0 ? (price * (1 - sapDisc / 100) * 1.18) : (price * 1.18)) * rateMultiplier)}</Text> ➔ Oferta: <strong style={{ color: "#b45309" }}>${formatThousands(displayUnitPriceConIGV)} c/IGV</strong> <Text as="span" fontSize="9px" color="gray.500">(${formatThousands(displayFinalUnitPrice)} neto)</Text>
                                 </Text>
                               </Flex>
                             </Box>

@@ -8,10 +8,10 @@ export const getItemMaxDiscountCeiling = (item) => {
   if (!item) return REGULAR_DISCOUNT_CEILING;
   const sapDisc = Math.max(0, Math.min(100, Number(item.sapDiscount ?? item.discount ?? 0)));
   const promoDisc = Math.max(0, Math.min(100, Number(item.promoDiscount ?? item.PromoDiscount ?? 0)));
-  const hasPromo = Boolean(promoDisc > 0 || item.promoPrice || item.U_US_PROMO);
+  const hasPromo = Boolean(promoDisc > 0 || item.promoPrice || item.promoPriceConIGV || item.U_US_PROMO || item.totalDiscountPct);
   if (hasPromo) {
-    const promoBaseDisc = Number((sapDisc + promoDisc).toFixed(2));
-    return Math.max(REGULAR_DISCOUNT_CEILING, promoBaseDisc);
+    const promoBaseDisc = Number(item.totalDiscountPct || (sapDisc + promoDisc).toFixed(2));
+    return Math.max(REGULAR_DISCOUNT_CEILING, Math.max(80.0, promoBaseDisc));
   }
   return REGULAR_DISCOUNT_CEILING;
 };
@@ -61,6 +61,18 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
 
     const grossLine = qty * listPrice;
     
+    // Detección de precio objetivo promocional (U_US_PROMO en SAP = precio final con IGV)
+    const targetPromoPriceConIGV = !isOutOfStock && (
+      (p.promoPriceConIGV && Number(p.promoPriceConIGV) > 0) ? Number(p.promoPriceConIGV) :
+      (p.U_US_PROMO && Number(p.U_US_PROMO) > 0) ? Number(p.U_US_PROMO) :
+      (p.promoPrice && Number(p.promoPrice) > 0 && !p.promoPriceNeto) ? Number((Number(p.promoPrice) * 1.18).toFixed(2)) :
+      null
+    );
+    const targetPromoNeto = targetPromoPriceConIGV
+      ? Number((targetPromoPriceConIGV / 1.18).toFixed(6))
+      : (p.promoPriceNeto && Number(p.promoPriceNeto) > 0 ? Number(p.promoPriceNeto) : (p.promoPrice && Number(p.promoPrice) > 0 ? Number(p.promoPrice) : null));
+    const hasPromoPrice = Boolean(!isOutOfStock && (targetPromoNeto > 0 || targetPromoPriceConIGV > 0));
+
     // Si la línea proviene directamente de un documento emitido/registrado en SAP:
     // Respetar el total de descuento y montos oficiales aprobados en SAP sin recortarlos
     const isLineFromSap = isSapDoc || Boolean(p.isSapDirect || p.fromSap);
@@ -73,6 +85,12 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
       if (addDisc === 0 && (sapDisc + promoDisc) > 0 && Math.abs(totalDisc - (sapDisc + promoDisc)) > 0.01) {
         addDisc = Number((totalDisc - (sapDisc + promoDisc)).toFixed(2));
       }
+    } else if (hasPromoPrice && targetPromoNeto > 0) {
+      // Si el artículo tiene precio de promoción definido, el descuento total es la reducción exacta desde el precio de lista
+      const promoNetWithAddDisc = Number((targetPromoNeto * (1 - addDisc / 100)).toFixed(6));
+      totalDisc = listPrice > 0
+        ? Math.min(100, Math.max(0, Number((((listPrice - promoNetWithAddDisc) / listPrice) * 100).toFixed(2))))
+        : Number(p.totalDiscountPct || (sapDisc + promoDisc).toFixed(2));
     } else {
       const rawTotalDisc = sapDisc + promoDisc + addDisc;
       const applicableCeiling = getItemMaxDiscountCeiling({ ...p, sapDiscount: sapDisc, promoDiscount: promoDisc });
@@ -109,6 +127,11 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
       netUnitPrice = Number((customPrice / 1.18).toFixed(6));
       unitTax = Number((customPrice - netUnitPrice).toFixed(6));
       unitPriceConIGV = Number(customPrice.toFixed(2));
+    } else if (hasPromoPrice && targetPromoNeto > 0) {
+      // Precio promocional respetado fielmente (ej. $3.35 con IGV / $2.84 neto)
+      netUnitPrice = Number((targetPromoNeto * (1 - addDisc / 100)).toFixed(6));
+      unitTax = Number((netUnitPrice * 0.18).toFixed(6));
+      unitPriceConIGV = Number((netUnitPrice + unitTax).toFixed(2));
     } else {
       netUnitPrice = Number((listPrice * (1 - totalDisc / 100)).toFixed(6));
       unitTax = Number((netUnitPrice * 0.18).toFixed(6));

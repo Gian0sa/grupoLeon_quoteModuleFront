@@ -578,32 +578,72 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
     }
   }, [isOpen, quoteId, isAdminUser, status, authUsername, authRole, authSalesCode]);
 
-  // Registro de primera visualización por parte de Administración
+  // Registro completo y continuo de auditoría de entradas/lecturas por usuario (Historial de Actividad)
   const hasMarkedViewRef = React.useRef(false);
+  const [localLogs, setLocalLogs] = React.useState(null);
+
   React.useEffect(() => {
     if (!isOpen) {
       hasMarkedViewRef.current = false;
+      setLocalLogs(null);
       return;
     }
-    if (isAdminUser && quoteId && !hasMarkedViewRef.current && effectiveQuote && !effectiveQuote.viewedByAdmin && !effectiveQuote.totals?.viewedByAdmin) {
-      hasMarkedViewRef.current = true;
+
+    if (!quoteId || !effectiveQuote || hasMarkedViewRef.current) return;
+
+    const viewer = authUsername || "Usuario";
+    const docKey = effectiveQuote.docNumber || quoteId;
+    const rawHistory = localLogs || effectiveQuote.historyLog;
+    let currentLogs = [];
+    if (Array.isArray(rawHistory)) {
+      currentLogs = [...rawHistory];
+    } else if (typeof rawHistory === "string") {
+      try {
+        currentLogs = JSON.parse(rawHistory);
+      } catch {
+        currentLogs = [];
+      }
+    }
+
+    // Evitar registrar entradas duplicadas del MISMO usuario si ya abrió en los últimos 10 minutos
+    const TEN_MINUTES_MS = 10 * 60 * 1000;
+    const nowMs = Date.now();
+    const hasRecentViewBySameUser = currentLogs.some((log) => {
+      if (log.status !== "VISTO") return false;
+      const logUser = String(log.user || "").trim().toLowerCase();
+      const isSameUser = logUser === viewer.trim().toLowerCase();
+      const logTime = log.timestamp ? new Date(log.timestamp).getTime() : 0;
+      return isSameUser && (nowMs - logTime < TEN_MINUTES_MS);
+    });
+
+    hasMarkedViewRef.current = true;
+
+    if (!hasRecentViewBySameUser) {
       const nowIso = new Date().toISOString();
-      const viewer = authUsername || "Administrador";
-      const docKey = effectiveQuote.docNumber || quoteId;
-      const currentLogs = Array.isArray(effectiveQuote.historyLog) ? effectiveQuote.historyLog : [];
-      const newLog = { status: "VISTO", timestamp: nowIso, user: viewer, note: `👁️ Solicitud abierta y leída por ${viewer}` };
+      const newLog = {
+        status: "VISTO",
+        timestamp: nowIso,
+        user: viewer,
+        note: `👁️ Solicitud abierta y leída por ${viewer}`
+      };
+      const updatedLogs = [newLog, ...currentLogs];
+      setLocalLogs(updatedLogs);
 
       axiosInstance.put(`/quoteModule/quotes/${docKey}`, {
         id: effectiveQuote.id,
         docNumber: effectiveQuote.docNumber || quoteId,
         viewedByAdmin: true,
+        lastViewedBy: viewer,
         viewedAt: nowIso,
-        historyLog: [newLog, ...currentLogs]
+        historyLog: updatedLogs
       }).then(() => {
         queryClient.invalidateQueries({ queryKey: ["quotes"] });
-      }).catch(() => {});
+        window.dispatchEvent(new CustomEvent("quoteHistoryUpdated", { detail: { quoteId: docKey, newLog } }));
+      }).catch((err) => {
+        console.warn("Aviso al registrar entrada en historial:", err?.message);
+      });
     }
-  }, [isOpen, quoteId, isAdminUser, effectiveQuote, authUsername, queryClient]);
+  }, [isOpen, quoteId, effectiveQuote, authUsername, queryClient, localLogs]);
 
   if (!effectiveQuote) return null;
 
@@ -654,7 +694,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
   // Mapear historial y asegurar que siempre exista una línea de tiempo visible
   const historyLog = React.useMemo(() => {
-    let raw = effectiveQuote.historyLog;
+    let raw = localLogs || effectiveQuote.historyLog;
     if (typeof raw === "string") {
       try {
         raw = JSON.parse(raw);
@@ -727,7 +767,17 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
       }
     }
 
-    return logs.map((item, index) => {
+    // 🛡️ REGLA: Si la cotización ya fue enviada formalmente a validación o SAP,
+    // no mostramos registros internos de borrador previo para mantener limpia y oficial la línea de tiempo
+    const isSubmittedOrBeyond = ["ENVIADO", "PENDIENTE_APROBACION", "EN_PROCESO", "PENDIENTE_FACTURACION", "APROBADO", "APROBADO_COMERCIAL", "EMITIDO", "EMITIDO_SAP", "FACTURADO", "OBSERVADO", "RECHAZADO"].includes(
+      String(effectiveQuote.approvalStatus || effectiveQuote.status || effectiveQuote.state || "").toUpperCase().trim()
+    );
+
+    const cleanTimelineLogs = isSubmittedOrBeyond
+      ? logs.filter((l) => l.status !== "BORRADOR" && l.status !== "DRAFT" && String(l.note || "").toLowerCase() !== "borrador guardado")
+      : logs;
+
+    return cleanTimelineLogs.map((item, index) => {
       let ts = item.timestamp || item.date || item.createdAt;
       return {
         id: item.id || index,
@@ -759,7 +809,8 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
     effectiveQuote.docDate,
     effectiveQuote.isSapDirect,
     effectiveQuote.docNumber,
-    sellerName
+    sellerName,
+    localLogs
   ]);
 
   const isUnapprovedDoc = UNAPPROVED_STATUSES.includes(String(status).toUpperCase().trim());
@@ -2239,6 +2290,8 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                       _hover={{ bg: "#c2410c" }}
                       leftIcon={<MessageSquare className="w-4 h-4" />}
                       whiteSpace="nowrap"
+                      isDisabled={isDrawerLockedByOther}
+                      title={isDrawerLockedByOther ? `Bloqueado: En revisión activa por ${drawerLockCheck.lockInfo?.lockedByUsername}` : ""}
                       onClick={() => setIsObserveModalOpen(true)}
                       fontWeight="800"
                       borderRadius="lg"
@@ -2255,7 +2308,8 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                       _hover={{ bg: "#115e59" }}
                       leftIcon={<Edit3 className="w-4 h-4" />}
                       whiteSpace="nowrap"
-                      isDisabled={isDrawerLockedByOther && !isAdminUser}
+                      isDisabled={isDrawerLockedByOther}
+                      title={isDrawerLockedByOther ? `Bloqueado: En revisión activa por ${drawerLockCheck.lockInfo?.lockedByUsername}` : ""}
                       onClick={() => {
                         onClose();
                         const quoteToLoad = effectiveQuote || quote;
@@ -3073,9 +3127,9 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                   <Text fontSize="11.5px" fontWeight="700" color="gray.900" noOfLines={2} lineHeight="1.3" title={descText}>
                                     {descText}
                                   </Text>
-                                  {promoDisc > 0 && (
+                                  {(promoDisc > 0 || item.promoPriceConIGV || item.U_US_PROMO) && (
                                     <Badge bg="amber.400" color="amber.950" fontSize="8.5px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
-                                      🏷️ {(item.campaignName || "OFERTA DEL MES").toUpperCase()}: -{promoDisc}% EXTRA
+                                      🏷️ {(item.campaignName || "OFERTA DEL MES").toUpperCase()}: -{totalDisc}% DTO
                                     </Badge>
                                   )}
                                   {isVolume && (
@@ -3216,9 +3270,9 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                         <Text fontSize="11px" lineHeight="1.3" noOfLines={2} title={descText}>
                                           {descText}
                                         </Text>
-                                        {promoDisc > 0 && (
+                                        {(promoDisc > 0 || item.promoPriceConIGV || item.U_US_PROMO) && (
                                           <Badge bg="amber.400" color="amber.950" fontSize="8.5px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
-                                            🏷️ {(item.campaignName || "OFERTA DEL MES").toUpperCase()}: -{promoDisc}% EXTRA
+                                            🏷️ {(item.campaignName || "OFERTA DEL MES").toUpperCase()}: -{totalDisc}% DTO
                                           </Badge>
                                         )}
                                         {isVolume && (
@@ -3867,6 +3921,8 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                     leftIcon={<Zap className="w-4 h-4" />}
                     isLoading={isSyncingSap}
                     loadingText="Emitiendo a SAP..."
+                    isDisabled={isDrawerLockedByOther || isSyncingSap}
+                    title={isDrawerLockedByOther ? `Bloqueado: En revisión activa por ${drawerLockCheck.lockInfo?.lockedByUsername}` : ""}
                     onClick={handleSyncToSap}
                     fontWeight="900"
                     boxShadow="0 4px 12px rgba(15,81,50,0.3)"

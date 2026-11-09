@@ -978,15 +978,18 @@ export function QuoteApprovalPage() {
             const lqUpdatedAt = matchedLocal.updatedAt ? new Date(matchedLocal.updatedAt).getTime() : 0;
 
             // REGLA DE MEZCLA DE ESTADO REALTIME:
-            // 1. Si el servidor indica ENVIADO/APROBADO/RECHAZADO/etc. y el local tenía OBSERVADO,
-            //    significa que la observación fue corregida y se envió a validación. Prevalece la versión del servidor.
-            // 2. Si el servidor indica CANCELADO, ANULADO o COMPLETADO, SIEMPRE prevalece el servidor (estado oficial en SAP/BD).
-            // 3. Solo usar estado local si fue actualizado optimistamente en la sesión actual de forma muy reciente (>3s) y no fue cancelado.
+            // 1. Si el servidor indica CANCELADO, ANULADO o COMPLETADO, SIEMPRE prevalece el servidor (estado oficial en SAP/BD).
+            // 2. Si el usuario realizó una acción administrativa reciente (OBSERVADO, RECHAZADO, APROBADO) en los últimos 30s, el local prevalece firmemente sobre cualquier caché antiguo del servidor.
+            // 3. Una cotización observada solo se considera "corregida" si el servidor tiene un timestamp POSTERIOR al momento en que se observó.
             const isCancelledOrClosedInServer = sqStatus === "CANCELADO" || sqStatus === "COMPLETADO" || sqStatus === "ANULADO" || sq.isCancelled;
-            const isObservationCorrected = lqStatus === "OBSERVADO" && (sqStatus === "ENVIADO" || sqStatus === "APROBADO_COMERCIAL" || sqStatus === "APROBADO");
-            const localIsMoreRecent = lqUpdatedAt > (sqUpdatedAt + 3000);
+            const isObservationCorrected = lqStatus === "OBSERVADO" &&
+              (sqStatus === "ENVIADO" || sqStatus === "APROBADO_COMERCIAL" || sqStatus === "APROBADO") &&
+              sqUpdatedAt > (lqUpdatedAt + 2000);
             
-            const useLocalStatus = localIsMoreRecent && !isObservationCorrected && !isCancelledOrClosedInServer;
+            const isRecentAdminAction = (Date.now() - lqUpdatedAt < 30000) && (lqStatus === "OBSERVADO" || lqStatus === "RECHAZADO" || lqStatus === "APROBADO_COMERCIAL");
+            const localIsMoreRecent = (lqUpdatedAt >= sqUpdatedAt) || isRecentAdminAction;
+            
+            const useLocalStatus = (localIsMoreRecent || isRecentAdminAction) && !isObservationCorrected && !isCancelledOrClosedInServer;
             const finalStatus = isCancelledOrClosedInServer ? sqStatus : (useLocalStatus ? lqStatus : sqStatus);
 
             return {
@@ -1556,10 +1559,23 @@ export function QuoteApprovalPage() {
     };
     const updatedHistory = [newLog, ...prevLogs];
 
+    // Resolver ID numérico real o docNumber canónico
+    const rawId = target?.id || (typeof docIdOrQuote === "object" ? docIdOrQuote?.id : null);
+    const numericId = (rawId && !isNaN(Number(rawId)) && Number(rawId) > 0) ? Number(rawId) : null;
+    
+    let rawDoc = String(target?.docNumber || (typeof docIdOrQuote === "object" ? docIdOrQuote?.docNumber : "") || docId || "").trim();
+    const isPlaceholderDoc = !rawDoc || ["COT-PENDIENTE", "COT-NUEVA", "COT-000000", "PENDIENTE"].includes(rawDoc.toUpperCase());
+
     const isEmittedToSap = Boolean(target?.sapDocNum || target?.approvalStatus === "EMITIDO" || target?.state === "EMITIDO");
-    const finalDocNumber = isEmittedToSap
-      ? (target?.docNumber && !String(target.docNumber).includes("WEB") && !String(target.docNumber).includes("PENDIENTE") ? target.docNumber : `COT-${String(target?.sapDocNum || docId).padStart(6, '0')}`)
-      : (target?.docNumber && !String(target.docNumber).match(/^COT-0+\d+$/i) ? target.docNumber : (target?.id ? `COT-WEB-${String(target.id).padStart(6, '0')}` : "COT-PENDIENTE"));
+    
+    let finalDocNumber = rawDoc;
+    if (isEmittedToSap) {
+      finalDocNumber = (rawDoc && !rawDoc.includes("WEB") && !isPlaceholderDoc) ? rawDoc : `COT-${String(target?.sapDocNum || numericId || 0).padStart(6, '0')}`;
+    } else if (isPlaceholderDoc || !rawDoc.startsWith("COT-WEB-")) {
+      finalDocNumber = numericId ? `COT-WEB-${String(numericId).padStart(6, '0')}` : (rawDoc && !isPlaceholderDoc ? rawDoc : "COT-PENDIENTE");
+    }
+
+    const backendLookupId = numericId || (finalDocNumber && !finalDocNumber.includes("PENDIENTE") ? finalDocNumber : (rawDoc || docId));
 
     setProcessModal({
       isOpen: true,
@@ -1571,8 +1587,8 @@ export function QuoteApprovalPage() {
 
     const fullObservedDoc = {
       ...(target || {}),
-      id: target?.id || docId,
-      docNumber: isEmittedToSap ? finalDocNumber : (finalDocNumber.startsWith("COT-WEB-") ? finalDocNumber : null),
+      id: numericId || target?.id || docId,
+      docNumber: finalDocNumber !== "COT-PENDIENTE" ? finalDocNumber : (target?.docNumber || null),
       status: "OBSERVADO",
       state: "OBSERVADO",
       approvalStatus: "OBSERVADO",
@@ -1610,7 +1626,7 @@ export function QuoteApprovalPage() {
       quoteId: finalDocNumber,
       quoteObj: fullObservedDoc,
       title: `💬 Cotización Observada - ${finalDocNumber}`,
-      description: `${adminName} solicita corrección: ${reason}`,
+      description: `${adminName} solicita corrección: ${reasonText}`,
       status: "OBSERVADO",
       createdAt: nowIso,
       timestamp: nowIso,
@@ -1626,17 +1642,20 @@ export function QuoteApprovalPage() {
     setObserveQuoteTarget(null);
     forceUnlockQuote(docId);
     if (target?.id) forceUnlockQuote(target.id);
+    if (numericId) forceUnlockQuote(numericId);
 
     // 4. Persistir en Backend + actualizar caché de React Query optimistamente
-    // CLAVE: actualizar setQueriesData ANTES de invalidar para que todas las variantes de queryKey (ej. ["quotes", {}]) tengan el estado OBSERVADO
     queryClient.setQueriesData({ queryKey: ["quotes"] }, (old) => {
       if (!Array.isArray(old)) return old;
       return old.map(q => isMatchingDoc(q, docId) ? { ...q, ...fullObservedDoc } : q);
     });
 
     try {
-      await updateQuote(fullObservedDoc);
-      // La invalidación traerá los datos frescos del servidor (ya OBSERVADO)
+      await updateQuote({
+        ...fullObservedDoc,
+        id: backendLookupId,
+        docNumber: finalDocNumber !== "COT-PENDIENTE" ? finalDocNumber : undefined
+      });
       queryClient.invalidateQueries({ queryKey: ["quotes"] });
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
     } catch (e) {
@@ -1672,10 +1691,22 @@ export function QuoteApprovalPage() {
     };
     const updatedHistory = [newLog, ...prevLogs];
 
+    const rawId = target?.id;
+    const numericId = (rawId && !isNaN(Number(rawId)) && Number(rawId) > 0) ? Number(rawId) : null;
+    
+    let rawDoc = String(target?.docNumber || docId || "").trim();
+    const isPlaceholderDoc = !rawDoc || ["COT-PENDIENTE", "COT-NUEVA", "COT-000000", "PENDIENTE"].includes(rawDoc.toUpperCase());
+
     const isEmittedToSap = Boolean(target?.sapDocNum || target?.approvalStatus === "EMITIDO" || target?.state === "EMITIDO");
-    const finalDocNumber = isEmittedToSap
-      ? (target?.docNumber && !String(target.docNumber).includes("WEB") && !String(target.docNumber).includes("PENDIENTE") ? target.docNumber : `COT-${String(target?.sapDocNum || docId).padStart(6, '0')}`)
-      : (target?.docNumber && !String(target.docNumber).match(/^COT-0+\d+$/i) ? target.docNumber : (target?.id ? `COT-WEB-${String(target.id).padStart(6, '0')}` : "COT-PENDIENTE"));
+    
+    let finalDocNumber = rawDoc;
+    if (isEmittedToSap) {
+      finalDocNumber = (rawDoc && !rawDoc.includes("WEB") && !isPlaceholderDoc) ? rawDoc : `COT-${String(target?.sapDocNum || numericId || 0).padStart(6, '0')}`;
+    } else if (isPlaceholderDoc || !rawDoc.startsWith("COT-WEB-")) {
+      finalDocNumber = numericId ? `COT-WEB-${String(numericId).padStart(6, '0')}` : (rawDoc && !isPlaceholderDoc ? rawDoc : "COT-PENDIENTE");
+    }
+
+    const backendLookupId = numericId || (finalDocNumber && !finalDocNumber.includes("PENDIENTE") ? finalDocNumber : (rawDoc || docId));
 
     setProcessModal({
       isOpen: true,
@@ -1687,8 +1718,8 @@ export function QuoteApprovalPage() {
 
     const fullRejectedDoc = {
       ...(target || {}),
-      id: target?.id || docId,
-      docNumber: isEmittedToSap ? finalDocNumber : (finalDocNumber.startsWith("COT-WEB-") ? finalDocNumber : null),
+      id: numericId || target?.id || docId,
+      docNumber: finalDocNumber !== "COT-PENDIENTE" ? finalDocNumber : (target?.docNumber || null),
       status: "RECHAZADO",
       state: "RECHAZADO",
       approvalStatus: "RECHAZADO",
@@ -1733,6 +1764,7 @@ export function QuoteApprovalPage() {
     window.dispatchEvent(new Event("localNotificationsUpdated"));
     forceUnlockQuote(docId);
     if (target?.id) forceUnlockQuote(target.id);
+    if (numericId) forceUnlockQuote(numericId);
 
     // Actualizar caché de React Query optimistamente (antes de invalidar)
     queryClient.setQueriesData({ queryKey: ["quotes"] }, (old) => {
@@ -1742,7 +1774,11 @@ export function QuoteApprovalPage() {
 
     // Persistir en Backend (NO llamar syncQuotes() — sobreescribiría el estado optimista)
     try {
-      await updateQuote(fullRejectedDoc);
+      await updateQuote({
+        ...fullRejectedDoc,
+        id: backendLookupId,
+        docNumber: finalDocNumber !== "COT-PENDIENTE" ? finalDocNumber : undefined
+      });
       queryClient.invalidateQueries({ queryKey: ["quotes"] });
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
     } catch (e) {
@@ -1790,10 +1826,22 @@ export function QuoteApprovalPage() {
       note: note || `Estado actualizado a ${nextStatus}`
     };
     const updatedHistory = [newLog, ...prevLogs];
+    const rawId = target?.id || (typeof docIdOrQuote === "object" ? docIdOrQuote?.id : null);
+    const numericId = (rawId && !isNaN(Number(rawId)) && Number(rawId) > 0) ? Number(rawId) : null;
+    
+    let rawDoc = String(target?.docNumber || (typeof docIdOrQuote === "object" ? docIdOrQuote?.docNumber : "") || docId || "").trim();
+    const isPlaceholderDoc = !rawDoc || ["COT-PENDIENTE", "COT-NUEVA", "COT-000000", "PENDIENTE"].includes(rawDoc.toUpperCase());
+
     const isEmittedToSap = Boolean(target?.sapDocNum || target?.approvalStatus === "EMITIDO" || target?.state === "EMITIDO" || nextStatus === "EMITIDO");
-    const finalDocNumber = isEmittedToSap
-      ? (target?.docNumber && !String(target.docNumber).includes("WEB") && !String(target.docNumber).includes("PENDIENTE") ? target.docNumber : `COT-${String(target?.sapDocNum || docId).padStart(6, '0')}`)
-      : (target?.docNumber && !String(target.docNumber).match(/^COT-0+\d+$/i) ? target.docNumber : (target?.id ? `COT-WEB-${String(target.id).padStart(6, '0')}` : "COT-PENDIENTE"));
+    
+    let finalDocNumber = rawDoc;
+    if (isEmittedToSap) {
+      finalDocNumber = (rawDoc && !rawDoc.includes("WEB") && !isPlaceholderDoc) ? rawDoc : `COT-${String(target?.sapDocNum || numericId || 0).padStart(6, '0')}`;
+    } else if (isPlaceholderDoc || !rawDoc.startsWith("COT-WEB-")) {
+      finalDocNumber = numericId ? `COT-WEB-${String(numericId).padStart(6, '0')}` : (rawDoc && !isPlaceholderDoc ? rawDoc : "COT-PENDIENTE");
+    }
+
+    const backendLookupId = numericId || (finalDocNumber && !finalDocNumber.includes("PENDIENTE") ? finalDocNumber : (rawDoc || docId));
 
     const isApproval = nextStatus === "APROBADO_COMERCIAL" || nextStatus === "APROBADO" || nextStatus === "EN_FACTURACION";
     setProcessModal({
@@ -1806,8 +1854,8 @@ export function QuoteApprovalPage() {
 
     const fullDoc = {
       ...(target || {}),
-      id: target?.id || docId,
-      docNumber: isEmittedToSap ? finalDocNumber : (finalDocNumber.startsWith("COT-WEB-") ? finalDocNumber : null),
+      id: numericId || target?.id || docId,
+      docNumber: finalDocNumber !== "COT-PENDIENTE" ? finalDocNumber : (target?.docNumber || null),
       status: nextStatus,
       state: nextStatus,
       approvalStatus: nextStatus,
@@ -1838,7 +1886,11 @@ export function QuoteApprovalPage() {
 
     // Persistir en Backend (NO llamar syncQuotes() — sobreescribiría el estado optimista)
     try {
-      await updateQuote(fullDoc);
+      await updateQuote({
+        ...fullDoc,
+        id: backendLookupId,
+        docNumber: finalDocNumber !== "COT-PENDIENTE" ? finalDocNumber : undefined
+      });
       queryClient.invalidateQueries({ queryKey: ["quotes"] });
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
     } catch (e) {
@@ -3165,6 +3217,12 @@ export function QuoteApprovalPage() {
                   const sapDocNum = q.sapDocNum || q.totals?.sapDocNum || (q.isSapDirect ? (q.DocNum || q.totals?.DocNum) : null);
                   const isHighlighted = highlightedDocId && (String(docId) === highlightedDocId || String(q.id) === highlightedDocId);
 
+                  const rawDocStr = String(q.docNumber || "").trim();
+                  const isPlaceholderDoc = !rawDocStr || ["COT-PENDIENTE", "COT-NUEVA", "COT-000000", "PENDIENTE"].includes(rawDocStr.toUpperCase());
+                  const displayDocNumber = (!isPlaceholderDoc && (rawDocStr.startsWith("COT-WEB-") || rawDocStr.startsWith("COT-")))
+                    ? rawDocStr
+                    : (q.id ? `COT-WEB-${String(q.id).padStart(6, '0')}` : "COT-PENDIENTE");
+
                   return (
                     <Tr
                       key={docId}
@@ -3184,7 +3242,17 @@ export function QuoteApprovalPage() {
                                 {q.docNumber && String(q.docNumber).startsWith("COT-") && !String(q.docNumber).includes("WEB") ? q.docNumber : `COT-${String(sapDocNum).padStart(6, '0')}`}
                               </Text>
                             ) : (
-                              <Badge colorScheme="orange" variant="subtle" px={2} py={0.5} borderRadius="md" fontSize="xs" fontWeight="900" letterSpacing="wide" title={q.id ? `ID Web: #${q.id}` : undefined}>
+                              <Badge
+                                colorScheme="orange"
+                                variant="subtle"
+                                px={2}
+                                py={0.5}
+                                borderRadius="md"
+                                fontSize="xs"
+                                fontWeight="900"
+                                letterSpacing="wide"
+                                title={q.id ? `ID Web: #${q.id}` : undefined}
+                              >
                                 COT-PENDIENTE
                               </Badge>
                             )}
@@ -3317,6 +3385,12 @@ export function QuoteApprovalPage() {
               const sapDocNum = q.sapDocNum || q.totals?.sapDocNum || (q.isSapDirect ? (q.DocNum || q.totals?.DocNum) : null);
               const isHighlighted = highlightedDocId && (String(docId) === highlightedDocId || String(q.id) === highlightedDocId);
 
+              const rawDocStr = String(q.docNumber || "").trim();
+              const isPlaceholderDoc = !rawDocStr || ["COT-PENDIENTE", "COT-NUEVA", "COT-000000", "PENDIENTE"].includes(rawDocStr.toUpperCase());
+              const displayDocNumber = (!isPlaceholderDoc && (rawDocStr.startsWith("COT-WEB-") || rawDocStr.startsWith("COT-")))
+                ? rawDocStr
+                : (q.id ? `COT-WEB-${String(q.id).padStart(6, '0')}` : "COT-PENDIENTE");
+
               return (
                 <Box
                   key={docId}
@@ -3336,7 +3410,17 @@ export function QuoteApprovalPage() {
                             {q.docNumber && String(q.docNumber).startsWith("COT-") && !String(q.docNumber).includes("WEB") ? q.docNumber : `COT-${String(sapDocNum).padStart(6, '0')}`}
                           </Text>
                         ) : (
-                          <Badge colorScheme="orange" variant="subtle" px={2} py={0.5} borderRadius="md" fontSize="xs" fontWeight="900" letterSpacing="wide" title={q.id ? `ID Web: #${q.id}` : undefined}>
+                          <Badge
+                            colorScheme="orange"
+                            variant="subtle"
+                            px={2}
+                            py={0.5}
+                            borderRadius="md"
+                            fontSize="xs"
+                            fontWeight="900"
+                            letterSpacing="wide"
+                            title={q.id ? `ID Web: #${q.id}` : undefined}
+                          >
                             COT-PENDIENTE
                           </Badge>
                         )}
@@ -3540,12 +3624,12 @@ export function QuoteApprovalPage() {
       />
 
       {/* MODAL DE ADVERTENCIA DE BLOQUEO POR CONCURRENCIA */}
-      <Modal isOpen={!!lockAlertTarget} onClose={() => setLockAlertTarget(null)} isCentered size="md">
+      <Modal isOpen={!!lockAlertTarget} onClose={() => setLockAlertTarget(null)} isCentered size={{ base: "sm", sm: "md", md: "lg" }}>
         <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(3px)" />
-        <ModalContent borderRadius="2xl" p={2}>
+        <ModalContent borderRadius="2xl" p={{ base: 2, sm: 3 }} mx={3} maxW={{ base: "95vw", sm: "540px", md: "580px" }}>
           <ModalHeader display="flex" alignItems="center" gap={2} color="#b45309" fontSize="md">
-            <Lock className="w-5 h-5 text-amber-600" />
-            Cotización en Revisión Activa
+            <Lock className="w-5 h-5 text-amber-600 flex-shrink-0" />
+            <Text isTruncated>Cotización en Revisión Activa</Text>
           </ModalHeader>
           <ModalCloseButton />
           <ModalBody>
@@ -3569,12 +3653,56 @@ export function QuoteApprovalPage() {
               </Text>
             </VStack>
           </ModalBody>
-          <ModalFooter gap={2} wrap="wrap">
+          <ModalFooter
+            display="flex"
+            flexDirection={{ base: "column-reverse", sm: "row" }}
+            gap={2.5}
+            justifyContent="flex-end"
+            alignItems="stretch"
+            flexWrap="wrap"
+            pt={3}
+          >
+            <Button
+              colorScheme="gray"
+              variant="ghost"
+              size="sm"
+              fontWeight="700"
+              onClick={() => setLockAlertTarget(null)}
+              w={{ base: "full", sm: "auto" }}
+              whiteSpace="nowrap"
+              flexShrink={0}
+            >
+              Cerrar
+            </Button>
+            <Button
+              colorScheme="blue"
+              variant="outline"
+              size="sm"
+              fontWeight="700"
+              leftIcon={<Eye className="w-4 h-4" />}
+              w={{ base: "full", sm: "auto" }}
+              whiteSpace="nowrap"
+              flexShrink={0}
+              onClick={() => {
+                const targetQ = lockAlertTarget?.quote;
+                setLockAlertTarget(null);
+                if (targetQ) {
+                  const freshDoc = quotes.find(item => isMatchingDoc(item, targetQ.docNumber || targetQ.id)) || targetQ;
+                  setSelectedQuote({ ...freshDoc });
+                  setIsDetailOpen(true);
+                }
+              }}
+            >
+              👁️ Ver Solo Lectura
+            </Button>
             {isAdminUser && (
               <Button
                 colorScheme="teal"
                 size="sm"
                 fontWeight="800"
+                w={{ base: "full", sm: "auto" }}
+                whiteSpace="nowrap"
+                flexShrink={0}
                 onClick={() => {
                   const targetQ = lockAlertTarget?.quote;
                   const id = targetQ?.docNumber || targetQ?.id;
@@ -3595,30 +3723,9 @@ export function QuoteApprovalPage() {
                   });
                 }}
               >
-                🔓 Desbloquear y Entrar a Verificar (Admin)
+                🔓 Desbloquear y Entrar
               </Button>
             )}
-            <Button
-              colorScheme="blue"
-              variant="outline"
-              size="sm"
-              fontWeight="700"
-              leftIcon={<Eye className="w-4 h-4" />}
-              onClick={() => {
-                const targetQ = lockAlertTarget?.quote;
-                setLockAlertTarget(null);
-                if (targetQ) {
-                  const freshDoc = quotes.find(item => isMatchingDoc(item, targetQ.docNumber || targetQ.id)) || targetQ;
-                  setSelectedQuote({ ...freshDoc });
-                  setIsDetailOpen(true);
-                }
-              }}
-            >
-              👁️ Ver en Modo Solo Lectura
-            </Button>
-            <Button colorScheme="gray" size="sm" fontWeight="700" onClick={() => setLockAlertTarget(null)}>
-              Entendido / Cerrar
-            </Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
