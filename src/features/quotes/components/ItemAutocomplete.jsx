@@ -1,17 +1,24 @@
-import { useMemo, useState, useRef } from "react";
-import { Box, Text, HStack, Badge, Flex } from "@chakra-ui/react";
-import Select from "react-select";
+import React, { useMemo, useState, useRef, useEffect } from "react";
+import {
+  Box,
+  Text,
+  HStack,
+  Badge,
+  Flex,
+  Input,
+  InputGroup,
+  InputLeftElement,
+  InputRightElement,
+  IconButton,
+  Spinner,
+} from "@chakra-ui/react";
+import { Search, X } from "lucide-react";
 import { useProductsPriceList } from "../../products/hooks/queries/productQueries";
 import { useGetPromotions } from "../hooks/queries/quotesQueries";
 import { useDebounce } from "../../../shared/hooks/useDebounce";
 
 const MIN_CHARS = 2;
-const DEBOUNCE_MS = 300;
-
-/** Un término que contiene dígitos o guiones se evalúa con búsqueda inteligente de código y nombre. */
-function isLikelyItemCode(term) {
-  return /^[\d\-]+$/.test(term.trim());
-}
+const DEBOUNCE_MS = 250;
 
 /** Normaliza una cadena removiendo tildes, minúsculas y caracteres especiales para comparación insensible a símbolos */
 function normalizeString(str) {
@@ -24,17 +31,25 @@ function normalizeString(str) {
 }
 
 /**
- * Autocompletado inteligente de artículos contra SAP con soporte para Ofertas del Mes.
- * Incluye búsqueda instantánea al presionar Enter o pegar, y debounce ágil de 200ms.
+ * Autocompletado nativo y ultra-ligero para artículos en SAP.
+ * Optimizado para móvil y desktop:
+ * - Sin chevrons ni menús confusos de selectores estándar.
+ * - Input táctil amplio (48px en móvil, 16px de fuente anti-zoom iOS).
+ * - Búsqueda instantánea al presionar Enter o pegar.
+ * - Despliegue flotante táctil con indicadores claros de stock y ofertas.
  */
 export default function ItemAutocomplete({ onSelect, isDisabled = false, placeholder }) {
   const [inputValue, setInputValue] = useState("");
   const [immediateTerm, setImmediateTerm] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+
+  const containerRef = useRef(null);
+  const inputRef = useRef(null);
+
   const debouncedTerm = useDebounce(inputValue, DEBOUNCE_MS);
   const { promotionsMap } = useGetPromotions();
-  const selectRef = useRef(null);
 
-  // El término activo es inmediato (Enter/Pegar) o por debounce ágil (200ms)
   const term = (immediateTerm || debouncedTerm).trim();
   const shouldSearch = term.length >= MIN_CHARS;
 
@@ -45,48 +60,56 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
     enabled: shouldSearch,
   });
 
-  const handleInputChange = (newVal, actionMeta) => {
-    if (actionMeta.action === "input-change") {
-      setImmediateTerm("");
-      const upper = newVal.replace(/[\r\n\t]+/g, " ").toUpperCase();
-      setInputValue(upper);
-      return upper;
-    } else if (actionMeta.action === "clear") {
-      setImmediateTerm("");
-      setInputValue("");
-      return "";
+  // Cerrar dropdown al hacer clic o tap fuera del contenedor
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("touchstart", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+    };
+  }, []);
+
+  const handleInputChange = (e) => {
+    const val = e.target.value.toUpperCase();
+    setImmediateTerm("");
+    setInputValue(val);
+    setHighlightedIndex(0);
+    if (val.trim().length >= MIN_CHARS) {
+      setIsOpen(true);
+    } else {
+      setIsOpen(false);
+    }
+  };
+
+  const handleClear = () => {
+    setInputValue("");
+    setImmediateTerm("");
+    setIsOpen(false);
+    setHighlightedIndex(0);
+    if (inputRef.current) {
+      inputRef.current.focus();
     }
   };
 
   const handlePaste = (e) => {
-    // ⚡ Soporta pegar desde cualquier SO (Ctrl+V, Cmd+V o Clic derecho) y busca INMEDIATAMENTE (0ms)
     const pastedText = e.clipboardData?.getData("text");
     if (pastedText) {
       e.preventDefault();
       const clean = pastedText.replace(/[\r\n\t]+/g, " ").trim().toUpperCase();
       setInputValue(clean);
       setImmediateTerm(clean);
-      if (selectRef.current) {
-        selectRef.current.focus();
-      }
+      setHighlightedIndex(0);
+      setIsOpen(true);
     }
   };
 
-  const handleKeyDown = (e) => {
-    // ⚡ Si el usuario presiona Enter, dispara la consulta de inmediato sin esperar el debounce
-    if (e.key === "Enter" && inputValue.trim().length >= MIN_CHARS) {
-      setImmediateTerm(inputValue.trim());
-    }
-  };
-
-  const handleContextMenu = () => {
-    // Asegurar foco nativo en el input al hacer clic derecho para desplegar el menú de edición (Pegar/Copiar)
-    if (selectRef.current) {
-      selectRef.current.focus();
-    }
-  };
-
-  const options = useMemo(() => {
+  const sortedRecords = useMemo(() => {
     const records = data?.records || [];
     if (!records.length) return [];
 
@@ -94,7 +117,7 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
     const searchClean = normalizeString(term);
     const searchTermsClean = searchRawLower.split(/[\s\-._/]+/).map(normalizeString).filter(Boolean);
 
-    const sortedRecords = [...records].sort((a, b) => {
+    return [...records].sort((a, b) => {
       const codeClean = normalizeString(a.ITEM_CODE);
       const nameClean = normalizeString(a.ITEM_NAME);
 
@@ -120,22 +143,10 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
 
       return 0;
     });
-
-    return sortedRecords.map((r) => ({
-      value: r.ITEM_CODE,
-      label: `${r.ITEM_CODE} — ${r.ITEM_NAME}`,
-      record: r,
-    }));
   }, [data, term]);
 
-  const handleChange = (option, actionMeta) => {
-    if (actionMeta?.action === "clear") {
-      setImmediateTerm("");
-      setInputValue("");
-      return;
-    }
-    if (!option?.record) return;
-    const r = option.record;
+  const handleSelectItem = (r) => {
+    if (!r) return;
     const rawStock = r.STOCK_DISPONIBLE ?? r.Stock ?? r.OnHand;
     const hasValidStock = rawStock !== undefined && rawStock !== null && !isNaN(Number(rawStock));
     const stockVal = hasValidStock ? Number(rawStock) : null;
@@ -162,137 +173,203 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
       stockChecked: hasValidStock,
       isAgotado,
       marca: r.MARCA,
+      whsCode: r.WHS_CODE || "014",
       quantity: "",
       lineDiscount: 0,
       raw: r,
     });
 
-    setImmediateTerm("");
     setInputValue("");
+    setImmediateTerm("");
+    setIsOpen(false);
   };
 
-  const noOptionsMessage = () => {
-    if (!shouldSearch) return `Escribe al menos ${MIN_CHARS} caracteres...`;
-    if (isFetching) return "Buscando…";
-    return "Sin resultados";
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter") {
+      if (isOpen && sortedRecords.length > 0 && highlightedIndex >= 0) {
+        e.preventDefault();
+        handleSelectItem(sortedRecords[highlightedIndex]);
+        return;
+      }
+      if (inputValue.trim().length >= MIN_CHARS) {
+        setImmediateTerm(inputValue.trim());
+        setIsOpen(true);
+      }
+    } else if (e.key === "ArrowDown") {
+      if (isOpen && sortedRecords.length > 0) {
+        e.preventDefault();
+        setHighlightedIndex((prev) => Math.min(prev + 1, sortedRecords.length - 1));
+      }
+    } else if (e.key === "ArrowUp") {
+      if (isOpen && sortedRecords.length > 0) {
+        e.preventDefault();
+        setHighlightedIndex((prev) => Math.max(prev - 1, 0));
+      }
+    } else if (e.key === "Escape") {
+      setIsOpen(false);
+    }
   };
 
   return (
-    <Box
-      w="full"
-      onPaste={handlePaste}
-      onContextMenu={handleContextMenu}
-    >
-      <Select
-        ref={selectRef}
-        inputValue={inputValue}
-        onInputChange={handleInputChange}
-        onKeyDown={handleKeyDown}
-        onBlurResetsInput={false}
-        closeMenuOnSelect={true}
-        openMenuOnClick={true}
-        openMenuOnFocus={true}
-        isClearable={Boolean(inputValue)}
-        options={shouldSearch ? options : []}
-        onChange={handleChange}
-        isLoading={shouldSearch && isFetching}
-        isDisabled={isDisabled}
-        value={null}
-        placeholder={placeholder || "Escribe código o nombre del Artículo"}
-        noOptionsMessage={noOptionsMessage}
-        loadingMessage={() => "Buscando…"}
-        filterOption={null}
-        formatOptionLabel={(option) => {
-          const r = option.record;
-          if (!r) return option.label;
-          const stock = Number(r.STOCK_DISPONIBLE) || 0;
-          const promo = promotionsMap ? promotionsMap[r.ITEM_CODE] : null;
-          let promoUrgency = "";
-          if (promo?.validUntil) {
-            const diffDays = Math.ceil((new Date(promo.validUntil).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-            if (diffDays <= 0) promoUrgency = " • ¡Hoy!";
-            else if (diffDays <= 3) promoUrgency = ` • ¡${diffDays}d!`;
-          }
-          return (
-            <Box>
-              <Flex justify="space-between" align="center">
-                <Text fontSize="xs" fontWeight="700" color="gray.900" noOfLines={1}>
-                  {r.ITEM_NAME}
-                </Text>
-                {promo && (
-                  <Badge bg="amber.400" color="amber.950" fontSize="0.65rem" px={1.5} py={0.2} borderRadius="md" fontWeight="900" flexShrink={0} ml={2}>
-                    🏷️ OFERTA: -{promo.discountPct}%{promoUrgency}
-                  </Badge>
-                )}
-              </Flex>
-              <HStack spacing={2} mt={0.5}>
-                <Text fontSize="0.7rem" fontWeight="800" color="emerald.700" fontFamily="mono">{r.ITEM_CODE}</Text>
-                {r.MARCA && <Text fontSize="0.7rem" color="gray.500">· {r.MARCA}</Text>}
-                <Badge colorScheme={stock > 0 ? "green" : "red"} fontSize="0.6rem" px={1}>
-                  Stk: {stock}
-                </Badge>
-              </HStack>
+    <Box ref={containerRef} position="relative" w="full">
+      <InputGroup size="md">
+        <InputLeftElement pointerEvents="none" h="full" pl={3}>
+          <Search size={18} color="#166534" />
+        </InputLeftElement>
+
+        <Input
+          ref={inputRef}
+          value={inputValue}
+          onChange={handleInputChange}
+          onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
+          onFocus={() => {
+            if (shouldSearch) setIsOpen(true);
+          }}
+          placeholder={placeholder || "Escribe código o nombre del artículo..."}
+          isDisabled={isDisabled}
+          h={{ base: "48px", md: "42px" }}
+          pl="42px"
+          pr={inputValue ? "42px" : "12px"}
+          fontSize={{ base: "16px", md: "sm" }}
+          fontWeight="600"
+          bg="white"
+          border="1.5px solid"
+          borderColor="gray.300"
+          borderRadius="xl"
+          _hover={{ borderColor: "#166534" }}
+          _focus={{
+            borderColor: "#166534",
+            boxShadow: "0 0 0 1.5px #166534",
+          }}
+          textTransform="uppercase"
+        />
+
+        <InputRightElement h="full" pr={2}>
+          {isFetching ? (
+            <Spinner size="sm" color="emerald.600" speed="0.6s" thickness="2px" />
+          ) : inputValue ? (
+            <IconButton
+              icon={<X size={16} />}
+              size="sm"
+              variant="ghost"
+              color="gray.400"
+              _hover={{ color: "red.500", bg: "gray.100" }}
+              borderRadius="full"
+              onClick={handleClear}
+              aria-label="Limpiar búsqueda"
+            />
+          ) : null}
+        </InputRightElement>
+      </InputGroup>
+
+      {/* DROPDOWN FLOTANTE ERGONÓMICO CON RESULTADOS */}
+      {isOpen && shouldSearch && (
+        <Box
+          position="absolute"
+          top="calc(100% + 4px)"
+          left={0}
+          right={0}
+          zIndex={1500}
+          bg="white"
+          borderRadius="xl"
+          border="1.5px solid"
+          borderColor="#166534"
+          boxShadow="0 14px 35px -5px rgba(0,0,0,0.25)"
+          maxH={{ base: "280px", md: "340px" }}
+          overflowY="auto"
+          sx={{
+            WebkitOverflowScrolling: "touch",
+          }}
+        >
+          {isFetching && sortedRecords.length === 0 ? (
+            <Flex align="center" justify="center" p={4} gap={2.5} color="emerald.800" fontSize="xs" fontWeight="700">
+              <Spinner size="xs" color="emerald.600" speed="0.6s" />
+              <Text>Buscando artículos en SAP...</Text>
+            </Flex>
+          ) : sortedRecords.length === 0 ? (
+            <Box p={4} textAlign="center" color="gray.500" fontSize="xs" fontWeight="700">
+              No se encontraron artículos para "{term}".
             </Box>
-          );
-        }}
-        styles={{
-          control: (base) => ({
-            ...base,
-            minHeight: "38px",
-            height: "38px",
-            borderRadius: "8px",
-            borderColor: "#cbd5e1",
-            boxShadow: "none",
-            "&:hover": { borderColor: "#10b981" },
-            cursor: "text",
-          }),
-          valueContainer: (base) => ({
-            ...base,
-            height: "38px",
-            padding: "0 8px",
-            cursor: "text",
-          }),
-          input: (base) => ({
-            ...base,
-            margin: "0px",
-            padding: "0px",
-            color: "#1e293b",
-            fontSize: "0.85rem",
-            fontWeight: "600",
-            textTransform: "uppercase",
-            "& input": {
-              color: "#1e293b !important",
-              fontFamily: "inherit",
-              cursor: "text !important",
-              textTransform: "uppercase !important",
-            },
-          }),
-          placeholder: (base) => ({
-            ...base,
-            fontSize: "0.78rem",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            color: "#64748b",
-            margin: 0,
-            pointerEvents: "none",
-            userSelect: "none",
-            textTransform: "none",
-          }),
-          indicatorsContainer: (base) => ({
-            ...base,
-            height: "38px",
-          }),
-          clearIndicator: (base) => ({
-            ...base,
-            padding: "2px 4px",
-            cursor: "pointer",
-            color: "#94a3b8",
-            "&:hover": { color: "#ef4444" },
-          }),
-          menu: (base) => ({ ...base, zIndex: 20 }),
-        }}
-      />
+          ) : (
+            sortedRecords.map((r, index) => {
+              const rawStock = r.STOCK_DISPONIBLE ?? r.Stock ?? r.OnHand;
+              const hasValidStock = rawStock !== undefined && rawStock !== null && !isNaN(Number(rawStock));
+              const stockVal = hasValidStock ? Number(rawStock) : null;
+              const isAgotado = hasValidStock && stockVal === 0;
+
+              const promo = promotionsMap ? (promotionsMap[r.ITEM_CODE] || promotionsMap[r.itemCode]) : null;
+              const isHighlighted = index === highlightedIndex;
+
+              return (
+                <Box
+                  key={r.ITEM_CODE || index}
+                  p={{ base: 3, md: 2.5 }}
+                  borderBottom="1px solid #f1f5f9"
+                  cursor="pointer"
+                  bg={isHighlighted ? "#f0fdf4" : "white"}
+                  _hover={{ bg: "#f0fdf4" }}
+                  _active={{ bg: "#dcfce7" }}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    handleSelectItem(r);
+                  }}
+                  onTouchEnd={(e) => {
+                    e.preventDefault();
+                    handleSelectItem(r);
+                  }}
+                >
+                  <Flex justify="space-between" align="flex-start" gap={2} mb={1}>
+                    <Text fontSize={{ base: "13px", md: "xs" }} fontWeight="800" color="gray.900" noOfLines={2}>
+                      {r.ITEM_NAME}
+                    </Text>
+                    {promo && (
+                      <Badge
+                        bg="amber.400"
+                        color="amber.950"
+                        fontSize="0.65rem"
+                        px={1.5}
+                        py={0.2}
+                        borderRadius="md"
+                        fontWeight="900"
+                        flexShrink={0}
+                      >
+                        🏷️ OFERTA: -{promo.discountPct}%
+                      </Badge>
+                    )}
+                  </Flex>
+
+                  <HStack spacing={2} wrap="wrap">
+                    <Text fontSize="11px" fontWeight="800" color="#166534" fontFamily="mono">
+                      {r.ITEM_CODE}
+                    </Text>
+                    {r.MARCA && (
+                      <Text fontSize="11px" color="gray.500" fontWeight="600">
+                        • {r.MARCA}
+                      </Text>
+                    )}
+                    {r.SIGLA && (
+                      <Badge bg="gray.100" color="gray.700" fontSize="9px" px={1.5} borderRadius="sm" fontWeight="700">
+                        {r.SIGLA}
+                      </Badge>
+                    )}
+                    <Badge
+                      colorScheme={stockVal > 0 ? "green" : isAgotado ? "red" : "gray"}
+                      fontSize="10px"
+                      px={2}
+                      py={0.2}
+                      borderRadius="md"
+                      fontWeight="800"
+                    >
+                      {stockVal !== null ? `Stock: ${stockVal} und` : "Consultando stock"}
+                    </Badge>
+                  </HStack>
+                </Box>
+              );
+            })
+          )}
+        </Box>
+      )}
     </Box>
   );
 }
