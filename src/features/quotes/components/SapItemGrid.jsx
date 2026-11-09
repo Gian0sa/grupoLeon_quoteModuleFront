@@ -181,6 +181,8 @@ export default function SapItemGrid({
             const price = isOutOfStock ? 0 : Number(item.price ?? item.unitPrice ?? 0);
             const sapDisc = isOutOfStock ? 0 : Number(item.discount || item.sapDiscount || 0);
             const itemCode = item.code || item.productCode || item.itemCode || item.id || "";
+            const promoInfo = promotionsMap[itemCode] || null;
+            const promoDisc = isOutOfStock ? 0 : Number(item.promoDiscount || promoInfo?.discountPct || 0);
             const targetPromoPriceConIGV = !isOutOfStock && (
               (item.promoPriceConIGV && Number(item.promoPriceConIGV) > 0) ? Number(item.promoPriceConIGV) :
               (promoInfo?.promoPriceConIGV && Number(promoInfo.promoPriceConIGV) > 0) ? Number(promoInfo.promoPriceConIGV) :
@@ -515,6 +517,8 @@ export default function SapItemGrid({
                   const price = isOutOfStock ? 0 : Number(item.price ?? item.unitPrice ?? 0);
                   const sapDisc = isOutOfStock ? 0 : Number(item.discount || item.sapDiscount || 0);
                   const itemCode = item.code || item.productCode || item.itemCode || item.id || "";
+                  const promoInfo = promotionsMap[itemCode] || null;
+                  const promoDisc = isOutOfStock ? 0 : Number(item.promoDiscount || promoInfo?.discountPct || 0);
                   const targetPromoPriceConIGV = !isOutOfStock && (
                     (item.promoPriceConIGV && Number(item.promoPriceConIGV) > 0) ? Number(item.promoPriceConIGV) :
                     (promoInfo?.promoPriceConIGV && Number(promoInfo.promoPriceConIGV) > 0) ? Number(promoInfo.promoPriceConIGV) :
