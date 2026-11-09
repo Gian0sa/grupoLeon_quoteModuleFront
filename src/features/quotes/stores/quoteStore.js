@@ -560,9 +560,20 @@ export const useQuoteStore = create((set, get) => {
         validDeliveryDate = !isNaN(d.getTime()) ? d : rawDeliveryDate;
       }
 
+      // Extraer identificador numérico subyacente o docNumber legítimo
+      const resolvedNumId = quoteData.id && !isNaN(Number(quoteData.id)) && Number(quoteData.id) > 0
+        ? Number(quoteData.id)
+        : (() => {
+            const match = String(quoteData.docNumber || quoteData.id || "").match(/^COT-WEB-0*(\d+)$/i);
+            return match ? parseInt(match[1], 10) : null;
+          })();
+
+      const resolvedQuoteId = resolvedNumId || quoteData.docNumber || quoteData.id || null;
+      const resolvedApprovalStatus = quoteData.approvalStatus || quoteData.state || quoteData.status || "BORRADOR";
+
       customSet({
         ...initialQuoteState,
-        quoteId: quoteData.docNumber || quoteData.id || null,
+        quoteId: resolvedQuoteId,
         client,
         products: Array.from(uniqueMap.values()),
         opNum: quoteData.opNum || quoteData.U_VS_OPNUM || quoteData.totals?.opNum || quoteData.totals?.U_VS_OPNUM || null,
@@ -582,7 +593,7 @@ export const useQuoteStore = create((set, get) => {
         isLetra: isLetraVal,
         creditTerm: creditTermVal,
         currency: (quoteData.currency === "SOL" || quoteData.currency === "PEN" || quoteData.DocCurrency === "SOL" || quoteData.DocCurrency === "PEN" || quoteData.totals?.currency === "SOL") ? "SOL" : (quoteData.currency || "USD"),
-        approvalStatus: quoteData.approvalStatus || quoteData.state || quoteData.status || null,
+        approvalStatus: resolvedApprovalStatus,
         rejectionReason: quoteData.rejectionReason || quoteData.observations || null,
         observations: quoteData.observations || quoteData.rejectionReason || null,
         sellerName: quoteData.sellerName || quoteData.totals?.sellerName || quoteData.createdByUsername || null,

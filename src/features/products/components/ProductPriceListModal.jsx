@@ -103,21 +103,28 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size={{ base: "md", sm: "lg", md: "2xl", lg: "3xl" }} isCentered>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      size={{ base: "full", sm: "lg", md: "2xl", lg: "3xl" }}
+      isCentered
+      scrollBehavior="inside"
+    >
       <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(3px)" />
       <ModalContent
-        w={{ base: "92vw", sm: "88vw", md: "700px" }}
+        w={{ base: "calc(100vw - 16px)", sm: "90vw", md: "700px" }}
         maxW="700px"
+        maxH={{ base: "calc(100dvh - 24px)", md: "90vh" }}
         my="auto"
         mx="auto"
         borderRadius={{ base: "2xl", md: "3xl" }}
-        p={{ base: 4, sm: 5, md: 6 }}
+        p={{ base: 3.5, sm: 5, md: 6 }}
         boxShadow="2xl"
         overflow="hidden"
       >
         {/* Cabecera: Sigla + Estrella + Nombre + Cerrar */}
-        <ModalHeader p={0} mb={{ base: 3, md: 4 }}>
-          <HStack spacing={2} align="center" wrap="wrap" pr={{ base: 8, md: 10 }}>
+        <ModalHeader p={0} mb={{ base: 2.5, md: 4 }}>
+          <HStack spacing={2} align="center" wrap="nowrap" pr={{ base: 8, md: 10 }} minW={0}>
             {SIGLA && (
               <Badge
                 bg="#dcfce7"
@@ -125,24 +132,35 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
                 px={2.5}
                 py="2px"
                 borderRadius="lg"
-                fontSize={{ base: "13px", md: "14px" }}
+                fontSize={{ base: "12px", md: "14px" }}
                 fontWeight="900"
                 letterSpacing="0.3px"
+                flexShrink={0}
               >
                 {SIGLA}
               </Badge>
             )}
             {hasPromo && (
-              <Star size={20} fill="#facc15" color="#facc15" stroke="#facc15" />
+              <Box flexShrink={0}>
+                <Star size={18} fill="#facc15" color="#facc15" stroke="#facc15" />
+              </Box>
             )}
-            <Text fontSize={{ base: "15px", md: "18px" }} fontWeight="800" color="#0f172a" noOfLines={1} title={ITEM_NAME}>
+            <Text
+              fontSize={{ base: "14px", sm: "15px", md: "18px" }}
+              fontWeight="800"
+              color="#0f172a"
+              isTruncated
+              title={ITEM_NAME}
+              minW={0}
+              flex={1}
+            >
               {ITEM_NAME || SIGLA || "Producto sin descripción"}
             </Text>
           </HStack>
         </ModalHeader>
-        <ModalCloseButton top={{ base: 3, md: 4 }} right={{ base: 3, md: 4 }} size="md" borderRadius="full" />
+        <ModalCloseButton top={{ base: 2.5, md: 4 }} right={{ base: 2.5, md: 4 }} size="md" borderRadius="full" />
 
-        <ModalBody p={0}>
+        <ModalBody p={0} overflowY="auto">
           <VStack align="stretch" spacing={{ base: 3.5, md: 3 }}>
             {/* Sección superior: En móvil se apila verticalmente con buena altura, en desktop 2 columnas lado a lado */}
             <Flex
@@ -208,9 +226,9 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
                 bg="#eaf6ee"
                 border="2px solid #14532d"
                 borderRadius="2xl"
-                pt={{ base: hasPromo ? "18px" : "14px", md: hasPromo ? "20px" : "16px" }}
-                pb="12px"
-                px="16px"
+                pt={{ base: hasPromo ? "16px" : "12px", md: hasPromo ? "20px" : "16px" }}
+                pb="10px"
+                px={{ base: "10px", sm: "14px", md: "16px" }}
                 w={{ base: "100%", md: "315px" }}
                 flexShrink={0}
               >
@@ -218,15 +236,15 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
                 {hasPromo && (
                   <Box
                     position="absolute"
-                    top="-12px"
+                    top="-11px"
                     left="50%"
                     transform="translateX(-50%)"
                     bg="#14532d"
                     color="white"
-                    fontSize="11.5px"
+                    fontSize={{ base: "10.5px", sm: "11.5px" }}
                     fontWeight="900"
-                    px={3.5}
-                    py="2px"
+                    px={3}
+                    py="1.5px"
                     borderRadius="full"
                     letterSpacing="0.4px"
                     whiteSpace="nowrap"
@@ -237,17 +255,17 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
                 )}
 
                 {/* Fila central: Ícono Bujía + Precio + Badge lateral */}
-                <HStack spacing={3} justify="center" align="center" wrap="nowrap" mt={hasPromo ? 1 : 0}>
+                <HStack spacing={{ base: 2, sm: 3 }} justify="center" align="center" wrap="nowrap" mt={hasPromo ? 1 : 0}>
                   <Image
                     src="/assets/spark_plug_icon.png"
                     alt="Bujía y tuerca"
-                    w={{ base: "32px", md: "36px" }}
+                    w={{ base: "26px", sm: "30px", md: "36px" }}
                     h="auto"
                     flexShrink={0}
                   />
 
                   <Text
-                    fontSize={{ base: "32px", md: "38px" }}
+                    fontSize={{ base: "24px", sm: "30px", md: "38px" }}
                     fontWeight="900"
                     color="#0f291e"
                     lineHeight="1"
@@ -261,10 +279,10 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
                     <Badge
                       bg="#eab308"
                       color="white"
-                      fontSize="13px"
+                      fontSize={{ base: "11px", sm: "12.5px", md: "13px" }}
                       fontWeight="900"
-                      px={2.5}
-                      py={1}
+                      px={{ base: 2, sm: 2.5 }}
+                      py={{ base: 0.5, sm: 1 }}
                       borderRadius="lg"
                       letterSpacing="0.3px"
                       whiteSpace="nowrap"
@@ -279,17 +297,17 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
                       spacing={0}
                       bg="#14532d"
                       color="white"
-                      px={2.5}
-                      py={1}
+                      px={2}
+                      py={0.8}
                       borderRadius="lg"
                       align="center"
                       justify="center"
                       flexShrink={0}
                     >
-                      <Text fontSize="9.5px" fontWeight="900" lineHeight="1.1" letterSpacing="0.3px" whiteSpace="nowrap">
+                      <Text fontSize="9px" fontWeight="900" lineHeight="1.1" letterSpacing="0.3px" whiteSpace="nowrap">
                         PRECIO
                       </Text>
-                      <Text fontSize="9.5px" fontWeight="900" lineHeight="1.1" letterSpacing="0.3px" whiteSpace="nowrap">
+                      <Text fontSize="9px" fontWeight="900" lineHeight="1.1" letterSpacing="0.3px" whiteSpace="nowrap">
                         FINAL
                       </Text>
                     </VStack>
@@ -298,12 +316,12 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
 
                 {/* Subtexto */}
                 <Text
-                  fontSize="11.5px"
+                  fontSize={{ base: "10.5px", sm: "11.5px" }}
                   fontWeight="600"
                   color="#1e3a2b"
                   textAlign="center"
-                  mt={2}
-                  whiteSpace="nowrap"
+                  mt={1.5}
+                  whiteSpace={{ base: "normal", sm: "nowrap" }}
                 >
                   {hasPromo ? "Aplica sobre precio normal (Inc. IGV)" : "Precio normal (Inc. IGV)"}
                 </Text>
@@ -322,12 +340,18 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
               w="full"
             >
               {/* Precio listado + Descuento lista */}
-              <HStack spacing={2} align="center" justify={{ base: "space-between", md: "flex-start" }}>
-                <HStack spacing={2} align="center">
-                  <Text fontSize={{ base: "13.5px", md: "14px" }} fontWeight="600" color="#334155" whiteSpace="nowrap">
+              <Flex
+                spacing={2}
+                align="center"
+                justify={{ base: "space-between", md: "flex-start" }}
+                wrap="wrap"
+                gap={2}
+              >
+                <HStack spacing={2} align="center" minW="0">
+                  <Text fontSize={{ base: "13px", sm: "13.5px", md: "14px" }} fontWeight="600" color="#334155" whiteSpace="nowrap">
                     Precio de lista:
                   </Text>
-                  <Text fontSize={{ base: "14.5px", md: "15px" }} fontWeight="800" color="#0f172a" whiteSpace="nowrap">
+                  <Text fontSize={{ base: "14px", sm: "14.5px", md: "15px" }} fontWeight="800" color="#0f172a" whiteSpace="nowrap">
                     {currencySymbol}&nbsp;{precioListaConIgv?.toFixed(2) || "0.00"}
                   </Text>
                 </HStack>
@@ -335,30 +359,31 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
                   <Badge
                     bg="#7f1d1d"
                     color="white"
-                    fontSize={{ base: "11px", md: "12px" }}
+                    fontSize={{ base: "10.5px", sm: "11px", md: "12px" }}
                     fontWeight="800"
                     px={2.5}
                     py="1.5px"
                     borderRadius="full"
                     textTransform="none"
                     whiteSpace="nowrap"
+                    flexShrink={0}
                   >
                     Descuento lista: {baseDiscountPct}%
                   </Badge>
                 )}
-              </HStack>
+              </Flex>
 
               {/* Precio normal (solo si tiene promoción) */}
               {hasPromo && (
-                <HStack spacing={2} align="center" justify={{ base: "flex-start", md: "flex-start" }}>
+                <HStack spacing={2} align="center" justify="flex-start" wrap="wrap">
                   <Box h="16px" w="1px" bg="#cbd5e1" display={{ base: "none", md: "block" }} />
-                  <Text fontSize={{ base: "13.5px", md: "14px" }} fontWeight="600" color="#334155" whiteSpace="nowrap">
+                  <Text fontSize={{ base: "13px", sm: "13.5px", md: "14px" }} fontWeight="600" color="#334155" whiteSpace="nowrap">
                     Precio normal:
                   </Text>
-                  <Text fontSize={{ base: "14.5px", md: "15px" }} fontWeight="800" color="#0f172a" whiteSpace="nowrap">
+                  <Text fontSize={{ base: "14px", sm: "14.5px", md: "15px" }} fontWeight="800" color="#0f172a" whiteSpace="nowrap">
                     {currencySymbol}&nbsp;{(anteriorPriceConIgv || regularPriceConIgv)?.toFixed(2) || "0.00"}
                   </Text>
-                  <Text fontSize={{ base: "12px", md: "13px" }} fontWeight="600" color="#475569" whiteSpace="nowrap">
+                  <Text fontSize={{ base: "11.5px", sm: "12px", md: "13px" }} fontWeight="600" color="#475569" whiteSpace="nowrap">
                     (Inc. IGV)
                   </Text>
                 </HStack>
@@ -372,10 +397,10 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
               bg="#eaf6ee"
               borderRadius="xl"
               py={{ base: 2, md: 2.5 }}
-              px={3.5}
+              px={{ base: 3, sm: 3.5 }}
               border="1px solid #d1fae5"
             >
-              <HStack spacing={3} align="center">
+              <HStack spacing={{ base: 2, sm: 3 }} align="center" wrap="wrap">
                 <Flex
                   w="24px"
                   h="24px"
@@ -388,18 +413,19 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
                 >
                   <Check size={15} strokeWidth={3} />
                 </Flex>
-                <Text fontSize="15px" fontWeight="800" color="#0f291e" whiteSpace="nowrap">
+                <Text fontSize={{ base: "13.5px", sm: "15px" }} fontWeight="800" color="#0f291e" whiteSpace="nowrap">
                   Stock disponible:
                 </Text>
                 <Badge
                   bg="#14532d"
                   color="white"
-                  fontSize="13px"
+                  fontSize={{ base: "12px", sm: "13px" }}
                   fontWeight="900"
-                  px={3.5}
+                  px={3}
                   py={0.5}
                   borderRadius="lg"
                   whiteSpace="nowrap"
+                  flexShrink={0}
                 >
                   {formatNumber(STOCK_DISPONIBLE)} UND.
                 </Badge>

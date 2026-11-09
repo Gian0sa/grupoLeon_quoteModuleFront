@@ -1,7 +1,20 @@
 // Calculadora matemática unificada de totales de cotización/pedido para Grupo León / SAP B1
 export const APPROVAL_DISCOUNT_THRESHOLD = 50.0; // Umbral a partir del cual requiere aprobación comercial (50.0%)
-export const STANDARD_DISCOUNT_CEILING = 80.0;   // Tope comercial estándar permitido con aprobación (80.0%)
-export const MAX_DISCOUNT_CEILING = 80.0;        // Tope máximo comercial absoluto (80.0% para liquidaciones/promociones)
+export const REGULAR_DISCOUNT_CEILING = 55.0;    // Tope comercial estándar para artículos regulares (55.0%)
+export const STANDARD_DISCOUNT_CEILING = 55.0;   // Compatibilidad estándar (55.0%)
+export const MAX_DISCOUNT_CEILING = 55.0;        // Tope regular base (55.0%)
+
+export const getItemMaxDiscountCeiling = (item) => {
+  if (!item) return REGULAR_DISCOUNT_CEILING;
+  const sapDisc = Math.max(0, Math.min(100, Number(item.sapDiscount ?? item.discount ?? 0)));
+  const promoDisc = Math.max(0, Math.min(100, Number(item.promoDiscount ?? item.PromoDiscount ?? 0)));
+  const hasPromo = Boolean(promoDisc > 0 || item.promoPrice || item.U_US_PROMO);
+  if (hasPromo) {
+    const promoBaseDisc = Number((sapDisc + promoDisc).toFixed(2));
+    return Math.max(REGULAR_DISCOUNT_CEILING, promoBaseDisc);
+  }
+  return REGULAR_DISCOUNT_CEILING;
+};
 
 export const isItemWithoutStock = (p) => Boolean(
   p && (
@@ -19,7 +32,7 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
   let totalDiscountUSD = 0;  // Suma de montos descontados
   let netSubtotalUSD = 0;    // Base imponible neta (Suma de líneas con descuento)
   let hasAdditionalDiscount = false;
-  let hasVolumeDiscount = false; // Descuentos mayores a 50% hasta 80% por volumen (>100 uds)
+  let hasVolumeDiscount = false; // Descuentos mayores a 50% hasta 55% por volumen (>100 uds)
   let hasDiscountAboveThreshold = false; // Descuentos mayores o iguales a 50%
   let hasExceededDiscountCeiling = false;
 
@@ -62,7 +75,7 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
       }
     } else {
       const rawTotalDisc = sapDisc + promoDisc + addDisc;
-      const applicableCeiling = MAX_DISCOUNT_CEILING;
+      const applicableCeiling = getItemMaxDiscountCeiling({ ...p, sapDiscount: sapDisc, promoDiscount: promoDisc });
       totalDisc = Math.min(applicableCeiling, Math.max(0, rawTotalDisc));
       if (rawTotalDisc > applicableCeiling + 0.01) {
         hasExceededDiscountCeiling = true;

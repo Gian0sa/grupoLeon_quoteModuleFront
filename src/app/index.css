@@ -20,22 +20,35 @@
   }
 }
 
-/* Eliminación completa del destello azul táctil nativo en Android (Chrome, MIUI, WebKit) */
+/* Reset universal amigable y contencion de viewport */
 *,
 *::before,
 *::after {
+  box-sizing: border-box;
   -webkit-tap-highlight-color: transparent !important;
 }
 
-/* Optimización de respuesta táctil instantánea y prevención de outlines de foco en gama baja */
+/* Scroll nativo fluido y libre tanto en PC (rueda/mouse) como en Moviles (gesto tactil) */
+html {
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+body {
+  overflow-x: hidden;
+  overflow-y: visible;
+  margin: 0;
+  padding: 0;
+}
+
+/* Optimizacion de respuesta tactil y prevencion de outlines de foco */
 button,
 a,
 input,
 select,
 textarea,
-[role="button"],
 .chakra-button {
-  touch-action: manipulation;
   -webkit-tap-highlight-color: transparent !important;
   outline: none;
 }
