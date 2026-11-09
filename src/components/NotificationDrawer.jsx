@@ -38,8 +38,46 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
   const [lockAlertTarget, setLockAlertTarget] = useState(null);
   const [openingNotifId, setOpeningNotifId] = useState(null);
 
+  const cleanUsername = String(username || "user").trim().toLowerCase();
   const [localVersion, setLocalVersion] = useState(0);
-  const [dismissedKeys, setDismissedKeys] = useState(() => new Set());
+  const [dismissedKeys, setDismissedKeys] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`grupoLeon_dismissed_notifs_${String(username || "user").trim().toLowerCase()}`);
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  const persistDismissedKeys = (setOrFn) => {
+    setDismissedKeys(prev => {
+      const next = typeof setOrFn === "function" ? setOrFn(prev) : setOrFn;
+      try {
+        const key = `grupoLeon_dismissed_notifs_${String(username || "user").trim().toLowerCase()}`;
+        localStorage.setItem(key, JSON.stringify(Array.from(next)));
+      } catch {}
+      return next;
+    });
+  };
+
+  const [activeLocks, setActiveLocks] = useState({});
+  useEffect(() => {
+    const refreshLocks = () => {
+      try {
+        const raw = localStorage.getItem("grupoLeon_quote_locks");
+        setActiveLocks(raw ? JSON.parse(raw) : {});
+      } catch {
+        setActiveLocks({});
+      }
+    };
+    refreshLocks();
+    window.addEventListener("quoteLocksUpdated", refreshLocks);
+    window.addEventListener("storage", refreshLocks);
+    return () => {
+      window.removeEventListener("quoteLocksUpdated", refreshLocks);
+      window.removeEventListener("storage", refreshLocks);
+    };
+  }, []);
 
   useEffect(() => {
     const handleUpdate = () => setLocalVersion(v => v + 1);
@@ -223,8 +261,8 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
   }, [myNotifications]);
 
   const handleClearAll = () => {
-    // ⚡ 1. Descartar todas las alertas actuales de inmediato (0ms de latencia en pantalla)
-    setDismissedKeys(prev => {
+    // ⚡ 1. Descartar todas las alertas actuales para ESTE usuario (0ms de latencia en pantalla)
+    persistDismissedKeys(prev => {
       const next = new Set(prev);
       myNotifications.forEach(n => {
         if (n.id) next.add(String(n.id));
@@ -236,7 +274,7 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
       return next;
     });
 
-    // ⚡ 2. Limpieza inmediata de almacenamiento local
+    // ⚡ 2. Limpieza inmediata de almacenamiento local de esta sesión
     try {
       localStorage.setItem("grupoLeon_notifications", "[]");
       window.dispatchEvent(new Event("localNotificationsUpdated"));
@@ -246,12 +284,12 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
     // ⚡ 3. Limpieza optimista en caché de React Query (0ms)
     queryClient.setQueriesData({ queryKey: ["notifications"] }, []);
 
-    // ⚡ 4. Notificar al servidor en segundo plano
-    clearNotifications(isAdmin ? "FACTURACION" : undefined, username)
-      .catch(e => console.error("Error clearing server notifications:", e))
-      .finally(() => {
-        queryClient.invalidateQueries({ queryKey: ["notifications"] });
-      });
+    // ⚡ 4. Notificar al servidor según el rol:
+    // 🛡️ REGLA: Si es Facturación/Admin, NUNCA borramos masivamente MySQL porque Juan y otros administradores
+    // necesitan ver las cotizaciones pendientes de revisión. Solo para vendedores privados se limpia en BD.
+    if (!isAdmin) {
+      clearNotifications(undefined, username).catch(() => {});
+    }
   };
 
   const handleDeleteNotif = (id, quoteId) => {
@@ -259,8 +297,8 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
     const matchWeb = rawQ.match(/COT-WEB-(\d+)/i) || rawQ.match(/COT-(\d+)/i) || rawQ.match(/(\d+)/);
     const canonicalKey = matchWeb ? `QUOTE-${Number(matchWeb[1])}` : rawQ;
 
-    // ⚡ 1. ACTUALIZACIÓN OPTIMISTA INMEDIATA (0ms): La alerta desaparece al instante de la UI
-    setDismissedKeys(prev => {
+    // ⚡ 1. ACTUALIZACIÓN OPTIMISTA INMEDIATA (0ms): La alerta desaparece al instante de la UI de ESTE usuario
+    persistDismissedKeys(prev => {
       const next = new Set(prev);
       if (id) next.add(String(id));
       if (quoteId) next.add(String(quoteId));
@@ -296,13 +334,14 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
       });
     });
 
-    // ⚡ 4. Sincronización asíncrona en segundo plano sin congelar la interfaz
-    Promise.allSettled([
-      deleteNotification(id, quoteId),
-      markNotificationAsRead(id, quoteId),
-    ]).finally(() => {
-      queryClient.invalidateQueries({ queryKey: ["notifications"] });
-    });
+    // ⚡ 4. Sincronización asíncrona segura:
+    // - Para vendedor: borra su alerta personal en BD.
+    // - Para Facturación/Admin: SOLO marca como leída en la BD, NO borra la fila para no afectar a Juan ni a otros administradores!
+    if (!isAdmin) {
+      deleteNotification(id, quoteId).catch(() => {});
+    } else {
+      markNotificationAsRead(id, quoteId).catch(() => {});
+    }
   };
 
   const formatTimeAgo = (dateStr) => {
@@ -341,10 +380,14 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
       // Concurrencia de Digitación: Verificar si otro usuario ya la tiene abierta
       if (targetId) {
         const lockCheck = checkQuoteLock(targetId, userId, username);
-        if (lockCheck.isLocked && !isAdmin) {
-          setLockAlertTarget({ quoteId: targetId, lockInfo: lockCheck.lockInfo });
-          setOpeningNotifId(null);
-          return;
+        if (lockCheck.isLocked) {
+          toast({
+            title: `🔒 En revisión por ${lockCheck.lockInfo?.lockedByUsername || "Facturación"}`,
+            description: "Abriendo en modo Solo Lectura para evitar cruces o duplicidad en SAP B1.",
+            status: "warning",
+            duration: 3500,
+            isClosable: true,
+          });
         }
       }
 
@@ -595,18 +638,23 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
 
                   const isOpeningThis = openingNotifId === String(item.id || item.quoteId || "");
 
+                  const notifQuoteKey = item.quoteId || item.id;
+                  const lockInfo = checkQuoteLock(notifQuoteKey, userId, username);
+                  const isLockedByOther = Boolean(lockInfo.isLocked);
+                  const lockerName = lockInfo.lockInfo?.lockedByUsername || "Facturación";
+
                   return (
                     <Box
                       key={item.id}
                       p={4}
                       borderRadius="2xl"
                       border="1px solid"
-                      borderColor={item.read ? "gray.200" : "emerald.300"}
+                      borderColor={isLockedByOther ? "#fcd34d" : (item.read ? "gray.200" : "emerald.300")}
                       borderLeft="5px solid"
-                      borderLeftColor={borderLeftColor}
-                      bg={item.read ? "whiteAlpha.800" : "white"}
+                      borderLeftColor={isLockedByOther ? "#f59e0b" : borderLeftColor}
+                      bg={isLockedByOther ? "#fffdf5" : (item.read ? "whiteAlpha.800" : "white")}
                       boxShadow={item.read ? "none" : "sm"}
-                      _hover={{ boxShadow: "md", transform: "translateY(-1px)", borderColor: "emerald.400" }}
+                      _hover={{ boxShadow: "md", transform: "translateY(-1px)", borderColor: isLockedByOther ? "#f59e0b" : "emerald.400" }}
                       transition="all 0.2s"
                       cursor={isOpeningThis ? "wait" : "pointer"}
                       opacity={isOpeningThis ? 0.75 : 1}
@@ -620,21 +668,25 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
                               h="28px"
                               minW="28px"
                               borderRadius="md"
-                              bg={iconBg}
+                              bg={isLockedByOther ? "amber.50" : iconBg}
                               align="center"
                               justify="center"
                               flexShrink={0}
                             >
-                              <Icon as={iconComponent} boxSize={4} color={iconColor} />
+                              <Icon as={isLockedByOther ? Lock : iconComponent} boxSize={4} color={isLockedByOther ? "amber.600" : iconColor} />
                             </Flex>
                             <Text fontSize={{ base: "13px", md: "xs" }} fontWeight="900" color="gray.900" overflowWrap="anywhere">
                               {item.title}
                             </Text>
-                            {!item.read && (
+                            {isLockedByOther ? (
+                              <Badge colorScheme="amber" bg="#fef3c7" color="#92400e" border="1px solid #fcd34d" fontSize="8.5px" borderRadius="full" px={2} py={0.5} fontWeight="800">
+                                🔒 EN REVISIÓN POR {lockerName.toUpperCase()}
+                              </Badge>
+                            ) : !item.read ? (
                               <Badge colorScheme="green" variant="solid" fontSize="8px" borderRadius="full" px={1.5} py={0.5}>
                                 NUEVA
                               </Badge>
-                            )}
+                            ) : null}
                           </HStack>
                           <Tooltip label="Eliminar alerta" hasArrow placement="top">
                             <IconButton
@@ -806,12 +858,12 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
       )}
 
       {/* Modal de Concurrencia desde Notificación */}
-      <Modal isOpen={!!lockAlertTarget} onClose={() => setLockAlertTarget(null)} isCentered size="md">
+      <Modal isOpen={!!lockAlertTarget} onClose={() => setLockAlertTarget(null)} isCentered size={{ base: "sm", sm: "md", md: "lg" }}>
         <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(3px)" />
-        <ModalContent borderRadius="2xl" p={2}>
+        <ModalContent borderRadius="2xl" p={{ base: 2, sm: 3 }} mx={3} maxW={{ base: "95vw", sm: "540px", md: "580px" }}>
           <ModalHeader display="flex" alignItems="center" gap={2} color="#b45309" fontSize="md">
-            <Lock className="w-5 h-5 text-amber-600" />
-            Cotización en Revisión Activa
+            <Lock className="w-5 h-5 text-amber-600 flex-shrink-0" />
+            <Text isTruncated>Cotización en Revisión Activa</Text>
           </ModalHeader>
           <ModalCloseButton />
           <ModalBody>
@@ -835,27 +887,36 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
               </Text>
             </VStack>
           </ModalBody>
-          <ModalFooter gap={2}>
-            {isAdmin && (
-              <Button
-                colorScheme="red"
-                variant="outline"
-                size="sm"
-                fontWeight="800"
-                onClick={() => {
-                  forceUnlockQuote(lockAlertTarget?.quoteId);
-                  setLockAlertTarget(null);
-                }}
-              >
-                ⚠️ Forzar Desbloqueo (Admin)
-              </Button>
-            )}
+          <ModalFooter
+            display="flex"
+            flexDirection={{ base: "column-reverse", sm: "row" }}
+            gap={2.5}
+            justifyContent="flex-end"
+            alignItems="stretch"
+            flexWrap="wrap"
+            pt={3}
+          >
+            <Button
+              colorScheme="gray"
+              variant="ghost"
+              size="sm"
+              fontWeight="700"
+              onClick={() => setLockAlertTarget(null)}
+              w={{ base: "full", sm: "auto" }}
+              whiteSpace="nowrap"
+              flexShrink={0}
+            >
+              Cerrar
+            </Button>
             <Button
               colorScheme="blue"
               variant="outline"
               size="sm"
               fontWeight="700"
               leftIcon={<Eye className="w-4 h-4" />}
+              w={{ base: "full", sm: "auto" }}
+              whiteSpace="nowrap"
+              flexShrink={0}
               onClick={async () => {
                 const targetId = lockAlertTarget?.quoteId;
                 setLockAlertTarget(null);
@@ -872,11 +933,30 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
                 }
               }}
             >
-              👁️ Ver en Modo Solo Lectura
+              👁️ Ver Solo Lectura
             </Button>
-            <Button colorScheme="gray" size="sm" fontWeight="700" onClick={() => setLockAlertTarget(null)}>
-              Entendido / Cerrar
-            </Button>
+            {isAdmin && (
+              <Button
+                colorScheme="teal"
+                size="sm"
+                fontWeight="800"
+                w={{ base: "full", sm: "auto" }}
+                whiteSpace="nowrap"
+                flexShrink={0}
+                onClick={() => {
+                  forceUnlockQuote(lockAlertTarget?.quoteId);
+                  setLockAlertTarget(null);
+                  toast({
+                    title: "🔓 Cotización Desbloqueada",
+                    description: `Se liberó el bloqueo de digitación para ${lockAlertTarget?.quoteId}.`,
+                    status: "info",
+                    duration: 3500
+                  });
+                }}
+              >
+                🔓 Desbloquear Cotización
+              </Button>
+            )}
           </ModalFooter>
         </ModalContent>
       </Modal>
