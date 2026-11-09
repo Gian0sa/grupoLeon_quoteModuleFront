@@ -35,6 +35,8 @@ export const useGetQuotes = (filters = {}) => {
 
 export const useQuotes = useGetQuotes;
 
+const EMPTY_NOTIFS = [];
+
 export const useNotifications = (targetRole, targetUsername) => {
     const query = useQuery({
         queryKey: ["notifications", targetRole, targetUsername],
@@ -43,7 +45,7 @@ export const useNotifications = (targetRole, targetUsername) => {
         refetchOnMount: true,
         refetchOnWindowFocus: true,
     })
-    return { ...query, data: query.data || [], isLoading: query.isLoading, isFetching: query.isFetching, error: query.error }
+    return { ...query, data: query.data || EMPTY_NOTIFS, isLoading: query.isLoading, isFetching: query.isFetching, error: query.error }
 }
 
 export const useGetQuoteById = (id, { enabled = true } = {}) => {

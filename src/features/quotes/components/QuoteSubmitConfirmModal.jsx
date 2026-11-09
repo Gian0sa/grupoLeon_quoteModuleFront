@@ -55,14 +55,31 @@ export default function QuoteSubmitConfirmModal({
   });
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="lg" isCentered motionPreset="slideInBottom">
-      <ModalOverlay bg="blackAlpha.700" />
-      <ModalContent borderRadius="2xl" border={isAdminApproval ? "2px solid #0f5132" : "2px solid #16a34a"} overflow="hidden" boxShadow="0 20px 40px rgba(0,0,0,0.35)">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      size="lg"
+      isCentered
+      scrollBehavior="inside"
+      motionPreset="slideInBottom"
+    >
+      <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(3px)" />
+      <ModalContent
+        borderRadius={{ base: "xl", sm: "2xl" }}
+        border={isAdminApproval ? "2px solid #0f5132" : "2px solid #16a34a"}
+        overflow="hidden"
+        boxShadow="0 20px 40px rgba(0,0,0,0.35)"
+        mx={{ base: 2, sm: "auto" }}
+        my={{ base: "auto", sm: "auto" }}
+        maxW={{ base: "calc(100vw - 16px)", sm: "520px" }}
+        maxH={{ base: "calc(100dvh - 24px)", md: "90vh" }}
+      >
         {/* Header */}
         <ModalHeader
           bg={isAdminApproval ? "linear-gradient(135deg, #064e3b 0%, #0f5132 100%)" : "#0d6334"}
           color="white"
-          py={4}
+          py={{ base: 3, sm: 4 }}
+          px={{ base: 3.5, sm: 6 }}
         >
           <HStack spacing={3} justify="space-between">
             <HStack spacing={3}>
@@ -207,7 +224,14 @@ export default function QuoteSubmitConfirmModal({
           </VStack>
         </ModalBody>
 
-        <ModalFooter bg="#f8fafc" borderTop="1px solid #e2e8f0" gap={3}>
+        <ModalFooter
+          bg="#f8fafc"
+          borderTop="1px solid #e2e8f0"
+          gap={2.5}
+          p={{ base: 3, sm: 4 }}
+          pb={{ base: "calc(env(safe-area-inset-bottom, 0px) + 12px)", sm: 4 }}
+          direction={{ base: "column-reverse", sm: "row" }}
+        >
           <Button
             variant="outline"
             onClick={onClose}
@@ -215,6 +239,7 @@ export default function QuoteSubmitConfirmModal({
             borderRadius="xl"
             borderColor="#cbd5e1"
             isDisabled={isLoading}
+            w={{ base: "full", sm: "auto" }}
           >
             Volver y Revisar
           </Button>
@@ -229,6 +254,7 @@ export default function QuoteSubmitConfirmModal({
             px={6}
             isLoading={isLoading}
             isDisabled={isLoading}
+            w={{ base: "full", sm: "auto" }}
           >
             {isAdminApproval ? "⚡ Aprobar y Emitir a SAP" : "✅ Confirmar y Enviar a Validación"}
           </Button>

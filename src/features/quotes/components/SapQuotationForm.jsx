@@ -299,6 +299,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   const [sapSyncResult, setSapSyncResult] = useState(null);
   const [hasCopiedDocNum, setHasCopiedDocNum] = useState(false);
   const [isSendingToValidation, setIsSendingToValidation] = useState(false);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [validationLoadingTitle, setValidationLoadingTitle] = useState("Guardando y Enviando a Validación...");
   const [validationLoadingSub, setValidationLoadingSub] = useState("");
   const [validationStepText, setValidationStepText] = useState("Sincronizando datos comerciales, finanzas y logística...");
@@ -894,6 +895,15 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       hasBackOrder: Boolean(totals?.hasBackOrder),
     };
 
+    // Extraer número de correlativo limpio (ej. "COT-WEB-000015" -> 15, "15" -> 15)
+    const cleanNumFast = (str) => {
+      if (!str) return null;
+      const match = String(str).match(/(?:COT-(?:WEB-)?0*)?(\d+)/i);
+      return match ? parseInt(match[1], 10) : null;
+    };
+
+    const activeNum = cleanNumFast(activeDocNumber);
+
     // Guardar o actualizar en localStorage sin retroceder de estado
     const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
     const isMatchingDoc = (q) => {
@@ -904,6 +914,11 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         const activeStr = String(activeDocNumber).trim();
         if (activeStr && ((qDocNum && qDocNum === activeStr) || (qId && qId === activeStr))) {
           return true;
+        }
+        if (activeNum !== null) {
+          if (cleanNumFast(qDocNum) === activeNum || cleanNumFast(qId) === activeNum) {
+            return true;
+          }
         }
       }
       return false;
@@ -916,7 +931,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     // preservamos su estado actual para no degradarla a BORRADOR, pero SÍ guardamos todas las modificaciones
     const isAdvanced = existingStatus && ["ENVIADO", "EN_PROCESO", "APROBADO_COMERCIAL", "PENDIENTE_FACTURACION", "APROBADO", "RECHAZADO", "OBSERVADO", "EN_EDICION"].includes(existingStatus);
 
-    const currentStatus = targetStatus === "ENVIADO" ? "ENVIADO" : (isAdvanced ? existingStatus : targetStatus);
+    const currentStatus = targetStatus === "BORRADOR"
+      ? "BORRADOR"
+      : (targetStatus === "ENVIADO" ? "ENVIADO" : (isAdvanced ? existingStatus : targetStatus));
     const nowIso = new Date().toISOString();
     const prevHistory = existingDoc?.historyLog || [];
     
@@ -991,9 +1008,17 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     const finalCreatedByUsername = originalCreatedByUsername || currentLoggedInUsername || (username || "admin");
     const finalCreatedByUserId = originalUserId || (userId || null);
 
+    const resolvedNumericId = existingDoc?.id && !isNaN(Number(existingDoc.id))
+      ? Number(existingDoc.id)
+      : (activeNum !== null ? activeNum : null);
+
+    const resolvedDocNumber = activeDocNumber && !["COT-PENDIENTE", "COT-NUEVA"].includes(String(activeDocNumber).toUpperCase().trim())
+      ? activeDocNumber
+      : (resolvedNumericId ? `COT-WEB-${String(resolvedNumericId).padStart(6, "0")}` : null);
+
     const newDoc = {
-      id: existingDoc?.id || activeDocNumber,
-      docNumber: activeDocNumber,
+      id: resolvedNumericId || existingDoc?.id || activeDocNumber,
+      docNumber: resolvedDocNumber,
       docType,
       client,
       clientName: clientNameVal,
@@ -1108,6 +1133,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         console.log(`🔄 [Correlativo Asignado] Oficial: ${assignedNumber}`);
         setDocNumber(assignedNumber);
         if (setQuoteId) setQuoteId(res?.id || assignedNumber);
+        if (setApprovalStatus) setApprovalStatus(currentStatus);
 
         // Guardar/Actualizar en localStorage con el docNumber oficial asignado
         try {
@@ -1118,7 +1144,8 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
             const isColliding = (iDoc && iDoc === String(assignedNumber)) || (iId && iId === String(res?.id));
             const isPreviousActive = activeDocNumber && (iDoc === String(activeDocNumber) || iId === String(activeDocNumber));
             const isSameDraft = isMatchingDoc(item);
-            return !isColliding && !isPreviousActive && !isSameDraft;
+            const isSameNumeric = res?.id && (cleanNumFast(item.docNumber) === res.id || cleanNumFast(item.id) === res.id);
+            return !isColliding && !isPreviousActive && !isSameDraft && !isSameNumeric;
           });
           const persistedDoc = {
             ...newDoc,
@@ -1225,26 +1252,41 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   // en quoteStore.js sin saturar la base de datos MySQL con borradores duplicados.
 
   const handleSaveDraft = async () => {
-    const result = handleSaveAction("BORRADOR");
-    if (result && result.success) {
-      isExplicitlySubmittingRef.current = true;
-      let finalNumber = result.activeDocNumber;
-      try {
-        const savedRes = await result.savePromise;
-        if (savedRes && savedRes.docNumber) {
-          finalNumber = savedRes.docNumber;
+    setIsSavingDraft(true);
+    try {
+      const result = handleSaveAction("BORRADOR");
+      if (result && result.success) {
+        let finalNumber = result.activeDocNumber;
+        try {
+          const savedRes = await result.savePromise;
+          if (savedRes && (savedRes.docNumber || savedRes.id)) {
+            finalNumber = savedRes.docNumber || (savedRes.id ? `COT-WEB-${String(savedRes.id).padStart(6, "0")}` : finalNumber);
+            if (savedRes.id && setQuoteId) {
+              setQuoteId(savedRes.id);
+            }
+            if (finalNumber) {
+              setDocNumber(finalNumber);
+            }
+          }
+        } catch (e) {
+          console.warn("Aviso al persistir borrador en backend:", e);
         }
-      } catch (e) {}
 
-      toast({
-        title: "📝 Borrador Guardado",
-        description: `Documento ${finalNumber} guardado exitosamente. Redirigiendo a Gestión de Cotizaciones...`,
-        status: "info",
-        duration: 3000,
-        isClosable: true,
-      });
-      clear();
-      navigate("/historyquotes");
+        if (setApprovalStatus) {
+          setApprovalStatus("BORRADOR");
+        }
+
+        toast({
+          title: "💾 Borrador Guardado Exitosamente",
+          description: `Cotización ${finalNumber || "actualizada"} guardada en Borradores. Puedes continuar agregando productos o enviarla a validación.`,
+          status: "success",
+          duration: 4000,
+          isClosable: true,
+          position: "top",
+        });
+      }
+    } finally {
+      setIsSavingDraft(false);
     }
   };
 
@@ -2915,9 +2957,10 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                   leftIcon={<Save className="w-4 h-4 text-gray-500" />}
                   onClick={handleSaveDraft}
                   fontWeight="700"
-                  isDisabled={isSendingToValidation}
+                  isLoading={isSavingDraft}
+                  isDisabled={isSendingToValidation || isSavingDraft}
                 >
-                  Guardar como Borrador
+                  {quoteId ? "💾 Guardar Borrador" : "💾 Guardar como Borrador"}
                 </Button>
               )}
             </>
@@ -2935,13 +2978,13 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                 fontWeight="900"
                 boxShadow="0 4px 12px rgba(22,101,52,0.25)"
                 isLoading={isSendingToValidation}
-                isDisabled={isSendingToValidation}
+                isDisabled={isSendingToValidation || isSavingDraft}
               >
                 {isObservedOrInCorrection
                   ? "💾 Guardar y Reenviar a Validación"
                   : "💾 Guardar y Enviar a Validación"}
               </Button>
-              {!isObservedOrInCorrection && (
+              {!isApprovedOrder && (
                 <Button
                   variant="outline"
                   borderColor="gray.300"
@@ -2954,9 +2997,10 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                   leftIcon={<Save className="w-4 h-4 text-gray-500" />}
                   onClick={handleSaveDraft}
                   fontWeight="700"
-                  isDisabled={isSendingToValidation}
+                  isLoading={isSavingDraft}
+                  isDisabled={isSendingToValidation || isSavingDraft}
                 >
-                  Guardar como Borrador
+                  {quoteId ? "💾 Guardar Borrador" : "💾 Guardar como Borrador"}
                 </Button>
               )}
             </>

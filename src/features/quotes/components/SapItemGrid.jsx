@@ -181,7 +181,8 @@ export default function SapItemGrid({
             const promoDisc = isOutOfStock ? 0 : Number(item.promoDiscount || promoInfo?.discountPct || 0);
             const promoPrice = item.promoPrice || promoInfo?.promoPrice || null;
             const addDisc = isOutOfStock ? 0 : Number(Number(item.lineDiscount || 0).toFixed(2));
-            const maxAllowedCeiling = qty > 100 ? 65 : 60;
+            const hasPromo = Boolean(promoDisc > 0 || promoPrice || item.promoPrice || item.U_US_PROMO);
+            const maxAllowedCeiling = hasPromo ? Math.max(55.0, Number((sapDisc + promoDisc).toFixed(2))) : 55.0;
             const totalDisc = isOutOfStock ? 0 : Math.min(maxAllowedCeiling, Math.max(0, sapDisc + promoDisc + addDisc));
             const customPrice = !isOutOfStock && item.customPriceConIGV && Number(item.customPriceConIGV) > 0
               ? Number(item.customPriceConIGV)
@@ -494,7 +495,8 @@ export default function SapItemGrid({
                   const promoDisc = isOutOfStock ? 0 : Number(item.promoDiscount || promoInfo?.discountPct || 0);
                   const promoPrice = item.promoPrice || promoInfo?.promoPrice || null;
                   const addDisc = isOutOfStock ? 0 : Number(Number(item.lineDiscount || 0).toFixed(2));
-                  const maxAllowedCeiling = qty > 100 ? 65 : 60;
+                  const hasPromo = Boolean(promoDisc > 0 || promoPrice || item.promoPrice || item.U_US_PROMO);
+                  const maxAllowedCeiling = hasPromo ? Math.max(55.0, Number((sapDisc + promoDisc).toFixed(2))) : 55.0;
                   const totalDisc = isOutOfStock ? 0 : Math.min(maxAllowedCeiling, Math.max(0, sapDisc + promoDisc + addDisc));
 
                   // Si el usuario fijó un precio unitario con IGV exacto (ej. $10.00 exactos), respetarlo fielmente

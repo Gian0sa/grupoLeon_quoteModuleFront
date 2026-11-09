@@ -19,8 +19,9 @@ import { Plus, Minus, Tag } from "lucide-react";
 import { formatThousands } from "../../../shared/utils/quoteCalculator";
 
 export const APPROVAL_DISCOUNT_THRESHOLD = 50.0; // Umbral de activación de aprobación comercial (50.0%)
-export const STANDARD_DISCOUNT_CEILING = 80.0;   // Tope comercial estándar permitido con aprobación (80.0%)
-export const MAX_DISCOUNT_CEILING = 80.0;        // Tope máximo comercial absoluto (80.0% para liquidaciones/promociones)
+export const REGULAR_DISCOUNT_CEILING = 55.0;    // Tope comercial estándar para artículos regulares (55.0%)
+export const STANDARD_DISCOUNT_CEILING = 55.0;   // Compatibilidad (55.0%)
+export const MAX_DISCOUNT_CEILING = 55.0;        // Tope regular base (55.0%)
 export const VOLUME_MIN_QUANTITY = 100;          // Cantidad referencial para mayoreo (>100 uds)
 export const TAX_RATE = 0.18;                     // Tasa oficial de IGV (18%)
 
@@ -35,10 +36,14 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
   const baseFixedDisc = Number((sapDisc + promoDisc).toFixed(1));
   const qty = Number(item?.quantity || item?.Quantity || 1);
 
-  // REGLA DE NEGOCIO:
-  // Se permiten descuentos comerciales de hasta 80.0% (los que superen 50% requieren aprobación de administración)
+  // REGLA DE NEGOCIO GRUPO LEÓN:
+  // 1. Regular: Tope de descuento comercial hasta 55.0% (los que superen 50% requieren aprobación)
+  // 2. Con Promoción: El piso está anclado al precio de la promoción. No se permite bajar más allá de la promo.
+  const hasPromo = Boolean(promoDisc > 0 || item?.promoPrice || item?.U_US_PROMO);
   const isEligibleForVolume = qty > VOLUME_MIN_QUANTITY;
-  const applicableCeiling = MAX_DISCOUNT_CEILING;
+  const applicableCeiling = hasPromo 
+    ? Math.max(baseFixedDisc, REGULAR_DISCOUNT_CEILING) 
+    : REGULAR_DISCOUNT_CEILING;
 
   // Precios sugeridos con descuento base (SAP + Promo)
   const priceWithBaseSinIGV = Number((basePrice * (1 - baseFixedDisc / 100)).toFixed(2));
@@ -203,12 +208,20 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} isCentered motionPreset="slideInBottom">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      isCentered
+      scrollBehavior="inside"
+      motionPreset="slideInBottom"
+    >
       <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(3px)" />
       <ModalContent
-        borderRadius="2xl"
-        mx={{ base: 3, sm: "auto" }}
-        maxW={{ base: "calc(100vw - 24px)", sm: "440px" }}
+        borderRadius={{ base: "xl", sm: "2xl" }}
+        mx={{ base: 2, sm: "auto" }}
+        my={{ base: "auto", sm: "auto" }}
+        maxW={{ base: "calc(100vw - 16px)", sm: "440px" }}
+        maxH={{ base: "calc(100dvh - 24px)", sm: "90vh" }}
         overflow="hidden"
         boxShadow="0 20px 40px -15px rgba(0,0,0,0.3)"
         border="1px solid"
@@ -216,12 +229,13 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
         bg="white"
       >
         {/* CABECERA */}
-        <Box bg="linear-gradient(135deg, #064e3b 0%, #0f5132 100%)" color="white" py={3.5} px={4}>
+        <Box bg="linear-gradient(135deg, #064e3b 0%, #0f5132 100%)" color="white" py={{ base: 3, sm: 3.5 }} px={{ base: 3, sm: 4 }}>
           <Flex align="center" justify="space-between">
-            <HStack spacing={2.5}>
+            <HStack spacing={2.5} minW={0} flex={1}>
               <Flex
                 w="32px"
                 h="32px"
+                flexShrink={0}
                 borderRadius="lg"
                 bg="whiteAlpha.200"
                 align="center"
@@ -230,11 +244,11 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
               >
                 <Tag size={18} />
               </Flex>
-              <Box minW="0">
-                <Text fontSize="sm" fontWeight="800" color="white">
+              <Box minW={0} flex={1}>
+                <Text fontSize={{ base: "13px", sm: "sm" }} fontWeight="800" color="white" isTruncated>
                   Ajustar Precio Unitario {isVolumeDiscount ? "• Mayoreo" : ""}
                 </Text>
-                <Text fontSize="11px" color="#a7f3d0" fontWeight="600" isTruncated maxW="270px">
+                <Text fontSize={{ base: "10.5px", sm: "11px" }} color="#a7f3d0" fontWeight="600" isTruncated maxW="100%">
                   {item.code || item.productCode || item.itemCode} • {item.name || item.description}
                 </Text>
               </Box>
@@ -244,11 +258,12 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
               _hover={{ bg: "whiteAlpha.200", color: "white" }}
               position="static"
               borderRadius="lg"
+              ml={2}
             />
           </Flex>
         </Box>
 
-        <ModalBody p={4} bg="#f8fafc">
+        <ModalBody p={{ base: 3, sm: 4 }} bg="#f8fafc" overflowY="auto">
           <VStack align="stretch" spacing={3}>
             {/* 1. TARJETA DE REFERENCIA: PRECIO SUGERIDO ACTUAL (CON IGV) */}
             <Box bg="white" p={3} borderRadius="xl" border="1px solid" borderColor="gray.200" boxShadow="xs">
@@ -281,27 +296,34 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
 
             {/* 2. CONTROL PRINCIPAL DE PRECIO: STEPPER [-] [$ X.XX] [+] */}
             <Box bg="white" p={3.5} borderRadius="xl" border="1.5px solid" borderColor="emerald.200" boxShadow="xs">
-              <Flex justify="space-between" align="center" mb={2}>
+              <Flex
+                justify="space-between"
+                align={{ base: "flex-start", xs: "center" }}
+                direction={{ base: "column", xs: "row" }}
+                gap={1}
+                mb={2}
+              >
                 <Text fontSize="11px" fontWeight="800" color="gray.700" textTransform="uppercase" letterSpacing="wide">
                   ¿A cuánto deseas vender (c/IGV)?
                 </Text>
                 <Text fontSize="11px" color="gray.500" fontWeight="600">
-                  Mínimo:{" "}
+                  {hasPromo ? "Piso Oferta: " : "Piso Mínimo (55%): "}
                   <Text as="span" fontWeight="800" color="gray.800">
                     ${formatThousands(priceFloorConIGV)} USD (Inc. IGV)
                   </Text>
                 </Text>
               </Flex>
 
-              {/* Stepper interactivo */}
+              {/* Stepper interactivo con touch target táctil optimizado */}
               <Flex align="center" justify="space-between" bg="gray.50" p={1.5} borderRadius="xl" border="1px solid" borderColor="gray.200">
                 <IconButton
                   icon={<Minus size={18} strokeWidth={2.5} />}
                   aria-label="Disminuir precio"
                   onClick={handleStepDown}
                   isDisabled={finalUnitPriceConIGV <= priceFloorConIGV}
-                  w="42px"
-                  h="42px"
+                  w={{ base: "44px", sm: "42px" }}
+                  h={{ base: "44px", sm: "42px" }}
+                  flexShrink={0}
                   borderRadius="lg"
                   bg="white"
                   color="#be123c"
@@ -320,7 +342,7 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
                   transition="all 0.15s ease"
                 />
 
-                <HStack spacing={1} justify="center" flex={1}>
+                <HStack spacing={1} justify="center" flex={1} minW={0}>
                   <Text fontSize="xl" fontWeight="700" color="gray.400" userSelect="none">$</Text>
                   <Input
                     maxW="115px"
@@ -335,7 +357,7 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
                     onFocus={(e) => e.target.select()}
                     textAlign="center"
                     fontWeight="900"
-                    fontSize="2xl"
+                    fontSize={{ base: "xl", sm: "2xl" }}
                     bg="transparent"
                     _focus={{ boxShadow: "none" }}
                     color="#0f172a"
@@ -349,8 +371,9 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
                   aria-label="Aumentar precio"
                   onClick={handleStepUp}
                   isDisabled={finalUnitPriceConIGV >= priceCeilingConIGV}
-                  w="42px"
-                  h="42px"
+                  w={{ base: "44px", sm: "42px" }}
+                  h={{ base: "44px", sm: "42px" }}
+                  flexShrink={0}
                   borderRadius="lg"
                   bg="white"
                   color="#047857"
@@ -421,12 +444,12 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
                   : "#bbf7d0"
               }
             >
-              <Flex justify="space-between" align="center">
-                <HStack spacing={2}>
-                  <Text fontSize="16px">
+              <Flex justify="space-between" align="center" gap={2}>
+                <HStack spacing={2} minW={0} flex={1}>
+                  <Text fontSize="16px" flexShrink={0}>
                     {isExceedingCeiling ? "⛔" : requiresApproval ? "⚠️" : "✅"}
                   </Text>
-                  <Box>
+                  <Box minW={0} flex={1}>
                     <Text
                       fontSize="11.5px"
                       fontWeight="800"
@@ -437,6 +460,7 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
                           ? "#92400e"
                           : "#065f46"
                       }
+                      isTruncated
                     >
                       {isExceedingCeiling
                         ? `Supera el límite (mínimo $${formatThousands(priceFloorConIGV)} USD)`
@@ -460,7 +484,7 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
                       fontWeight="600"
                     >
                       {isExceedingCeiling
-                        ? `El descuento máximo permitido es ${applicableCeiling}%.`
+                        ? (hasPromo ? `Precio mínimo delimitado por la promoción ($${formatThousands(priceFloorConIGV)} USD).` : `El descuento comercial máximo permitido es ${applicableCeiling}%.`)
                         : requiresApproval
                         ? "Al superar el 50% de descuento se enviará a validación comercial."
                         : "Pase directo a SAP sin necesidad de aprobación previa."}
@@ -492,23 +516,45 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
           </VStack>
         </ModalBody>
 
-        {/* FOOTER */}
-        <Flex justify="space-between" align="center" p={3.5} bg="white" borderTop="1px solid" borderColor="gray.100">
-          <Button variant="ghost" size="sm" onClick={onClose} fontWeight="700" color="gray.600" _hover={{ bg: "gray.100" }}>
+        {/* FOOTER ERGONÓMICO MÓVIL */}
+        <Flex
+          justify="space-between"
+          align="center"
+          p={{ base: 2.5, sm: 3.5 }}
+          pb={{ base: "calc(env(safe-area-inset-bottom, 0px) + 12px)", sm: 3.5 }}
+          bg="white"
+          borderTop="1px solid"
+          borderColor="gray.100"
+          gap={2}
+        >
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onClose}
+            fontWeight="700"
+            color="gray.600"
+            _hover={{ bg: "gray.100" }}
+            px={{ base: 2.5, sm: 3 }}
+          >
             Cancelar
           </Button>
           <Button
             size="sm"
-            h="38px"
+            h={{ base: "42px", sm: "38px" }}
             bg={requiresApproval ? "#d97706" : "#0f766e"}
             _hover={{ bg: requiresApproval ? "#b45309" : "#115e59" }}
             color="white"
             onClick={handleConfirm}
             isDisabled={isExceedingCeiling}
             fontWeight="800"
-            px={4}
+            fontSize={{ base: "xs", sm: "sm" }}
+            px={{ base: 3, sm: 4 }}
+            flex={{ base: 1, sm: "initial" }}
             borderRadius="lg"
             boxShadow="xs"
+            whiteSpace="normal"
+            textAlign="center"
+            lineHeight="1.2"
           >
             Confirmar Precio (${formatThousands(finalUnitPriceConIGV)})
           </Button>

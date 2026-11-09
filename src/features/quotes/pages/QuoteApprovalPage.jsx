@@ -906,7 +906,17 @@ export function QuoteApprovalPage() {
           return sqClient && qClient && !sqClient.includes(qClient) && !qClient.includes(sqClient);
         });
 
-        if (isEmitted || isTakenInServer) {
+        // Purgar borradores locales con COT-PENDIENTE si ya existe una cotización en servidor con el mismo cliente y total
+        const isPlaceholder = !q.docNumber || ["COT-PENDIENTE", "COT-NUEVA", "COT-000000"].includes(String(q.docNumber).toUpperCase().trim());
+        const isStaleDraftLaunched = isPlaceholder && Array.isArray(serverQuotes) && serverQuotes.some(sq => {
+          const sqClient = String(sq.clientDocument || sq.clientRuc || sq.clientName || "").toUpperCase().trim();
+          const qClient = String(q.clientDocument || q.clientRuc || q.clientName || "").toUpperCase().trim();
+          const sameClient = sqClient && qClient && (sqClient === qClient || sqClient.includes(qClient) || qClient.includes(sqClient));
+          const sameTotal = Math.abs(Number(sq.totals?.grandTotalUSD || sq.grandTotalUSD || 0) - Number(q.totals?.grandTotalUSD || q.grandTotalUSD || 0)) < 0.15;
+          return sameClient && sameTotal;
+        });
+
+        if (isEmitted || isTakenInServer || isStaleDraftLaunched) {
           hadChanges = true;
           return false;
         }
@@ -937,7 +947,18 @@ export function QuoteApprovalPage() {
         const localDraftsOnly = dedupedLocal.filter(q => {
           const isDraft = isDraftState(q.approvalStatus || q.state || q.status);
           if (!isDraft) return false;
-          const notInServer = !validServerQuotes.some(sq => isMatchingDoc(sq, q));
+          const notInServer = !validServerQuotes.some(sq => {
+            if (isMatchingDoc(sq, q)) return true;
+            const isPlaceholderDoc = !q.docNumber || ["COT-PENDIENTE", "COT-NUEVA"].includes(String(q.docNumber).toUpperCase().trim());
+            if (isPlaceholderDoc) {
+              const sqClient = String(sq.clientDocument || sq.clientRuc || sq.clientName || "").toUpperCase().trim();
+              const qClient = String(q.clientDocument || q.clientRuc || q.clientName || "").toUpperCase().trim();
+              const sameClient = sqClient && qClient && (sqClient === qClient || sqClient.includes(qClient) || qClient.includes(sqClient));
+              const sameTotal = Math.abs(Number(sq.totals?.grandTotalUSD || sq.grandTotalUSD || 0) - Number(q.totals?.grandTotalUSD || q.grandTotalUSD || 0)) < 0.15;
+              if (sameClient && sameTotal) return true;
+            }
+            return false;
+          });
           return notInServer && !String(q.docNumber || "").startsWith("TEST-") && isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId);
         });
 
@@ -3075,7 +3096,7 @@ export function QuoteApprovalPage() {
         )}
 
         {/* TABLA PRINCIPAL OPTIMIZADA CON ALTO CONTRASTE (solo escritorio) */}
-        <Box display={{ base: "none", lg: "block" }} bg="white" borderRadius="2xl" border="1.5px solid" borderColor="#cbd5e1" boxShadow="sm" overflowX="auto" overflowY="hidden" width="100%">
+        <Box display={{ base: "none", lg: "block" }} bg="white" borderRadius="2xl" border="1.5px solid" borderColor="#cbd5e1" boxShadow="sm" overflowX="auto" width="100%">
           <Table variant="simple" size="md" style={{ width: "100%", minWidth: "1050px" }}>
             <Thead bg="#0e572b">
               <Tr>
