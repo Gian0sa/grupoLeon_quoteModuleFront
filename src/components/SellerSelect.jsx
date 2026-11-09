@@ -90,6 +90,9 @@ export default function SellerSelect({
       ...base,
       height: isSmall ? "36px" : "40px",
     }),
+    indicatorSeparator: () => ({
+      display: "none",
+    }),
     dropdownIndicator: (base) => ({
       ...base,
       padding: isSmall ? "4px 8px" : "8px",

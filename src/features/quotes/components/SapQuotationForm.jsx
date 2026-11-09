@@ -161,6 +161,11 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   const [isObserveModalOpen, setIsObserveModalOpen] = useState(false);
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const isExplicitlySubmittingRef = useRef(false);
+  const isExplicitlyClearedRef = useRef(false);
+  const [lastAutoSavedTime, setLastAutoSavedTime] = useState(null);
+  const [isAutoSaving, setIsAutoSaving] = useState(false);
+  const autoSaveTimeoutRef = useRef(null);
+  const handleSaveActionRef = useRef(null);
 
   const {
     quoteId, setQuoteId,
@@ -1248,8 +1253,95 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     return { success: true, activeDocNumber, currentStatus, newDoc, savePromise };
   };
 
-  // Nota: El autoguardado seguro de interfaz se gestiona vía localStorage (saveDraftToStorage)
-  // en quoteStore.js sin saturar la base de datos MySQL con borradores duplicados.
+  handleSaveActionRef.current = handleSaveAction;
+
+  // ── AUTOGUARDADO INTELIGENTE (Anti-duplicidad) ──
+  // 1. Guardado periódico reactivo: Al agregar artículos o modificar precios/términos (debounced 2.5s)
+  useEffect(() => {
+    if (
+      !products ||
+      products.length === 0 ||
+      isExplicitlySubmittingRef.current ||
+      isExplicitlyClearedRef.current ||
+      isReadOnly ||
+      isAdminReviewing
+    ) {
+      return;
+    }
+
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+
+    autoSaveTimeoutRef.current = setTimeout(async () => {
+      if (isExplicitlySubmittingRef.current || isExplicitlyClearedRef.current) return;
+      setIsAutoSaving(true);
+      try {
+        const result = handleSaveActionRef.current?.("BORRADOR", { silent: true });
+        if (result && result.savePromise) {
+          const res = await result.savePromise;
+          if (res && (res.id || res.docNumber)) {
+            const assignedNumber = res.docNumber || (res.id ? `COT-WEB-${String(res.id).padStart(6, "0")}` : null);
+            if (res.id && setQuoteId) setQuoteId(res.id);
+            if (assignedNumber) setDocNumber(assignedNumber);
+          }
+        }
+        setLastAutoSavedTime(new Date());
+      } catch (e) {
+        console.warn("⚠️ Aviso en autoguardado reactivo:", e);
+      } finally {
+        setIsAutoSaving(false);
+      }
+    }, 2500);
+
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+    };
+  }, [
+    products,
+    client,
+    totals?.grandTotalUSD,
+    comment,
+    deliveryDate,
+    selectedPoint,
+    selectedTransport,
+    selectedDeliveryForm,
+    selectedPaymentType,
+    currency,
+    contactPerson,
+    refNumber,
+    saleCondition,
+    documentType,
+    creditTerm,
+    isReadOnly,
+    isAdminReviewing
+  ]);
+
+  // 2. Guardado al salir de la pantalla (Desmontaje / Cambio de ruta)
+  useEffect(() => {
+    return () => {
+      if (!isExplicitlySubmittingRef.current && !isExplicitlyClearedRef.current && !isReadOnly && !isAdminReviewing) {
+        try {
+          handleSaveActionRef.current?.("BORRADOR", { silent: true });
+        } catch (e) {}
+      }
+    };
+  }, [isReadOnly, isAdminReviewing]);
+
+  // 3. Guardado al cerrar la pestaña o recargar el navegador (beforeunload)
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (!isExplicitlySubmittingRef.current && !isExplicitlyClearedRef.current && !isReadOnly && !isAdminReviewing) {
+        try {
+          handleSaveActionRef.current?.("BORRADOR", { silent: true });
+        } catch (e) {}
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isReadOnly, isAdminReviewing]);
 
   const handleSaveDraft = async () => {
     setIsSavingDraft(true);
@@ -2146,16 +2238,21 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   };
 
   const handleNewQuote = async () => {
+    isExplicitlyClearedRef.current = true;
     clear();
     if (typeof setWhsCode === "function") setWhsCode("014");
     setDocType("OFERTA_VENTA");
     setDocNumber("");
+    setLastAutoSavedTime(null);
     toast({
       title: "Formulario Reiniciado",
       description: "Listo para elaborar una nueva Cotización (COT-NUEVA).",
       status: "info",
       duration: 2500,
     });
+    setTimeout(() => {
+      isExplicitlyClearedRef.current = false;
+    }, 600);
   };
 
   return (
@@ -2306,18 +2403,33 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                 Estado: {approvalStatus ? (approvalStatus === "APROBADO_COMERCIAL" ? "APROBADO" : approvalStatus) : "Borrador (Abierto)"}
               </Box>
             </Badge>
-            {Boolean(client && products && products.length > 0 && !isAdminReviewing && !isReadOnly) && (
+            {Boolean(products && products.length > 0 && !isAdminReviewing && !isReadOnly) && (
               <Badge
-                bg="#f0fdf4"
-                color="#166534"
-                border="1px solid #bbf7d0"
+                bg={isAutoSaving ? "#fef3c7" : "#f0fdf4"}
+                color={isAutoSaving ? "#92400e" : "#166534"}
+                border="1px solid"
+                borderColor={isAutoSaving ? "#fde68a" : "#bbf7d0"}
                 px={2.5}
                 py={1}
                 borderRadius="md"
                 fontSize="xs"
                 fontWeight="800"
+                display="inline-flex"
+                alignItems="center"
+                gap={1.5}
               >
-                💾 Autoguardado Activo
+                {isAutoSaving ? (
+                  <>
+                    <Spinner size="xs" color="amber.600" speed="0.6s" />
+                    <Text as="span">Guardando borrador...</Text>
+                  </>
+                ) : lastAutoSavedTime ? (
+                  <Text as="span">
+                    ☁️ Guardado {lastAutoSavedTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </Text>
+                ) : (
+                  <Text as="span">💾 Autoguardado Activo</Text>
+                )}
               </Badge>
             )}
             {isAdmin && isSubmittedQuote && (
