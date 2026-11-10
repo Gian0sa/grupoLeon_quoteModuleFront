@@ -366,29 +366,31 @@ export function ClientStatementPage() {
       return sapType === "03" || num.startsWith("BOL-") || num.startsWith("BV-") || num.startsWith("03B") || num.startsWith("03-") || tipo.includes("boleta");
     };
 
-    let calcFacturasUSD = crystal?.totalFacturasUSD !== undefined
-      ? Number(crystal.totalFacturasUSD)
-      : Number(parsedDocs.filter(d => !d.isCreditDoc && !d.esLetra && !(d.num || "").toUpperCase().startsWith("LC-") && !isBoletaDoc(d)).reduce((acc, d) => acc + getDocEquivUSD(d), 0).toFixed(2));
+    const hasParsedDocs = parsedDocs.length > 0;
 
-    const calcBoletasUSD = crystal?.totalBoletasUSD !== undefined
-      ? Number(crystal.totalBoletasUSD)
-      : Number(parsedDocs.filter(d => !d.isCreditDoc && isBoletaDoc(d)).reduce((acc, d) => acc + getDocEquivUSD(d), 0).toFixed(2));
+    let calcFacturasUSD = hasParsedDocs
+      ? Number(parsedDocs.filter(d => !d.isCreditDoc && !d.esLetra && !(d.num || "").toUpperCase().startsWith("LC-") && !isBoletaDoc(d)).reduce((acc, d) => acc + getDocEquivUSD(d), 0).toFixed(2))
+      : Number(crystal?.totalFacturasUSD || 0);
 
-    const calcNCUSD = crystal?.totalNotasCreditoUSD !== undefined
-      ? Number(crystal.totalNotasCreditoUSD)
-      : Number(parsedDocs.filter(d => d.isCreditDoc).reduce((acc, d) => acc + (getDocEquivUSD(d) < 0 ? getDocEquivUSD(d) : -Math.abs(getDocEquivUSD(d))), 0).toFixed(2));
+    const calcBoletasUSD = hasParsedDocs
+      ? Number(parsedDocs.filter(d => !d.isCreditDoc && isBoletaDoc(d)).reduce((acc, d) => acc + getDocEquivUSD(d), 0).toFixed(2))
+      : Number(crystal?.totalBoletasUSD || 0);
+
+    const calcNCUSD = hasParsedDocs
+      ? Number(parsedDocs.filter(d => d.isCreditDoc).reduce((acc, d) => acc + (getDocEquivUSD(d) < 0 ? getDocEquivUSD(d) : -Math.abs(getDocEquivUSD(d))), 0).toFixed(2))
+      : Number(crystal?.totalNotasCreditoUSD || 0);
 
     const calcNDUSD = Number(parsedDocs.filter(d => (d.num || "").toUpperCase().startsWith("ND-")).reduce((acc, d) => acc + getDocEquivUSD(d), 0).toFixed(2));
 
-    const calcLetrasUSD = crystal?.totalLetrasUSD !== undefined
-      ? Number(crystal.totalLetrasUSD)
-      : Number(parsedDocs.filter(d => d.esLetra || (d.num || "").toUpperCase().startsWith("LC-")).reduce((acc, d) => acc + getDocEquivUSD(d), 0).toFixed(2));
+    const calcLetrasUSD = hasParsedDocs
+      ? Number(parsedDocs.filter(d => d.esLetra || (d.num || "").toUpperCase().startsWith("LC-")).reduce((acc, d) => acc + getDocEquivUSD(d), 0).toFixed(2))
+      : Number(crystal?.totalLetrasUSD || 0);
 
-    let calcTotalConsolidadoUSD = crystal?.totalConsolidadoUSD !== undefined
-      ? Number(crystal.totalConsolidadoUSD)
-      : statementData.totalConsolidadoUSD !== undefined
-      ? Number(statementData.totalConsolidadoUSD)
-      : Number((calcFacturasUSD + calcBoletasUSD + calcNCUSD + calcNDUSD + calcLetrasUSD).toFixed(2));
+    let calcTotalConsolidadoUSD = hasParsedDocs
+      ? Number((calcFacturasUSD + calcBoletasUSD + calcNCUSD + calcNDUSD + calcLetrasUSD).toFixed(2))
+      : (crystal?.totalConsolidadoUSD !== undefined
+          ? Number(crystal.totalConsolidadoUSD)
+          : Number(statementData.totalConsolidadoUSD || 0));
 
     if (isNaN(calcTotalConsolidadoUSD) || calcTotalConsolidadoUSD === 0) {
       if (Math.abs(sumUSD) > 0 && Math.abs(sumPEN) === 0) {
@@ -396,21 +398,23 @@ export function ClientStatementPage() {
       }
     }
 
-    const calcVenceHoyUSD = crystal?.venceHoyUSD !== undefined
-      ? Number(crystal.venceHoyUSD)
-      : Number(parsedDocs.filter(d => d.isVenceHoy && !d.isCreditDoc).reduce((acc, d) => acc + getDocEquivUSD(d), 0).toFixed(2));
+    const calcVenceHoyUSD = hasParsedDocs
+      ? Number(parsedDocs.filter(d => d.isVenceHoy && !d.isCreditDoc).reduce((acc, d) => acc + getDocEquivUSD(d), 0).toFixed(2))
+      : Number(crystal?.venceHoyUSD || 0);
 
-    const calcPorVencerUSD = crystal?.porVencerUSD !== undefined
-      ? Number(crystal.porVencerUSD)
-      : Number(parsedDocs.filter(d => !d.isOverdue && !d.isVenceHoy && !d.isCreditDoc && (d.sUsd > 0 || d.sPen > 0)).reduce((acc, d) => acc + getDocEquivUSD(d), 0).toFixed(2));
+    const calcPorVencerUSD = hasParsedDocs
+      ? Number(parsedDocs.filter(d => !d.isOverdue && !d.isVenceHoy && !d.isCreditDoc && (d.sUsd > 0 || d.sPen > 0)).reduce((acc, d) => acc + getDocEquivUSD(d), 0).toFixed(2))
+      : Number(crystal?.porVencerUSD || 0);
 
-    let calcVencidosNetoUSD = crystal?.vencidosNetoUSD !== undefined
-      ? Number(crystal.vencidosNetoUSD)
-      : Math.max(Number((calcTotalConsolidadoUSD - calcVenceHoyUSD - calcPorVencerUSD).toFixed(2)), 0);
+    let calcVencidosNetoUSD = hasParsedDocs
+      ? Number(realVencidos.reduce((acc, d) => acc + getDocEquivUSD(d), 0).toFixed(2))
+      : (crystal?.vencidosNetoUSD !== undefined
+          ? Number(crystal.vencidosNetoUSD)
+          : Math.max(Number((calcTotalConsolidadoUSD - calcVenceHoyUSD - calcPorVencerUSD).toFixed(2)), 0));
 
-    const countVencidos = crystal?.countVencidos ?? realVencidos.length;
-    const countVenceHoy = crystal?.countVenceHoy ?? realVenceHoy.length;
-    const countPorVencer = crystal?.countPorVencer ?? realPorVencer.length;
+    const countVencidos = hasParsedDocs ? realVencidos.length : (crystal?.countVencidos ?? 0);
+    const countVenceHoy = hasParsedDocs ? realVenceHoy.length : (crystal?.countVenceHoy ?? 0);
+    const countPorVencer = hasParsedDocs ? realPorVencer.length : (crystal?.countPorVencer ?? 0);
 
     return {
       clientName: cName,
