@@ -89,11 +89,24 @@ export default function ClientAutocomplete({ client, setClient, debtSummary }) {
     const cardCode = adapted.id || clientData.CardCode || clientData.cardCode;
 
     // Asignación inmediata para feedback visual rápido
+    const rawLimitInit = Number(clientData.U_TQC_LMCRED ?? clientData.CreditLimit ?? 0);
+    const rawCommitInit = Number(clientData.MaxCommitment ?? 0);
+    const effectiveLimitInit = rawLimitInit > 0
+      ? rawLimitInit
+      : (rawCommitInit > 0 ? Number((rawCommitInit / 3.40).toFixed(2)) : 0);
+
     const initialClient = normalizeQuoteClient({
       ...clientData,
       CardCode: cardCode,
       CardName: adapted.firstName || clientData.CardName || clientData.clientName,
       Address: adapted.address || clientData.Address || clientData.address,
+      U_TQC_LMCRED: effectiveLimitInit,
+      CreditLimit: effectiveLimitInit,
+      creditLimit: effectiveLimitInit,
+      MaxCommitment: rawCommitInit,
+      CurrentAccountBalance: clientData.CurrentAccountBalance,
+      OpenOrdersBalance: clientData.OpenOrdersBalance,
+      OpenDeliveryNotesBalance: clientData.OpenDeliveryNotesBalance,
       raw: clientData,
     });
 
@@ -107,13 +120,27 @@ export default function ClientAutocomplete({ client, setClient, debtSummary }) {
         const fullData = await fetchClientByCode(cardCode);
         if (fullData) {
           const fullAdapted = adaptClientFromApi(fullData);
+          const rawLimitUSD = Number(fullData.U_TQC_LMCRED ?? fullData.CreditLimit ?? 0);
+          const rawCommitPEN = Number(fullData.MaxCommitment ?? 0);
+          const effectiveLimitUSD = rawLimitUSD > 0
+            ? rawLimitUSD
+            : (rawCommitPEN > 0 ? Number((rawCommitPEN / 3.40).toFixed(2)) : 0);
+
           const fullNormalizedClient = normalizeQuoteClient({
             ...fullData,
-            CardCode: fullAdapted.id || fullData.CardCode || cardCode,
-            CardName: fullAdapted.firstName || fullData.CardName || initialClient.CardName,
-            Address: fullAdapted.address || fullData.Address || initialClient.Address,
-            ContactEmployees: fullData.ContactEmployees || fullAdapted.contactEmployees || [],
-            ContactPerson: fullData.ContactPerson || fullAdapted.contactPerson || null,
+            CardCode: fullAdapted?.id || fullData.CardCode || cardCode,
+            CardName: fullAdapted?.firstName || fullData.CardName || initialClient.CardName,
+            Address: fullAdapted?.address || fullData.Address || initialClient.Address,
+            ContactEmployees: fullData.ContactEmployees || fullAdapted?.contactEmployees || [],
+            ContactPerson: fullData.ContactPerson || fullAdapted?.contactPerson || null,
+            U_TQC_LMCRED: effectiveLimitUSD,
+            CreditLimit: effectiveLimitUSD,
+            creditLimit: effectiveLimitUSD,
+            MaxCommitment: rawCommitPEN,
+            CurrentAccountBalance: fullData.CurrentAccountBalance ?? initialClient.CurrentAccountBalance,
+            OpenOrdersBalance: fullData.OpenOrdersBalance ?? initialClient.OpenOrdersBalance,
+            OpenDeliveryNotesBalance: fullData.OpenDeliveryNotesBalance ?? initialClient.OpenDeliveryNotesBalance,
+            creditChecked: true,
             raw: fullData,
           });
           setClient(fullNormalizedClient);
@@ -178,6 +205,28 @@ export default function ClientAutocomplete({ client, setClient, debtSummary }) {
             <strong style={{ color: "#334155" }}>Dirección:</strong> {normalizedClient.Address}
           </Text>
         )}
+
+        {(() => {
+          const limit = Number(normalizedClient.U_TQC_LMCRED ?? normalizedClient.raw?.U_TQC_LMCRED ?? normalizedClient.CreditLimit ?? normalizedClient.creditLimit ?? 0);
+          return (
+            <Flex align="center" gap={2} mt={1} wrap="wrap">
+              <Badge
+                bg={limit > 0 ? "#eff6ff" : "#f1f5f9"}
+                color={limit > 0 ? "#1e40af" : "#64748b"}
+                border="1px solid"
+                borderColor={limit > 0 ? "#bfdbfe" : "#cbd5e1"}
+                fontSize="10.5px"
+                px={2}
+                py={0.5}
+                borderRadius="md"
+                fontWeight="700"
+                textTransform="none"
+              >
+                💳 Línea de Crédito SAP: {limit > 0 ? `$${limit.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD` : "Sin línea registrada"}
+              </Badge>
+            </Flex>
+          );
+        })()}
 
         {debtSummary ? (
           <Text fontSize="xs" color="red.600" fontWeight="700" mt={1}>

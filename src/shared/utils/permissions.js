@@ -71,8 +71,9 @@ export function useHasAccess() {
 
     // 🛡️ Únicamente el Administrador Maestro posee pase general a nivel de interfaz,
     // EXCEPTO para permisos granulares explícitos como "Gestionar Ofertas del Mes y Promociones" (/promotions),
+    // y "Ver Borradores de Cotizaciones" (/quotes/drafts),
     // que deben respetar fielmente su activación o desactivación en el perfil del usuario.
-    const isGranularPermission = endpoint.includes("/promotions");
+    const isGranularPermission = endpoint.includes("/promotions") || endpoint.includes("/quotes/drafts") || endpoint.includes("/quotes/draft");
     const roleUpper = String(role || localStorage.getItem("role") || "").toUpperCase();
     if (!isGranularPermission && (roleUpper === "ADMIN" || roleUpper === "ADMINISTRADOR" || roleUpper.startsWith("ADMIN") || checkIsAdmin(endpoints, username))) {
       return true;
@@ -85,7 +86,7 @@ export function useHasAccess() {
     const targetWithColon = endpoint.includes(" ") ? endpoint.replace(" ", ":") : endpoint;
 
     // Soporte de equivalencias para compatibilidad transparente de permisos
-    const candidateList = [endpoint, targetWithSpace, targetWithColon];
+    const candidateList = [endpoint, targetWithSpace, targetWithColon, "*"];
     if (endpoint.includes("/promotions")) {
       candidateList.push(
         "POST /promotions",
@@ -93,6 +94,17 @@ export function useHasAccess() {
         "/promotions",
         "POST /quoteModule/promotions",
         "POST:/quoteModule/promotions"
+      );
+    } else if (endpoint.includes("/quotes/drafts") || endpoint.includes("/quotes/draft")) {
+      candidateList.push(
+        "GET /quotes/drafts",
+        "GET:/quotes/drafts",
+        "/quotes/drafts",
+        "GET /quotes/draft",
+        "GET:/quotes/draft",
+        "/quotes/draft",
+        "GET /quoteModule/quotes/drafts",
+        "GET:/quoteModule/quotes/drafts"
       );
     } else if (endpoint.includes("/quotations")) {
       candidateList.push(endpoint.replace("/quotations", "/quotes"));

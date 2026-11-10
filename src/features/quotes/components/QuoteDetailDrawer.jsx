@@ -3052,6 +3052,89 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
               );
             })()}
 
+            {/* CARD DE LÍNEA DE CRÉDITO Y DISPONIBILIDAD SAP (U_TQC_LMCRED) */}
+            {(() => {
+              const rawMaxCommitmentPEN = Number(targetDoc?.client?.MaxCommitment ?? targetDoc?.client?.raw?.MaxCommitment ?? 0);
+              const creditLimit = Number(
+                targetDoc?.creditLimit ?? 
+                targetDoc?.totals?.creditLimit ?? 
+                targetDoc?.client?.U_TQC_LMCRED ?? 
+                targetDoc?.client?.raw?.U_TQC_LMCRED ?? 
+                (rawMaxCommitmentPEN > 0 ? Number((rawMaxCommitmentPEN / 3.40).toFixed(2)) : 0) ??
+                0
+              );
+              const creditUsed = Number(targetDoc?.creditUsed ?? targetDoc?.totals?.creditUsed ?? 0);
+              const creditAvailable = Number(targetDoc?.creditAvailable ?? targetDoc?.totals?.creditAvailable ?? 0);
+              const creditOverflow = Number(targetDoc?.creditOverflowAmount ?? targetDoc?.totals?.creditOverflow ?? 0);
+              const exceedsCredit = Boolean(targetDoc?.exceedsCreditLimit || targetDoc?.totals?.exceedsCreditLimit || creditOverflow > 0);
+              const isCreditSale = Boolean(targetDoc?.isCreditSale ?? targetDoc?.totals?.isCreditSale ?? (targetDoc?.saleCondition === "CREDITO"));
+
+              if (creditLimit <= 0 && !exceedsCredit) return null;
+
+              return (
+                <Box
+                  p={4}
+                  bg={exceedsCredit && isCreditSale ? "#fff1f2" : "#f0fdf4"}
+                  border="2px solid"
+                  borderColor={exceedsCredit && isCreditSale ? "#fca5a5" : "#bbf7d0"}
+                  borderRadius="2xl"
+                  boxShadow="sm"
+                  mb={3.5}
+                >
+                  <HStack spacing={3.5} align="flex-start">
+                    <Box fontSize="24px" lineHeight="1">💳</Box>
+                    <VStack align="stretch" spacing={2} flex={1}>
+                      <Flex justify="space-between" align="center" wrap="wrap" gap={2}>
+                        <Text fontSize="13px" fontWeight="900" color={exceedsCredit && isCreditSale ? "red.900" : "green.900"} textTransform="uppercase">
+                          Línea de Crédito & Estado Financiero (SAP B1)
+                        </Text>
+                        {!isCreditSale ? (
+                          <Badge bg="#dcfce7" color="#166534" border="1px solid #86efac" fontSize="10px" px={2.5} py={0.5} borderRadius="full" fontWeight="800">
+                            🟢 VENTA AL CONTADO
+                          </Badge>
+                        ) : exceedsCredit ? (
+                          <Badge bg="#dc2626" color="white" fontSize="10px" px={2.5} py={0.5} borderRadius="full" fontWeight="900">
+                            🔴 SOBREGIRADO (+${formatThousands(creditOverflow)} USD)
+                          </Badge>
+                        ) : (
+                          <Badge bg="#dcfce7" color="#166534" border="1px solid #86efac" fontSize="10px" px={2.5} py={0.5} borderRadius="full" fontWeight="800">
+                            🟢 DENTRO DE LA LÍNEA
+                          </Badge>
+                        )}
+                      </Flex>
+
+                      <Grid templateColumns={{ base: "1fr 1fr", sm: "repeat(4, 1fr)" }} gap={2}>
+                        <Box bg="white" p={2} borderRadius="md" border="1px solid" borderColor="gray.200">
+                          <Text fontSize="9px" fontWeight="700" color="gray.500" textTransform="uppercase">Línea SAP</Text>
+                          <Text fontSize="xs" fontWeight="900" color="gray.800">${formatThousands(creditLimit)}</Text>
+                        </Box>
+                        <Box bg="white" p={2} borderRadius="md" border="1px solid" borderColor="gray.200">
+                          <Text fontSize="9px" fontWeight="700" color="gray.500" textTransform="uppercase">Compromiso SAP</Text>
+                          <Text fontSize="xs" fontWeight="900" color="gray.800">${formatThousands(creditUsed)}</Text>
+                        </Box>
+                        <Box bg="white" p={2} borderRadius="md" border="1px solid" borderColor="gray.200">
+                          <Text fontSize="9px" fontWeight="700" color="gray.500" textTransform="uppercase">Disponible</Text>
+                          <Text fontSize="xs" fontWeight="900" color="green.700">${formatThousands(creditAvailable)}</Text>
+                        </Box>
+                        <Box bg="white" p={2} borderRadius="md" border="1px solid" borderColor="gray.200">
+                          <Text fontSize="9px" fontWeight="700" color="gray.500" textTransform="uppercase">Exceso / Sobregiro</Text>
+                          <Text fontSize="xs" fontWeight="900" color={creditOverflow > 0 ? "red.700" : "gray.600"}>
+                            {creditOverflow > 0 ? `+$${formatThousands(creditOverflow)}` : "$0.00"}
+                          </Text>
+                        </Box>
+                      </Grid>
+
+                      {exceedsCredit && isCreditSale && (
+                        <Text fontSize="11px" color="red.700" fontWeight="700">
+                          ⚠️ Esta cotización a crédito excede la línea autorizada del cliente. Evalúe una excepción crediticia antes de autorizar la emisión de la orden a SAP.
+                        </Text>
+                      )}
+                    </VStack>
+                  </HStack>
+                </Box>
+              );
+            })()}
+
             {/* SECCIÓN 1: ARTÍCULOS COTIZADOS (DOS TABLAS SEPARADAS: CON STOCK Y DEMANDA BACK ORDER DEBAJO) */}
             {(() => {
               const inStockProducts = displayProducts.filter(it => !getItemStockInfo(it).isOutOfStock);

@@ -656,6 +656,16 @@ export function QuoteApprovalPage() {
   const isRoleAdmin = isVerifierOrAdminRole || isAdmin;
   const isAdminUser = Boolean(isRoleAdmin || hasApprovalPrivileges || isMasterAdminId);
   const isSellerUser = !isAdminUser;
+
+  // 🛡️ Permiso granular para ver / gestionar la bandeja de borradores
+  const canViewDrafts = Boolean(
+    isMasterAdminId ||
+    hasAccess("GET /quotes/drafts") ||
+    hasAccess("GET:/quotes/drafts") ||
+    hasAccess("/quotes/drafts") ||
+    hasAccess("GET /quotes/draft") ||
+    hasAccess("GET:/quotes/draft")
+  );
   const activeCurrentUsername = (authUsername || localStorage.getItem("username") || "").toLowerCase().trim();
   const activeCurrentUserId = authUserId || localStorage.getItem("userId");
 
@@ -709,6 +719,13 @@ export function QuoteApprovalPage() {
     window.addEventListener("quoteLocksUpdated", handleLocksUpdate);
     return () => window.removeEventListener("quoteLocksUpdated", handleLocksUpdate);
   }, []);
+
+  // Si el usuario no tiene permiso de ver borradores y estaba en esa pestaña, regresar a 'ALL'
+  useEffect(() => {
+    if (!canViewDrafts && selectedTab === "GENERADO") {
+      setSelectedTab("ALL");
+    }
+  }, [canViewDrafts, selectedTab]);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(isAdminUser ? 10 : 10);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -2144,11 +2161,16 @@ export function QuoteApprovalPage() {
       const isDraft = isDraftState(currentStatus);
       const isCancelled = isCancelledState(currentStatus);
 
+      // Si el usuario no tiene permiso para ver borradores, excluirlos siempre
+      if (!canViewDrafts && isDraft) {
+        return false;
+      }
+
       // Filtro por pestaña operativa:
       if (selectedTab === "ALL") {
         if (isDraft || isCancelled) return false;
       } else if (selectedTab === "GENERADO") {
-        if (!isDraft) return false;
+        if (!canViewDrafts || !isDraft) return false;
       } else if (selectedTab === "ENVIADO") {
         if (!["ENVIADO", "EN_PROCESO", "PENDIENTE_APROBACION", "OBSERVADO", "EN_EDICION", "PENDIENTE_FACTURACION", "EN_FACTURACION"].includes(currentStatus)) return false;
       } else if (selectedTab === "APROBADO" || selectedTab === "APROBADO_COMERCIAL") {
@@ -2167,6 +2189,7 @@ export function QuoteApprovalPage() {
     selectedTab,
     searchQuery,
     isAdminUser,
+    canViewDrafts,
     activeCurrentUsername,
     activeCurrentUserId,
     currentPeruDate
@@ -2233,7 +2256,9 @@ export function QuoteApprovalPage() {
       }
 
       if (isDraft) {
-        res.GENERADO++;
+        if (canViewDrafts) {
+          res.GENERADO++;
+        }
       } else if (isCancelled) {
         res.ANULADO++;
         res.RECHAZADO++;
@@ -2244,7 +2269,7 @@ export function QuoteApprovalPage() {
       }
     });
     return res;
-  }, [quotes, isAdminUser, activeCurrentUsername, activeCurrentUserId, currentPeruDate]);
+  }, [quotes, isAdminUser, canViewDrafts, activeCurrentUsername, activeCurrentUserId, currentPeruDate]);
 
   const renderStatusBadge = (status, q = null) => {
     const getMainBadge = () => {
@@ -3035,50 +3060,59 @@ export function QuoteApprovalPage() {
           <Text fontSize="xs" fontWeight="900" color="#475569" mb={3} textTransform="uppercase" letterSpacing="wider">
             Filtrar Cotizaciones por Fase Comercial (Toca para seleccionar):
           </Text>
-          <Grid templateColumns={{ base: "repeat(2, 1fr)", md: "repeat(3, 1fr)", lg: isAdminUser ? "repeat(5, 1fr)" : "repeat(4, 1fr)" }} gap={3}>
-            {[
+          {(() => {
+            const filterCards = [
               { id: "ALL", label: "Todas", count: counts.ALL, color: "#475569", bgSelected: "#475569", bgGlow: "#f1f5f9" },
               { id: "ENVIADO", label: "1. Pend. Aprobación", count: counts.ENVIADO, color: "#0284c7", bgSelected: "#0284c7", bgGlow: "#e0f2fe" },
               { id: "APROBADO", label: "2. Pedidos Aprobados", count: counts.APROBADO, color: "#16a34a", bgSelected: "#16a34a", bgGlow: "#dcfce7" },
-              { id: "GENERADO", label: "Borradores", isTrash: true, count: counts.GENERADO, color: "#dc2626", bgSelected: "#dc2626", bgGlow: "#fef2f2" },
+              ...(canViewDrafts ? [
+                { id: "GENERADO", label: "Borradores", isTrash: true, count: counts.GENERADO, color: "#dc2626", bgSelected: "#dc2626", bgGlow: "#fef2f2" }
+              ] : []),
               // 🛡️ Solo visibles para Administrador y Facturación
               ...(isAdminUser ? [
                 { id: "ANULADO", label: "Anuladas / Canceladas", count: counts.ANULADO, color: "#dc2626", bgSelected: "#dc2626", bgGlow: "#fee2e2" }
               ] : [])
-            ].map((card) => {
-              const isSelected = selectedTab === card.id;
-              return (
-                <Box
-                  key={card.id}
-                  onClick={() => setSelectedTab(card.id)}
-                  cursor="pointer"
-                  bg={isSelected ? card.bgSelected : "white"}
-                  color={isSelected ? "white" : card.color}
-                  p={3.5}
-                  borderRadius="xl"
-                  border="2.5px solid"
-                  borderColor={isSelected ? card.bgSelected : "#cbd5e1"}
-                  boxShadow={isSelected ? "md" : "sm"}
-                  transition="all 0.15s ease-in-out"
-                  textAlign="center"
-                  userSelect="none"
-                  _hover={{ transform: "translateY(-2px)", borderColor: card.color }}
-                  _active={{ transform: "scale(0.97)" }}
-                >
-                  {card.isTrash ? (
-                    <Flex align="center" justify="center" h="32px">
-                      <Trash2 className="w-7 h-7 stroke-[2.5]" />
-                    </Flex>
-                  ) : (
-                    <Text fontSize="2xl" fontWeight="900" lineHeight="1">{card.count}</Text>
-                  )}
-                  <Text fontSize="11px" fontWeight="800" mt={1.5} textTransform="uppercase" letterSpacing="tight">
-                    {card.label} {card.isTrash && `(${card.count})`}
-                  </Text>
-                </Box>
-              );
-            })}
-          </Grid>
+            ];
+            const numCols = filterCards.length;
+
+            return (
+              <Grid templateColumns={{ base: "repeat(2, 1fr)", md: `repeat(${Math.min(3, numCols)}, 1fr)`, lg: `repeat(${numCols}, 1fr)` }} gap={3}>
+                {filterCards.map((card) => {
+                  const isSelected = selectedTab === card.id;
+                  return (
+                    <Box
+                      key={card.id}
+                      onClick={() => setSelectedTab(card.id)}
+                      cursor="pointer"
+                      bg={isSelected ? card.bgSelected : "white"}
+                      color={isSelected ? "white" : card.color}
+                      p={3.5}
+                      borderRadius="xl"
+                      border="2.5px solid"
+                      borderColor={isSelected ? card.bgSelected : "#cbd5e1"}
+                      boxShadow={isSelected ? "md" : "sm"}
+                      transition="all 0.15s ease-in-out"
+                      textAlign="center"
+                      userSelect="none"
+                      _hover={{ transform: "translateY(-2px)", borderColor: card.color }}
+                      _active={{ transform: "scale(0.97)" }}
+                    >
+                      {card.isTrash ? (
+                        <Flex align="center" justify="center" h="32px">
+                          <Trash2 className="w-7 h-7 stroke-[2.5]" />
+                        </Flex>
+                      ) : (
+                        <Text fontSize="2xl" fontWeight="900" lineHeight="1">{card.count}</Text>
+                      )}
+                      <Text fontSize="11px" fontWeight="800" mt={1.5} textTransform="uppercase" letterSpacing="tight">
+                        {card.label} {card.isTrash && `(${card.count})`}
+                      </Text>
+                    </Box>
+                  );
+                })}
+              </Grid>
+            );
+          })()}
         </Box>
 
         {/* BUSCADOR DE COTIZACIONES RÁPIDO */}
@@ -3285,6 +3319,24 @@ export function QuoteApprovalPage() {
                                 ⚠️ CLIENTE CON DEUDA {q.hasOverdueDebt || q.totals?.hasOverdueDebt ? "VENCIDA" : ""}
                               </Badge>
                             )}
+
+                            {(q.exceedsCreditLimit || q.totals?.exceedsCreditLimit) && (
+                              <Badge
+                                colorScheme="red"
+                                variant="solid"
+                                bg="#991b1b"
+                                color="white"
+                                fontSize="9px"
+                                px={2}
+                                py={0.5}
+                                borderRadius="md"
+                                fontWeight="900"
+                                boxShadow="xs"
+                                title={`Límite de crédito SAP excedido por +$${formatThousands(q.creditOverflowAmount || q.totals?.creditOverflow || 0)} USD`}
+                              >
+                                💳 SOBREGIRO CRÉDITO {Number(q.creditOverflowAmount || q.totals?.creditOverflow || 0) > 0 ? `(+$${formatThousands(q.creditOverflowAmount || q.totals?.creditOverflow)} USD)` : ""}
+                              </Badge>
+                            )}
                           </HStack>
                           <Text
                             fontWeight="900"
@@ -3458,6 +3510,23 @@ export function QuoteApprovalPage() {
                           title={q.debtSummary || q.totals?.debtSummary || "Cliente con deuda registrada"}
                         >
                           ⚠️ CLIENTE CON DEUDA {q.hasOverdueDebt || q.totals?.hasOverdueDebt ? "VENCIDA" : ""}
+                        </Badge>
+                      )}
+                      {(q.exceedsCreditLimit || q.totals?.exceedsCreditLimit) && (
+                        <Badge
+                          colorScheme="red"
+                          variant="solid"
+                          bg="#991b1b"
+                          color="white"
+                          fontSize="9px"
+                          px={2}
+                          py={0.5}
+                          borderRadius="md"
+                          fontWeight="900"
+                          boxShadow="xs"
+                          title={`Límite de crédito SAP excedido por +$${formatThousands(q.creditOverflowAmount || q.totals?.creditOverflow || 0)} USD`}
+                        >
+                          💳 SOBREGIRO CRÉDITO {Number(q.creditOverflowAmount || q.totals?.creditOverflow || 0) > 0 ? `(+$${formatThousands(q.creditOverflowAmount || q.totals?.creditOverflow)} USD)` : ""}
                         </Badge>
                       )}
                       {q.items?.some(i => i.stock === 0) && (

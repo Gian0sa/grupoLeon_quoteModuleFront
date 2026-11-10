@@ -35,6 +35,7 @@ import { useSellersData, useGetProfileData } from "../../auth/hooks/queries/auth
 import { useGetAccountsReceivable } from "../../receivable/hooks/receivableQueries";
 import { useClientPointsDelivery } from "../../clients/hooks/queries/clientQueries";
 import InvoicesModal from "../../receivable/components/InvoicesModal";
+import { fetchClientByCode } from "../../clients/services/clientService";
 import { axiosInstance } from "../../../shared/lib/axiosInstance";
 
 const money = (val, currency = "USD") => {
@@ -337,6 +338,46 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   );
   const { dataDeliveryPoints, isLoadingDeliveryPoints } = useClientPointsDelivery(clientCardCode);
 
+  // Auto-sincronizar ficha fresca del cliente desde SAP (Línea U_TQC_LMCRED, MaxCommitment, Balances)
+  const lastFetchedCreditRef = useRef("");
+  useEffect(() => {
+    if (!clientCardCode) return;
+    const rawLimit = Number(client?.U_TQC_LMCRED ?? client?.raw?.U_TQC_LMCRED ?? 0);
+    const rawCommitment = Number(client?.MaxCommitment ?? client?.raw?.MaxCommitment ?? 0);
+    const alreadyFetched = lastFetchedCreditRef.current === clientCardCode;
+
+    if ((rawLimit > 0 || rawCommitment > 0) && client?.creditChecked) return;
+    if (alreadyFetched && client?.creditChecked) return;
+
+    lastFetchedCreditRef.current = clientCardCode;
+    fetchClientByCode(clientCardCode).then((fullData) => {
+      if (fullData) {
+        const rawLimitUSD = Number(fullData.U_TQC_LMCRED ?? fullData.CreditLimit ?? 0);
+        const rawCommitPEN = Number(fullData.MaxCommitment ?? 0);
+        const effectiveLimitUSD = rawLimitUSD > 0
+          ? rawLimitUSD
+          : (rawCommitPEN > 0 ? Number((rawCommitPEN / 3.40).toFixed(2)) : 0);
+
+        const updated = normalizeQuoteClient({
+          ...client,
+          ...fullData,
+          U_TQC_LMCRED: effectiveLimitUSD,
+          CreditLimit: effectiveLimitUSD,
+          creditLimit: effectiveLimitUSD,
+          MaxCommitment: rawCommitPEN,
+          CurrentAccountBalance: fullData.CurrentAccountBalance ?? client?.CurrentAccountBalance,
+          OpenOrdersBalance: fullData.OpenOrdersBalance ?? client?.OpenOrdersBalance,
+          OpenDeliveryNotesBalance: fullData.OpenDeliveryNotesBalance ?? client?.OpenDeliveryNotesBalance,
+          creditChecked: true,
+          raw: { ...client?.raw, ...fullData },
+        });
+        setClient(updated);
+      }
+    }).catch((err) => {
+      console.warn("⚠️ No se pudo refrescar línea de crédito del cliente:", err.message);
+    });
+  }, [clientCardCode, client?.U_TQC_LMCRED, client?.MaxCommitment]);
+
   const clientDebtInfo = useMemo(() => {
     if (!client) return null;
 
@@ -369,22 +410,28 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
       const penPending = Number(matchingClient.pendingAmount?.PEN ?? 0);
       const usdPending = Number(matchingClient.pendingAmount?.USD ?? 0);
-      const consolidadoUSD = Number(matchingClient.totalConsolidadoUSD ?? matchingClient.saldoConsolidadoUSD ?? 0);
-      totalPendingUSD = consolidadoUSD > 0
-        ? consolidadoUSD
-        : Number((usdPending + (penPending > 0 ? penPending / (exchangeRate || 3.564) : 0)).toFixed(2));
+      totalPendingUSD = Number((usdPending + (penPending > 0 ? penPending / (exchangeRate || 3.564) : 0)).toFixed(2));
 
       totalDocsCount = Number(matchingClient.totalDocuments ?? matchingClient.documents?.length ?? 0);
 
       if (Array.isArray(matchingClient.documents) && matchingClient.documents.length > 0) {
-        if (!totalDocsCount) totalDocsCount = matchingClient.documents.length;
-        if (totalPendingUSD === 0) {
-          matchingClient.documents.forEach(d => {
-            const sPen = Number(d.saldoPendiente?.PEN ?? d.SALDO_PEN ?? 0);
-            const sUsd = Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? 0);
-            totalPendingUSD += Number((sUsd + (sPen > 0 ? sPen / (exchangeRate || 3.564) : 0)).toFixed(2));
-          });
-        }
+        totalDocsCount = matchingClient.documents.length;
+        let sumDocUSD = 0;
+        matchingClient.documents.forEach(d => {
+          const numUpper = (d.numeroDocumento || d.NRO_DOC || "").toUpperCase();
+          const tipoLower = (d.tipoDocumento || d.TIPO_DOC || "").toLowerCase();
+          const isNC = tipoLower.includes("abono") || tipoLower.includes("credito") || numUpper.startsWith("ABO-") || numUpper.startsWith("NC-") || numUpper.startsWith("AB0-");
+          const sPen = Number(d.saldoPendiente?.PEN ?? d.SALDO_PEN ?? 0);
+          const sUsd = Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? 0);
+          const valUSD = Math.abs(sUsd + (sPen > 0 ? sPen / (exchangeRate || 3.564) : 0));
+          if (isNC || sUsd < 0 || sPen < 0) {
+            sumDocUSD -= valUSD;
+          } else {
+            sumDocUSD += valUSD;
+          }
+        });
+        totalPendingUSD = Number(Math.max(0, sumDocUSD).toFixed(2));
+
         if (overdueDocsCount === 0 && overdueUSD === 0) {
           const now = new Date();
           now.setHours(0, 0, 0, 0);
@@ -793,6 +840,115 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     return calculateQuoteTotals(products, exchangeRate, { currency: currency || "USD" });
   }, [products, exchangeRate, currency]);
 
+  // ─── ANÁLISIS DE LÍNEA DE CRÉDITO Y DISPONIBILIDAD EN TIEMPO REAL (SAP B1 U_TQC_LMCRED) ───
+  const isCreditSale = useMemo(() => {
+    if (saleCondition === "CREDITO") return true;
+    if (saleCondition === "CONTADO") return false;
+    const pLabel = extractPaymentLabel(selectedPaymentType).toLowerCase();
+    if (pLabel.includes("contado") || pLabel.includes("anticipado")) return false;
+    return pLabel.includes("credit") || pLabel.includes("crédito") || pLabel.includes("dias") || pLabel.includes("días") || pLabel.includes("letra");
+  }, [saleCondition, selectedPaymentType]);
+
+  const clientCreditInfo = useMemo(() => {
+    if (!client) return null;
+
+    // 1. Límite de Crédito Autorizado en SAP:
+    // U_TQC_LMCRED se registra en USD (ej: 21,133 USD)
+    // MaxCommitment ("Límite de comprometido") en SAP B1 Perú se registra en Soles (PEN) (ej: 71,852.20 PEN = 21,133 USD a TC contable 3.40)
+    // CreditLimit es el campo estándar de SAP
+    const rawLimitUSD = Number(
+      client.U_TQC_LMCRED ??
+      client.raw?.U_TQC_LMCRED ??
+      client.creditLimit ??
+      0
+    );
+    const rawMaxCommitmentPEN = Number(
+      client.MaxCommitment ??
+      client.raw?.MaxCommitment ??
+      0
+    );
+    const rawStandardLimit = Number(
+      client.CreditLimit ??
+      client.raw?.CreditLimit ??
+      0
+    );
+
+    let creditLimitUSD = 0;
+    let maxCommitmentPEN = 0;
+
+    if (rawLimitUSD > 0) {
+      creditLimitUSD = Number(rawLimitUSD.toFixed(2));
+      maxCommitmentPEN = rawMaxCommitmentPEN > 0 ? Number(rawMaxCommitmentPEN.toFixed(2)) : Number((creditLimitUSD * 3.40).toFixed(2));
+    } else if (rawMaxCommitmentPEN > 0) {
+      // Si en SAP se llenó "Límite de comprometido" en Soles (PEN), convertir a USD al TC 3.40
+      creditLimitUSD = Number((rawMaxCommitmentPEN / 3.40).toFixed(2));
+      maxCommitmentPEN = Number(rawMaxCommitmentPEN.toFixed(2));
+    } else if (rawStandardLimit > 0) {
+      creditLimitUSD = Number(rawStandardLimit.toFixed(2));
+      maxCommitmentPEN = Number((creditLimitUSD * 3.40).toFixed(2));
+    }
+
+    const hasCreditLine = creditLimitUSD > 0;
+
+    // 2. Saldo deudor facturado pendiente (en USD)
+    const rawBalance = Number(client.CurrentAccountBalance ?? client.raw?.CurrentAccountBalance ?? client.Balance ?? 0);
+    const pendingDebtUSD = clientDebtInfo?.totalPendingUSD > 0
+      ? clientDebtInfo.totalPendingUSD
+      : (rawBalance > 0 ? Number((rawBalance / (exchangeRate || 3.564)).toFixed(2)) : 0);
+
+    // 3. Pedidos abiertos en SAP (compromisos vigentes que aún no se han facturado)
+    const rawOpenOrders = Number(client.OpenOrdersBalance ?? client.raw?.OpenOrdersBalance ?? client.openOrdersBalance ?? 0);
+    const openOrdersUSD = rawOpenOrders > 0 ? Number((rawOpenOrders / (exchangeRate || 3.564)).toFixed(2)) : 0;
+
+    // 4. Compromiso total utilizado antes de esta cotización
+    const totalCommittedUSD = Number((pendingDebtUSD + openOrdersUSD).toFixed(2));
+
+    // 5. Crédito disponible antes de esta cotización
+    const availableCreditUSD = hasCreditLine ? Math.max(0, Number((creditLimitUSD - totalCommittedUSD).toFixed(2))) : 0;
+
+    // 6. Impacto de esta cotización (en USD) - Sincronizado en tiempo real con calculateQuoteTotals
+    const quoteTotalUSD = Number(totals?.grandTotalUSD ?? totals?.grandTotal ?? totals?.total ?? 0);
+    const projectedTotalUSD = Number((totalCommittedUSD + quoteTotalUSD).toFixed(2));
+
+    // 7. Sobregiro / Exceso de línea
+    // Si la venta es al contado, no genera sobregiro de línea a plazo
+    let creditOverflowUSD = 0;
+    let isExceeded = false;
+
+    if (isCreditSale) {
+      if (hasCreditLine) {
+        if (projectedTotalUSD > creditLimitUSD) {
+          creditOverflowUSD = Number((projectedTotalUSD - creditLimitUSD).toFixed(2));
+          isExceeded = true;
+        }
+      } else if (quoteTotalUSD > 0) {
+        creditOverflowUSD = quoteTotalUSD;
+        isExceeded = true;
+      }
+    }
+
+    // 8. Porcentaje de ocupación proyectado
+    const usagePercent = hasCreditLine
+      ? Math.min(999, Number(((projectedTotalUSD / creditLimitUSD) * 100).toFixed(1)))
+      : (projectedTotalUSD > 0 ? 100 : 0);
+
+    return {
+      hasCreditLine,
+      creditLimitUSD,
+      maxCommitmentPEN,
+      pendingDebtUSD,
+      openOrdersUSD,
+      totalCommittedUSD,
+      availableCreditUSD,
+      quoteTotalUSD,
+      projectedTotalUSD,
+      creditOverflowUSD,
+      isExceeded,
+      usagePercent,
+      isCreditSale,
+    };
+  }, [client, clientDebtInfo, totals?.grandTotalUSD, totals?.grandTotal, totals?.total, isCreditSale, exchangeRate]);
+
   const currentQuoteObj = useMemo(() => ({
     id: docNumber || null,
     docNumber: docNumber || null,
@@ -803,6 +959,8 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     currency: currency || "USD",
     DocCurrency: currency || "USD",
     totals,
+    clientCreditInfo,
+    isCreditSale,
     sellerName: activeSeller,
     SlpCode: selectedSlpCode || (isAdmin ? 20 : undefined),
     slpCode: selectedSlpCode || (isAdmin ? 20 : undefined),
@@ -907,6 +1065,14 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       backOrderProducts: totals?.backOrderProducts || [],
       backOrderItems: totals?.backOrderProducts || [],
       hasBackOrder: Boolean(totals?.hasBackOrder),
+      creditLimit: clientCreditInfo?.creditLimitUSD || 0,
+      tqcCreditLimit: clientCreditInfo?.creditLimitUSD || 0,
+      creditUsed: clientCreditInfo?.totalCommittedUSD || 0,
+      creditAvailable: clientCreditInfo?.availableCreditUSD || 0,
+      creditOverflow: clientCreditInfo?.creditOverflowUSD || 0,
+      exceedsCreditLimit: Boolean(clientCreditInfo?.isExceeded),
+      requiresCreditApproval: Boolean(clientCreditInfo?.isExceeded && clientCreditInfo?.isCreditSale),
+      isCreditSale: Boolean(clientCreditInfo?.isCreditSale),
     };
 
     // Extraer número de correlativo limpio (ej. "COT-WEB-000015" -> 15, "15" -> 15)
@@ -1049,6 +1215,14 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       hasDebt: Boolean(clientDebtInfo?.hasTotalDebt),
       hasOverdueDebt: Boolean(clientDebtInfo?.hasOverdueDebt),
       debtSummary: clientDebtInfo?.debtSummary || null,
+      creditLimit: clientCreditInfo?.creditLimitUSD || 0,
+      tqcCreditLimit: clientCreditInfo?.creditLimitUSD || 0,
+      creditUsed: clientCreditInfo?.totalCommittedUSD || 0,
+      creditAvailable: clientCreditInfo?.availableCreditUSD || 0,
+      creditOverflowAmount: clientCreditInfo?.creditOverflowUSD || 0,
+      exceedsCreditLimit: Boolean(clientCreditInfo?.isExceeded),
+      requiresCreditApproval: Boolean(clientCreditInfo?.isExceeded && clientCreditInfo?.isCreditSale),
+      isCreditSale: Boolean(clientCreditInfo?.isCreditSale),
       hasBackOrder: Boolean(finalTotals.hasBackOrder),
       backOrderItems: finalTotals.backOrderProducts || [],
       totals: {
@@ -2520,77 +2694,6 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
             ) : (
               <ClientAutocomplete client={client} setClient={setClient} debtSummary={clientDebtInfo?.debtSummary} />
             )}
-
-            {/* Alerta Visual de Deuda del Cliente (Si registra saldo pendiente o mora) */}
-            {clientDebtInfo && (
-              <Box
-                mt={2}
-                p={3.5}
-                bg={clientDebtInfo.hasOverdueDebt ? "#fff1f2" : "#fffbeb"}
-                borderRadius="xl"
-                border="1.5px solid"
-                borderColor={clientDebtInfo.hasOverdueDebt ? "#fca5a5" : "#fef08a"}
-                boxShadow="sm"
-              >
-                <Flex align="flex-start" gap={3}>
-                  <Text fontSize="20px" lineHeight="1">
-                    {clientDebtInfo.hasOverdueDebt ? "⚠️" : "ℹ️"}
-                  </Text>
-                  <VStack align="stretch" spacing={1.5} flex={1}>
-                    <Flex justify="space-between" align="center" wrap="wrap" gap={2}>
-                      <Text
-                        fontSize="xs"
-                        fontWeight="900"
-                        color={clientDebtInfo.hasOverdueDebt ? "red.900" : "yellow.900"}
-                        textTransform="uppercase"
-                        letterSpacing="wide"
-                      >
-                        {clientDebtInfo.hasOverdueDebt
-                          ? "Alerta Comercial: Cliente con Deuda Vencida"
-                          : "Observación Comercial: Cliente con Saldo Pendiente"}
-                      </Text>
-                      <Badge
-                        colorScheme={clientDebtInfo.hasOverdueDebt ? "red" : "yellow"}
-                        variant="solid"
-                        bg={clientDebtInfo.hasOverdueDebt ? "#dc2626" : "#d97706"}
-                        color="white"
-                        fontSize="9px"
-                        px={2.5}
-                        py={0.5}
-                        borderRadius="full"
-                        fontWeight="900"
-                      >
-                        {clientDebtInfo.hasOverdueDebt ? "MORA / CUOTAS VENCIDAS" : "SALDO PENDIENTE"}
-                      </Badge>
-                    </Flex>
-
-                    <Text fontSize="xs" fontWeight="800" color={clientDebtInfo.hasOverdueDebt ? "red.800" : "yellow.900"}>
-                      {clientDebtInfo.debtSummary}
-                    </Text>
-
-                    {clientDebtInfo.matchingClient && (
-                      <Button
-                        size="xs"
-                        colorScheme={clientDebtInfo.hasOverdueDebt ? "red" : "yellow"}
-                        variant="outline"
-                        alignSelf="flex-start"
-                        onClick={() => setIsReceivableModalOpen(true)}
-                        fontWeight="700"
-                        px={3}
-                        py={1}
-                        borderRadius="md"
-                      >
-                        📋 Ver documentos y cuotas ({clientDebtInfo.totalDocsCount})
-                      </Button>
-                    )}
-
-                    <Text fontSize="11px" color={clientDebtInfo.hasOverdueDebt ? "red.700" : "yellow.800"} fontWeight="600">
-                      💡 El sistema te permite generar y enviar esta cotización normalmente. Al enviar a validación, se alertará automáticamente a Administración para que evalúe y apruebe las condiciones comerciales.
-                    </Text>
-                  </VStack>
-                </Flex>
-              </Box>
-            )}
           </VStack>
 
           {/* Columna Derecha: Parámetros del Documento (Grid 2x2 Simétrico) */}
@@ -2703,6 +2806,340 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
             </Grid>
           </VStack>
         </Grid>
+
+        {/* ── SECCIÓN DE ESTADO FINANCIERO: LÍNEA DE CRÉDITO Y ALERTA DE DEUDA (LADO A LADO) ── */}
+        {(clientCreditInfo || clientDebtInfo) && (
+          <Grid
+            templateColumns={{
+              base: "1fr",
+              lg: (clientCreditInfo && clientDebtInfo) ? "repeat(2, 1fr)" : "1fr"
+            }}
+            gap={{ base: 3, lg: 4 }}
+            alignItems="stretch"
+            mt={4}
+          >
+            {/* 💳 TARJETA EJECUTIVA DE LÍNEA DE CRÉDITO Y DISPONIBILIDAD (SAP B1 U_TQC_LMCRED) */}
+            {clientCreditInfo && (
+              <Box
+                h="full"
+                p={3.5}
+                bg={
+                  clientCreditInfo.isExceeded && clientCreditInfo.isCreditSale
+                    ? "#fff1f2"
+                    : clientCreditInfo.usagePercent > 80 && clientCreditInfo.isCreditSale
+                    ? "#fffbeb"
+                    : "#f0fdf4"
+                }
+                borderRadius="xl"
+                border="1.5px solid"
+                borderColor={
+                  clientCreditInfo.isExceeded && clientCreditInfo.isCreditSale
+                    ? "#fca5a5"
+                    : clientCreditInfo.usagePercent > 80 && clientCreditInfo.isCreditSale
+                    ? "#fef08a"
+                    : "#bbf7d0"
+                }
+                boxShadow="xs"
+                display="flex"
+                flexDirection="column"
+                justifyContent="space-between"
+              >
+                <Flex align="flex-start" gap={3}>
+                  <Box
+                    p={2}
+                    borderRadius="lg"
+                    bg={
+                      clientCreditInfo.isExceeded && clientCreditInfo.isCreditSale
+                        ? "#fee2e2"
+                        : clientCreditInfo.usagePercent > 80 && clientCreditInfo.isCreditSale
+                        ? "#fef3c7"
+                        : "#dcfce7"
+                    }
+                    color={
+                      clientCreditInfo.isExceeded && clientCreditInfo.isCreditSale
+                        ? "#dc2626"
+                        : clientCreditInfo.usagePercent > 80 && clientCreditInfo.isCreditSale
+                        ? "#d97706"
+                        : "#166534"
+                    }
+                  >
+                    <CreditCard className="w-5 h-5" />
+                  </Box>
+
+                  <VStack align="stretch" spacing={2} flex={1}>
+                    <Flex justify="space-between" align="center" wrap="wrap" gap={2}>
+                      <Text
+                        fontSize="xs"
+                        fontWeight="900"
+                        color={
+                          clientCreditInfo.isExceeded && clientCreditInfo.isCreditSale
+                            ? "red.900"
+                            : clientCreditInfo.usagePercent > 80 && clientCreditInfo.isCreditSale
+                            ? "yellow.900"
+                            : "green.900"
+                        }
+                        textTransform="uppercase"
+                        letterSpacing="wide"
+                      >
+                        Línea de Crédito & Estado Financiero (SAP)
+                      </Text>
+
+                      {saleCondition === "CONTADO" ? (
+                        <Badge
+                          bg="#dcfce7"
+                          color="#166534"
+                          border="1px solid #86efac"
+                          fontSize="9px"
+                          px={2.5}
+                          py={0.5}
+                          borderRadius="full"
+                          fontWeight="900"
+                          textTransform="none"
+                        >
+                          🟢 VENTA AL CONTADO (NO CONSUME LÍNEA)
+                        </Badge>
+                      ) : clientCreditInfo.isCreditSale && clientCreditInfo.isExceeded ? (
+                        <Badge
+                          bg="#dc2626"
+                          color="white"
+                          fontSize="9px"
+                          px={2.5}
+                          py={0.5}
+                          borderRadius="full"
+                          fontWeight="900"
+                          textTransform="none"
+                          boxShadow="xs"
+                        >
+                          🔴 SOBREGIRADO (+${formatThousands(clientCreditInfo.creditOverflowUSD)} USD)
+                        </Badge>
+                      ) : clientCreditInfo.isCreditSale && !clientCreditInfo.hasCreditLine ? (
+                        <Badge
+                          bg="#fef3c7"
+                          color="#92400e"
+                          border="1px solid #fcd34d"
+                          fontSize="9px"
+                          px={2.5}
+                          py={0.5}
+                          borderRadius="full"
+                          fontWeight="900"
+                        >
+                          ⚠️ SIN LÍNEA REGISTRADA
+                        </Badge>
+                      ) : clientCreditInfo.isCreditSale ? (
+                        <Badge
+                          bg="#dcfce7"
+                          color="#166534"
+                          border="1px solid #86efac"
+                          fontSize="9px"
+                          px={2.5}
+                          py={0.5}
+                          borderRadius="full"
+                          fontWeight="900"
+                        >
+                          🟢 CRÉDITO DISPONIBLE: ${formatThousands(clientCreditInfo.availableCreditUSD)} USD
+                        </Badge>
+                      ) : (
+                        <Badge
+                          bg="#eff6ff"
+                          color="#1e40af"
+                          border="1px solid #bfdbfe"
+                          fontSize="9px"
+                          px={2.5}
+                          py={0.5}
+                          borderRadius="full"
+                          fontWeight="900"
+                        >
+                          ℹ️ DISPONIBLE: {clientCreditInfo.hasCreditLine ? `$${formatThousands(clientCreditInfo.availableCreditUSD)} USD` : "S/N"}
+                        </Badge>
+                      )}
+                    </Flex>
+
+                    {/* Malla de 4 Indicadores Financieros */}
+                    <Grid templateColumns={{ base: "1fr 1fr", sm: "repeat(4, 1fr)" }} gap={2} pt={1}>
+                      <Box bg="whiteAlpha.900" p={2} borderRadius="md" border="1px solid" borderColor="gray.200" boxShadow="xs">
+                        <Text fontSize="9.5px" fontWeight="700" color="gray.500" textTransform="uppercase">
+                          Línea SAP (USD / PEN)
+                        </Text>
+                        <Text fontSize="xs" fontWeight="900" color="gray.800" mt={0.5}>
+                          {clientCreditInfo.hasCreditLine ? `$${formatThousands(clientCreditInfo.creditLimitUSD)} USD` : "S/N"}
+                        </Text>
+                        {clientCreditInfo.maxCommitmentPEN > 0 && (
+                          <Text fontSize="9px" color="gray.500" fontWeight="600">
+                            (S/ {formatThousands(clientCreditInfo.maxCommitmentPEN)} PEN)
+                          </Text>
+                        )}
+                      </Box>
+
+                      <Box bg="whiteAlpha.900" p={2} borderRadius="md" border="1px solid" borderColor="gray.200" boxShadow="xs">
+                        <Text fontSize="9.5px" fontWeight="700" color="gray.500" textTransform="uppercase">
+                          Crédito Utilizado
+                        </Text>
+                        <Text fontSize="xs" fontWeight="900" color={clientCreditInfo.totalCommittedUSD > 0 ? "red.700" : "gray.800"} mt={0.5} title={`Facturado: $${formatThousands(clientCreditInfo.pendingDebtUSD)} + Pedidos SAP: $${formatThousands(clientCreditInfo.openOrdersUSD)}`}>
+                          ${formatThousands(clientCreditInfo.totalCommittedUSD)}
+                        </Text>
+                      </Box>
+
+                      <Box bg="whiteAlpha.900" p={2} borderRadius="md" border="1px solid" borderColor="gray.200" boxShadow="xs">
+                        <Text fontSize="9.5px" fontWeight="700" color="gray.500" textTransform="uppercase">
+                          Disponible Actual
+                        </Text>
+                        <Text fontSize="xs" fontWeight="900" color={clientCreditInfo.availableCreditUSD > 0 ? "green.700" : "gray.600"} mt={0.5}>
+                          ${formatThousands(clientCreditInfo.availableCreditUSD)}
+                        </Text>
+                        {clientCreditInfo.hasCreditLine && clientCreditInfo.totalCommittedUSD > clientCreditInfo.creditLimitUSD && (
+                          <Text fontSize="8.5px" color="red.600" fontWeight="700">
+                            (Agotado: Sobregiro +${formatThousands(clientCreditInfo.totalCommittedUSD - clientCreditInfo.creditLimitUSD)})
+                          </Text>
+                        )}
+                        {!clientCreditInfo.hasCreditLine && (
+                          <Text fontSize="8.5px" color="gray.500" fontWeight="600">
+                            (Sin línea en SAP)
+                          </Text>
+                        )}
+                      </Box>
+
+                      <Box bg="whiteAlpha.900" p={2} borderRadius="md" border="1px solid" borderColor="gray.200" boxShadow="xs">
+                        <Text fontSize="9.5px" fontWeight="700" color="gray.500" textTransform="uppercase">
+                          Esta Cotización
+                        </Text>
+                        <Text fontSize="xs" fontWeight="900" color="#166534" mt={0.5} title={`Proyectado total: $${formatThousands(clientCreditInfo.projectedTotalUSD)} USD`}>
+                          ${formatThousands(clientCreditInfo.quoteTotalUSD)} USD
+                        </Text>
+                      </Box>
+                    </Grid>
+
+                    {/* Barra de progreso de uso de línea si tiene línea registrada */}
+                    {clientCreditInfo.hasCreditLine && (
+                      <Box mt={1}>
+                        <Flex justify="space-between" align="center" mb={1}>
+                          <Text fontSize="10.5px" fontWeight="700" color="gray.600">
+                            Uso de Línea Proyectado:{" "}
+                            <strong style={{ color: clientCreditInfo.isExceeded && clientCreditInfo.isCreditSale ? "#dc2626" : (clientCreditInfo.usagePercent > 80 ? "#d97706" : "#166534") }}>
+                              {clientCreditInfo.usagePercent}%
+                            </strong>
+                          </Text>
+                          {clientCreditInfo.openOrdersUSD > 0 && (
+                            <Text fontSize="9.5px" color="gray.500" fontStyle="italic">
+                              (Incluye ${formatThousands(clientCreditInfo.openOrdersUSD)} en pedidos SAP abiertos)
+                            </Text>
+                          )}
+                        </Flex>
+                        <Progress
+                          value={Math.min(100, clientCreditInfo.usagePercent)}
+                          size="xs"
+                          borderRadius="full"
+                          colorScheme={
+                            clientCreditInfo.isExceeded && clientCreditInfo.isCreditSale
+                              ? "red"
+                              : clientCreditInfo.usagePercent > 80 && clientCreditInfo.isCreditSale
+                              ? "yellow"
+                              : "green"
+                          }
+                        />
+                      </Box>
+                    )}
+
+                    {/* Mensaje contextual */}
+                    {clientCreditInfo.isCreditSale && clientCreditInfo.isExceeded && (
+                      <Text fontSize="11px" color="red.800" fontWeight="700" mt={0.5}>
+                        ⚠️ Esta cotización a crédito supera la línea autorizada por +${formatThousands(clientCreditInfo.creditOverflowUSD)} USD. Al enviar a validación, pasará a Aprobación de Créditos para evaluar el sobregiro.
+                      </Text>
+                    )}
+                    {clientCreditInfo.isCreditSale && !clientCreditInfo.hasCreditLine && clientCreditInfo.quoteTotalUSD > 0 && (
+                      <Text fontSize="11px" color="yellow.900" fontWeight="700" mt={0.5}>
+                        ⚠️ El cliente no cuenta con línea de crédito registrada en SAP (U_TQC_LMCRED = 0). Toda venta a crédito requerirá aprobación de Créditos.
+                      </Text>
+                    )}
+                    {saleCondition === "CONTADO" && (
+                      <Text fontSize="11px" color="green.800" fontWeight="600" mt={0.5}>
+                        💡 Condición de Pago: CONTADO. No consume línea de crédito a plazo ni genera sobregiro.
+                      </Text>
+                    )}
+                    {!saleCondition && !clientCreditInfo.isCreditSale && (
+                      <Text fontSize="11px" color="blue.800" fontWeight="600" mt={0.5}>
+                        💡 Esta cotización actual suma ${formatThousands(clientCreditInfo.quoteTotalUSD)} USD. Si se formaliza a CRÉDITO, consumirá de la línea disponible (${formatThousands(clientCreditInfo.availableCreditUSD)} USD).
+                      </Text>
+                    )}
+                  </VStack>
+                </Flex>
+              </Box>
+            )}
+
+            {/* ⚠️ ALERTA COMERCIAL DE DEUDA VENCIDA / SALDO PENDIENTE */}
+            {clientDebtInfo && (
+              <Box
+                h="full"
+                p={3.5}
+                bg={clientDebtInfo.hasOverdueDebt ? "#fff1f2" : "#fffbeb"}
+                borderRadius="xl"
+                border="1.5px solid"
+                borderColor={clientDebtInfo.hasOverdueDebt ? "#fca5a5" : "#fef08a"}
+                boxShadow="xs"
+                display="flex"
+                flexDirection="column"
+                justifyContent="space-between"
+              >
+                <Flex align="flex-start" gap={3}>
+                  <Text fontSize="20px" lineHeight="1">
+                    {clientDebtInfo.hasOverdueDebt ? "⚠️" : "ℹ️"}
+                  </Text>
+                  <VStack align="stretch" spacing={2} flex={1}>
+                    <Flex justify="space-between" align="center" wrap="wrap" gap={2}>
+                      <Text
+                        fontSize="xs"
+                        fontWeight="900"
+                        color={clientDebtInfo.hasOverdueDebt ? "red.900" : "yellow.900"}
+                        textTransform="uppercase"
+                        letterSpacing="wide"
+                      >
+                        {clientDebtInfo.hasOverdueDebt
+                          ? "Alerta Comercial: Cliente con Deuda Vencida"
+                          : "Observación Comercial: Cliente con Saldo Pendiente"}
+                      </Text>
+                      <Badge
+                        colorScheme={clientDebtInfo.hasOverdueDebt ? "red" : "yellow"}
+                        variant="solid"
+                        bg={clientDebtInfo.hasOverdueDebt ? "#dc2626" : "#d97706"}
+                        color="white"
+                        fontSize="9px"
+                        px={2.5}
+                        py={0.5}
+                        borderRadius="full"
+                        fontWeight="900"
+                      >
+                        {clientDebtInfo.hasOverdueDebt ? "MORA / CUOTAS VENCIDAS" : "SALDO PENDIENTE"}
+                      </Badge>
+                    </Flex>
+
+                    <Text fontSize="xs" fontWeight="800" color={clientDebtInfo.hasOverdueDebt ? "red.800" : "yellow.900"}>
+                      {clientDebtInfo.debtSummary}
+                    </Text>
+
+                    {clientDebtInfo.matchingClient && (
+                      <Button
+                        size="xs"
+                        colorScheme={clientDebtInfo.hasOverdueDebt ? "red" : "yellow"}
+                        variant="outline"
+                        alignSelf="flex-start"
+                        onClick={() => setIsReceivableModalOpen(true)}
+                        fontWeight="700"
+                        px={3}
+                        py={1}
+                        borderRadius="md"
+                      >
+                        📋 Ver documentos y cuotas ({clientDebtInfo.totalDocsCount})
+                      </Button>
+                    )}
+
+                    <Text fontSize="11px" color={clientDebtInfo.hasOverdueDebt ? "red.700" : "yellow.800"} fontWeight="600">
+                      💡 El sistema te permite generar y enviar esta cotización normalmente. Al enviar a validación, se alertará automáticamente a Administración para que evalúe y apruebe las condiciones comerciales.
+                    </Text>
+                  </VStack>
+                </Flex>
+              </Box>
+            )}
+          </Grid>
+        )}
       </Box>
 
       {/* ── SECCIÓN CENTRAL CON PESTAÑAS SAP ── */}

@@ -317,29 +317,13 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
       }
     }
 
-    const crystalFacturasUSD = cliente?.resumenSapCrystal?.totalFacturasUSD != null
-      ? Number(cliente.resumenSapCrystal.totalFacturasUSD)
-      : Number(totalFacturasEquivUSD.toFixed(2));
-
-    const crystalBoletasUSD = cliente?.resumenSapCrystal?.totalBoletasUSD != null
-      ? Number(cliente.resumenSapCrystal.totalBoletasUSD)
-      : Number(totalBoletasEquivUSD.toFixed(2));
-
-    const crystalLetrasUSD = cliente?.resumenSapCrystal?.totalLetrasUSD != null
-      ? Number(cliente.resumenSapCrystal.totalLetrasUSD)
-      : Number(totalLetrasEquivUSD.toFixed(2));
-
-    const crystalAbonosUSD = cliente?.resumenSapCrystal?.totalNotasCreditoUSD != null
-      ? Math.abs(Number(cliente.resumenSapCrystal.totalNotasCreditoUSD))
-      : Number(totalAbonosEquivUSD.toFixed(2));
-
-    let totalConsolidadoUSD = cliente?.resumenSapCrystal?.totalConsolidadoUSD != null
-      ? Number(cliente.resumenSapCrystal.totalConsolidadoUSD)
-      : (cliente?.totalConsolidadoUSD != null
-          ? Number(cliente.totalConsolidadoUSD)
-          : Number((crystalFacturasUSD + crystalBoletasUSD + crystalLetrasUSD - crystalAbonosUSD).toFixed(2)));
+    const crystalFacturasUSD = Number(totalFacturasEquivUSD.toFixed(2));
+    const crystalBoletasUSD = Number(totalBoletasEquivUSD.toFixed(2));
+    const crystalLetrasUSD = Number(totalLetrasEquivUSD.toFixed(2));
+    const crystalAbonosUSD = Number(totalAbonosEquivUSD.toFixed(2));
 
     const totalEmisionUSD = Number((crystalFacturasUSD + crystalBoletasUSD + crystalLetrasUSD).toFixed(2));
+    const totalConsolidadoUSD = Number((totalEmisionUSD - crystalAbonosUSD).toFixed(2));
 
     let emissionLabel = "Total Facturas";
     if (crystalBoletasUSD > 0 && crystalFacturasUSD === 0 && crystalLetrasUSD === 0) {
@@ -466,6 +450,29 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
         </ModalHeader>
 
         <ModalBody p={{ base: 3, md: 5 }} bg="gray.50">
+          {/* Resumen de Línea de Crédito SAP */}
+          {(() => {
+            const creditLimit = Number(cliente?.U_TQC_LMCRED ?? cliente?.raw?.U_TQC_LMCRED ?? cliente?.CreditLimit ?? cliente?.creditLimit ?? 0);
+            if (creditLimit <= 0) return null;
+            return (
+              <Box mb={3} p={2.5} bg="white" borderRadius="xl" border="1px solid" borderColor="emerald.200" boxShadow="xs">
+                <Flex justify="space-between" align="center" wrap="wrap" gap={2}>
+                  <HStack spacing={2}>
+                    <Badge colorScheme="green" bg="#dcfce7" color="#166534" fontSize="10px" px={2} py={0.5} borderRadius="md" fontWeight="800">
+                      💳 LÍNEA DE CRÉDITO SAP (U_TQC_LMCRED)
+                    </Badge>
+                    <Text fontSize="xs" fontWeight="800" color="gray.800">
+                      Límite Autorizado: ${creditLimit.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+                    </Text>
+                  </HStack>
+                  <Text fontSize="11px" color="gray.600" fontWeight="600">
+                    Vendedor Asignado: <strong style={{ color: "#0f172a" }}>{salesperson}</strong>
+                  </Text>
+                </Flex>
+              </Box>
+            );
+          })()}
+
           {/* Barra de Filtros por Pestaña con Scroll Suave en Móvil */}
           <HStack spacing={2} mb={3.5} overflowX="auto" pb={1} css={{ "&::-webkit-scrollbar": { display: "none" } }}>
             <Button

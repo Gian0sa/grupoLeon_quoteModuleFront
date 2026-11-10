@@ -15,6 +15,7 @@ const MyVisitsPage         = lazy(() => import("../features/checkinout/pages/MyV
 // ─── Lazy imports ── cada página privada descarga su propio chunk solo cuando se visita
 const Register             = lazy(() => import("../features/auth/pages/Register.jsx").then(m => ({ default: m.Register })));
 const ClientStatementPage  = lazy(() => import("../features/receivable/pages/ClientStatementPage.jsx").then(m => ({ default: m.ClientStatementPage })));
+const ClientQuoteSharePage  = lazy(() => import("../features/quotes/pages/ClientQuoteSharePage.jsx").then(m => ({ default: m.ClientQuoteSharePage })));
 const ClientPage           = lazy(() => import("../features/clients/pages/ClientPage.jsx").then(m => ({ default: m.ClientPage })));
 const NewQuotesPage        = lazy(() => import("../features/quotes/pages/NewQuotePage.jsx").then(m => ({ default: m.NewQuotesPage })));
 const SupervisorPage       = lazy(() => import("../features/supervisor/pages/SupervisorPage.jsx").then(m => ({ default: m.SupervisorPage })));
@@ -151,6 +152,8 @@ const AppRoutes = () => {
             <Route path="/s/:code"               element={<ClientStatementPage />} />
             <Route path="/estado-cuenta/:token"  element={<ClientStatementPage />} />
             <Route path="/statement/:token"      element={<ClientStatementPage />} />
+            <Route path="/c/:code"               element={<ClientQuoteSharePage />} />
+            <Route path="/cotizacion/:code"      element={<ClientQuoteSharePage />} />
 
             {/* Privados */}
             <Route path="/cotizaciones"      element={<CotizacionesRedirect />} />

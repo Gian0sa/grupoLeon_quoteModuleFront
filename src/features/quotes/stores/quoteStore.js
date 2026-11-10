@@ -157,6 +157,20 @@ export const normalizeQuoteClient = (clientData) => {
 
   if (!normalizedCardCode && !documentNumber && !cardName && !address) return null;
 
+  const rawMaxCommitment = Number(clientData.MaxCommitment ?? raw.MaxCommitment ?? 0);
+  const rawCreditLimit = Number(
+    clientData.U_TQC_LMCRED ?? 
+    raw.U_TQC_LMCRED ?? 
+    (rawMaxCommitment > 0 ? Number((rawMaxCommitment / 3.40).toFixed(2)) : null) ??
+    clientData.CreditLimit ?? 
+    raw.CreditLimit ?? 
+    clientData.creditLimit ?? 
+    0
+  );
+  const rawBalance = Number(clientData.CurrentAccountBalance ?? raw.CurrentAccountBalance ?? clientData.Balance ?? raw.Balance ?? 0);
+  const rawOpenOrders = Number(clientData.OpenOrdersBalance ?? raw.OpenOrdersBalance ?? 0);
+  const rawOpenDeliveries = Number(clientData.OpenDeliveryNotesBalance ?? raw.OpenDeliveryNotesBalance ?? 0);
+
   return {
     ...clientData,
     CardCode: normalizedCardCode,
@@ -165,6 +179,14 @@ export const normalizeQuoteClient = (clientData) => {
     Address: address,
     clientRuc: documentNumber,
     clientDocument: documentNumber,
+    U_TQC_LMCRED: rawCreditLimit,
+    CreditLimit: rawCreditLimit,
+    creditLimit: rawCreditLimit,
+    MaxCommitment: rawMaxCommitment,
+    CurrentAccountBalance: rawBalance,
+    OpenOrdersBalance: rawOpenOrders,
+    OpenDeliveryNotesBalance: rawOpenDeliveries,
+    PayTermsGrpCode: clientData.PayTermsGrpCode ?? raw.PayTermsGrpCode ?? null,
     raw,
   };
 };
