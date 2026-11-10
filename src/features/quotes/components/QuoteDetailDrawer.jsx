@@ -3054,6 +3054,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
             {/* CARD DE LÍNEA DE CRÉDITO Y DISPONIBILIDAD SAP (U_TQC_LMCRED) */}
             {(() => {
+              const targetDoc = effectiveQuote || quote;
               const rawMaxCommitmentPEN = Number(targetDoc?.client?.MaxCommitment ?? targetDoc?.client?.raw?.MaxCommitment ?? 0);
               const creditLimit = Number(
                 targetDoc?.creditLimit ?? 
