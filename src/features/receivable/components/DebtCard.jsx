@@ -26,46 +26,48 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
   const saldoVenceHoyPEN = debt.saldoVenceHoyPEN ?? 0;
   const saldoVenceHoyUSD = debt.saldoVenceHoyUSD ?? 0;
 
-  let totalConsolidadoUSD = debt.totalConsolidadoUSD ?? 
-     debt.saldoConsolidadoUSD ?? 
-     debt.resumenSapCrystal?.totalConsolidadoUSD;
+  const docs = Array.isArray(debt.documents) ? debt.documents : [];
 
-  if (totalConsolidadoUSD == null) {
-    const docs = Array.isArray(debt.documents) ? debt.documents : [];
-    if (docs.length > 0) {
-      totalConsolidadoUSD = Number(
-        docs.reduce((acc, d) => {
-          const num = (d.numeroDocumento || d.NRO_DOC || d.num || "").toUpperCase();
-          const tipo = (d.tipoDocumento || d.TIPO_DOC || "").toLowerCase();
-          const isCredit = num.startsWith("NC-") ||
-            num.startsWith("ABO-") ||
-            num.startsWith("AB0-") ||
-            num.includes("07F") ||
-            tipo.includes("credito") ||
-            tipo.includes("abono") ||
-            Number(d.saldoPendiente?.PEN ?? d.SALDO_PEN ?? d.sPen ?? 0) < 0 ||
-            Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? d.sUsd ?? 0) < 0;
-          
-          let valUSD = 0;
-          if (d.saldoUsdEquivalente != null && !isNaN(Number(d.saldoUsdEquivalente))) {
-            valUSD = Number(d.saldoUsdEquivalente);
-          } else if (d.SALDO_SYS != null && !isNaN(Number(d.SALDO_SYS))) {
-            valUSD = Number(d.SALDO_SYS);
-          } else {
-            const sUsd = Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? d.sUsd ?? d.saldoUsd ?? 0);
-            const sPen = Number(d.saldoPendiente?.PEN ?? d.SALDO_PEN ?? d.sPen ?? d.saldoPen ?? 0);
-            if (sUsd !== 0) {
-              valUSD = sUsd;
-            } else if (sPen !== 0) {
-              const rate = Number(d.docRate || d.DocRate || d.DOCRATE || 3.371);
-              valUSD = rate > 0 ? Number((sPen / rate).toFixed(2)) : sPen;
-            }
+  let totalConsolidadoUSD = null;
+  if (docs.length > 0) {
+    totalConsolidadoUSD = Number(
+      docs.reduce((acc, d) => {
+        const num = (d.numeroDocumento || d.NRO_DOC || d.num || "").toUpperCase();
+        const tipo = (d.tipoDocumento || d.TIPO_DOC || "").toLowerCase();
+        const isCredit = num.startsWith("NC-") ||
+          num.startsWith("ABO-") ||
+          num.startsWith("AB0-") ||
+          num.includes("07F") ||
+          tipo.includes("credito") ||
+          tipo.includes("abono") ||
+          Number(d.saldoPendiente?.PEN ?? d.SALDO_PEN ?? d.sPen ?? 0) < 0 ||
+          Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? d.sUsd ?? 0) < 0;
+        
+        let valUSD = 0;
+        if (d.saldoUsdEquivalente != null && !isNaN(Number(d.saldoUsdEquivalente))) {
+          valUSD = Number(d.saldoUsdEquivalente);
+        } else if (d.SALDO_SYS != null && !isNaN(Number(d.SALDO_SYS))) {
+          valUSD = Number(d.SALDO_SYS);
+        } else {
+          const sUsd = Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? d.sUsd ?? d.saldoUsd ?? 0);
+          const sPen = Number(d.saldoPendiente?.PEN ?? d.SALDO_PEN ?? d.sPen ?? d.saldoPen ?? 0);
+          if (sUsd !== 0) {
+            valUSD = sUsd;
+          } else if (sPen !== 0) {
+            const rate = Number(d.docRate || d.DocRate || d.DOCRATE || 3.371);
+            valUSD = rate > 0 ? Number((sPen / rate).toFixed(2)) : sPen;
           }
-          if (isCredit && valUSD > 0) valUSD = -valUSD;
-          return acc + valUSD;
-        }, 0).toFixed(2)
-      );
-    } else {
+        }
+        if (isCredit && valUSD > 0) valUSD = -valUSD;
+        return acc + valUSD;
+      }, 0).toFixed(2)
+    );
+  } else {
+    totalConsolidadoUSD = debt.totalConsolidadoUSD ?? 
+       debt.saldoConsolidadoUSD ?? 
+       debt.resumenSapCrystal?.totalConsolidadoUSD;
+
+    if (totalConsolidadoUSD == null) {
       const sUsd = Number(saldoUSD || 0);
       const sPen = Number(saldoPEN || 0);
       if (sUsd !== 0 && sPen === 0) {
@@ -78,37 +80,42 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
     }
   }
 
-  const vencidosNetoUSD = debt.resumenSapCrystal?.vencidosNetoUSD !== undefined
-    ? Number(debt.resumenSapCrystal.vencidosNetoUSD)
-    : debt.vencidosNetoUSD !== undefined
-    ? Number(debt.vencidosNetoUSD)
-    : null;
+  let calcVencidosUSD = 0;
+  if (docs.length > 0) {
+    calcVencidosUSD = Number(
+      docs
+        .filter(d => (d.estaVencido || d.isOverdue || d.vdStatus === "VENCIDO") && !d.isCreditDoc)
+        .reduce((acc, d) => {
+          let valUSD = 0;
+          if (d.saldoUsdEquivalente != null && !isNaN(Number(d.saldoUsdEquivalente))) {
+            valUSD = Number(d.saldoUsdEquivalente);
+          } else if (d.SALDO_SYS != null && !isNaN(Number(d.SALDO_SYS))) {
+            valUSD = Number(d.SALDO_SYS);
+          } else {
+            const sUsd = Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? d.sUsd ?? 0);
+            const sPen = Number(d.saldoPendiente?.PEN ?? d.SALDO_PEN ?? d.sPen ?? 0);
+            if (sUsd !== 0) valUSD = sUsd;
+            else if (sPen !== 0) {
+              const rate = Number(d.docRate || d.DocRate || d.DOCRATE || 3.371);
+              valUSD = rate > 0 ? Number((sPen / rate).toFixed(2)) : sPen;
+            }
+          }
+          return acc + Math.max(0, valUSD);
+        }, 0).toFixed(2)
+    );
+  } else {
+    const vencidosNetoUSD = debt.resumenSapCrystal?.vencidosNetoUSD !== undefined
+      ? Number(debt.resumenSapCrystal.vencidosNetoUSD)
+      : debt.vencidosNetoUSD !== undefined
+      ? Number(debt.vencidosNetoUSD)
+      : null;
 
-  const calcVencidosUSD = vencidosNetoUSD ?? (
-    debt.documents && debt.documents.length > 0
-      ? Number(
-          debt.documents
-            .filter(d => (d.estaVencido || d.isOverdue || d.vdStatus === "VENCIDO") && !d.isCreditDoc)
-            .reduce((acc, d) => {
-              let valUSD = 0;
-              if (d.saldoUsdEquivalente != null && !isNaN(Number(d.saldoUsdEquivalente))) {
-                valUSD = Number(d.saldoUsdEquivalente);
-              } else if (d.SALDO_SYS != null && !isNaN(Number(d.SALDO_SYS))) {
-                valUSD = Number(d.SALDO_SYS);
-              } else {
-                const sUsd = Number(d.saldoPendiente?.USD ?? d.SALDO_USD ?? d.sUsd ?? 0);
-                const sPen = Number(d.saldoPendiente?.PEN ?? d.SALDO_PEN ?? d.sPen ?? 0);
-                if (sUsd !== 0) valUSD = sUsd;
-                else if (sPen !== 0) {
-                  const rate = Number(d.docRate || d.DocRate || d.DOCRATE || 3.371);
-                  valUSD = rate > 0 ? Number((sPen / rate).toFixed(2)) : sPen;
-                }
-              }
-              return acc + valUSD;
-            }, 0).toFixed(2)
-        )
-      : Number((saldoVencidoUSD + (saldoVencidoPEN > 0 ? saldoVencidoPEN / 3.371 : 0)).toFixed(2))
-  );
+    calcVencidosUSD = vencidosNetoUSD ?? Number((saldoVencidoUSD + (saldoVencidoPEN > 0 ? saldoVencidoPEN / 3.371 : 0)).toFixed(2));
+  }
+
+  const countVencidos = docs.length > 0
+    ? docs.filter(d => (d.estaVencido || d.isOverdue || d.vdStatus === "VENCIDO") && !d.isCreditDoc).length
+    : (debt.documentosVencidos ?? debt.resumenSapCrystal?.countVencidos ?? 0);
 
   const venceHoyUSD = debt.resumenSapCrystal?.venceHoyUSD !== undefined
     ? Number(debt.resumenSapCrystal.venceHoyUSD)
@@ -487,7 +494,7 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
               )}
               <span>
                 {statusType === "overdue"
-                  ? `${debt.documentosVencidos} Vencido(s)`
+                  ? `${countVencidos} Vencido(s)`
                   : statusType === "dueToday"
                   ? "⏰ Vence Hoy:"
                   : statusType === "credit"
