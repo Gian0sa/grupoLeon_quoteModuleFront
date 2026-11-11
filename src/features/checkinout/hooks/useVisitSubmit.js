@@ -110,34 +110,37 @@ export function useVisitSubmit({ username, userCode, hasActiveCheckIn, activeVis
         try {
             let location = null;
             let reviewReason = null;
-            try {
-                location = await getLocation();
-            } catch (locErr) {
-                const now = Date.now();
-                // Si el usuario vuelve a presionar dentro de los 15 segundos después de la advertencia,
-                // permite registrar como excepción (ej: dispositivo sin sensor de GPS).
-                if (now - lastGpsWarningTimeRef.current < 15000) {
-                    const info = LOCATION_ERRORS[locErr.message];
-                    reviewReason = `Sin ubicación: ${info?.title || locErr.message || "GPS no disponible"}`;
-                    toast({
-                        title: "Registrando sin coordenadas",
-                        description: "La marca se registrará sin GPS y quedará señalada para revisión.",
-                        status: "info",
-                        duration: 4000,
-                        isClosable: true,
-                        position: "top",
-                    });
-                } else {
-                    // Primer intento fallido: DETENER el envío y avisar al usuario para que active su GPS
-                    lastGpsWarningTimeRef.current = now;
+            const now = Date.now();
+            // Si el usuario ya fue advertido de GPS en los últimos 30 segundos y vuelve a presionar,
+            // se autoriza el registro inmediato sin GPS (ej. en locales cerrados, sótanos o techados)
+            const isGpsBypass = (now - lastGpsWarningTimeRef.current < 30000);
+
+            if (isGpsBypass) {
+                lastGpsWarningTimeRef.current = 0;
+                reviewReason = "Sin ubicación: Confirmado por vendedor en interior / sin señal GPS";
+                toast({
+                    title: "Registrando sin coordenadas",
+                    description: "La marca se registrará sin GPS y quedará señalada para revisión.",
+                    status: "info",
+                    duration: 4000,
+                    isClosable: true,
+                    position: "top",
+                });
+            } else {
+                try {
+                    location = await getLocation();
+                } catch (locErr) {
+                    // Primer intento fallido: DETENER el envío y avisar al usuario para que active su GPS o confirme en interiores
+                    lastGpsWarningTimeRef.current = Date.now();
                     inFlightRef.current = false;
                     setIsSubmitting(false);
 
+                    const info = LOCATION_ERRORS[locErr.message];
                     toast({
                         title: "📍 Enciende tu GPS / Ubicación",
-                        description: "No se detectaron coordenadas. Por favor activa la Ubicación en la barra superior de tu teléfono y vuelve a pulsar el botón.",
+                        description: (info?.description || "No se detectaron coordenadas.") + " Si estás en un local cerrado sin señal, pulsa nuevamente para registrar sin GPS.",
                         status: "warning",
-                        duration: 6000,
+                        duration: 7000,
                         isClosable: true,
                         position: "top",
                     });

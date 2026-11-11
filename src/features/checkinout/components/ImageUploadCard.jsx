@@ -24,8 +24,6 @@ import {
     FiCheckCircle,
     FiTrash2,
 } from "react-icons/fi";
-import { purgeMemoryBeforeCamera } from "../utils/deviceUtils";
-import { sendDeviceTelemetry } from "../services/telemetryService";
 
 /**
  * ImageUploadCard
@@ -62,13 +60,7 @@ export function ImageUploadCard({
 
     const handleOpenNativeCamera = () => {
         if (!fileInputRef.current || isProcessingImage) return;
-        onBeforeCamera?.();
-        // Purga preventiva de memoria síncrona para no perder la activación por gesto del usuario
-        purgeMemoryBeforeCamera();
-        sendDeviceTelemetry("CAMERA_LAUNCH", { action: "Botón pulsado" });
-        if (fileInputRef.current) {
-            fileInputRef.current.click();
-        }
+        fileInputRef.current.click();
     };
 
     return (
@@ -286,7 +278,7 @@ export function ImageUploadCard({
                 )}
             </VStack>
 
-            {/* Input nativo de cámara: abre exclusivamente la app de cámara en vivo a pantalla completa */}
+            {/* Input nativo de cámara: abre directamente la cámara del celular */}
             <input
                 ref={fileInputRef}
                 key={`cam-${fileInputKey}`}

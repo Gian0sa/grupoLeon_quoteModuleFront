@@ -29,15 +29,15 @@ export const purgeMemoryBeforeCamera = () => {
 };
 export const getDeviceQualityProfile = () => {
     // ─── Optimización Universal Estándar para TODOS los Dispositivos ───
-    // Aplica el mismo perfil ultra-ligero y probado a todos sin categorizaciones complejas:
-    // - maxDimension: 480px (suficiente para ver tienda, fachada y letrero comercial)
-    // - quality: 0.50 (pesa ~35 KB, subida en menos de 1 segundo en la calle con 3G/4G)
-    // - RAM mínima: evita que el teléfono colapse al procesar fotos de 50 MP
+    // Aplica resolución nítida de 800px con calidad balanceada:
+    // - maxDimension: 800px (excelente definición para leer carteles, fachadas y productos)
+    // - quality: 0.65 (pesa ~70-90 KB, subida en menos de 1 segundo en la calle con 3G/4G)
+    // - RAM mínima: seguro y compatible con cualquier smartphone sin saturar memoria
     return {
         profile: "UNIVERSAL_OPTIMIZED",
-        maxDimension: 480,
-        quality: 0.50,
-        label: "Universal Optimizado",
+        maxDimension: 800,
+        quality: 0.65,
+        label: "HD Optimizado (800px)",
         isLowEnd: true,
         isUltraLow: false,
     };
@@ -190,7 +190,12 @@ const decodeViaImageElement = (file, targetWidth, targetHeight) => {
     return new Promise((resolve, reject) => {
         const url = URL.createObjectURL(file);
         const img = new Image();
-        const cleanup = () => URL.revokeObjectURL(url);
+        const cleanup = () => {
+            URL.revokeObjectURL(url);
+            img.src = "";
+            img.onload = null;
+            img.onerror = null;
+        };
         img.onload = () => {
             try {
                 const cv = document.createElement("canvas");
@@ -316,7 +321,7 @@ export const compressImage = async (file, customOptions = {}) => {
         }
         const profile = getDeviceQualityProfile();
         const maxDimension = Number.isFinite(options.maxDimension)
-            ? Math.max(1, Math.min(768, Math.round(options.maxDimension))) : profile.maxDimension;
+            ? Math.max(1, Math.min(1024, Math.round(options.maxDimension))) : profile.maxDimension;
         const quality = Number.isFinite(options.quality) ? Math.max(0.1, Math.min(1, options.quality)) : profile.quality;
         const target = calculateTargetDimensions(original.width, original.height, maxDimension);
 
@@ -344,7 +349,7 @@ export const compressImage = async (file, customOptions = {}) => {
             const fileName = file.name ? file.name.replace(/\.[^/.]+$/, "") + ".jpg" : "foto_checkin.jpg";
             const result = new File([blob], fileName, { type: "image/jpeg", lastModified: Date.now() });
             result.optimizedInfo = {
-                profile: "UNIVERSAL_OPTIMIZED", profileLabel: "Universal Optimizado",
+                profile: profile.profile, profileLabel: profile.label,
                 originalSizeKB: Math.round(file.size / 1024), sizeKB: Math.round(blob.size / 1024),
                 width: target.width, height: target.height,
             };
@@ -496,7 +501,7 @@ export const getLocation = (options = {}) => {
         // 1. Intentar GPS de alta precisión (satelital)
         try {
             console.log("📡 Solicitando GPS (Nivel 1 - Alta precisión)...");
-            const coords = await tryPosition(true, 7000, 15000);
+            const coords = await tryPosition(true, 4000, 15000);
             return saveAndResolve(coords);
         } catch (err1) {
             console.warn("⚠️ GPS alta precisión falló o demoró, intentando Nivel 2 (Red/Wi-Fi)...", err1?.message || err1);
@@ -505,13 +510,13 @@ export const getLocation = (options = {}) => {
         // 2. Intentar ubicación por red móvil / Wi-Fi (funciona en interiores o con GPS en reposo)
         try {
             console.log("📡 Solicitando ubicación (Nivel 2 - Red/Wi-Fi)...");
-            const coords = await tryPosition(false, 7000, 60000);
+            const coords = await tryPosition(false, 3000, 60000);
             return saveAndResolve(coords);
         } catch (err2) {
             console.warn("⚠️ Ubicación por red falló, activando Nivel 3 (watchPosition)...", err2?.message || err2);
         }
 
-        // 3. Escucha activa (watchPosition) por hasta 6s:
+        // 3. Escucha activa (watchPosition) por hasta 3s:
         // Ideal para cuando el usuario pulsó "Aceptar" en el diálogo de Android/iOS
         // y el sistema tarda 1 a 3 segundos en activar la señal.
         try {
@@ -520,7 +525,7 @@ export const getLocation = (options = {}) => {
                 const timer = setTimeout(() => {
                     if (watchId !== null) navigator.geolocation.clearWatch(watchId);
                     rej(new Error("TIMEOUT"));
-                }, 6000);
+                }, 3000);
 
                 watchId = navigator.geolocation.watchPosition(
                     (pos) => {
@@ -533,7 +538,7 @@ export const getLocation = (options = {}) => {
                     },
                     {
                         enableHighAccuracy: false,
-                        timeout: 6000,
+                        timeout: 3000,
                         maximumAge: 30000,
                     }
                 );
