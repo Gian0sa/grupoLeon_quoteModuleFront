@@ -10,7 +10,7 @@ import { useDebounce } from "../../../shared/hooks/useDebounce";
 import { normalizeQuoteClient } from "../stores/quoteStore";
 import CreateBusinessPartnerModal from "../../clients/components/CreateBusinessPartnerModal";
 
-export default function ClientAutocomplete({ client, setClient, debtSummary }) {
+export default function ClientAutocomplete({ client, setClient, debtSummary, onClear }) {
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [isSearchingByCode, setIsSearchingByCode] = useState(false);
@@ -89,11 +89,24 @@ export default function ClientAutocomplete({ client, setClient, debtSummary }) {
     const cardCode = adapted.id || clientData.CardCode || clientData.cardCode;
 
     // Asignación inmediata para feedback visual rápido
+    const rawLimitInit = Number(clientData.U_TQC_LMCRED ?? clientData.CreditLimit ?? 0);
+    const rawCommitInit = Number(clientData.MaxCommitment ?? 0);
+    const effectiveLimitInit = rawLimitInit > 0
+      ? rawLimitInit
+      : (rawCommitInit > 0 ? Number((rawCommitInit / 3.40).toFixed(2)) : 0);
+
     const initialClient = normalizeQuoteClient({
       ...clientData,
       CardCode: cardCode,
       CardName: adapted.firstName || clientData.CardName || clientData.clientName,
       Address: adapted.address || clientData.Address || clientData.address,
+      U_TQC_LMCRED: effectiveLimitInit,
+      CreditLimit: effectiveLimitInit,
+      creditLimit: effectiveLimitInit,
+      MaxCommitment: rawCommitInit,
+      CurrentAccountBalance: clientData.CurrentAccountBalance,
+      OpenOrdersBalance: clientData.OpenOrdersBalance,
+      OpenDeliveryNotesBalance: clientData.OpenDeliveryNotesBalance,
       raw: clientData,
     });
 
@@ -107,13 +120,27 @@ export default function ClientAutocomplete({ client, setClient, debtSummary }) {
         const fullData = await fetchClientByCode(cardCode);
         if (fullData) {
           const fullAdapted = adaptClientFromApi(fullData);
+          const rawLimitUSD = Number(fullData.U_TQC_LMCRED ?? fullData.CreditLimit ?? 0);
+          const rawCommitPEN = Number(fullData.MaxCommitment ?? 0);
+          const effectiveLimitUSD = rawLimitUSD > 0
+            ? rawLimitUSD
+            : (rawCommitPEN > 0 ? Number((rawCommitPEN / 3.40).toFixed(2)) : 0);
+
           const fullNormalizedClient = normalizeQuoteClient({
             ...fullData,
-            CardCode: fullAdapted.id || fullData.CardCode || cardCode,
-            CardName: fullAdapted.firstName || fullData.CardName || initialClient.CardName,
-            Address: fullAdapted.address || fullData.Address || initialClient.Address,
-            ContactEmployees: fullData.ContactEmployees || fullAdapted.contactEmployees || [],
-            ContactPerson: fullData.ContactPerson || fullAdapted.contactPerson || null,
+            CardCode: fullAdapted?.id || fullData.CardCode || cardCode,
+            CardName: fullAdapted?.firstName || fullData.CardName || initialClient.CardName,
+            Address: fullAdapted?.address || fullData.Address || initialClient.Address,
+            ContactEmployees: fullData.ContactEmployees || fullAdapted?.contactEmployees || [],
+            ContactPerson: fullData.ContactPerson || fullAdapted?.contactPerson || null,
+            U_TQC_LMCRED: effectiveLimitUSD,
+            CreditLimit: effectiveLimitUSD,
+            creditLimit: effectiveLimitUSD,
+            MaxCommitment: rawCommitPEN,
+            CurrentAccountBalance: fullData.CurrentAccountBalance ?? initialClient.CurrentAccountBalance,
+            OpenOrdersBalance: fullData.OpenOrdersBalance ?? initialClient.OpenOrdersBalance,
+            OpenDeliveryNotesBalance: fullData.OpenDeliveryNotesBalance ?? initialClient.OpenDeliveryNotesBalance,
+            creditChecked: true,
             raw: fullData,
           });
           setClient(fullNormalizedClient);
@@ -125,7 +152,11 @@ export default function ClientAutocomplete({ client, setClient, debtSummary }) {
   };
 
   const handleClear = () => {
-    setClient(null);
+    if (typeof onClear === "function") {
+      onClear();
+    } else if (typeof setClient === "function") {
+      setClient(null);
+    }
     setSearchInput("");
     setSearchTerm("");
   };
@@ -137,7 +168,7 @@ export default function ClientAutocomplete({ client, setClient, debtSummary }) {
     const documentNumber = normalizedClient.LicTradNum || normalizedClient.clientRuc || "No registrado";
     return (
       <Box
-        p={{ base: 3, md: 4 }}
+        p={{ base: 2.5, md: 3 }}
         bg="white"
         borderRadius="xl"
         border="1px solid"
@@ -146,8 +177,8 @@ export default function ClientAutocomplete({ client, setClient, debtSummary }) {
         boxShadow="sm"
         w="full"
       >
-        <Flex justify="space-between" align="center" wrap="wrap" gap={2} mb={2}>
-          <Badge bg="#166534" color="white" px={2.5} py={0.5} borderRadius="full" fontSize="10px" fontWeight="700">
+        <Flex justify="space-between" align="center" wrap="wrap" gap={1.5} mb={1.5}>
+          <Badge bg="#166534" color="white" px={2} py={0.2} borderRadius="full" fontSize="9px" fontWeight="700">
             Cliente Seleccionado
           </Badge>
           <Button
@@ -158,36 +189,30 @@ export default function ClientAutocomplete({ client, setClient, debtSummary }) {
             onClick={handleClear}
             leftIcon={<FiX />}
             fontWeight="700"
+            h="22px"
+            fontSize="10px"
           >
             Cambiar Cliente
           </Button>
         </Flex>
 
-        <Text fontWeight="800" fontSize={{ base: "sm", md: "md" }} color="gray.900" mb={1} wordBreak="break-word">
+        <Text fontWeight="800" fontSize={{ base: "xs", md: "sm" }} color="gray.900" mb={0.5} wordBreak="break-word">
           {normalizedClient.CardName || "Cliente seleccionado"}
         </Text>
 
         {(normalizedClient.CardCode || normalizedClient.LicTradNum) && (
-          <Text fontSize="xs" color="gray.600" mb={0.5} wordBreak="break-word">
+          <Text fontSize="10.5px" color="gray.600" mb={0.5} wordBreak="break-word">
             <strong style={{ color: "#334155" }}>Código:</strong> {cardCode} <strong style={{ color: "#334155" }}>• RUC / Doc:</strong> {documentNumber}
           </Text>
         )}
 
         {normalizedClient.Address && (
-          <Text fontSize="xs" color="gray.500" wordBreak="break-word" title={normalizedClient.Address}>
+          <Text fontSize="10.5px" color="gray.500" wordBreak="break-word" title={normalizedClient.Address} isTruncated>
             <strong style={{ color: "#334155" }}>Dirección:</strong> {normalizedClient.Address}
           </Text>
         )}
 
-        {debtSummary ? (
-          <Text fontSize="xs" color="red.600" fontWeight="700" mt={1}>
-            ⚠️ {debtSummary}
-          </Text>
-        ) : Number(normalizedClient.CurrentAccountBalance ?? normalizedClient.raw?.CurrentAccountBalance ?? 0) > 0 ? (
-          <Text fontSize="xs" color="red.600" fontWeight="700" mt={1}>
-            ⚠️ Saldo deudor: ${(Number(normalizedClient.CurrentAccountBalance ?? normalizedClient.raw?.CurrentAccountBalance) / 3.564).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
-          </Text>
-        ) : null}
+
       </Box>
     );
   }

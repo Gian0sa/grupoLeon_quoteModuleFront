@@ -34,6 +34,7 @@ import {
   Loader2,
   CheckCircle2,
   FileText,
+  ExternalLink,
 } from "lucide-react";
 import { calculateQuoteTotals } from "../../../shared/utils/quoteCalculator";
 import { fetchClientByCode } from "../../clients/services/clientService";
@@ -48,6 +49,7 @@ import {
   cleanClientName,
   formatQuoteSellerName,
 } from "../../../shared/utils/quoteLogisticsFormatters";
+import { createShortQuoteUrl } from "../utils/quoteTokenUtils";
 import QuotePdfModal from "./QuotePdfModal";
 
 const extractProducts = (q) => {
@@ -186,6 +188,47 @@ export function WhatsAppQuoteModal({ isOpen, onClose, quote }) {
   const [copiedMessage, setCopiedMessage] = useState(false);
   const [isSavedPhone, setIsSavedPhone] = useState(false);
 
+  // Enlace corto dinámico y seguro de la cotización
+  const [shareUrl, setShareUrl] = useState("");
+  const [isLoadingShareUrl, setIsLoadingShareUrl] = useState(false);
+  const [copiedShareUrl, setCopiedShareUrl] = useState(false);
+
+  // Generación automática del enlace corto seguro al abrir el modal
+  useEffect(() => {
+    if (!isOpen || !quote) return;
+    let isMounted = true;
+    setIsLoadingShareUrl(true);
+    createShortQuoteUrl(quote)
+      .then((url) => {
+        if (isMounted && url) {
+          setShareUrl(url);
+          setIsLoadingShareUrl(false);
+        }
+      })
+      .catch((err) => {
+        console.warn("No se pudo generar URL corta de cotización:", err);
+        if (isMounted) setIsLoadingShareUrl(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, quote]);
+
+  const handleCopyShareUrl = async () => {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopiedShareUrl(true);
+      setTimeout(() => setCopiedShareUrl(false), 2000);
+      toast({
+        title: "🔗 Enlace copiado",
+        description: "El enlace público de la cotización se copió al portapapeles.",
+        status: "success",
+        duration: 2500,
+      });
+    } catch {}
+  };
+
   // Consulta inteligente del teléfono del cliente
   useEffect(() => {
     if (!isOpen || !quote) return;
@@ -320,6 +363,10 @@ export function WhatsAppQuoteModal({ isOpen, onClose, quote }) {
       itemsText = `\n📦 *Detalle de Artículos:*\n${lines.join("\n")}\n`;
     }
 
+    const urlSection = shareUrl
+      ? `\n📄 *Ver y Descargar Cotización Oficial en Línea:*\n${shareUrl}\n⏰ *Vigencia de Precios:* 7 días calendario.\n`
+      : "";
+
     if (messageTone === "formal") {
       return (
 `Estimado(a) *${clientName}*,
@@ -329,8 +376,8 @@ ${itemsText}
 💰 *Monto Total:* *${totalFormatted}*
 💳 *Condición Comercial:* ${paymentDesc}
 🚚 *Modalidad de Entrega:* ${deliveryDesc}
-
-Adjuntamos el documento oficial en formato PDF para su revisión y conformidad comercial. Quedamos atentos a sus gentiles indicaciones.
+${urlSection}
+Adjuntamos el enlace oficial para su revisión y descarga en línea. Quedamos atentos a sus gentiles indicaciones.
 
 Atentamente,
 *${sellerName}*
@@ -346,10 +393,10 @@ Estimado(a) *${clientName}*, le saluda *${sellerName}* de *Autopartes S.A.*
 Le compartimos su *${docTypeName} Nº ${docNumber}* con confirmación de stock:
 ${itemsText}
 💰 *Importe Total:* *${totalFormatted}*
-⏰ *Validez de Precios y Stock:* Sujeto a rotación y disponibilidad inmediata en almacén.
+⏰ *Validez de Precios y Stock:* Sujeto a rotación y disponibilidad inmediata (enlace vigente por 7 días).
 💳 *Condición de Pago:* ${paymentDesc}
-
-Le recomendamos confirmar su pedido y emitir su conformidad a la brevedad para asegurar la reserva inmediata de su mercadería.
+${urlSection}
+Le recomendamos revisar su cotización y emitir su conformidad a la brevedad para asegurar la reserva inmediata de su mercadería.
 
 Quedo a su disposición para coordinar el despacho.`
       );
@@ -363,11 +410,11 @@ ${itemsText}
 💰 *Total:* *${totalFormatted}*
 💳 *Forma de Pago:* ${paymentDesc}
 🚚 *Entrega:* ${deliveryDesc}
-
-Le adjuntamos el archivo PDF con las especificaciones completas. Cualquier duda o consulta con el pedido, estoy a su completa disposición. ¡Que tenga un excelente día!`
+${urlSection}
+Puede ver y descargar el formulario oficial en el enlace adjunto. Cualquier duda o consulta con el pedido, estoy a su completa disposición. ¡Que tenga un excelente día!`
       );
     }
-  }, [quote, products, totalFormatted, docTypeName, docNumber, clientName, sellerName, messageTone]);
+  }, [quote, products, totalFormatted, docTypeName, docNumber, clientName, sellerName, messageTone, shareUrl]);
 
   // Manejar apertura de WhatsApp
   const handleOpenWhatsApp = () => {
@@ -644,6 +691,69 @@ Le adjuntamos el archivo PDF con las especificaciones completas. Cualquier duda 
                     </Radio>
                   </HStack>
                 </RadioGroup>
+              </Box>
+
+              {/* Enlace Público Dinámico y Seguro de la Cotización */}
+              <Box bg="white" p={3.5} borderRadius="xl" border="1px solid" borderColor="gray.200" boxShadow="xs">
+                <Flex justify="space-between" align="center" mb={2} wrap="wrap" gap={2}>
+                  <HStack spacing={1.5}>
+                    <Box p={1} bg="green.50" color="#126C36" borderRadius="md">
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </Box>
+                    <Text fontSize="xs" fontWeight="800" color="gray.700">
+                      Enlace de Cotización para el Cliente:
+                    </Text>
+                    <Badge colorScheme="green" fontSize="10px" px={2} py={0.5} borderRadius="full" fontWeight="800">
+                      🔒 En Línea • 7 Días
+                    </Badge>
+                  </HStack>
+
+                  <HStack spacing={1}>
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      colorScheme="green"
+                      leftIcon={copiedShareUrl ? <Check className="w-3 h-3 text-green-600" /> : <Copy className="w-3 h-3" />}
+                      onClick={handleCopyShareUrl}
+                      fontSize="10.5px"
+                      fontWeight="700"
+                      isDisabled={!shareUrl}
+                    >
+                      {copiedShareUrl ? "Copiado" : "Copiar Enlace"}
+                    </Button>
+                    {shareUrl && (
+                      <Button
+                        as="a"
+                        href={shareUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        size="xs"
+                        variant="ghost"
+                        colorScheme="blue"
+                        leftIcon={<ExternalLink className="w-3 h-3" />}
+                        fontSize="10.5px"
+                        fontWeight="700"
+                      >
+                        Abrir
+                      </Button>
+                    )}
+                  </HStack>
+                </Flex>
+
+                <Input
+                  size="sm"
+                  fontSize="xs"
+                  fontWeight="700"
+                  color="#126C36"
+                  bg="gray.50"
+                  isReadOnly
+                  value={isLoadingShareUrl ? "Generando enlace oficial dinámico..." : (shareUrl || "Generando enlace...")}
+                  borderRadius="lg"
+                  borderColor={shareUrl ? "emerald.300" : "gray.200"}
+                />
+                <Text fontSize="10.5px" color="gray.500" mt={1.5}>
+                  💡 Vigencia: <strong>7 días calendario</strong>. El cliente podrá abrir el enlace desde su celular o PC para ver el detalle y descargar el PDF oficial.
+                </Text>
               </Box>
 
               {/* Vista Previa Estilo Burbuja de WhatsApp */}

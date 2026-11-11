@@ -386,12 +386,14 @@ export function NewSellTerms({
     const codePrefix = rawCode ? `Cód. ${rawCode} - ` : "";
     const name = transport.Name || transport.TrnspName || transport.value || "";
     const isEttusa = String(transport.Code || transport.TrnspCode || "").includes("103") || name.toUpperCase().includes("TRANSPORTISTAS UNIDOS");
-    const alias = isEttusa && !name.toUpperCase().includes("ETTUSA") ? " [ETTUSA]" : "";
+    const aliasEttusa = isEttusa && !name.toUpperCase().includes("ETTUSA") ? " [ETTUSA]" : "";
+    const isBarranca = String(transport.Code || transport.TrnspCode || "").replace(/^0+/, "") === "35" || name.toUpperCase().includes("BARRANCA");
+    const aliasBarranca = isBarranca && !name.toUpperCase().includes("TURISMO BARRANCA") ? " [TURISMO BARRANCA]" : "";
     const dir = transport.U_TQC_DIREC ? ` (${transport.U_TQC_DIREC})` : "";
-    const label = `${codePrefix}${name}${alias}${dir}`;
+    const label = `${codePrefix}${name}${aliasEttusa}${aliasBarranca}${dir}`;
 
     return {
-      value: name,
+      value: transport.Code || name,
       label,
       raw: transport,
     };
@@ -505,19 +507,32 @@ export function NewSellTerms({
       }
     }
     if (typeof val === "object" && val !== null) {
-      const name = val.Name ?? val.name ?? val.value ?? val.label ?? "";
+      const name = val.Name ?? val.name ?? val.label ?? "";
       const code = val.Code ?? val.code ?? val.TrnspCode ?? "";
       const rawCode = code ? String(code).replace(/^0+/, "") : "";
       const codePrefix = rawCode ? `Cód. ${rawCode} - ` : "";
+      const isEttusa = String(code).includes("103") || String(name).toUpperCase().includes("TRANSPORTISTAS UNIDOS");
+      const aliasEttusa = isEttusa && !String(name).toUpperCase().includes("ETTUSA") ? " [ETTUSA]" : "";
+      const isBarranca = rawCode === "35" || String(name).toUpperCase().includes("BARRANCA");
+      const aliasBarranca = isBarranca && !String(name).toUpperCase().includes("TURISMO BARRANCA") ? " [TURISMO BARRANCA]" : "";
       const dir = val.U_TQC_DIREC ? ` (${val.U_TQC_DIREC})` : "";
-      if (!name || name === "undefined" || name === "null") return null;
+      if (!name && !code) return null;
       return {
-        value: name,
-        label: `${codePrefix}${name}${dir}`,
+        value: code || name,
+        label: `${codePrefix}${name || code}${aliasEttusa}${aliasBarranca}${dir}`,
       };
     }
     const strVal = String(val);
     if (!strVal || strVal === "undefined" || strVal === "null") return null;
+    const found = allTransports.find(
+      (t) =>
+        t.Code === strVal ||
+        String(t.Code).replace(/^0+/, "") === strVal.replace(/^0+/, "") ||
+        t.Name?.toUpperCase() === strVal.toUpperCase()
+    );
+    if (found) {
+      return normalizeTransportValue(found);
+    }
     return { value: strVal, label: strVal };
   };
 
@@ -709,14 +724,41 @@ export function NewSellTerms({
       setSelectedTransport(selected.raw);
       return;
     }
-    const found = allTransports.find(
+    const selVal = String(selected.value || "").trim();
+    const selLabel = String(selected.label || "").trim();
+    const upperVal = selVal.toUpperCase();
+    const upperLabel = selLabel.toUpperCase();
+
+    // 1. Coincidencia por código o nombre exacto
+    let found = allTransports.find(
       (t) =>
-        t.Name === selected.value ||
-        t.Code === selected.value ||
-        `${t.Code} - ${t.Name}` === selected.value ||
-        (t.Code && `Cód. ${String(t.Code).replace(/^0+/, '')} - ${t.Name}` === selected.label)
+        t.Code === selVal ||
+        String(t.Code).replace(/^0+/, "") === selVal.replace(/^0+/, "") ||
+        t.Name === selVal ||
+        t.Name?.toUpperCase() === upperVal ||
+        `${t.Code} - ${t.Name}` === selVal ||
+        (t.Code && `Cód. ${String(t.Code).replace(/^0+/, '')} - ${t.Name}` === selLabel)
     );
-    setSelectedTransport(found || { Name: selected.value, U_TQC_DIREC: selected.label });
+
+    // 2. Coincidencia por alias conocidos (Barranca, Ettusa, etc.)
+    if (!found) {
+      if (upperVal.includes("BARRANCA") || upperLabel.includes("BARRANCA")) {
+        found = allTransports.find(t => String(t.Code).replace(/^0+/, "") === "35" || t.Name?.toUpperCase().includes("BARRANCA"));
+      } else if (upperVal.includes("ETTUSA") || upperLabel.includes("ETTUSA") || upperVal.includes("TRANSPORTISTAS UNIDOS")) {
+        found = allTransports.find(t => String(t.Code).replace(/^0+/, "") === "103" || t.Name?.toUpperCase().includes("TRANSPORTISTAS UNIDOS"));
+      } else if (upperVal.includes("CLIENTE") || upperVal.includes("RECOJO")) {
+        found = allTransports.find(t => String(t.Code).replace(/^0+/, "") === "" || String(t.Code) === "00000");
+      } else if (upperVal.includes("AUTOPARTES")) {
+        found = allTransports.find(t => String(t.Code).replace(/^0+/, "") === "53");
+      }
+    }
+
+    // 3. Coincidencia parcial por inclusión de texto distintivo
+    if (!found && selVal.length >= 4) {
+      found = allTransports.find(t => t.Name?.toUpperCase().includes(upperVal));
+    }
+
+    setSelectedTransport(found || { Name: selVal, Code: null, U_TQC_DIREC: selected.label, isCustom: true });
   };
 
   const handleAttachmentUpload = (e) => {

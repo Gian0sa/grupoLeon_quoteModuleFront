@@ -718,6 +718,7 @@ export default function CreateBusinessPartnerModal({
         documentType,
         documentNumber: cleanDoc,
         cardName: effectiveCardName.trim().toUpperCase(),
+        commercialName: (commercialName || effectiveCardName).trim().toUpperCase().slice(0, 50),
         cardForeignName: "",
         currency: "##",
         valid: "tYES",

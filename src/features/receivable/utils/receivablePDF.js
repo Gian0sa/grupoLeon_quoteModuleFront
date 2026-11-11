@@ -900,50 +900,50 @@ export const generateAccountStatementPDF = async (debt, { filename, autoDownload
 
   const crystal = debt.resumenSapCrystal || {};
 
-  const calcFacturas = crystal.totalFacturasUSD !== undefined
-    ? Number(crystal.totalFacturasUSD)
-    : Number(facturas.reduce((acc, r) => acc + getDocEquiv(r, "USD"), 0).toFixed(2));
+  const hasRows = tableRows && tableRows.length > 0;
 
-  const calcBoletas = crystal.totalBoletasUSD !== undefined
-    ? Number(crystal.totalBoletasUSD)
-    : Number(boletas.reduce((acc, r) => acc + getDocEquiv(r, "USD"), 0).toFixed(2));
+  const calcFacturas = hasRows
+    ? Number(facturas.reduce((acc, r) => acc + getDocEquiv(r, "USD"), 0).toFixed(2))
+    : Number(crystal.totalFacturasUSD || 0);
 
-  const calcNC = crystal.totalNotasCreditoUSD !== undefined
-    ? Number(crystal.totalNotasCreditoUSD)
-    : Number(notasCred.reduce((acc, r) => acc + (getDocEquiv(r, "USD") < 0 ? getDocEquiv(r, "USD") : -Math.abs(getDocEquiv(r, "USD"))), 0).toFixed(2));
+  const calcBoletas = hasRows
+    ? Number(boletas.reduce((acc, r) => acc + getDocEquiv(r, "USD"), 0).toFixed(2))
+    : Number(crystal.totalBoletasUSD || 0);
 
-  const calcND = crystal.totalNDUSD !== undefined
-    ? Number(crystal.totalNDUSD)
-    : Number(notasDeb.reduce((acc, r) => acc + getDocEquiv(r, "USD"), 0).toFixed(2));
+  const calcNC = hasRows
+    ? Number(notasCred.reduce((acc, r) => acc + (getDocEquiv(r, "USD") < 0 ? getDocEquiv(r, "USD") : -Math.abs(getDocEquiv(r, "USD"))), 0).toFixed(2))
+    : Number(crystal.totalNotasCreditoUSD || 0);
 
-  const calcLetras = crystal.totalLetrasUSD !== undefined
-    ? Number(crystal.totalLetrasUSD)
-    : Number(letras.reduce((acc, r) => acc + getDocEquiv(r, "USD"), 0).toFixed(2));
+  const calcND = hasRows
+    ? Number(notasDeb.reduce((acc, r) => acc + getDocEquiv(r, "USD"), 0).toFixed(2))
+    : Number(crystal.totalNDUSD || 0);
+
+  const calcLetras = hasRows
+    ? Number(letras.reduce((acc, r) => acc + getDocEquiv(r, "USD"), 0).toFixed(2))
+    : Number(crystal.totalLetrasUSD || 0);
 
   const calcLetrasCartera = Number(letras.filter((r) => r.isVD).reduce((acc, r) => acc + getDocEquiv(r, "USD"), 0).toFixed(2));
   const calcLetrasBanco = Number(letras.filter((r) => !r.isVD).reduce((acc, r) => acc + getDocEquiv(r, "USD"), 0).toFixed(2));
 
-  let calcTotalConsolidado = crystal.totalConsolidadoUSD !== undefined
-    ? Number(crystal.totalConsolidadoUSD)
-    : debt.totalConsolidadoUSD !== undefined
-    ? Number(debt.totalConsolidadoUSD)
-    : Number((calcFacturas + calcBoletas + calcNC + calcND + calcLetras).toFixed(2));
+  let calcTotalConsolidado = hasRows
+    ? Number((calcFacturas + calcBoletas + calcNC + calcND + calcLetras).toFixed(2))
+    : (crystal.totalConsolidadoUSD !== undefined ? Number(crystal.totalConsolidadoUSD) : Number(debt.totalConsolidadoUSD || 0));
 
-  const calcVenceHoy = crystal.venceHoyUSD !== undefined
-    ? Number(crystal.venceHoyUSD)
-    : Number(venceHoy.reduce((acc, r) => acc + getDocEquiv(r, "USD"), 0).toFixed(2));
+  const calcVenceHoy = hasRows
+    ? Number(venceHoy.reduce((acc, r) => acc + getDocEquiv(r, "USD"), 0).toFixed(2))
+    : Number(crystal.venceHoyUSD || 0);
 
-  const calcPorVencer = crystal.porVencerUSD !== undefined
-    ? Number(crystal.porVencerUSD)
-    : Number(tableRows.filter((r) => !r.isOverdue && !r.isVenceHoy && r.saldoUSD >= 0 && r.saldoPEN >= 0 && !notasCred.includes(r)).reduce((acc, r) => acc + getDocEquiv(r, "USD"), 0).toFixed(2));
+  const calcPorVencer = hasRows
+    ? Number(tableRows.filter((r) => !r.isOverdue && !r.isVenceHoy && r.saldoUSD >= 0 && r.saldoPEN >= 0 && !notasCred.includes(r)).reduce((acc, r) => acc + getDocEquiv(r, "USD"), 0).toFixed(2))
+    : Number(crystal.porVencerUSD || 0);
 
-  let calcVencidosNeto = crystal.vencidosNetoUSD !== undefined
-    ? Number(crystal.vencidosNetoUSD)
-    : Math.max(Number((calcTotalConsolidado - calcVenceHoy - calcPorVencer).toFixed(2)), 0);
+  let calcVencidosNeto = hasRows
+    ? Number(vencidos.reduce((acc, r) => acc + getDocEquiv(r, "USD"), 0).toFixed(2))
+    : (crystal.vencidosNetoUSD !== undefined ? Number(crystal.vencidosNetoUSD) : Math.max(Number((calcTotalConsolidado - calcVenceHoy - calcPorVencer).toFixed(2)), 0));
 
-  const countVencidos = crystal.countVencidos ?? vencidos.length;
-  const countVenceHoy = crystal.countVenceHoy ?? venceHoy.length;
-  const countPorVencer = crystal.countPorVencer ?? tableRows.filter((r) => !r.isOverdue && !r.isVenceHoy && !notasCred.includes(r)).length;
+  const countVencidos = hasRows ? vencidos.length : (crystal.countVencidos ?? 0);
+  const countVenceHoy = hasRows ? venceHoy.length : (crystal.countVenceHoy ?? 0);
+  const countPorVencer = hasRows ? tableRows.filter((r) => !r.isOverdue && !r.isVenceHoy && !notasCred.includes(r)).length : (crystal.countPorVencer ?? 0);
 
   const leftX = 18;
   doc.setFont("helvetica", "bold").setFontSize(7.5).setTextColor(0, 0, 0);

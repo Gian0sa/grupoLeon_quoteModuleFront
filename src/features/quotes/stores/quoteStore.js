@@ -157,6 +157,20 @@ export const normalizeQuoteClient = (clientData) => {
 
   if (!normalizedCardCode && !documentNumber && !cardName && !address) return null;
 
+  const rawMaxCommitment = Number(clientData.MaxCommitment ?? raw.MaxCommitment ?? 0);
+  const rawCreditLimit = Number(
+    clientData.U_TQC_LMCRED ?? 
+    raw.U_TQC_LMCRED ?? 
+    (rawMaxCommitment > 0 ? Number((rawMaxCommitment / 3.40).toFixed(2)) : null) ??
+    clientData.CreditLimit ?? 
+    raw.CreditLimit ?? 
+    clientData.creditLimit ?? 
+    0
+  );
+  const rawBalance = Number(clientData.CurrentAccountBalance ?? raw.CurrentAccountBalance ?? clientData.Balance ?? raw.Balance ?? 0);
+  const rawOpenOrders = Number(clientData.OpenOrdersBalance ?? raw.OpenOrdersBalance ?? 0);
+  const rawOpenDeliveries = Number(clientData.OpenDeliveryNotesBalance ?? raw.OpenDeliveryNotesBalance ?? 0);
+
   return {
     ...clientData,
     CardCode: normalizedCardCode,
@@ -165,6 +179,14 @@ export const normalizeQuoteClient = (clientData) => {
     Address: address,
     clientRuc: documentNumber,
     clientDocument: documentNumber,
+    U_TQC_LMCRED: rawCreditLimit,
+    CreditLimit: rawCreditLimit,
+    creditLimit: rawCreditLimit,
+    MaxCommitment: rawMaxCommitment,
+    CurrentAccountBalance: rawBalance,
+    OpenOrdersBalance: rawOpenOrders,
+    OpenDeliveryNotesBalance: rawOpenDeliveries,
+    PayTermsGrpCode: clientData.PayTermsGrpCode ?? raw.PayTermsGrpCode ?? null,
     raw,
   };
 };
@@ -256,6 +278,8 @@ const saveDraftToStorage = (state) => {
         savedAt: new Date().toISOString(),
       };
       localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(dataToSave));
+    } else {
+      localStorage.removeItem(DRAFT_STORAGE_KEY);
     }
   } catch (e) {}
 };
@@ -288,6 +312,15 @@ export const useQuoteStore = create((set, get) => {
     ...getInitialStateWithDraft(),
 
     setClient: (clientData) => {
+      if (!clientData) {
+        customSet({ 
+          client: null,
+          contactPerson: "",
+          selectedPoint: null,
+          documentType: "" 
+        });
+        return;
+      }
       const normalizedClient = normalizeQuoteClient(clientData);
       const docDigits = String(
         normalizedClient?.FederalTaxID || 
@@ -299,9 +332,16 @@ export const useQuoteStore = create((set, get) => {
       ).replace(/\D/g, "");
       const autoDocType = docDigits.length === 8 ? "BOLETA" : "FACTURA";
 
+      const defaultContact = normalizedClient?.raw?.ContactPerson || 
+        normalizedClient?.ContactPerson || 
+        normalizedClient?.contactPerson || 
+        "";
+
       customSet({ 
         client: normalizedClient,
-        documentType: autoDocType 
+        documentType: autoDocType,
+        contactPerson: defaultContact || "",
+        selectedPoint: null,
       });
     },
     setQuoteId: (id) => customSet({ quoteId: id }),

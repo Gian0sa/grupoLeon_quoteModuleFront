@@ -283,12 +283,8 @@ export function WhatsAppStatementModal({ isOpen, onClose, debt }) {
     const realHasOverdue = !isCredit && (vCount > 0 || (debt.saldoVencidoUSD && Number(debt.saldoVencidoUSD) > 0));
     const realHasVenceHoy = !isCredit && !realHasOverdue && (vhCount > 0 || debt.dueTodayDocumentsCount > 0 || debt.hasVenceHoy);
 
-    let totalConsolidado = debt.totalConsolidadoUSD ?? 
-      debt.saldoConsolidadoUSD ?? 
-      debt.resumenSapCrystal?.totalConsolidadoUSD;
-
-    if (totalConsolidado == null) {
-      if (docs.length > 0) {
+    let totalConsolidado = null;
+    if (docs.length > 0) {
         totalConsolidado = Number(
           docs.reduce((acc, d) => {
             const num = (d.numeroDocumento || d.NRO_DOC || d.num || "").toUpperCase();
@@ -320,9 +316,11 @@ export function WhatsAppStatementModal({ isOpen, onClose, debt }) {
             return acc + (isCredit ? -valUSD : valUSD);
           }, 0).toFixed(2)
         );
-      } else {
-        totalConsolidado = finalUSD + (finalPEN !== 0 ? Number((finalPEN / 3.371).toFixed(2)) : 0);
-      }
+    } else {
+      totalConsolidado = debt.totalConsolidadoUSD ?? 
+        debt.saldoConsolidadoUSD ?? 
+        debt.resumenSapCrystal?.totalConsolidadoUSD ??
+        (finalUSD + (finalPEN !== 0 ? Number((finalPEN / 3.371).toFixed(2)) : 0));
     }
 
     return {

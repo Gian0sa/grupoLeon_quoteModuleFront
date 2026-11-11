@@ -130,6 +130,7 @@ export const ROLE_PRESETS = {
       "DELETE /quotes/:id",
       "POST /quotes/sap/create",
       "GET /quotes/sap/relationship-map/:docNum",
+      "GET /quotes/drafts",
       "GET /requestQuotes",
       "GET /orderswithStatus/:code/:estadopedido",
       "GET /order/:code",
@@ -175,6 +176,7 @@ export const ROLE_PRESETS = {
     patterns: [
       "GET /quotes",
       "GET /quotes/:id",
+      "GET /quotes/drafts",
       "GET /quotes/sap/relationship-map/:docNum",
       "GET /orderswithStatus/:code/:estadopedido",
       "GET /order/:code",
@@ -217,6 +219,7 @@ export const ROLE_PRESETS = {
       "DELETE /quotes/:id",
       "POST /quotes/sap/create",
       "GET /quotes/sap/relationship-map/:docNum",
+      "GET /quotes/drafts",
       "GET /requestQuotes",
       "POST /promotions",
       "GET /orderswithStatus/:code/:estadopedido",
