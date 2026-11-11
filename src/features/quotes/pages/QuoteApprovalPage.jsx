@@ -3302,23 +3302,26 @@ export function QuoteApprovalPage() {
                               </Badge>
                             )}
 
-                            {(q.hasDebt || q.hasOverdueDebt || q.totals?.hasDebt || q.totals?.hasOverdueDebt) && (
-                              <Badge
-                                colorScheme="red"
-                                variant="solid"
-                                bg="#dc2626"
-                                color="white"
-                                fontSize="9px"
-                                px={2}
-                                py={0.5}
-                                borderRadius="md"
-                                fontWeight="900"
-                                boxShadow="xs"
-                                title={q.debtSummary || q.totals?.debtSummary || "Cliente con deuda registrada"}
-                              >
-                                ⚠️ CLIENTE CON DEUDA {q.hasOverdueDebt || q.totals?.hasOverdueDebt ? "VENCIDA" : ""}
-                              </Badge>
-                            )}
+                            {(q.hasDebt || q.hasOverdueDebt || q.totals?.hasDebt || q.totals?.hasOverdueDebt) && (() => {
+                              const isOverdue = Boolean(q.hasOverdueDebt || q.totals?.hasOverdueDebt || (typeof q.debtSummary === 'string' && q.debtSummary.toLowerCase().includes("vencida:") && !q.debtSummary.includes("$0.00")));
+                              return (
+                                <Badge
+                                  colorScheme={isOverdue ? "red" : "blue"}
+                                  variant="solid"
+                                  bg={isOverdue ? "#dc2626" : "#0284c7"}
+                                  color="white"
+                                  fontSize="9px"
+                                  px={2}
+                                  py={0.5}
+                                  borderRadius="md"
+                                  fontWeight="900"
+                                  boxShadow="xs"
+                                  title={q.debtSummary || q.totals?.debtSummary || (isOverdue ? "Cliente con deuda vencida" : "Cliente al día con saldo por vencer")}
+                                >
+                                  {isOverdue ? "⚠️ DEUDA VENCIDA" : "🗓️ AL DÍA (POR VENCER)"}
+                                </Badge>
+                              );
+                            })()}
 
                             {(q.exceedsCreditLimit || q.totals?.exceedsCreditLimit) && (
                               <Badge
@@ -3495,23 +3498,26 @@ export function QuoteApprovalPage() {
                           ⚡ DESCUENTO ADICIONAL
                         </Badge>
                       )}
-                      {(q.hasDebt || q.hasOverdueDebt || q.totals?.hasDebt || q.totals?.hasOverdueDebt) && (
-                        <Badge
-                          colorScheme="red"
-                          variant="solid"
-                          bg="#dc2626"
-                          color="white"
-                          fontSize="9px"
-                          px={2}
-                          py={0.5}
-                          borderRadius="md"
-                          fontWeight="900"
-                          boxShadow="xs"
-                          title={q.debtSummary || q.totals?.debtSummary || "Cliente con deuda registrada"}
-                        >
-                          ⚠️ CLIENTE CON DEUDA {q.hasOverdueDebt || q.totals?.hasOverdueDebt ? "VENCIDA" : ""}
-                        </Badge>
-                      )}
+                      {(q.hasDebt || q.hasOverdueDebt || q.totals?.hasDebt || q.totals?.hasOverdueDebt) && (() => {
+                        const isOverdue = Boolean(q.hasOverdueDebt || q.totals?.hasOverdueDebt || (typeof q.debtSummary === 'string' && q.debtSummary.toLowerCase().includes("vencida:") && !q.debtSummary.includes("$0.00")));
+                        return (
+                          <Badge
+                            colorScheme={isOverdue ? "red" : "blue"}
+                            variant="solid"
+                            bg={isOverdue ? "#dc2626" : "#0284c7"}
+                            color="white"
+                            fontSize="9px"
+                            px={2}
+                            py={0.5}
+                            borderRadius="md"
+                            fontWeight="900"
+                            boxShadow="xs"
+                            title={q.debtSummary || q.totals?.debtSummary || (isOverdue ? "Cliente con deuda vencida" : "Cliente al día con saldo por vencer")}
+                          >
+                            {isOverdue ? "⚠️ DEUDA VENCIDA" : "🗓️ AL DÍA (POR VENCER)"}
+                          </Badge>
+                        );
+                      })()}
                       {(q.exceedsCreditLimit || q.totals?.exceedsCreditLimit) && (
                         <Badge
                           colorScheme="red"

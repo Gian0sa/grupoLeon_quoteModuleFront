@@ -3012,39 +3012,58 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
               );
             })()}
 
-            {/* CARD DE ALERTA FINANCIERA: CLIENTE CON DEUDA REGISTRADA */}
+            {/* CARD DE ALERTA / INFORMACIÓN FINANCIERA: CLIENTE CON DEUDA O SALDO CORRIENTE */}
             {(() => {
               const targetDoc = effectiveQuote || quote;
               const hasDebt = Boolean(targetDoc?.hasDebt || targetDoc?.hasOverdueDebt || targetDoc?.totals?.hasDebt || targetDoc?.totals?.hasOverdueDebt);
               const debtSummary = targetDoc?.debtSummary || targetDoc?.totals?.debtSummary;
               if (!hasDebt && !debtSummary) return null;
 
+              const isOverdue = Boolean(
+                targetDoc?.hasOverdueDebt || 
+                targetDoc?.totals?.hasOverdueDebt ||
+                (typeof debtSummary === 'string' && debtSummary.toLowerCase().includes('vencida:') && !debtSummary.toLowerCase().includes('$0.00'))
+              );
+
               return (
                 <Box
                   p={4}
-                  bg="red.50"
+                  bg={isOverdue ? "#fff5f5" : "#f0fdf4"}
                   border="2px solid"
-                  borderColor="red.300"
+                  borderColor={isOverdue ? "#fca5a5" : "#bbf7d0"}
                   borderRadius="2xl"
                   boxShadow="sm"
                   mb={3.5}
                 >
                   <HStack spacing={3.5} align="flex-start">
-                    <Box fontSize="24px" lineHeight="1">⚠️</Box>
+                    <Box fontSize="24px" lineHeight="1">
+                      {isOverdue ? "⚠️" : "🗓️"}
+                    </Box>
                     <VStack align="stretch" spacing={1}>
                       <HStack spacing={2} wrap="wrap">
-                        <Text fontSize="13px" fontWeight="900" color="red.900" textTransform="uppercase">
-                          Observación Financiera: Cliente con Deuda
+                        <Text fontSize="13px" fontWeight="900" color={isOverdue ? "red.900" : "emerald.900"} textTransform="uppercase">
+                          {isOverdue ? "Observación Financiera: Cliente con Deuda Vencida" : "Información Financiera: Saldo Corriente (Cliente al Día)"}
                         </Text>
-                        <Badge colorScheme="red" variant="solid" bg="#dc2626" color="white" fontSize="10px" px={2.5} py={0.5} borderRadius="full">
-                          {targetDoc?.hasOverdueDebt || targetDoc?.totals?.hasOverdueDebt ? "DEUDA VENCIDA" : "SALDO PENDIENTE"}
+                        <Badge 
+                          colorScheme={isOverdue ? "red" : "green"} 
+                          variant="solid" 
+                          bg={isOverdue ? "#dc2626" : "#16a34a"} 
+                          color="white" 
+                          fontSize="10px" 
+                          px={2.5} 
+                          py={0.5} 
+                          borderRadius="full"
+                        >
+                          {isOverdue ? "DEUDA VENCIDA" : "AL DÍA • SALDO POR VENCER"}
                         </Badge>
                       </HStack>
-                      <Text fontSize="12px" color="red.800" fontWeight="700">
-                        {debtSummary || "El cliente registra saldos pendientes o cuotas vencidas en SAP / Cobranzas."}
+                      <Text fontSize="12px" color={isOverdue ? "red.800" : "emerald.800"} fontWeight="700">
+                        {debtSummary || (isOverdue ? "El cliente registra cuotas vencidas en SAP / Cobranzas." : "El cliente mantiene compras vigentes por vencer dentro del plazo de crédito acordado.")}
                       </Text>
-                      <Text fontSize="11px" color="red.700" fontWeight="500">
-                        Verifique el estado financiero del cliente y sus acuerdos de pago antes de autorizar el pedido en SAP.
+                      <Text fontSize="11px" color={isOverdue ? "red.700" : "emerald.700"} fontWeight="500">
+                        {isOverdue 
+                          ? "Verifique el estado financiero del cliente y sus acuerdos de pago antes de autorizar el pedido en SAP." 
+                          : "El cliente no registra mora en SAP. El saldo corresponde a compras recientes dentro del plazo acordado."}
                       </Text>
                     </VStack>
                   </HStack>

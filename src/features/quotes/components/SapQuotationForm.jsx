@@ -395,6 +395,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     let overdueDocsCount = 0;
     let totalPendingUSD = 0;
     let totalDocsCount = 0;
+    let creditNotesUSD = 0;
+    let currentDebtUSD = 0;
+    let docBalanceUSD = 0;
 
     if (matchingClient) {
       const penOverdue = Number(matchingClient.overdueAmount?.PEN ?? matchingClient.saldoVencidoPEN ?? 0);
@@ -410,13 +413,19 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
       const penPending = Number(matchingClient.pendingAmount?.PEN ?? 0);
       const usdPending = Number(matchingClient.pendingAmount?.USD ?? 0);
-      totalPendingUSD = Number((usdPending + (penPending > 0 ? penPending / (exchangeRate || 3.564) : 0)).toFixed(2));
+      const consolidadoUSD = Number(matchingClient.totalConsolidadoUSD ?? matchingClient.saldoConsolidadoUSD ?? 0);
+      const headerPendingUSD = consolidadoUSD > 0
+        ? consolidadoUSD
+        : Number((usdPending + (penPending > 0 ? penPending / (exchangeRate || 3.564) : 0)).toFixed(2));
+      totalPendingUSD = headerPendingUSD;
 
       totalDocsCount = Number(matchingClient.totalDocuments ?? matchingClient.documents?.length ?? 0);
 
       if (Array.isArray(matchingClient.documents) && matchingClient.documents.length > 0) {
         totalDocsCount = matchingClient.documents.length;
         let sumDocUSD = 0;
+        let ncSumUSD = 0;
+        let facturasSumUSD = 0;
         matchingClient.documents.forEach(d => {
           const numUpper = (d.numeroDocumento || d.NRO_DOC || "").toUpperCase();
           const tipoLower = (d.tipoDocumento || d.TIPO_DOC || "").toLowerCase();
@@ -426,11 +435,18 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
           const valUSD = Math.abs(sUsd + (sPen > 0 ? sPen / (exchangeRate || 3.564) : 0));
           if (isNC || sUsd < 0 || sPen < 0) {
             sumDocUSD -= valUSD;
+            ncSumUSD += valUSD;
           } else {
             sumDocUSD += valUSD;
+            facturasSumUSD += valUSD;
           }
         });
-        totalPendingUSD = Number(Math.max(0, sumDocUSD).toFixed(2));
+        docBalanceUSD = Number(Math.max(0, sumDocUSD).toFixed(2));
+        creditNotesUSD = Number(ncSumUSD.toFixed(2));
+
+        if (docBalanceUSD > 0) {
+          totalPendingUSD = docBalanceUSD;
+        }
 
         if (overdueDocsCount === 0 && overdueUSD === 0) {
           const now = new Date();
@@ -446,11 +462,19 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
             }
           });
         }
+
+        // ⚠️ REGLA DE COHERENCIA FINANCIERA: La deuda en mora neta no puede ser mayor que el saldo total pendiente neto
+        // (si el cliente tiene abonos o notas de crédito, estos amortizan su saldo neto real exigible).
+        if (totalPendingUSD > 0 && overdueUSD > totalPendingUSD) {
+          overdueUSD = totalPendingUSD;
+        }
+        currentDebtUSD = Math.max(0, Number((totalPendingUSD - overdueUSD).toFixed(2)));
       }
     } else if (rawBalance > 0) {
       // Fallback si receivableData aún está cargando: convertir el saldo contable de SAP (PEN) a USD
       // En B1 Perú, CurrentAccountBalance está en Soles (7,268.55 PEN = $2,039.40 USD a tipo de cambio contable 3.564)
       totalPendingUSD = Number((rawBalance / 3.564).toFixed(2));
+      docBalanceUSD = totalPendingUSD;
     }
 
     const hasOverdueDebt = overdueDocsCount > 0 || overdueUSD > 0;
@@ -461,7 +485,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     let debtSummary = "";
     if (hasOverdueDebt) {
       debtSummary = `Deuda vencida: $${formatThousands(overdueUSD)} USD (${overdueDocsCount} doc${overdueDocsCount > 1 ? "s" : ""})`;
-      if (totalPendingUSD > 0 && Math.abs(totalPendingUSD - overdueUSD) > 0.01) {
+      if (totalPendingUSD > overdueUSD && Math.abs(totalPendingUSD - overdueUSD) > 0.01) {
         debtSummary += ` • Saldo total pendiente: $${formatThousands(totalPendingUSD)} USD`;
       }
     } else if (totalPendingUSD > 0) {
@@ -475,6 +499,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       overdueDocsCount,
       totalPendingUSD,
       totalDocsCount,
+      creditNotesUSD: Number(creditNotesUSD || 0),
+      currentDebtUSD: Number(currentDebtUSD || 0),
+      docBalanceUSD: Number(docBalanceUSD || 0),
       debtSummary,
       matchingClient,
     };
@@ -699,15 +726,34 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     return [];
   }, [client]);
 
-  // Auto-seleccionar la persona de contacto principal de SAP al elegir un cliente solo si aún no está asignada
+  // ⚡ Gestión de persona de contacto y limpieza de residuales al cambiar o quitar cliente
+  const prevClientCodeRef = useRef(client?.CardCode || null);
+
   useEffect(() => {
-    if (client) {
+    const currentCode = client?.CardCode || null;
+    if (prevClientCodeRef.current !== currentCode) {
+      prevClientCodeRef.current = currentCode;
+      if (!client) {
+        // Se limpió el cliente (botón Cambiar Cliente / X): limpiar residuales
+        if (typeof setContactPerson === "function") setContactPerson("");
+        if (typeof setSelectedPoint === "function") setSelectedPoint(null);
+      } else {
+        // Se seleccionó un nuevo cliente: asignar contacto por defecto del nuevo cliente
+        const defaultContact = client.raw?.ContactPerson || (contactList.length > 0 ? contactList[0].name : "");
+        if (typeof setContactPerson === "function") setContactPerson(defaultContact || "");
+        if (typeof setSelectedPoint === "function") setSelectedPoint(null);
+      }
+    } else if (client && !contactPerson) {
       const defaultContact = client.raw?.ContactPerson || (contactList.length > 0 ? contactList[0].name : "");
-      if (setContactPerson && !contactPerson && defaultContact) {
+      if (defaultContact && typeof setContactPerson === "function") {
         setContactPerson(defaultContact);
       }
+    } else if (!client && contactPerson) {
+      if (typeof setContactPerson === "function") {
+        setContactPerson("");
+      }
     }
-  }, [client, contactList, setContactPerson, contactPerson]);
+  }, [client, contactList, setContactPerson, setSelectedPoint, contactPerson]);
 
   // Nota: No se auto-seleccionan forma de entrega, condición de pago, condición de venta
   // ni tipo de comprobante para evitar errores humanos; el usuario debe elegirlos conscientemente.
@@ -890,27 +936,26 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
     const hasCreditLine = creditLimitUSD > 0;
 
-    // 2. Saldo deudor facturado pendiente (en USD)
+    // 2. Saldo deudor facturado pendiente (en USD) - Saldo neto real exigible del cliente
     const rawBalance = Number(client.CurrentAccountBalance ?? client.raw?.CurrentAccountBalance ?? client.Balance ?? 0);
     const pendingDebtUSD = clientDebtInfo?.totalPendingUSD > 0
       ? clientDebtInfo.totalPendingUSD
       : (rawBalance > 0 ? Number((rawBalance / (exchangeRate || 3.564)).toFixed(2)) : 0);
 
-    // 3. Pedidos abiertos en SAP (compromisos vigentes que aún no se han facturado)
-    const rawOpenOrders = Number(client.OpenOrdersBalance ?? client.raw?.OpenOrdersBalance ?? client.openOrdersBalance ?? 0);
-    const openOrdersUSD = rawOpenOrders > 0 ? Number((rawOpenOrders / (exchangeRate || 3.564)).toFixed(2)) : 0;
+    // 3. Crédito utilizado real del cliente (coincidente con el saldo neto consolidado por cobrar)
+    const totalCommittedUSD = Number(pendingDebtUSD.toFixed(2));
 
-    // 4. Compromiso total utilizado antes de esta cotización
-    const totalCommittedUSD = Number((pendingDebtUSD + openOrdersUSD).toFixed(2));
+    // 4. Crédito disponible antes de esta cotización (Línea autorizada - Crédito utilizado)
+    // Refleja saldo negativo si el cliente ha consumido más de su línea autorizada en SAP
+    const availableCreditUSD = hasCreditLine
+      ? Number((creditLimitUSD - totalCommittedUSD).toFixed(2))
+      : 0;
 
-    // 5. Crédito disponible antes de esta cotización
-    const availableCreditUSD = hasCreditLine ? Math.max(0, Number((creditLimitUSD - totalCommittedUSD).toFixed(2))) : 0;
-
-    // 6. Impacto de esta cotización (en USD) - Sincronizado en tiempo real con calculateQuoteTotals
+    // 5. Impacto de esta cotización (en USD) - Sincronizado en tiempo real con calculateQuoteTotals
     const quoteTotalUSD = Number(totals?.grandTotalUSD ?? totals?.grandTotal ?? totals?.total ?? 0);
     const projectedTotalUSD = Number((totalCommittedUSD + quoteTotalUSD).toFixed(2));
 
-    // 7. Sobregiro / Exceso de línea
+    // 6. Sobregiro / Exceso de línea
     // Si la venta es al contado, no genera sobregiro de línea a plazo
     let creditOverflowUSD = 0;
     let isExceeded = false;
@@ -927,17 +972,18 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       }
     }
 
-    // 8. Porcentaje de ocupación proyectado
-    const usagePercent = hasCreditLine
-      ? Math.min(999, Number(((projectedTotalUSD / creditLimitUSD) * 100).toFixed(1)))
-      : (projectedTotalUSD > 0 ? 100 : 0);
+    // 7. Porcentaje de ocupación de línea (ej: 524.54 / 5577 = 9.4%)
+    const usagePercent = hasCreditLine && creditLimitUSD > 0
+      ? Math.min(999, Number(((totalCommittedUSD / creditLimitUSD) * 100).toFixed(1)))
+      : 0;
 
     return {
       hasCreditLine,
       creditLimitUSD,
       maxCommitmentPEN,
       pendingDebtUSD,
-      openOrdersUSD,
+      invoicedDebtUSD: pendingDebtUSD,
+      openOrdersUSD: 0,
       totalCommittedUSD,
       availableCreditUSD,
       quoteTotalUSD,
@@ -948,6 +994,21 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       isCreditSale,
     };
   }, [client, clientDebtInfo, totals?.grandTotalUSD, totals?.grandTotal, totals?.total, isCreditSale, exchangeRate]);
+
+  // Solo mostrar cartillas financieras si el cliente realmente tiene línea de crédito o deuda activa
+  const hasCreditCard = Boolean(
+    client &&
+    clientCreditInfo &&
+    (clientCreditInfo.hasCreditLine || clientCreditInfo.totalCommittedUSD > 0)
+  );
+
+  const hasDebtCard = Boolean(
+    client &&
+    clientDebtInfo &&
+    clientDebtInfo.hasTotalDebt
+  );
+
+  const hasClientFinancialCards = Boolean(hasCreditCard || hasDebtCard);
 
   const currentQuoteObj = useMemo(() => ({
     id: docNumber || null,
@@ -1357,10 +1418,12 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         if (targetStatus === "ENVIADO") {
           try {
             const existingNotifs = JSON.parse(localStorage.getItem("grupoLeon_notifications") || "[]");
-            const hasDebt = Boolean(clientDebtInfo?.hasTotalDebt);
-            const debtNotice = clientDebtInfo?.debtSummary ? ` • ⚠️ CLIENTE CON DEUDA: ${clientDebtInfo.debtSummary}` : '';
-            const notifTitle = hasDebt
-              ? `⚠️ Cotización Cliente con Deuda - ${assignedNumber}`
+            const hasOverdue = Boolean(clientDebtInfo?.hasOverdueDebt);
+            const debtNotice = clientDebtInfo?.debtSummary 
+              ? (hasOverdue ? ` • ⚠️ DEUDA VENCIDA: ${clientDebtInfo.debtSummary}` : ` • 🗓️ ${clientDebtInfo.debtSummary}`)
+              : '';
+            const notifTitle = hasOverdue
+              ? `⚠️ Cotización Cliente con Deuda Vencida - ${assignedNumber}`
               : (maxAdic > 0
                 ? `🔥 Cotización con Descuento Adicional - ${assignedNumber}`
                 : `📩 Nueva Cotización Recibida - ${assignedNumber}`);
@@ -2474,6 +2537,120 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     }, 600);
   };
 
+  // ── FUNCIÓN REUTILIZABLE: 4 PARÁMETROS DEL DOCUMENTO (Contacto, Moneda, Válido Hasta, Fecha Contabilización) ──
+  const renderDocParamsGrid = (isMobile = false) => (
+    <Grid templateColumns="repeat(2, 1fr)" gap={{ base: 2, sm: 2.5 }}>
+      {/* 1. Persona de Contacto */}
+      <FormControl>
+        <FormLabel fontSize={{ base: "11px", md: "xs" }} fontWeight="700" color="gray.700" mb={{ base: 0.5, md: 1 }}>
+          Persona de Contacto {isSellerFieldsLocked && "🔒"}
+        </FormLabel>
+        {contactList.length > 0 ? (
+          <ChakraSelect
+            size={{ base: "xs", md: "sm" }}
+            borderRadius="md"
+            value={contactPerson || ""}
+            onChange={(e) => setContactPerson(e.target.value)}
+            bg={isSellerFieldsLocked ? "gray.100" : "white"}
+            fontWeight="600"
+            isDisabled={isSellerFieldsLocked}
+            cursor={isSellerFieldsLocked ? "not-allowed" : "default"}
+          >
+            <option value="">Seleccionar contacto...</option>
+            {contactList.map((c, idx) => (
+              <option key={c.code || idx} value={c.name}>
+                {c.name} {c.position ? `(${c.position})` : ""}
+              </option>
+            ))}
+          </ChakraSelect>
+        ) : (
+          <Input
+            size={{ base: "xs", md: "sm" }}
+            borderRadius="md"
+            placeholder="Ej. Juan Pérez"
+            value={contactPerson || ""}
+            onChange={(e) => setContactPerson(e.target.value)}
+            bg={isSellerFieldsLocked ? "gray.100" : "white"}
+            isDisabled={isSellerFieldsLocked}
+            cursor={isSellerFieldsLocked ? "not-allowed" : "text"}
+          />
+        )}
+      </FormControl>
+
+      {/* 2. Moneda */}
+      <FormControl>
+        <HStack justify="space-between" mb={{ base: 0.5, md: 1 }}>
+          <FormLabel fontSize={{ base: "11px", md: "xs" }} fontWeight="700" color="gray.700" mb={0}>
+            Moneda {!canChangeCurrency && "🔒"}
+          </FormLabel>
+          {!canChangeCurrency && (
+            <Badge colorScheme="gray" fontSize={{ base: "8px", md: "9px" }} px={1} borderRadius="md" title="Requiere autorización para cotizar en Soles">
+              BLOQUEADO
+            </Badge>
+          )}
+        </HStack>
+        <ChakraSelect
+          size={{ base: "xs", md: "sm" }}
+          borderRadius="md"
+          value={currency || "USD"}
+          onChange={(e) => setCurrency(e.target.value)}
+          bg={(!canChangeCurrency || isSellerFieldsLocked) ? "gray.100" : "white"}
+          fontWeight="700"
+          color={currency === "SOL" ? "#047857" : "gray.800"}
+          isDisabled={!canChangeCurrency || isSellerFieldsLocked}
+          cursor={(!canChangeCurrency || isSellerFieldsLocked) ? "not-allowed" : "pointer"}
+        >
+          <option value="USD">USD ($) Dólares</option>
+          <option value="SOL">SOL (S/) Soles</option>
+        </ChakraSelect>
+      </FormControl>
+
+      {/* 3. Válido Hasta */}
+      <FormControl>
+        <FormLabel fontSize={{ base: "11px", md: "xs" }} fontWeight="700" color="gray.700" mb={{ base: 0.5, md: 1 }}>
+          Válido Hasta {isSellerFieldsLocked && "🔒"}
+        </FormLabel>
+        <Input
+          type="date"
+          size={{ base: "xs", md: "sm" }}
+          borderRadius="md"
+          min={todayIso()}
+          value={docDueDate}
+          onChange={(e) => {
+            const val = e.target.value;
+            const minVal = todayIso();
+            if (val && val < minVal) {
+              setDocDueDate(minVal);
+            } else {
+              setDocDueDate(val);
+            }
+          }}
+          bg={isSellerFieldsLocked ? "gray.100" : "white"}
+          isDisabled={isSellerFieldsLocked}
+          cursor={isSellerFieldsLocked ? "not-allowed" : "default"}
+        />
+      </FormControl>
+
+      {/* 4. Fecha Contabilización */}
+      <FormControl>
+        <FormLabel fontSize={{ base: "11px", md: "xs" }} fontWeight="700" color="gray.700" mb={{ base: 0.5, md: 1 }}>
+          Fecha Contabilización 🔒
+        </FormLabel>
+        <Input
+          type="date"
+          size={{ base: "xs", md: "sm" }}
+          borderRadius="md"
+          value={docDate}
+          isReadOnly
+          isDisabled
+          bg="gray.100"
+          cursor="not-allowed"
+          title="La fecha de contabilización se asigna automáticamente"
+        />
+      </FormControl>
+    </Grid>
+  );
+
   return (
     <VStack align="stretch" spacing={5} pb={10} maxW="100%" overflowX="hidden">
       {/* ── BANNER MODO PRUEBAS (SANDBOX) COMPACTO (Solo si está configurado en entorno) ── */}
@@ -2548,39 +2725,68 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         />
       )}
 
-      {/* ── CABECERA PRINCIPAL ── */}
-      <Box bg="white" p={{ base: 3, md: 6 }} borderRadius="2xl" border="1px solid" borderColor="gray.200" boxShadow="sm">
+      {/* ── CABECERA PRINCIPAL Y FORMULARIO SUPERIOR ── */}
+      <Box bg="white" p={{ base: 2, sm: 2.5, md: 4 }} borderRadius={{ base: "xl", md: "2xl" }} border="1px solid" borderColor="gray.200" boxShadow="sm">
+        {/* Cabecera Compacta en 1 sola fila responsiva */}
         <Flex
-          direction={{ base: "column", md: "row" }}
           justify="space-between"
-          align={{ base: "start", md: "center" }}
-          gap={{ base: 3, md: 4 }}
-          mb={4}
-          pb={3}
+          align="center"
+          wrap="wrap"
+          gap={{ base: 1.5, md: 2 }}
+          mb={{ base: 2, md: 3 }}
+          pb={{ base: 1.5, md: 2 }}
           borderBottom="1px solid"
           borderColor="gray.100"
         >
-          <HStack spacing={3} align="center">
-            <Flex w="36px" h="36px" minW="36px" borderRadius="lg" bg="emerald.50" align="center" justify="center" color="emerald.700">
-              <FileText className="w-5 h-5" />
+          {/* Título de la Orden */}
+          <HStack spacing={{ base: 1.5, md: 2 }} align="center" minW={0}>
+            <Flex
+              w={{ base: "26px", md: "32px" }}
+              h={{ base: "26px", md: "32px" }}
+              minW={{ base: "26px", md: "32px" }}
+              borderRadius="md"
+              bg="emerald.50"
+              align="center"
+              justify="center"
+              color="emerald.700"
+            >
+              <FileText className="w-3.5 h-3.5 md:w-4 md:h-4" />
             </Flex>
-            <Box>
-              <Heading size="sm" color="#0f5132" fontWeight="800" letterSpacing="tight">
+            <Box minW={0}>
+              <Heading
+                fontSize={{ base: "11px", sm: "12.5px", md: "sm" }}
+                color="#0f5132"
+                fontWeight="800"
+                letterSpacing="tight"
+                lineHeight="1.2"
+                isTruncated
+              >
                 ORDEN DE VENTA / PEDIDO COMERCIAL
               </Heading>
-              <Text fontSize="xs" color="gray.500" display={{ base: "none", md: "block" }}>
+              <Text fontSize="10px" color="gray.500" display={{ base: "none", md: "block" }}>
                 Gestión comercial de requerimiento de pedido y logística
               </Text>
             </Box>
           </HStack>
 
-          <Flex wrap="wrap" gap={2} align="center" w={{ base: "full", md: "auto" }}>
-            <Badge bg="#f1f5f9" color="#1e293b" border="1px solid #cbd5e1" px={2.5} py={1} borderRadius="md" fontSize="xs" textTransform="uppercase" fontWeight="bold">
+          {/* Badges de Estado en la MISMA fila */}
+          <HStack spacing={1.5} align="center" flexShrink={0} wrap="wrap">
+            <Badge
+              bg="#f1f5f9"
+              color="#1e293b"
+              border="1px solid #cbd5e1"
+              px={{ base: 1.5, md: 2 }}
+              py={{ base: 0.2, md: 0.5 }}
+              borderRadius="md"
+              fontSize={{ base: "8.5px", md: "xs" }}
+              textTransform="uppercase"
+              fontWeight="bold"
+            >
               Nº {docNumber && String(docNumber).startsWith("COT-0") ? docNumber : (docNumber || "ORDEN-PENDIENTE")}
             </Badge>
             {isApproved && (
-              <Badge bg="#166534" color="white" px={2.5} py={1} borderRadius="md" fontSize="xs" fontWeight="900" boxShadow="xs">
-                🏛️ Documento Oficial
+              <Badge bg="#166534" color="white" px={{ base: 1.5, md: 2 }} py={{ base: 0.2, md: 0.5 }} borderRadius="md" fontSize={{ base: "8.5px", md: "xs" }} fontWeight="900" boxShadow="xs">
+                🏛️ Oficial
               </Badge>
             )}
             <Badge
@@ -2612,14 +2818,14 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                   ? "#fca5a5"
                   : "#cbd5e1"
               }
-              px={2.5}
-              py={1}
+              px={{ base: 1.5, md: 2 }}
+              py={{ base: 0.2, md: 0.5 }}
               borderRadius="md"
-              fontSize="xs"
+              fontSize={{ base: "8.5px", md: "xs" }}
               fontWeight="900"
             >
               <Box as="span">
-                Estado: {approvalStatus ? (approvalStatus === "APROBADO_COMERCIAL" ? "APROBADO" : approvalStatus) : "Borrador (Abierto)"}
+                {approvalStatus ? (approvalStatus === "APROBADO_COMERCIAL" ? "APROBADO" : approvalStatus) : "BORRADOR (ABIERTO)"}
               </Box>
             </Badge>
             {Boolean(products && products.length > 0 && !isAdminReviewing && !isReadOnly) && (
@@ -2628,518 +2834,668 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                 color={isAutoSaving ? "#92400e" : "#166534"}
                 border="1px solid"
                 borderColor={isAutoSaving ? "#fde68a" : "#bbf7d0"}
-                px={2.5}
-                py={1}
+                px={{ base: 1.5, md: 2 }}
+                py={{ base: 0.2, md: 0.5 }}
                 borderRadius="md"
-                fontSize="xs"
+                fontSize={{ base: "8.5px", md: "xs" }}
                 fontWeight="800"
                 display="inline-flex"
                 alignItems="center"
-                gap={1.5}
+                gap={1}
               >
                 {isAutoSaving ? (
                   <>
                     <Spinner size="xs" color="amber.600" speed="0.6s" />
-                    <Text as="span">Guardando borrador...</Text>
+                    <Text as="span">Guardando...</Text>
                   </>
                 ) : lastAutoSavedTime ? (
                   <Text as="span">
-                    ☁️ Guardado {lastAutoSavedTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    ☁️ {lastAutoSavedTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                   </Text>
                 ) : (
-                  <Text as="span">💾 Autoguardado Activo</Text>
+                  <Text as="span">💾 Auto</Text>
                 )}
               </Badge>
             )}
             {isAdmin && isSubmittedQuote && (
               <Button
                 size="xs"
+                h={{ base: "20px", md: "24px" }}
+                fontSize={{ base: "9px", md: "xs" }}
                 colorScheme={adminForceEditMode ? "orange" : "teal"}
                 variant={adminForceEditMode ? "solid" : "outline"}
                 onClick={() => setAdminForceEditMode(!adminForceEditMode)}
                 leftIcon={adminForceEditMode ? <Lock className="w-3 h-3" /> : <Edit3 className="w-3 h-3" />}
                 fontWeight="800"
                 borderRadius="md"
+                px={2}
               >
-                {adminForceEditMode ? "🔒 Bloquear Modo Revisión" : "✏️ Modificar Artículos (Admin)"}
+                {adminForceEditMode ? "🔒 Bloquear" : "✏️ Modificar (Admin)"}
               </Button>
             )}
-          </Flex>
+          </HStack>
         </Flex>
 
-        {/* ── BÚSQUEDA DE CLIENTE Y CAMPOS PROGRESIVOS NATIVOS ── */}
-        <Grid templateColumns={{ base: "1fr", lg: "repeat(2, 1fr)" }} gap={{ base: 4, lg: 6 }} alignItems="start">
-          {/* Columna Izquierda: Datos de Cliente */}
-          <VStack align="stretch" spacing={3}>
-            {isSellerFieldsLocked ? (
-              <Box p={3.5} bg="white" borderRadius="xl" border="1px solid" borderColor="gray.200" borderLeft="4px solid #166534" boxShadow="xs">
-                <Flex justify="space-between" align="center" wrap="wrap" gap={1} mb={1.5}>
-                  <Text fontSize="10px" fontWeight="900" color="#166534" textTransform="uppercase" letterSpacing="wider">
-                    🤝 Cliente (Bloqueado)
-                  </Text>
-                  <Badge colorScheme="green" bg="#dcfce7" color="#166534" fontSize="10px">OK</Badge>
-                </Flex>
-                <Text fontSize="xs" color="gray.800" fontWeight="700" wordBreak="break-word">
-                  {client?.CardName || client?.name || "Cliente General"}
-                </Text>
-                <Text fontSize="0.75rem" color="gray.500" fontWeight="600" mt={0.5}>
-                  Documento / Código: {client?.CardCode || client?.id || "N/A"}
-                </Text>
-                {client?.Address && (
-                  <Text fontSize="0.75rem" color="gray.500" fontWeight="500" wordBreak="break-word">
-                    Dirección: {client.Address}
-                  </Text>
-                )}
-              </Box>
-            ) : (
-              <ClientAutocomplete client={client} setClient={setClient} debtSummary={clientDebtInfo?.debtSummary} />
-            )}
-          </VStack>
-
-          {/* Columna Derecha: Parámetros del Documento (Grid 2x2 Simétrico) */}
-          <VStack align="stretch" spacing={3}>
-            <Grid templateColumns={{ base: "1fr", sm: "1fr 1fr" }} gap={3}>
-              <FormControl>
-                <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="gray.700" mb={1}>
-                  Válido Hasta / Vencimiento {isSellerFieldsLocked && "🔒"}
-                </FormLabel>
-                <Input
-                  type="date"
-                  size="sm"
-                  borderRadius="md"
-                  min={todayIso()}
-                  value={docDueDate}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    const minVal = todayIso();
-                    if (val && val < minVal) {
-                      setDocDueDate(minVal);
-                    } else {
-                      setDocDueDate(val);
-                    }
-                  }}
-                  bg={isSellerFieldsLocked ? "gray.100" : "white"}
-                  isDisabled={isSellerFieldsLocked}
-                  cursor={isSellerFieldsLocked ? "not-allowed" : "default"}
-                />
-              </FormControl>
-
-              <FormControl>
-                <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="gray.700" mb={1}>
-                  Fecha de Contabilización 🔒
-                </FormLabel>
-                <Input
-                  type="date"
-                  size="sm"
-                  borderRadius="md"
-                  value={docDate}
-                  isReadOnly
-                  isDisabled
-                  bg="gray.100"
-                  cursor="not-allowed"
-                  title="La fecha de contabilización se asigna automáticamente"
-                />
-              </FormControl>
-
-              <FormControl>
-                <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="gray.700" mb={1}>
-                  Persona de Contacto {isSellerFieldsLocked && "🔒"}
-                </FormLabel>
-                {contactList.length > 0 ? (
-                  <ChakraSelect
-                    size="sm"
-                    borderRadius="md"
-                    value={contactPerson || ""}
-                    onChange={(e) => setContactPerson(e.target.value)}
-                    bg={isSellerFieldsLocked ? "gray.100" : "white"}
-                    fontWeight="600"
-                    isDisabled={isSellerFieldsLocked}
-                    cursor={isSellerFieldsLocked ? "not-allowed" : "default"}
-                  >
-                    {contactList.map((c, idx) => (
-                      <option key={c.code || idx} value={c.name}>
-                        {c.name} {c.position ? `(${c.position})` : ""}
-                      </option>
-                    ))}
-                  </ChakraSelect>
+        {/* ── GRID PRINCIPAL: CLIENTE + PARÁMETROS DEL DOCUMENTO + LÍNEA/COBRANZA SAP ── */}
+        <Grid templateColumns="repeat(2, 1fr)" gap={{ base: 2, lg: 4 }} alignItems="stretch">
+              {/* COLUMNA IZQUIERDA (span 1 en PC, span 2 en Móvil):
+                  - Cliente Seleccionado / Buscador
+                  - En PC: Solo si ya hay cliente seleccionado, los parámetros van debajo para dejar espacio a Línea y Cobranza a la derecha */}
+              <VStack
+                align="stretch"
+                spacing={2}
+                order={1}
+                gridColumn={{ base: "span 2", lg: "span 1" }}
+                justify={client ? "space-between" : "flex-start"}
+                h="full"
+              >
+                {isSellerFieldsLocked ? (
+                  <Box p={3.5} bg="white" borderRadius="xl" border="1px solid" borderColor="gray.200" borderLeft="4px solid #166534" boxShadow="xs">
+                    <Flex justify="space-between" align="center" wrap="wrap" gap={1} mb={1.5}>
+                      <Text fontSize="10px" fontWeight="900" color="#166534" textTransform="uppercase" letterSpacing="wider">
+                        🤝 Cliente (Bloqueado)
+                      </Text>
+                      <Badge colorScheme="green" bg="#dcfce7" color="#166534" fontSize="10px">OK</Badge>
+                    </Flex>
+                    <Text fontSize="xs" color="gray.800" fontWeight="700" wordBreak="break-word">
+                      {client?.CardName || client?.name || "Cliente General"}
+                    </Text>
+                    <Text fontSize="0.75rem" color="gray.500" fontWeight="600" mt={0.5}>
+                      Documento / Código: {client?.CardCode || client?.id || "N/A"}
+                    </Text>
+                    {client?.Address && (
+                      <Text fontSize="0.75rem" color="gray.500" fontWeight="500" wordBreak="break-word">
+                        Dirección: {client.Address}
+                      </Text>
+                    )}
+                  </Box>
                 ) : (
-                  <Input
-                    size="sm"
-                    borderRadius="md"
-                    placeholder="Ej. Juan Pérez"
-                    value={contactPerson || ""}
-                    onChange={(e) => setContactPerson(e.target.value)}
-                    bg={isSellerFieldsLocked ? "gray.100" : "white"}
-                    isDisabled={isSellerFieldsLocked}
-                    cursor={isSellerFieldsLocked ? "not-allowed" : "text"}
+                  <ClientAutocomplete
+                    client={client}
+                    setClient={setClient}
+                    debtSummary={clientDebtInfo?.debtSummary}
+                    onClear={() => {
+                      if (typeof setClient === "function") setClient(null);
+                      if (typeof setContactPerson === "function") setContactPerson("");
+                      if (typeof setSelectedPoint === "function") setSelectedPoint(null);
+                      if (typeof setDocumentType === "function") setDocumentType("");
+                    }}
                   />
                 )}
-              </FormControl>
 
-              {/* Moneda del Pedido (USD / Soles) */}
-              <FormControl>
-                <HStack justify="space-between" mb={1}>
-                  <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="gray.700" mb={0}>
-                    Moneda del Pedido {!canChangeCurrency && "🔒"}
-                  </FormLabel>
-                  {!canChangeCurrency && (
-                    <Badge colorScheme="gray" fontSize="9px" px={1.5} borderRadius="md" title="Requiere autorización para cotizar en Soles">
-                      BLOQUEADO
-                    </Badge>
-                  )}
-                </HStack>
-                <ChakraSelect
-                  size="sm"
-                  borderRadius="md"
-                  value={currency || "USD"}
-                  onChange={(e) => setCurrency(e.target.value)}
-                  bg={(!canChangeCurrency || isSellerFieldsLocked) ? "gray.100" : "white"}
-                  fontWeight="700"
-                  color={currency === "SOL" ? "#047857" : "gray.800"}
-                  isDisabled={!canChangeCurrency || isSellerFieldsLocked}
-                  cursor={(!canChangeCurrency || isSellerFieldsLocked) ? "not-allowed" : "pointer"}
-                >
-                  <option value="USD">USD ($) - Dólares Americanos</option>
-                  <option value="SOL">SOL (S/) - Soles Peruanos</option>
-                </ChakraSelect>
-              </FormControl>
-            </Grid>
-          </VStack>
-        </Grid>
-
-        {/* ── SECCIÓN DE ESTADO FINANCIERO: LÍNEA DE CRÉDITO Y ALERTA DE DEUDA (LADO A LADO) ── */}
-        {(clientCreditInfo || clientDebtInfo) && (
-          <Grid
-            templateColumns={{
-              base: "1fr",
-              lg: (clientCreditInfo && clientDebtInfo) ? "repeat(2, 1fr)" : "1fr"
-            }}
-            gap={{ base: 3, lg: 4 }}
-            alignItems="stretch"
-            mt={4}
-          >
-            {/* 💳 TARJETA EJECUTIVA DE LÍNEA DE CRÉDITO Y DISPONIBILIDAD (SAP B1 U_TQC_LMCRED) */}
-            {clientCreditInfo && (
-              <Box
-                h="full"
-                p={3.5}
-                bg={
-                  clientCreditInfo.isExceeded && clientCreditInfo.isCreditSale
-                    ? "#fff1f2"
-                    : clientCreditInfo.usagePercent > 80 && clientCreditInfo.isCreditSale
-                    ? "#fffbeb"
-                    : "#f0fdf4"
-                }
-                borderRadius="xl"
-                border="1.5px solid"
-                borderColor={
-                  clientCreditInfo.isExceeded && clientCreditInfo.isCreditSale
-                    ? "#fca5a5"
-                    : clientCreditInfo.usagePercent > 80 && clientCreditInfo.isCreditSale
-                    ? "#fef08a"
-                    : "#bbf7d0"
-                }
-                boxShadow="xs"
-                display="flex"
-                flexDirection="column"
-                justifyContent="space-between"
-              >
-                <Flex align="flex-start" gap={3}>
-                  <Box
-                    p={2}
-                    borderRadius="lg"
-                    bg={
-                      clientCreditInfo.isExceeded && clientCreditInfo.isCreditSale
-                        ? "#fee2e2"
-                        : clientCreditInfo.usagePercent > 80 && clientCreditInfo.isCreditSale
-                        ? "#fef3c7"
-                        : "#dcfce7"
-                    }
-                    color={
-                      clientCreditInfo.isExceeded && clientCreditInfo.isCreditSale
-                        ? "#dc2626"
-                        : clientCreditInfo.usagePercent > 80 && clientCreditInfo.isCreditSale
-                        ? "#d97706"
-                        : "#166534"
-                    }
-                  >
-                    <CreditCard className="w-5 h-5" />
+                {/* 🖥️ EN PC (>= lg): Solo cuando el cliente tiene cartillas financieras activas (línea o deuda), los parámetros van aquí abajo para liberar la derecha */}
+                {hasClientFinancialCards && (
+                  <Box display={{ base: "none", lg: "block" }}>
+                    {renderDocParamsGrid()}
                   </Box>
+                )}
+              </VStack>
 
-                  <VStack align="stretch" spacing={2} flex={1}>
-                    <Flex justify="space-between" align="center" wrap="wrap" gap={2}>
-                      <Text
-                        fontSize="xs"
-                        fontWeight="900"
-                        color={
-                          clientCreditInfo.isExceeded && clientCreditInfo.isCreditSale
-                            ? "red.900"
-                            : clientCreditInfo.usagePercent > 80 && clientCreditInfo.isCreditSale
-                            ? "yellow.900"
-                            : "green.900"
-                        }
-                        textTransform="uppercase"
-                        letterSpacing="wide"
-                      >
-                        Línea de Crédito & Estado Financiero (SAP)
-                      </Text>
+              {/* COLUMNA DERECHA (span 1 en PC, span 2 en Móvil):
+                  - En PC (lg):
+                    * Si SÍ hay cliente: LÍNEA SAP arriba + COBRANZA SAP abajo
+                    * Si NO hay cliente: Los parámetros del documento se sitúan aquí a la derecha para no dejar el vacío
+                  - En Móvil (base): Parámetros del documento */}
+              <VStack
+                align="stretch"
+                spacing={2.5}
+                order={{ base: 3, lg: 2 }}
+                gridColumn={{ base: "span 2", lg: "span 1" }}
+                justify={client ? "space-between" : "flex-start"}
+                h="full"
+              >
+                {/* 🖥️ EN PC (>= lg): */}
+                <Box display={{ base: "none", lg: "flex" }} flexDirection="column" gap={2.5} h="full" justify="space-between">
+                  {hasClientFinancialCards ? (
+                    <>
+                      {/* 1. LÍNEA SAP */}
+                      {hasCreditCard && clientCreditInfo && (
+                        hasDebtCard ? (
+                          /* ── CASO A: CUANDO SALEN AMBAS CARTILLAS (Línea + Cobranza con Deuda) ── */
+                          <Box
+                            flex="1"
+                            p={3}
+                            bg={
+                              clientCreditInfo.isExceeded && clientCreditInfo.isCreditSale
+                                ? "#fff5f5"
+                                : clientCreditInfo.usagePercent > 80 && clientCreditInfo.isCreditSale
+                                ? "#fffbeb"
+                                : "white"
+                            }
+                            borderRadius="xl"
+                            border="1.5px solid"
+                            borderColor={
+                              clientCreditInfo.isExceeded && clientCreditInfo.isCreditSale
+                                ? "#fca5a5"
+                                : clientCreditInfo.usagePercent > 80 && clientCreditInfo.isCreditSale
+                                ? "#fef08a"
+                                : "gray.200"
+                            }
+                            boxShadow="xs"
+                            display="flex"
+                            flexDirection="column"
+                            justifyContent="space-between"
+                            minH="95px"
+                          >
+                            <Flex justify="space-between" align="center" mb={1}>
+                              <HStack spacing={1.5} minW={0}>
+                                <CreditCard className="w-4 h-4 text-blue-600" />
+                                <Text fontSize="10px" fontWeight="900" color="gray.800" textTransform="uppercase" isTruncated>
+                                  LÍNEA SAP
+                                </Text>
+                              </HStack>
+                              <Badge
+                                fontSize="8px"
+                                px={1.5}
+                                py={0.2}
+                                borderRadius="sm"
+                                colorScheme={
+                                  saleCondition === "CONTADO"
+                                    ? "green"
+                                    : clientCreditInfo.isCreditSale && clientCreditInfo.isExceeded
+                                    ? "red"
+                                    : !clientCreditInfo.hasCreditLine
+                                    ? "yellow"
+                                    : "blue"
+                                }
+                              >
+                                {saleCondition === "CONTADO"
+                                  ? "CONTADO"
+                                  : clientCreditInfo.isCreditSale && clientCreditInfo.isExceeded
+                                  ? "SOBREGIRADO"
+                                  : !clientCreditInfo.hasCreditLine
+                                  ? "SIN LÍNEA"
+                                  : "CRÉDITO"}
+                              </Badge>
+                            </Flex>
 
-                      {saleCondition === "CONTADO" ? (
-                        <Badge
-                          bg="#dcfce7"
-                          color="#166534"
-                          border="1px solid #86efac"
-                          fontSize="9px"
-                          px={2.5}
-                          py={0.5}
-                          borderRadius="full"
-                          fontWeight="900"
-                          textTransform="none"
-                        >
-                          🟢 VENTA AL CONTADO (NO CONSUME LÍNEA)
-                        </Badge>
-                      ) : clientCreditInfo.isCreditSale && clientCreditInfo.isExceeded ? (
-                        <Badge
-                          bg="#dc2626"
-                          color="white"
-                          fontSize="9px"
-                          px={2.5}
-                          py={0.5}
-                          borderRadius="full"
-                          fontWeight="900"
-                          textTransform="none"
-                          boxShadow="xs"
-                        >
-                          🔴 SOBREGIRADO (+${formatThousands(clientCreditInfo.creditOverflowUSD)} USD)
-                        </Badge>
-                      ) : clientCreditInfo.isCreditSale && !clientCreditInfo.hasCreditLine ? (
-                        <Badge
-                          bg="#fef3c7"
-                          color="#92400e"
-                          border="1px solid #fcd34d"
-                          fontSize="9px"
-                          px={2.5}
-                          py={0.5}
-                          borderRadius="full"
-                          fontWeight="900"
-                        >
-                          ⚠️ SIN LÍNEA REGISTRADA
-                        </Badge>
-                      ) : clientCreditInfo.isCreditSale ? (
-                        <Badge
-                          bg="#dcfce7"
-                          color="#166534"
-                          border="1px solid #86efac"
-                          fontSize="9px"
-                          px={2.5}
-                          py={0.5}
-                          borderRadius="full"
-                          fontWeight="900"
-                        >
-                          🟢 CRÉDITO DISPONIBLE: ${formatThousands(clientCreditInfo.availableCreditUSD)} USD
-                        </Badge>
-                      ) : (
-                        <Badge
-                          bg="#eff6ff"
-                          color="#1e40af"
-                          border="1px solid #bfdbfe"
-                          fontSize="9px"
-                          px={2.5}
-                          py={0.5}
-                          borderRadius="full"
-                          fontWeight="900"
-                        >
-                          ℹ️ DISPONIBLE: {clientCreditInfo.hasCreditLine ? `$${formatThousands(clientCreditInfo.availableCreditUSD)} USD` : "S/N"}
-                        </Badge>
+                            <Flex justify="space-between" align="baseline" mb={1}>
+                              <Box>
+                                <Text fontSize="7.5px" fontWeight="800" color="gray.500" textTransform="uppercase" lineHeight="1">DISPONIBLE</Text>
+                                <Text
+                                  fontSize="13px"
+                                  fontWeight="900"
+                                  color={
+                                    clientCreditInfo.availableCreditUSD > 0
+                                      ? "#16a34a"
+                                      : clientCreditInfo.availableCreditUSD < 0
+                                      ? "#dc2626"
+                                      : saleCondition === "CONTADO"
+                                      ? "gray.600"
+                                      : "#dc2626"
+                                  }
+                                  lineHeight="1.1"
+                                >
+                                  {clientCreditInfo.availableCreditUSD < 0
+                                    ? `-$${formatThousands(Math.abs(clientCreditInfo.availableCreditUSD))}`
+                                    : `$${formatThousands(clientCreditInfo.availableCreditUSD)}`}
+                                </Text>
+                              </Box>
+                              <Box textAlign="right">
+                                <Text fontSize="7.5px" fontWeight="800" color="gray.500" textTransform="uppercase" lineHeight="1">LÍNEA</Text>
+                                <Text fontSize="11px" fontWeight="700" color="gray.700" lineHeight="1.1">
+                                  ${formatThousands(clientCreditInfo.creditLimitUSD)}
+                                </Text>
+                              </Box>
+                            </Flex>
+
+                            <Box>
+                              <Flex justify="space-between" align="center" mb={0.5}>
+                                <Text fontSize="7.5px" color="gray.500" fontWeight="600">
+                                  Utilizado: ${formatThousands(clientCreditInfo.totalCommittedUSD)}
+                                </Text>
+                                <Text
+                                  fontSize="8px"
+                                  fontWeight="800"
+                                  color={
+                                    clientCreditInfo.availableCreditUSD < 0
+                                      ? "red.600"
+                                      : clientCreditInfo.usagePercent > 80
+                                      ? "orange.600"
+                                      : "blue.600"
+                                  }
+                                >
+                                  {clientCreditInfo.usagePercent}%
+                                </Text>
+                              </Flex>
+                              <Progress
+                                value={Math.min(100, clientCreditInfo.usagePercent)}
+                                h="3px"
+                                borderRadius="full"
+                                colorScheme={
+                                  clientCreditInfo.availableCreditUSD < 0 || (clientCreditInfo.isExceeded && clientCreditInfo.isCreditSale)
+                                    ? "red"
+                                    : clientCreditInfo.usagePercent > 80
+                                    ? "yellow"
+                                    : "blue"
+                                }
+                              />
+                            </Box>
+                          </Box>
+                        ) : (
+                          /* ── CASO B: CUANDO SALE SOLITO (Tiene línea en SAP y 0 Deuda / Al Día) ── */
+                          <Box
+                            h="full"
+                            p={3.5}
+                            bg="white"
+                            borderRadius="xl"
+                            border="1.5px solid"
+                            borderColor="#86efac"
+                            boxShadow="xs"
+                            display="flex"
+                            flexDirection="column"
+                            justifyContent="space-between"
+                          >
+                            {/* Cabecera Superior */}
+                            <Flex justify="space-between" align="center">
+                              <HStack spacing={1.5} minW={0}>
+                                <CreditCard className="w-4 h-4 text-emerald-600" />
+                                <Text fontSize="11px" fontWeight="900" color="gray.800" textTransform="uppercase" letterSpacing="wider">
+                                  LÍNEA DE CRÉDITO SAP
+                                </Text>
+                                <Badge colorScheme="green" bg="#dcfce7" color="#166534" fontSize="8.5px" px={2} py={0.5} borderRadius="full" fontWeight="800">
+                                  ✓ 100% DISPONIBLE
+                                </Badge>
+                              </HStack>
+                              <Badge
+                                fontSize="8.5px"
+                                px={2}
+                                py={0.5}
+                                borderRadius="md"
+                                fontWeight="800"
+                                colorScheme={saleCondition === "CONTADO" ? "green" : "blue"}
+                              >
+                                {saleCondition === "CONTADO" ? "CONTADO" : "CRÉDITO"}
+                              </Badge>
+                            </Flex>
+
+                            {/* Sección Central Hero: Monto Disponible */}
+                            <Box my={1} p={2.5} bg="#f0fdf4" borderRadius="lg" border="1px solid" borderColor="#bbf7d0">
+                              <Flex justify="space-between" align="center">
+                                <Box>
+                                  <Text fontSize="8px" fontWeight="800" color="emerald.800" textTransform="uppercase" letterSpacing="wider">
+                                    CRÉDITO DISPONIBLE
+                                  </Text>
+                                  <Text fontSize="24px" fontWeight="900" color="#16a34a" lineHeight="1.1">
+                                    ${formatThousands(clientCreditInfo.availableCreditUSD)}
+                                  </Text>
+                                  <Text fontSize="8.5px" color="emerald.700" fontWeight="600" mt={0.5}>
+                                    Línea comercial libre y aprobada para compras
+                                  </Text>
+                                </Box>
+                                <Box textAlign="right" pl={2}>
+                                  <Badge bg="#16a34a" color="white" fontSize="9px" px={2} py={1} borderRadius="md" fontWeight="800">
+                                    SIN DEUDA
+                                  </Badge>
+                                </Box>
+                              </Flex>
+                            </Box>
+
+                            {/* Grid de 3 Métricas Contables */}
+                            <Grid templateColumns="repeat(3, 1fr)" gap={2} my={0.5}>
+                              <Box p={2} bg="gray.50" borderRadius="md" border="1px solid" borderColor="gray.100">
+                                <Text fontSize="7.5px" fontWeight="800" color="gray.500" textTransform="uppercase">Línea Total</Text>
+                                <Text fontSize="11.5px" fontWeight="900" color="gray.800">
+                                  ${formatThousands(clientCreditInfo.creditLimitUSD)}
+                                </Text>
+                              </Box>
+                              <Box p={2} bg="gray.50" borderRadius="md" border="1px solid" borderColor="gray.100">
+                                <Text fontSize="7.5px" fontWeight="800" color="gray.500" textTransform="uppercase">Utilizado</Text>
+                                <Text fontSize="11.5px" fontWeight="900" color="gray.800">
+                                  ${formatThousands(clientCreditInfo.totalCommittedUSD)}
+                                </Text>
+                              </Box>
+                              <Box p={2} bg="emerald.50" borderRadius="md" border="1px solid" borderColor="emerald.100">
+                                <Text fontSize="7.5px" fontWeight="800" color="emerald.700" textTransform="uppercase">Deuda / Mora</Text>
+                                <Text fontSize="11.5px" fontWeight="900" color="emerald.800">
+                                  $0.00 (Al Día)
+                                </Text>
+                              </Box>
+                            </Grid>
+
+                            {/* Barra de Progreso y Pie Informativo */}
+                            <Box pt={0.5}>
+                              <Flex justify="space-between" align="center" mb={1}>
+                                <Text fontSize="7.5px" color="gray.500" fontWeight="700" textTransform="uppercase">
+                                  Ocupación de línea
+                                </Text>
+                                <Text fontSize="8px" fontWeight="800" color="emerald.700">
+                                  {clientCreditInfo.usagePercent}% utilizado
+                                </Text>
+                              </Flex>
+                              <Progress
+                                value={Math.min(100, clientCreditInfo.usagePercent)}
+                                h="3.5px"
+                                borderRadius="full"
+                                colorScheme="emerald"
+                                bg="gray.100"
+                              />
+                            </Box>
+                          </Box>
+                        )
                       )}
-                    </Flex>
 
-                    {/* Malla de 4 Indicadores Financieros */}
-                    <Grid templateColumns={{ base: "1fr 1fr", sm: "repeat(4, 1fr)" }} gap={2} pt={1}>
-                      <Box bg="whiteAlpha.900" p={2} borderRadius="md" border="1px solid" borderColor="gray.200" boxShadow="xs">
-                        <Text fontSize="9.5px" fontWeight="700" color="gray.500" textTransform="uppercase">
-                          Línea SAP (USD / PEN)
-                        </Text>
-                        <Text fontSize="xs" fontWeight="900" color="gray.800" mt={0.5}>
-                          {clientCreditInfo.hasCreditLine ? `$${formatThousands(clientCreditInfo.creditLimitUSD)} USD` : "S/N"}
-                        </Text>
-                        {clientCreditInfo.maxCommitmentPEN > 0 && (
-                          <Text fontSize="9px" color="gray.500" fontWeight="600">
-                            (S/ {formatThousands(clientCreditInfo.maxCommitmentPEN)} PEN)
-                          </Text>
-                        )}
-                      </Box>
+                      {/* 2. COBRANZA SAP */}
+                      {hasDebtCard && clientDebtInfo && (
+                        <Box
+                          flex="1"
+                          p={3}
+                          bg={clientDebtInfo.hasOverdueDebt ? "#fff5f5" : "#f0fdf4"}
+                          borderRadius="xl"
+                          border="1.5px solid"
+                          borderColor={clientDebtInfo.hasOverdueDebt ? "#fca5a5" : "#bbf7d0"}
+                          boxShadow="xs"
+                          display="flex"
+                          flexDirection="column"
+                          justifyContent="space-between"
+                          minH="95px"
+                        >
+                          <Flex justify="space-between" align="center" mb={1}>
+                            <HStack spacing={1.5} minW={0}>
+                              {clientDebtInfo.hasOverdueDebt ? (
+                                <AlertTriangle className="w-4 h-4 text-red-600" />
+                              ) : (
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                              )}
+                              <Text fontSize="10px" fontWeight="900" color={clientDebtInfo.hasOverdueDebt ? "red.900" : "emerald.900"} textTransform="uppercase" isTruncated>
+                                COBRANZA SAP
+                              </Text>
+                            </HStack>
+                            <Badge
+                              fontSize="8px"
+                              px={1.5}
+                              py={0.2}
+                              borderRadius="sm"
+                              colorScheme={clientDebtInfo.hasOverdueDebt ? "red" : "green"}
+                              bg={clientDebtInfo.hasOverdueDebt ? "#fee2e2" : "#dcfce7"}
+                              color={clientDebtInfo.hasOverdueDebt ? "#991b1b" : "#166534"}
+                            >
+                              {clientDebtInfo.hasOverdueDebt
+                                ? `${clientDebtInfo.overdueDocsCount} VENCIDO${clientDebtInfo.overdueDocsCount > 1 ? "S" : ""}`
+                                : "AL DÍA"}
+                            </Badge>
+                          </Flex>
 
-                      <Box bg="whiteAlpha.900" p={2} borderRadius="md" border="1px solid" borderColor="gray.200" boxShadow="xs">
-                        <Text fontSize="9.5px" fontWeight="700" color="gray.500" textTransform="uppercase">
-                          Crédito Utilizado
-                        </Text>
-                        <Text fontSize="xs" fontWeight="900" color={clientCreditInfo.totalCommittedUSD > 0 ? "red.700" : "gray.800"} mt={0.5} title={`Facturado: $${formatThousands(clientCreditInfo.pendingDebtUSD)} + Pedidos SAP: $${formatThousands(clientCreditInfo.openOrdersUSD)}`}>
-                          ${formatThousands(clientCreditInfo.totalCommittedUSD)}
-                        </Text>
-                      </Box>
+                          <Flex justify="space-between" align="baseline" mb={1}>
+                            <Box>
+                              <Text fontSize="7.5px" fontWeight="800" color={clientDebtInfo.hasOverdueDebt ? "red.600" : "emerald.700"} textTransform="uppercase" lineHeight="1">
+                                {clientDebtInfo.hasOverdueDebt ? "VENCIDO" : "MORA VENCIDA"}
+                              </Text>
+                              <Text fontSize="13px" fontWeight="900" color={clientDebtInfo.hasOverdueDebt ? "#dc2626" : "#16a34a"} lineHeight="1.1">
+                                ${formatThousands(clientDebtInfo.hasOverdueDebt ? clientDebtInfo.overdueUSD : 0)}
+                              </Text>
+                            </Box>
+                            <Box textAlign="right">
+                              <Text fontSize="7.5px" fontWeight="800" color="gray.500" textTransform="uppercase" lineHeight="1">TOTAL ACTIVO</Text>
+                              <Text fontSize="11px" fontWeight="700" color="gray.700" lineHeight="1.1">
+                                ${formatThousands(clientDebtInfo.totalPendingUSD)}
+                              </Text>
+                            </Box>
+                          </Flex>
 
-                      <Box bg="whiteAlpha.900" p={2} borderRadius="md" border="1px solid" borderColor="gray.200" boxShadow="xs">
-                        <Text fontSize="9.5px" fontWeight="700" color="gray.500" textTransform="uppercase">
-                          Disponible Actual
-                        </Text>
-                        <Text fontSize="xs" fontWeight="900" color={clientCreditInfo.availableCreditUSD > 0 ? "green.700" : "gray.600"} mt={0.5}>
-                          ${formatThousands(clientCreditInfo.availableCreditUSD)}
-                        </Text>
-                        {clientCreditInfo.hasCreditLine && clientCreditInfo.totalCommittedUSD > clientCreditInfo.creditLimitUSD && (
-                          <Text fontSize="8.5px" color="red.600" fontWeight="700">
-                            (Agotado: Sobregiro +${formatThousands(clientCreditInfo.totalCommittedUSD - clientCreditInfo.creditLimitUSD)})
-                          </Text>
-                        )}
-                        {!clientCreditInfo.hasCreditLine && (
-                          <Text fontSize="8.5px" color="gray.500" fontWeight="600">
-                            (Sin línea en SAP)
-                          </Text>
-                        )}
-                      </Box>
+                          <Box>
+                            {clientDebtInfo.matchingClient ? (
+                              <Button
+                                size="2xs"
+                                colorScheme={clientDebtInfo.hasOverdueDebt ? "red" : "emerald"}
+                                variant="outline"
+                                borderColor={clientDebtInfo.hasOverdueDebt ? "red.400" : "emerald.400"}
+                                color={clientDebtInfo.hasOverdueDebt ? "red.700" : "emerald.800"}
+                                _hover={{ bg: clientDebtInfo.hasOverdueDebt ? "red.50" : "emerald.50" }}
+                                h="22px"
+                                fontSize="8.5px"
+                                fontWeight="800"
+                                w="full"
+                                onClick={() => setIsReceivableModalOpen(true)}
+                                borderRadius="sm"
+                                px={1.5}
+                              >
+                                📋 Ver {clientDebtInfo.totalDocsCount} doc{clientDebtInfo.totalDocsCount > 1 ? "s" : ""} / cuotas
+                              </Button>
+                            ) : (
+                              <Text fontSize="7.5px" color="gray.500" fontWeight="600" isTruncated>
+                                Sin comprobantes
+                              </Text>
+                            )}
+                          </Box>
+                        </Box>
+                      )}
+                    </>
+                  ) : (
+                    /* Cuando NO hay cliente o el cliente NO tiene línea ni deuda, los parámetros van a la derecha de forma limpia y equilibrada */
+                    <Box pt={0.5}>
+                      {renderDocParamsGrid()}
+                    </Box>
+                  )}
+                </Box>
 
-                      <Box bg="whiteAlpha.900" p={2} borderRadius="md" border="1px solid" borderColor="gray.200" boxShadow="xs">
-                        <Text fontSize="9.5px" fontWeight="700" color="gray.500" textTransform="uppercase">
-                          Esta Cotización
-                        </Text>
-                        <Text fontSize="xs" fontWeight="900" color="#166534" mt={0.5} title={`Proyectado total: $${formatThousands(clientCreditInfo.projectedTotalUSD)} USD`}>
-                          ${formatThousands(clientCreditInfo.quoteTotalUSD)} USD
-                        </Text>
-                      </Box>
-                    </Grid>
+                {/* 📱 EN MÓVIL (< lg): PARÁMETROS DEL DOCUMENTO (Válido hasta, Contacto, Moneda, etc.) */}
+                <Box display={{ base: "block", lg: "none" }}>
+                  {renderDocParamsGrid(true)}
+                </Box>
+              </VStack>
 
-                    {/* Barra de progreso de uso de línea si tiene línea registrada */}
-                    {clientCreditInfo.hasCreditLine && (
-                      <Box mt={1}>
+              {/* 📱 EN MÓVIL (< lg): GRID PARA LÍNEA SAP Y COBRANZA SAP (SOLO SI TIENE LÍNEA O DEUDA) */}
+              {hasClientFinancialCards && (
+                <Box
+                  order={2}
+                  gridColumn="span 2"
+                  display={{ base: "block", lg: "none" }}
+                >
+                  <Box
+                    display={{ base: "grid", lg: "none" }}
+                    gridTemplateColumns={hasCreditCard && hasDebtCard ? "repeat(2, 1fr)" : "1fr"}
+                    gap={2}
+                  >
+                    {/* LÍNEA SAP (Col 1) */}
+                    {hasCreditCard && clientCreditInfo && (
+                      <Box
+                        p={2}
+                        bg={
+                          clientCreditInfo.isExceeded && clientCreditInfo.isCreditSale
+                            ? "#fff5f5"
+                            : clientCreditInfo.usagePercent > 80 && clientCreditInfo.isCreditSale
+                            ? "#fffbeb"
+                            : "white"
+                        }
+                        borderRadius="lg"
+                        border="1px solid"
+                        borderColor={
+                          clientCreditInfo.isExceeded && clientCreditInfo.isCreditSale
+                            ? "#fca5a5"
+                            : clientCreditInfo.usagePercent > 80 && clientCreditInfo.isCreditSale
+                            ? "#fef08a"
+                            : "gray.200"
+                        }
+                        boxShadow="xs"
+                        display="flex"
+                        flexDirection="column"
+                        justifyContent="space-between"
+                        minH="80px"
+                      >
                         <Flex justify="space-between" align="center" mb={1}>
-                          <Text fontSize="10.5px" fontWeight="700" color="gray.600">
-                            Uso de Línea Proyectado:{" "}
-                            <strong style={{ color: clientCreditInfo.isExceeded && clientCreditInfo.isCreditSale ? "#dc2626" : (clientCreditInfo.usagePercent > 80 ? "#d97706" : "#166534") }}>
+                          <HStack spacing={1} minW={0}>
+                            <CreditCard className="w-3.5 h-3.5 text-blue-600" />
+                            <Text fontSize="9px" fontWeight="800" color="gray.800" textTransform="uppercase" isTruncated>
+                              LÍNEA SAP
+                            </Text>
+                          </HStack>
+                          <Badge
+                            fontSize="7px"
+                            px={1}
+                            py={0}
+                            borderRadius="sm"
+                            colorScheme={
+                              saleCondition === "CONTADO"
+                                ? "green"
+                                : clientCreditInfo.isCreditSale && clientCreditInfo.isExceeded
+                                ? "red"
+                                : !clientCreditInfo.hasCreditLine
+                                ? "yellow"
+                                : "blue"
+                            }
+                          >
+                            {saleCondition === "CONTADO"
+                              ? "CONTADO"
+                              : clientCreditInfo.isCreditSale && clientCreditInfo.isExceeded
+                              ? "SOBREGIRADO"
+                              : !clientCreditInfo.hasCreditLine
+                              ? "SIN LÍNEA"
+                              : "CRÉDITO"}
+                          </Badge>
+                        </Flex>
+
+                        <Flex justify="space-between" align="baseline" mb={1}>
+                          <Box>
+                            <Text fontSize="6.5px" fontWeight="800" color="gray.500" textTransform="uppercase" lineHeight="1">DISPONIBLE</Text>
+                            <Text
+                              fontSize="11px"
+                              fontWeight="900"
+                              color={
+                                clientCreditInfo.availableCreditUSD > 0
+                                  ? "#16a34a"
+                                  : clientCreditInfo.availableCreditUSD < 0
+                                  ? "#dc2626"
+                                  : saleCondition === "CONTADO"
+                                  ? "gray.600"
+                                  : "#dc2626"
+                              }
+                              lineHeight="1.1"
+                            >
+                              {clientCreditInfo.availableCreditUSD < 0
+                                ? `-$${formatThousands(Math.abs(clientCreditInfo.availableCreditUSD))}`
+                                : `$${formatThousands(clientCreditInfo.availableCreditUSD)}`}
+                            </Text>
+                          </Box>
+                          <Box textAlign="right">
+                            <Text fontSize="6.5px" fontWeight="800" color="gray.500" textTransform="uppercase" lineHeight="1">LÍNEA</Text>
+                            <Text fontSize="9.5px" fontWeight="700" color="gray.700" lineHeight="1.1">
+                              ${formatThousands(clientCreditInfo.creditLimitUSD)}
+                            </Text>
+                          </Box>
+                        </Flex>
+
+                        <Box>
+                          <Flex justify="space-between" align="center" mb={0.5}>
+                            <Text fontSize="7px" color="gray.500" fontWeight="600">Utilizado: ${formatThousands(clientCreditInfo.totalCommittedUSD)}</Text>
+                            <Text
+                              fontSize="7.5px"
+                              fontWeight="800"
+                              color={
+                                clientCreditInfo.availableCreditUSD < 0
+                                  ? "red.600"
+                                  : clientCreditInfo.usagePercent > 80
+                                  ? "orange.600"
+                                  : "blue.600"
+                              }
+                            >
                               {clientCreditInfo.usagePercent}%
-                            </strong>
-                          </Text>
-                          {clientCreditInfo.openOrdersUSD > 0 && (
-                            <Text fontSize="9.5px" color="gray.500" fontStyle="italic">
-                              (Incluye ${formatThousands(clientCreditInfo.openOrdersUSD)} en pedidos SAP abiertos)
+                            </Text>
+                          </Flex>
+                          <Progress
+                            value={Math.min(100, clientCreditInfo.usagePercent)}
+                            h="2.5px"
+                            borderRadius="full"
+                            colorScheme={
+                              clientCreditInfo.availableCreditUSD < 0 || (clientCreditInfo.isExceeded && clientCreditInfo.isCreditSale)
+                                ? "red"
+                                : clientCreditInfo.usagePercent > 80
+                                ? "yellow"
+                                : "blue"
+                            }
+                          />
+                        </Box>
+                      </Box>
+                    )}
+
+                    {/* COBRANZA SAP (Col 2) */}
+                    {hasDebtCard && clientDebtInfo && (
+                      <Box
+                        p={2}
+                        bg={clientDebtInfo.hasOverdueDebt ? "#fff5f5" : "#f0fdf4"}
+                        borderRadius="lg"
+                        border="1px solid"
+                        borderColor={clientDebtInfo.hasOverdueDebt ? "#fca5a5" : "#bbf7d0"}
+                        boxShadow="xs"
+                        display="flex"
+                        flexDirection="column"
+                        justifyContent="space-between"
+                        minH="80px"
+                      >
+                        <Flex justify="space-between" align="center" mb={1}>
+                          <HStack spacing={1} minW={0}>
+                            {clientDebtInfo.hasOverdueDebt ? (
+                              <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
+                            ) : (
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            )}
+                            <Text fontSize="9px" fontWeight="800" color={clientDebtInfo.hasOverdueDebt ? "red.900" : "emerald.900"} textTransform="uppercase" isTruncated>
+                              COBRANZA SAP
+                            </Text>
+                          </HStack>
+                          <Badge
+                            fontSize="7px"
+                            px={1}
+                            py={0}
+                            borderRadius="sm"
+                            colorScheme={clientDebtInfo.hasOverdueDebt ? "red" : "green"}
+                            bg={clientDebtInfo.hasOverdueDebt ? "#fee2e2" : "#dcfce7"}
+                            color={clientDebtInfo.hasOverdueDebt ? "#991b1b" : "#166534"}
+                          >
+                            {clientDebtInfo.hasOverdueDebt
+                              ? `${clientDebtInfo.overdueDocsCount} VENCIDO${clientDebtInfo.overdueDocsCount > 1 ? "S" : ""}`
+                              : "AL DÍA"}
+                          </Badge>
+                        </Flex>
+
+                        <Flex justify="space-between" align="baseline" mb={1}>
+                          <Box>
+                            <Text fontSize="6.5px" fontWeight="800" color={clientDebtInfo.hasOverdueDebt ? "red.600" : "emerald.700"} textTransform="uppercase" lineHeight="1">
+                              {clientDebtInfo.hasOverdueDebt ? "VENCIDO" : "MORA VENCIDA"}
+                            </Text>
+                            <Text fontSize="11px" fontWeight="900" color={clientDebtInfo.hasOverdueDebt ? "#dc2626" : "#16a34a"} lineHeight="1.1">
+                              ${formatThousands(clientDebtInfo.hasOverdueDebt ? clientDebtInfo.overdueUSD : 0)}
+                            </Text>
+                          </Box>
+                          <Box textAlign="right">
+                            <Text fontSize="6.5px" fontWeight="800" color="gray.500" textTransform="uppercase" lineHeight="1">TOTAL ACTIVO</Text>
+                            <Text fontSize="9.5px" fontWeight="700" color="gray.700" lineHeight="1.1">
+                              ${formatThousands(clientDebtInfo.totalPendingUSD)}
+                            </Text>
+                          </Box>
+                        </Flex>
+
+                        <Box>
+                          {clientDebtInfo.matchingClient ? (
+                            <Button
+                              size="2xs"
+                              colorScheme={clientDebtInfo.hasOverdueDebt ? "red" : "emerald"}
+                              variant="outline"
+                              borderColor={clientDebtInfo.hasOverdueDebt ? "red.400" : "emerald.400"}
+                              color={clientDebtInfo.hasOverdueDebt ? "red.700" : "emerald.800"}
+                              _hover={{ bg: clientDebtInfo.hasOverdueDebt ? "red.50" : "emerald.50" }}
+                              h="19px"
+                              fontSize="7.5px"
+                              fontWeight="800"
+                              w="full"
+                              onClick={() => setIsReceivableModalOpen(true)}
+                              borderRadius="sm"
+                              px={1}
+                            >
+                              📋 Ver {clientDebtInfo.totalDocsCount} doc{clientDebtInfo.totalDocsCount > 1 ? "s" : ""} / cuotas
+                            </Button>
+                          ) : (
+                            <Text fontSize="7px" color="gray.500" fontWeight="600" isTruncated>
+                              Sin comprobantes
                             </Text>
                           )}
-                        </Flex>
-                        <Progress
-                          value={Math.min(100, clientCreditInfo.usagePercent)}
-                          size="xs"
-                          borderRadius="full"
-                          colorScheme={
-                            clientCreditInfo.isExceeded && clientCreditInfo.isCreditSale
-                              ? "red"
-                              : clientCreditInfo.usagePercent > 80 && clientCreditInfo.isCreditSale
-                              ? "yellow"
-                              : "green"
-                          }
-                        />
+                        </Box>
                       </Box>
                     )}
-
-                    {/* Mensaje contextual */}
-                    {clientCreditInfo.isCreditSale && clientCreditInfo.isExceeded && (
-                      <Text fontSize="11px" color="red.800" fontWeight="700" mt={0.5}>
-                        ⚠️ Esta cotización a crédito supera la línea autorizada por +${formatThousands(clientCreditInfo.creditOverflowUSD)} USD. Al enviar a validación, pasará a Aprobación de Créditos para evaluar el sobregiro.
-                      </Text>
-                    )}
-                    {clientCreditInfo.isCreditSale && !clientCreditInfo.hasCreditLine && clientCreditInfo.quoteTotalUSD > 0 && (
-                      <Text fontSize="11px" color="yellow.900" fontWeight="700" mt={0.5}>
-                        ⚠️ El cliente no cuenta con línea de crédito registrada en SAP (U_TQC_LMCRED = 0). Toda venta a crédito requerirá aprobación de Créditos.
-                      </Text>
-                    )}
-                    {saleCondition === "CONTADO" && (
-                      <Text fontSize="11px" color="green.800" fontWeight="600" mt={0.5}>
-                        💡 Condición de Pago: CONTADO. No consume línea de crédito a plazo ni genera sobregiro.
-                      </Text>
-                    )}
-                    {!saleCondition && !clientCreditInfo.isCreditSale && (
-                      <Text fontSize="11px" color="blue.800" fontWeight="600" mt={0.5}>
-                        💡 Esta cotización actual suma ${formatThousands(clientCreditInfo.quoteTotalUSD)} USD. Si se formaliza a CRÉDITO, consumirá de la línea disponible (${formatThousands(clientCreditInfo.availableCreditUSD)} USD).
-                      </Text>
-                    )}
-                  </VStack>
-                </Flex>
-              </Box>
-            )}
-
-            {/* ⚠️ ALERTA COMERCIAL DE DEUDA VENCIDA / SALDO PENDIENTE */}
-            {clientDebtInfo && (
-              <Box
-                h="full"
-                p={3.5}
-                bg={clientDebtInfo.hasOverdueDebt ? "#fff1f2" : "#fffbeb"}
-                borderRadius="xl"
-                border="1.5px solid"
-                borderColor={clientDebtInfo.hasOverdueDebt ? "#fca5a5" : "#fef08a"}
-                boxShadow="xs"
-                display="flex"
-                flexDirection="column"
-                justifyContent="space-between"
-              >
-                <Flex align="flex-start" gap={3}>
-                  <Text fontSize="20px" lineHeight="1">
-                    {clientDebtInfo.hasOverdueDebt ? "⚠️" : "ℹ️"}
-                  </Text>
-                  <VStack align="stretch" spacing={2} flex={1}>
-                    <Flex justify="space-between" align="center" wrap="wrap" gap={2}>
-                      <Text
-                        fontSize="xs"
-                        fontWeight="900"
-                        color={clientDebtInfo.hasOverdueDebt ? "red.900" : "yellow.900"}
-                        textTransform="uppercase"
-                        letterSpacing="wide"
-                      >
-                        {clientDebtInfo.hasOverdueDebt
-                          ? "Alerta Comercial: Cliente con Deuda Vencida"
-                          : "Observación Comercial: Cliente con Saldo Pendiente"}
-                      </Text>
-                      <Badge
-                        colorScheme={clientDebtInfo.hasOverdueDebt ? "red" : "yellow"}
-                        variant="solid"
-                        bg={clientDebtInfo.hasOverdueDebt ? "#dc2626" : "#d97706"}
-                        color="white"
-                        fontSize="9px"
-                        px={2.5}
-                        py={0.5}
-                        borderRadius="full"
-                        fontWeight="900"
-                      >
-                        {clientDebtInfo.hasOverdueDebt ? "MORA / CUOTAS VENCIDAS" : "SALDO PENDIENTE"}
-                      </Badge>
-                    </Flex>
-
-                    <Text fontSize="xs" fontWeight="800" color={clientDebtInfo.hasOverdueDebt ? "red.800" : "yellow.900"}>
-                      {clientDebtInfo.debtSummary}
-                    </Text>
-
-                    {clientDebtInfo.matchingClient && (
-                      <Button
-                        size="xs"
-                        colorScheme={clientDebtInfo.hasOverdueDebt ? "red" : "yellow"}
-                        variant="outline"
-                        alignSelf="flex-start"
-                        onClick={() => setIsReceivableModalOpen(true)}
-                        fontWeight="700"
-                        px={3}
-                        py={1}
-                        borderRadius="md"
-                      >
-                        📋 Ver documentos y cuotas ({clientDebtInfo.totalDocsCount})
-                      </Button>
-                    )}
-
-                    <Text fontSize="11px" color={clientDebtInfo.hasOverdueDebt ? "red.700" : "yellow.800"} fontWeight="600">
-                      💡 El sistema te permite generar y enviar esta cotización normalmente. Al enviar a validación, se alertará automáticamente a Administración para que evalúe y apruebe las condiciones comerciales.
-                    </Text>
-                  </VStack>
-                </Flex>
-              </Box>
-            )}
-          </Grid>
-        )}
+                  </Box>
+                </Box>
+              )}
+        </Grid>
       </Box>
 
       {/* ── SECCIÓN CENTRAL CON PESTAÑAS SAP ── */}
@@ -3847,7 +4203,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                       ${formatThousands(Number(sapSyncResult?.docTotalUSD || 0))} USD
                     </Text>
                   </Box>
-                </Grid>
+                    </Grid>
               </Box>
 
               <Alert status="success" variant="subtle" borderRadius="xl" p={3} bg="green.50" border="1px solid" borderColor="green.200">

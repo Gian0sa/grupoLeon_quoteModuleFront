@@ -172,7 +172,7 @@ export const getTransports = async () => {
         }
         return SAP_TRANSPORTS_CATALOG;
     } catch (err) {
-        console.warn("Uso de catálogo completo SAP integrado (207 transportistas):", err?.message);
+        console.warn("Uso de catálogo completo SAP integrado (293 transportistas):", err?.message);
         return SAP_TRANSPORTS_CATALOG;
     }
 };

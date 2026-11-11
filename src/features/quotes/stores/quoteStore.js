@@ -278,6 +278,8 @@ const saveDraftToStorage = (state) => {
         savedAt: new Date().toISOString(),
       };
       localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(dataToSave));
+    } else {
+      localStorage.removeItem(DRAFT_STORAGE_KEY);
     }
   } catch (e) {}
 };
@@ -310,6 +312,15 @@ export const useQuoteStore = create((set, get) => {
     ...getInitialStateWithDraft(),
 
     setClient: (clientData) => {
+      if (!clientData) {
+        customSet({ 
+          client: null,
+          contactPerson: "",
+          selectedPoint: null,
+          documentType: "" 
+        });
+        return;
+      }
       const normalizedClient = normalizeQuoteClient(clientData);
       const docDigits = String(
         normalizedClient?.FederalTaxID || 
@@ -321,9 +332,16 @@ export const useQuoteStore = create((set, get) => {
       ).replace(/\D/g, "");
       const autoDocType = docDigits.length === 8 ? "BOLETA" : "FACTURA";
 
+      const defaultContact = normalizedClient?.raw?.ContactPerson || 
+        normalizedClient?.ContactPerson || 
+        normalizedClient?.contactPerson || 
+        "";
+
       customSet({ 
         client: normalizedClient,
-        documentType: autoDocType 
+        documentType: autoDocType,
+        contactPerson: defaultContact || "",
+        selectedPoint: null,
       });
     },
     setQuoteId: (id) => customSet({ quoteId: id }),

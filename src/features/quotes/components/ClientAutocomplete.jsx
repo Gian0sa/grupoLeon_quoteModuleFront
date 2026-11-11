@@ -10,7 +10,7 @@ import { useDebounce } from "../../../shared/hooks/useDebounce";
 import { normalizeQuoteClient } from "../stores/quoteStore";
 import CreateBusinessPartnerModal from "../../clients/components/CreateBusinessPartnerModal";
 
-export default function ClientAutocomplete({ client, setClient, debtSummary }) {
+export default function ClientAutocomplete({ client, setClient, debtSummary, onClear }) {
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [isSearchingByCode, setIsSearchingByCode] = useState(false);
@@ -152,7 +152,11 @@ export default function ClientAutocomplete({ client, setClient, debtSummary }) {
   };
 
   const handleClear = () => {
-    setClient(null);
+    if (typeof onClear === "function") {
+      onClear();
+    } else if (typeof setClient === "function") {
+      setClient(null);
+    }
     setSearchInput("");
     setSearchTerm("");
   };
@@ -164,7 +168,7 @@ export default function ClientAutocomplete({ client, setClient, debtSummary }) {
     const documentNumber = normalizedClient.LicTradNum || normalizedClient.clientRuc || "No registrado";
     return (
       <Box
-        p={{ base: 3, md: 4 }}
+        p={{ base: 2.5, md: 3 }}
         bg="white"
         borderRadius="xl"
         border="1px solid"
@@ -173,8 +177,8 @@ export default function ClientAutocomplete({ client, setClient, debtSummary }) {
         boxShadow="sm"
         w="full"
       >
-        <Flex justify="space-between" align="center" wrap="wrap" gap={2} mb={2}>
-          <Badge bg="#166534" color="white" px={2.5} py={0.5} borderRadius="full" fontSize="10px" fontWeight="700">
+        <Flex justify="space-between" align="center" wrap="wrap" gap={1.5} mb={1.5}>
+          <Badge bg="#166534" color="white" px={2} py={0.2} borderRadius="full" fontSize="9px" fontWeight="700">
             Cliente Seleccionado
           </Badge>
           <Button
@@ -185,58 +189,30 @@ export default function ClientAutocomplete({ client, setClient, debtSummary }) {
             onClick={handleClear}
             leftIcon={<FiX />}
             fontWeight="700"
+            h="22px"
+            fontSize="10px"
           >
             Cambiar Cliente
           </Button>
         </Flex>
 
-        <Text fontWeight="800" fontSize={{ base: "sm", md: "md" }} color="gray.900" mb={1} wordBreak="break-word">
+        <Text fontWeight="800" fontSize={{ base: "xs", md: "sm" }} color="gray.900" mb={0.5} wordBreak="break-word">
           {normalizedClient.CardName || "Cliente seleccionado"}
         </Text>
 
         {(normalizedClient.CardCode || normalizedClient.LicTradNum) && (
-          <Text fontSize="xs" color="gray.600" mb={0.5} wordBreak="break-word">
+          <Text fontSize="10.5px" color="gray.600" mb={0.5} wordBreak="break-word">
             <strong style={{ color: "#334155" }}>Código:</strong> {cardCode} <strong style={{ color: "#334155" }}>• RUC / Doc:</strong> {documentNumber}
           </Text>
         )}
 
         {normalizedClient.Address && (
-          <Text fontSize="xs" color="gray.500" wordBreak="break-word" title={normalizedClient.Address}>
+          <Text fontSize="10.5px" color="gray.500" wordBreak="break-word" title={normalizedClient.Address} isTruncated>
             <strong style={{ color: "#334155" }}>Dirección:</strong> {normalizedClient.Address}
           </Text>
         )}
 
-        {(() => {
-          const limit = Number(normalizedClient.U_TQC_LMCRED ?? normalizedClient.raw?.U_TQC_LMCRED ?? normalizedClient.CreditLimit ?? normalizedClient.creditLimit ?? 0);
-          return (
-            <Flex align="center" gap={2} mt={1} wrap="wrap">
-              <Badge
-                bg={limit > 0 ? "#eff6ff" : "#f1f5f9"}
-                color={limit > 0 ? "#1e40af" : "#64748b"}
-                border="1px solid"
-                borderColor={limit > 0 ? "#bfdbfe" : "#cbd5e1"}
-                fontSize="10.5px"
-                px={2}
-                py={0.5}
-                borderRadius="md"
-                fontWeight="700"
-                textTransform="none"
-              >
-                💳 Línea de Crédito SAP: {limit > 0 ? `$${limit.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD` : "Sin línea registrada"}
-              </Badge>
-            </Flex>
-          );
-        })()}
 
-        {debtSummary ? (
-          <Text fontSize="xs" color="red.600" fontWeight="700" mt={1}>
-            ⚠️ {debtSummary}
-          </Text>
-        ) : Number(normalizedClient.CurrentAccountBalance ?? normalizedClient.raw?.CurrentAccountBalance ?? 0) > 0 ? (
-          <Text fontSize="xs" color="red.600" fontWeight="700" mt={1}>
-            ⚠️ Saldo deudor: ${(Number(normalizedClient.CurrentAccountBalance ?? normalizedClient.raw?.CurrentAccountBalance) / 3.564).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
-          </Text>
-        ) : null}
       </Box>
     );
   }

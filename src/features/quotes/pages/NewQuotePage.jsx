@@ -22,9 +22,13 @@ export function NewQuotesPage() {
         showBack={true}
         backTo="/historyquotes"
         showExchangeRate={true}
+        minH={{ base: "auto", md: "150px" }}
+        pt={{ base: 2, md: 3 }}
+        pb={{ base: 3, md: 4 }}
+        mb={{ base: 1.5, md: 2 }}
       />
 
-      <Box maxW="1200px" mx="auto" px={{ base: 2, sm: 4, md: 6 }}>
+      <Box maxW="1200px" mx="auto" px={{ base: 1.5, sm: 3, md: 6 }} mt={{ base: -2, md: -2.5 }} position="relative" zIndex={3}>
         <SapQuotationForm sellerName={activeSeller} />
       </Box>
     </Box>
