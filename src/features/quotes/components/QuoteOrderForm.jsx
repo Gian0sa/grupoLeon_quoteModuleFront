@@ -16,7 +16,7 @@ import ClientAutocomplete from "./ClientAutocomplete";
 import PackagingHelper from "./PackagingHelper";
 import { lineNet, round2 } from "../utils/quoteCalculations";
 import { useExchangeRate } from "../../dashboard/hooks/queries/dashboardQueries";
-import { useIgvRate, useGetWarehouses } from "../hooks/queries/quotesQueries";
+import { useIgvRate, useGetWarehouses, useClientSpecialPrices } from "../hooks/queries/quotesQueries";
 
 const MotionBox = motion(Box);
 
@@ -43,6 +43,8 @@ export default function QuoteOrderForm({ sellerName }) {
   } = useQuoteStore();
 
   const { warehouses: sapWarehouses } = useGetWarehouses();
+  const cardCode = client?.cardCode || client?.CardCode || client?.id || client?.value;
+  const { specialPricesMap } = useClientSpecialPrices(cardCode);
   const availableWarehouses = sapWarehouses || [];
 
   const { data: rateData } = useExchangeRate({
@@ -332,6 +334,7 @@ export default function QuoteOrderForm({ sellerName }) {
                       ? "Buscar artículo por código (ej. 301102003001) o descripción..."
                       : "⚠️ Selecciona primero un almacén/sede arriba para consultar stock"
                   }
+                  specialPricesMap={specialPricesMap}
                 />
                 {!whsCode && (
                   <Alert status="warning" mt={2} borderRadius="xl" fontSize="xs">

@@ -4,13 +4,14 @@ import {
   IconButton, Input, Text, Button, Select,
   HStack, Badge, Flex, VStack, Divider, Grid
 } from "@chakra-ui/react";
-import { Trash2, Package, Sparkles, Flame } from "lucide-react";
+import { Trash2, Package, Sparkles, Flame, Building2, Star } from "lucide-react";
 import ItemAutocomplete from "./ItemAutocomplete";
 import { DiscountPopoverModal } from "./DiscountPopoverModal";
+import { ClientSpecialPricesModal } from "./ClientSpecialPricesModal";
 import PackagingHelper from "./PackagingHelper";
 import { useIsAdmin } from "../../../shared/utils/permissions";
 import { formatThousands } from "../../../shared/utils/quoteCalculator";
-import { useGetPromotions } from "../hooks/queries/quotesQueries";
+import { useGetPromotions, useClientSpecialPrices } from "../hooks/queries/quotesQueries";
 
 const money = (val, currency = "USD") => {
   const num = Number(val || 0);
@@ -45,9 +46,18 @@ export default function SapItemGrid({
 }) {
   const [selectedDiscountItem, setSelectedDiscountItem] = useState(null);
   const [isDiscountModalOpen, setIsDiscountModalOpen] = useState(false);
+  const [isSpecialPricesModalOpen, setIsSpecialPricesModalOpen] = useState(false);
 
   const isAdmin = useIsAdmin();
   const { promotionsMap = {} } = useGetPromotions();
+
+  const clientCardCode = client?.CardCode || client?.cardCode || client?.sapCode || "";
+  const {
+    specialPricesList = [],
+    specialPricesMap = {},
+    specialPricesCount = 0,
+  } = useClientSpecialPrices(clientCardCode);
+
   const inStockProducts = products.filter((p) => !isItemOutOfStock(p));
   const outOfStockProducts = products.filter(isItemOutOfStock);
 
@@ -55,7 +65,19 @@ export default function SapItemGrid({
   const rateMultiplier = isSol ? Number(exchangeRate || 3.43) : 1;
 
   const handleOpenDiscountModal = (item) => {
-    setSelectedDiscountItem(item);
+    if (!item) return;
+    const itemCode = item.code || item.productCode || item.itemCode || item.id;
+    const sp = specialPricesMap[itemCode] || null;
+    const enriched = sp ? {
+      ...item,
+      isSpecialPrice: true,
+      specialDiscount: Number(sp.discountPercent ?? item.specialDiscount ?? 0),
+      specialPrice: Number(sp.specialPrice ?? item.specialPrice ?? 0),
+      specialPriceConIGV: Number(sp.specialPriceConIGV ?? item.specialPriceConIGV ?? 0),
+      specialPriceNeto: Number(sp.specialPrice ?? item.specialPrice ?? 0),
+      campaignName: "Convenio Cliente",
+    } : item;
+    setSelectedDiscountItem(enriched);
     setIsDiscountModalOpen(true);
   };
 
@@ -68,41 +90,79 @@ export default function SapItemGrid({
 
   const handleItemSelect = (selectedItem) => {
     if (isReadOnly || !selectedItem) return;
-    const rawPrice = Number(selectedItem.price || selectedItem.importe || selectedItem.Price || 0);
+    const itemId = selectedItem.id || selectedItem.code;
+    const sp = specialPricesMap[itemId] || specialPricesMap[selectedItem.code] || null;
+    const isSpecial = Boolean(selectedItem.isSpecialPrice || sp);
+
+    const rawPrice = isSpecial && sp?.listPrice
+      ? Number(sp.listPrice)
+      : Number(selectedItem.price || selectedItem.importe || selectedItem.Price || 0);
     const hasSapPrice = rawPrice > 0;
     const effectivePrice = rawPrice;
 
-    const promoInfo = promotionsMap[selectedItem.id] || promotionsMap[selectedItem.code] || null;
+    const promoInfo = promotionsMap[itemId] || promotionsMap[selectedItem.code] || null;
     const promoDiscount = selectedItem.promoDiscount || promoInfo?.discountPct || 0;
     const promoPrice = selectedItem.promoPrice || promoInfo?.promoPrice || promoInfo?.promoPriceNeto || null;
     const promoPriceConIGV = selectedItem.promoPriceConIGV || promoInfo?.promoPriceConIGV || promoInfo?.U_US_PROMO || (promoPrice ? Number((promoPrice * 1.18).toFixed(2)) : null);
-    const campaignName = selectedItem.campaignName || promoInfo?.campaignName || (promoDiscount > 0 || promoPriceConIGV > 0 ? "Oferta del Mes" : undefined);
+    const campaignName = isSpecial
+      ? "Convenio Cliente"
+      : (selectedItem.campaignName || promoInfo?.campaignName || (promoDiscount > 0 || promoPriceConIGV > 0 ? "Oferta del Mes" : undefined));
+
+    const specialDiscount = isSpecial ? Number(sp?.discountPercent ?? selectedItem.specialDiscount ?? selectedItem.discount ?? 0) : 0;
+    const specialPrice = isSpecial ? Number(sp?.specialPrice ?? selectedItem.specialPrice ?? 0) : null;
+    const specialPriceConIGV = isSpecial ? Number(sp?.specialPriceConIGV ?? selectedItem.specialPriceConIGV ?? 0) : null;
 
     onAddProduct({
-      id: selectedItem.id,
-      code: selectedItem.id,
-      name: selectedItem.name,
+      id: itemId,
+      code: itemId,
+      name: isSpecial && sp?.itemName ? sp.itemName : selectedItem.name,
       quantity: 1,
       price: effectivePrice,
       unitPrice: effectivePrice,
       isTestFallback: !hasSapPrice,
       isPriceFromSap: hasSapPrice,
-      discount: selectedItem.discount || 0,
-      promoDiscount,
-      promoPrice,
-      promoPriceConIGV,
-      promoPriceNeto: promoPrice,
-      totalDiscountPct: selectedItem.totalDiscountPct || promoInfo?.totalDiscountPct || 0,
-      U_US_PROMO: promoPriceConIGV || promoPrice,
+      discount: isSpecial ? specialDiscount : (selectedItem.discount || 0),
+      promoDiscount: isSpecial ? 0 : promoDiscount,
+      promoPrice: isSpecial ? null : promoPrice,
+      promoPriceConIGV: isSpecial ? null : promoPriceConIGV,
+      promoPriceNeto: isSpecial ? null : promoPrice,
+      totalDiscountPct: isSpecial ? specialDiscount : (selectedItem.totalDiscountPct || promoInfo?.totalDiscountPct || 0),
+      U_US_PROMO: isSpecial ? null : (promoPriceConIGV || promoPrice),
       campaignName,
+      isSpecialPrice: isSpecial,
+      specialDiscount,
+      specialPrice,
+      specialPriceNeto: specialPrice,
+      specialPriceConIGV,
       whsCode: whsCode || "014",
       taxCode: "I18",
-      stock: selectedItem.stock,
+      stock: selectedItem.stock ?? (isSpecial && sp?.stock !== undefined ? Number(sp.stock) : null),
       stockChecked: selectedItem.stockChecked ?? (selectedItem.stock !== null && selectedItem.stock !== undefined),
       isAgotado: selectedItem.isAgotado || false,
       marca: selectedItem.marca || "",
-      sigla: selectedItem.sigla || "",
+      sigla: selectedItem.sigla || sp?.sigla || "",
       importe: effectivePrice,
+    });
+  };
+
+  const handleAddFromSpecialModal = (sp) => {
+    handleItemSelect({
+      id: sp.itemCode,
+      code: sp.itemCode,
+      name: sp.itemName,
+      sigla: sp.sigla,
+      price: Number(sp.listPrice || 0),
+      importe: Number(sp.specialPrice || 0),
+      discount: Number(sp.discountPercent || 0),
+      isSpecialPrice: true,
+      specialDiscount: Number(sp.discountPercent || 0),
+      specialPrice: Number(sp.specialPrice || 0),
+      specialPriceNeto: Number(sp.specialPrice || 0),
+      specialPriceConIGV: Number(sp.specialPriceConIGV || 0),
+      stock: sp.stock !== undefined && sp.stock !== null ? Number(sp.stock) : null,
+      stockChecked: sp.stock !== undefined && sp.stock !== null,
+      isAgotado: sp.stock !== undefined && sp.stock !== null && Number(sp.stock) === 0,
+      campaignName: "Convenio Cliente",
     });
   };
 
@@ -148,19 +208,95 @@ export default function SapItemGrid({
           </Text>
         </Box>
       ) : (
-        <Box mb={4} p={{ base: 2.5, md: 3.5 }} bg="white" borderRadius="xl" border="1px solid" borderColor="gray.200" boxShadow="xs">
-          <Flex align="center" gap={1.5} mb={2}>
-            <Package className="w-4 h-4 text-emerald-800" />
-            <Text fontSize="xs" fontWeight="800" color="#166534" textTransform="uppercase" letterSpacing="wider">
-              Buscar Artículo
-            </Text>
-          </Flex>
-          <ItemAutocomplete 
-            onSelect={handleItemSelect} 
-            isDisabled={isReadOnly}
-            placeholder="Escribe código o nombre del Artículo" 
-          />
-        </Box>
+        <>
+          {specialPricesCount > 0 && (
+            <Box
+              mb={3.5}
+              p={3}
+              bgGradient="linear(to-r, teal.50, emerald.50)"
+              borderRadius="xl"
+              border="1.5px solid"
+              borderColor="teal.300"
+              boxShadow="xs"
+            >
+              <Flex
+                direction={{ base: "column", sm: "row" }}
+                align={{ base: "flex-start", sm: "center" }}
+                justify="space-between"
+                gap={2.5}
+              >
+                <HStack spacing={2.5}>
+                  <Flex
+                    w="34px"
+                    h="34px"
+                    align="center"
+                    justify="center"
+                    borderRadius="lg"
+                    bg="teal.600"
+                    color="yellow.300"
+                    flexShrink={0}
+                    boxShadow="xs"
+                  >
+                    <Star size={18} fill="currentColor" />
+                  </Flex>
+                  <Box>
+                    <HStack spacing={2} wrap="wrap">
+                      <Text fontSize="xs" fontWeight="900" color="teal.950">
+                        Precios Especiales de Convenio Disponibles
+                      </Text>
+                      <Badge
+                        bg="teal.700"
+                        color="white"
+                        fontSize="10px"
+                        fontWeight="900"
+                        px={2}
+                        py={0.2}
+                        borderRadius="full"
+                      >
+                        ⭐ {specialPricesCount} {specialPricesCount === 1 ? "artículo" : "artículos"}
+                      </Badge>
+                    </HStack>
+                    <Text fontSize="11px" color="teal.800" fontWeight="600">
+                      Este cliente cuenta con {specialPricesCount} productos con Precios Especiales de Convenio (tabla OSPP SAP).
+                    </Text>
+                  </Box>
+                </HStack>
+                <Button
+                  size="xs"
+                  h="32px"
+                  px={3.5}
+                  bg="teal.700"
+                  _hover={{ bg: "teal.800" }}
+                  _active={{ bg: "teal.900" }}
+                  color="white"
+                  fontWeight="800"
+                  fontSize="xs"
+                  borderRadius="lg"
+                  leftIcon={<Building2 size={14} />}
+                  onClick={() => setIsSpecialPricesModalOpen(true)}
+                  flexShrink={0}
+                >
+                  Ver Catálogo de Convenio
+                </Button>
+              </Flex>
+            </Box>
+          )}
+
+          <Box mb={4} p={{ base: 2.5, md: 3.5 }} bg="white" borderRadius="xl" border="1px solid" borderColor="gray.200" boxShadow="xs">
+            <Flex align="center" gap={1.5} mb={2}>
+              <Package className="w-4 h-4 text-emerald-800" />
+              <Text fontSize="xs" fontWeight="800" color="#166534" textTransform="uppercase" letterSpacing="wider">
+                Buscar Artículo
+              </Text>
+            </Flex>
+            <ItemAutocomplete 
+              onSelect={handleItemSelect} 
+              isDisabled={isReadOnly}
+              placeholder="Escribe código o nombre del Artículo" 
+              specialPricesMap={specialPricesMap}
+            />
+          </Box>
+        </>
       )}
 
       <VStack display={{ base: "flex", md: "none" }} spacing={3} align="stretch">
@@ -178,12 +314,22 @@ export default function SapItemGrid({
           inStockProducts.map((item, index) => {
             const isOutOfStock = isItemOutOfStock(item);
             const qty = Number(item.quantity || 1);
-            const price = isOutOfStock ? 0 : Number(item.price ?? item.unitPrice ?? 0);
-            const sapDisc = isOutOfStock ? 0 : Number(item.discount || item.sapDiscount || 0);
             const itemCode = item.code || item.productCode || item.itemCode || item.id || "";
+            const spItem = specialPricesMap[itemCode] || null;
+            const isSpecial = Boolean(!isOutOfStock && (item.isSpecialPrice || spItem));
+            const specialDisc = isSpecial ? Number(item.specialDiscount ?? spItem?.discountPercent ?? 0) : 0;
+            const targetSpecialPrice = isSpecial ? Number(item.specialPrice ?? spItem?.specialPrice ?? 0) : 0;
+            const targetSpecialPriceConIGV = isSpecial ? Number(item.specialPriceConIGV ?? spItem?.specialPriceConIGV ?? 0) : 0;
+
+            const rawPrice = isSpecial && spItem?.listPrice && Number(item.price ?? item.unitPrice ?? 0) === 0
+              ? Number(spItem.listPrice)
+              : Number(item.price ?? item.unitPrice ?? 0);
+            const price = isOutOfStock ? 0 : rawPrice;
+            const sapDisc = isOutOfStock ? 0 : Number(item.discount || item.sapDiscount || 0);
+
             const promoInfo = promotionsMap[itemCode] || null;
-            const promoDisc = isOutOfStock ? 0 : Number(item.promoDiscount || promoInfo?.discountPct || 0);
-            const targetPromoPriceConIGV = !isOutOfStock && (
+            const promoDisc = (isOutOfStock || isSpecial) ? 0 : Number(item.promoDiscount || promoInfo?.discountPct || 0);
+            const targetPromoPriceConIGV = (!isOutOfStock && !isSpecial) && (
               (item.promoPriceConIGV && Number(item.promoPriceConIGV) > 0) ? Number(item.promoPriceConIGV) :
               (promoInfo?.promoPriceConIGV && Number(promoInfo.promoPriceConIGV) > 0) ? Number(promoInfo.promoPriceConIGV) :
               (item.U_US_PROMO && Number(item.U_US_PROMO) > 0) ? Number(item.U_US_PROMO) :
@@ -194,8 +340,8 @@ export default function SapItemGrid({
             );
             const targetPromoNeto = targetPromoPriceConIGV
               ? Number((targetPromoPriceConIGV / 1.18).toFixed(6))
-              : (item.promoPriceNeto && Number(item.promoPriceNeto) > 0 ? Number(item.promoPriceNeto) : (promoInfo?.promoPriceNeto && Number(promoInfo.promoPriceNeto) > 0 ? Number(promoInfo.promoPriceNeto) : null));
-            const hasPromoPrice = Boolean(!isOutOfStock && (targetPromoNeto > 0 || targetPromoPriceConIGV > 0));
+              : ((!isOutOfStock && !isSpecial) ? (item.promoPriceNeto && Number(item.promoPriceNeto) > 0 ? Number(item.promoPriceNeto) : (promoInfo?.promoPriceNeto && Number(promoInfo.promoPriceNeto) > 0 ? Number(promoInfo.promoPriceNeto) : null)) : null);
+            const hasPromoPrice = Boolean(!isOutOfStock && !isSpecial && (targetPromoNeto > 0 || targetPromoPriceConIGV > 0));
             const addDisc = isOutOfStock ? 0 : Number(Number(item.lineDiscount || 0).toFixed(2));
             const hasPromo = Boolean(hasPromoPrice || promoDisc > 0);
 
@@ -207,28 +353,56 @@ export default function SapItemGrid({
             let totalDisc;
 
             if (customPrice) {
-              netUnitPrice = Number((customPrice / 1.18).toFixed(6));
-              unitPriceConIGV = Number(customPrice.toFixed(2));
-              totalDisc = price > 0 ? Math.min(100, Math.max(0, Number((((price - netUnitPrice) / price) * 100).toFixed(2)))) : 0;
+              const effectiveCustomPrice = isSpecial && targetSpecialPriceConIGV > 0
+                ? Math.max(targetSpecialPriceConIGV, customPrice)
+                : customPrice;
+              unitPriceConIGV = Number(effectiveCustomPrice.toFixed(2));
+              netUnitPrice = Number((unitPriceConIGV / 1.18).toFixed(6));
+              totalDisc = price > 0 ? Math.min(isSpecial ? specialDisc : 100, Math.max(0, Number((((price - netUnitPrice) / price) * 100).toFixed(2)))) : 0;
+            } else if (isSpecial && (targetSpecialPrice > 0 || targetSpecialPriceConIGV > 0)) {
+              const baseSpecialNeto = targetSpecialPrice > 0 
+                ? targetSpecialPrice 
+                : Number((targetSpecialPriceConIGV / 1.18).toFixed(6));
+              const clampedAddDisc = Math.min(0, addDisc);
+              if (targetSpecialPriceConIGV > 0 && clampedAddDisc === 0) {
+                unitPriceConIGV = Number(targetSpecialPriceConIGV.toFixed(2));
+                netUnitPrice = Number((unitPriceConIGV / 1.18).toFixed(6));
+              } else {
+                netUnitPrice = Number((baseSpecialNeto * (1 - clampedAddDisc / 100)).toFixed(6));
+                const finalNet2 = Number(netUnitPrice.toFixed(2));
+                unitPriceConIGV = Number((finalNet2 + Number((finalNet2 * 0.18).toFixed(2))).toFixed(2));
+              }
+              totalDisc = price > 0
+                ? Math.min(specialDisc, Math.max(0, Number((((price - netUnitPrice) / price) * 100).toFixed(2))))
+                : specialDisc;
             } else if (hasPromoPrice && targetPromoNeto > 0) {
               netUnitPrice = Number((targetPromoNeto * (1 - addDisc / 100)).toFixed(6));
-              unitPriceConIGV = Number((netUnitPrice * 1.18).toFixed(2));
+              const finalNet2 = Number(netUnitPrice.toFixed(2));
+              unitPriceConIGV = Number((finalNet2 + Number((finalNet2 * 0.18).toFixed(2))).toFixed(2));
               totalDisc = price > 0
                 ? Math.min(100, Math.max(0, Number((((price - netUnitPrice) / price) * 100).toFixed(2))))
                 : Number(item.totalDiscountPct || promoInfo?.totalDiscountPct || (sapDisc + promoDisc));
             } else {
-              const maxAllowedCeiling = hasPromo ? Math.max(80.0, Number((sapDisc + promoDisc).toFixed(2))) : 55.0;
-              totalDisc = isOutOfStock ? 0 : Math.min(maxAllowedCeiling, Math.max(0, sapDisc + promoDisc + addDisc));
+              const maxAllowedCeiling = isSpecial
+                ? specialDisc
+                : (hasPromo 
+                    ? Math.max(80.0, Number((sapDisc + promoDisc).toFixed(2))) 
+                    : 55.0);
+              const effectiveBaseDisc = isSpecial ? specialDisc : (sapDisc + promoDisc);
+              const effectiveAddDisc = isSpecial ? Math.min(0, addDisc) : addDisc;
+              totalDisc = isOutOfStock ? 0 : Math.min(maxAllowedCeiling, Math.max(0, effectiveBaseDisc + effectiveAddDisc));
               netUnitPrice = Number((price * (1 - totalDisc / 100)).toFixed(6));
-              unitPriceConIGV = Number((netUnitPrice * 1.18).toFixed(2));
+              const finalNet2 = Number(netUnitPrice.toFixed(2));
+              unitPriceConIGV = Number((finalNet2 + Number((finalNet2 * 0.18).toFixed(2))).toFixed(2));
             }
             const finalUnitPrice = Number(netUnitPrice.toFixed(2));
-            const lineTotal = Number((qty * netUnitPrice).toFixed(2));
-            const lineTax = customPrice
-              ? Number((customPrice * qty - lineTotal).toFixed(2))
+            const isDirectConIGV = Boolean(customPrice || (isSpecial && targetSpecialPriceConIGV > 0 && addDisc <= 0));
+            const lineTotal = Number((qty * finalUnitPrice).toFixed(2));
+            const lineTax = isDirectConIGV
+              ? Number((unitPriceConIGV * qty - lineTotal).toFixed(2))
               : Number((lineTotal * 0.18).toFixed(2));
-            const lineTotalConIGV = customPrice
-              ? Number((customPrice * qty).toFixed(2))
+            const lineTotalConIGV = isDirectConIGV
+              ? Number((unitPriceConIGV * qty).toFixed(2))
               : Number((lineTotal + lineTax).toFixed(2));
             const lineSavings = isOutOfStock ? 0 : Math.max(0, (qty * price) - lineTotal);
             const hasAnyDiscount = !isOutOfStock && totalDisc > 0;
@@ -242,7 +416,7 @@ export default function SapItemGrid({
             const displayLineSavings = Number((lineSavings * rateMultiplier).toFixed(2));
 
             return (
-              <Box key={item.id || index} p={3.5} bg="white" borderRadius="xl" border="1px solid" borderColor={isOutOfStock ? "red.300" : isVolume ? "orange.300" : promoDisc > 0 ? "amber.300" : "gray.200"} boxShadow="xs">
+              <Box key={item.id || index} p={3.5} bg="white" borderRadius="xl" border="1px solid" borderColor={isOutOfStock ? "red.300" : isSpecial ? "teal.400" : isVolume ? "orange.300" : promoDisc > 0 ? "amber.300" : "gray.200"} boxShadow="xs">
                 <Flex align="start" justify="space-between" gap={2} mb={2}>
                   <Box flex="1" minW={0}>
                     <Flex align="center" wrap="wrap" gap={1.5}>
@@ -250,8 +424,13 @@ export default function SapItemGrid({
                         {itemName}
                       </Text>
                       {itemCode && (
-                        <Badge colorScheme="gray" fontSize="0.6rem" fontWeight="700" px={1.5} py={0.2} borderRadius="sm">
+                        <Badge colorScheme={isSpecial ? "teal" : "gray"} fontSize="0.6rem" fontWeight="700" px={1.5} py={0.2} borderRadius="sm">
                           {itemCode}
+                        </Badge>
+                      )}
+                      {spItem?.sigla && (
+                        <Badge bg="teal.50" color="teal.800" border="1px solid" borderColor="teal.200" fontSize="0.6rem" fontWeight="700" px={1.5} py={0.2} borderRadius="sm">
+                          {spItem.sigla}
                         </Badge>
                       )}
                       {item.stock !== null && item.stock !== undefined && (
@@ -270,7 +449,19 @@ export default function SapItemGrid({
                         </Badge>
                       )}
                     </Flex>
-                    {!isOutOfStock && hasPromo && (
+                    {!isOutOfStock && isSpecial && (
+                      <Box w="full" bg="#f0fdf4" border="1px dashed #16a34a" p={1.5} borderRadius="md" mt={1.5}>
+                        <Flex justify="space-between" align="center" wrap="wrap" gap={1}>
+                          <Badge bg="emerald.600" color="white" fontSize="10px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
+                            🏢 CONVENIO CLIENTE (-{totalDisc}%)
+                          </Badge>
+                          <Text fontSize="10px" color="gray.600">
+                            P. Lista: <Text as="s">${formatThousands(price * rateMultiplier)}</Text> ➔ Convenio: <strong style={{ color: "#166534" }}>${formatThousands(displayFinalUnitPrice)} neto</strong> <Text as="span" fontSize="9px" color="gray.500">(${formatThousands(displayUnitPriceConIGV)} c/IGV)</Text>
+                          </Text>
+                        </Flex>
+                      </Box>
+                    )}
+                    {!isOutOfStock && !isSpecial && hasPromo && (
                       <Box w="full" bg="#fffbeb" border="1px dashed #f59e0b" p={1.5} borderRadius="md" mt={1.5}>
                         <Flex justify="space-between" align="center" wrap="wrap" gap={1}>
                           <Badge bg="amber.400" color="amber.950" fontSize="10px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
@@ -427,13 +618,13 @@ export default function SapItemGrid({
                         borderRadius="md"
                         fontWeight="800"
                         fontSize="0.65rem"
-                        bg={isVolume ? "orange.100" : addDisc > 0 ? "red.100" : addDisc < 0 ? "green.100" : "gray.100"}
-                        color={isVolume ? "orange.800" : addDisc > 0 ? "red.800" : addDisc < 0 ? "green.800" : "gray.600"}
+                        bg={isSpecial ? "teal.100" : isVolume ? "orange.100" : addDisc > 0 ? "red.100" : addDisc < 0 ? "green.100" : "gray.100"}
+                        color={isSpecial ? "teal.900" : isVolume ? "orange.800" : addDisc > 0 ? "red.800" : addDisc < 0 ? "green.800" : "gray.600"}
                         _hover={{
-                          bg: isVolume ? "orange.200" : addDisc > 0 ? "red.200" : addDisc < 0 ? "green.200" : "gray.200",
+                          bg: isSpecial ? "teal.200" : isVolume ? "orange.200" : addDisc > 0 ? "red.200" : addDisc < 0 ? "green.200" : "gray.200",
                         }}
                         onClick={() => handleOpenDiscountModal(item)}
-                        title={addDisc > 0 ? `Se bajó de precio (+${addDisc.toFixed(2)}%).` : addDisc < 0 ? `Mayor margen (${addDisc.toFixed(2)}%).` : "Ajuste de precio"}
+                        title={isSpecial ? `Convenio Cliente (-${totalDisc}% pactado). Toca para ajustar.` : addDisc > 0 ? `Se bajó de precio (+${addDisc.toFixed(2)}%).` : addDisc < 0 ? `Mayor margen (${addDisc.toFixed(2)}%).` : "Ajuste de precio"}
                       >
                         {addDisc > 0 ? `+${addDisc.toFixed(2)}%` : addDisc < 0 ? `${addDisc.toFixed(2)}%` : "0%"}
                       </Button>
@@ -514,12 +705,22 @@ export default function SapItemGrid({
                 inStockProducts.map((item, index) => {
                   const isOutOfStock = isItemOutOfStock(item);
                   const qty = Number(item.quantity || 1);
-                  const price = isOutOfStock ? 0 : Number(item.price ?? item.unitPrice ?? 0);
-                  const sapDisc = isOutOfStock ? 0 : Number(item.discount || item.sapDiscount || 0);
                   const itemCode = item.code || item.productCode || item.itemCode || item.id || "";
+                  const spItem = specialPricesMap[itemCode] || null;
+                  const isSpecial = Boolean(!isOutOfStock && (item.isSpecialPrice || spItem));
+                  const specialDisc = isSpecial ? Number(item.specialDiscount ?? spItem?.discountPercent ?? 0) : 0;
+                  const targetSpecialPrice = isSpecial ? Number(item.specialPrice ?? spItem?.specialPrice ?? 0) : 0;
+                  const targetSpecialPriceConIGV = isSpecial ? Number(item.specialPriceConIGV ?? spItem?.specialPriceConIGV ?? 0) : 0;
+
+                  const rawPrice = isSpecial && spItem?.listPrice && Number(item.price ?? item.unitPrice ?? 0) === 0
+                    ? Number(spItem.listPrice)
+                    : Number(item.price ?? item.unitPrice ?? 0);
+                  const price = isOutOfStock ? 0 : rawPrice;
+                  const sapDisc = isOutOfStock ? 0 : Number(item.discount || item.sapDiscount || 0);
+
                   const promoInfo = promotionsMap[itemCode] || null;
-                  const promoDisc = isOutOfStock ? 0 : Number(item.promoDiscount || promoInfo?.discountPct || 0);
-                  const targetPromoPriceConIGV = !isOutOfStock && (
+                  const promoDisc = (isOutOfStock || isSpecial) ? 0 : Number(item.promoDiscount || promoInfo?.discountPct || 0);
+                  const targetPromoPriceConIGV = (!isOutOfStock && !isSpecial) && (
                     (item.promoPriceConIGV && Number(item.promoPriceConIGV) > 0) ? Number(item.promoPriceConIGV) :
                     (promoInfo?.promoPriceConIGV && Number(promoInfo.promoPriceConIGV) > 0) ? Number(promoInfo.promoPriceConIGV) :
                     (item.U_US_PROMO && Number(item.U_US_PROMO) > 0) ? Number(item.U_US_PROMO) :
@@ -530,8 +731,8 @@ export default function SapItemGrid({
                   );
                   const targetPromoNeto = targetPromoPriceConIGV
                     ? Number((targetPromoPriceConIGV / 1.18).toFixed(6))
-                    : (item.promoPriceNeto && Number(item.promoPriceNeto) > 0 ? Number(item.promoPriceNeto) : (promoInfo?.promoPriceNeto && Number(promoInfo.promoPriceNeto) > 0 ? Number(promoInfo.promoPriceNeto) : null));
-                  const hasPromoPrice = Boolean(!isOutOfStock && (targetPromoNeto > 0 || targetPromoPriceConIGV > 0));
+                    : ((!isOutOfStock && !isSpecial) ? (item.promoPriceNeto && Number(item.promoPriceNeto) > 0 ? Number(item.promoPriceNeto) : (promoInfo?.promoPriceNeto && Number(promoInfo.promoPriceNeto) > 0 ? Number(promoInfo.promoPriceNeto) : null)) : null);
+                  const hasPromoPrice = Boolean(!isOutOfStock && !isSpecial && (targetPromoNeto > 0 || targetPromoPriceConIGV > 0));
                   const addDisc = isOutOfStock ? 0 : Number(Number(item.lineDiscount || 0).toFixed(2));
                   const hasPromo = Boolean(hasPromoPrice || promoDisc > 0);
 
@@ -544,28 +745,56 @@ export default function SapItemGrid({
                   let totalDisc;
 
                   if (customPrice) {
-                    netUnitPrice = Number((customPrice / 1.18).toFixed(6));
-                    unitPriceConIGV = Number(customPrice.toFixed(2));
-                    totalDisc = price > 0 ? Math.min(100, Math.max(0, Number((((price - netUnitPrice) / price) * 100).toFixed(2)))) : 0;
+                    const effectiveCustomPrice = isSpecial && targetSpecialPriceConIGV > 0
+                      ? Math.max(targetSpecialPriceConIGV, customPrice)
+                      : customPrice;
+                    unitPriceConIGV = Number(effectiveCustomPrice.toFixed(2));
+                    netUnitPrice = Number((unitPriceConIGV / 1.18).toFixed(6));
+                    totalDisc = price > 0 ? Math.min(isSpecial ? specialDisc : 100, Math.max(0, Number((((price - netUnitPrice) / price) * 100).toFixed(2)))) : 0;
+                  } else if (isSpecial && (targetSpecialPrice > 0 || targetSpecialPriceConIGV > 0)) {
+                    const baseSpecialNeto = targetSpecialPrice > 0 
+                      ? targetSpecialPrice 
+                      : Number((targetSpecialPriceConIGV / 1.18).toFixed(6));
+                    const clampedAddDisc = Math.min(0, addDisc);
+                    if (targetSpecialPriceConIGV > 0 && clampedAddDisc === 0) {
+                      unitPriceConIGV = Number(targetSpecialPriceConIGV.toFixed(2));
+                      netUnitPrice = Number((unitPriceConIGV / 1.18).toFixed(6));
+                    } else {
+                      netUnitPrice = Number((baseSpecialNeto * (1 - clampedAddDisc / 100)).toFixed(6));
+                      const finalNet2 = Number(netUnitPrice.toFixed(2));
+                      unitPriceConIGV = Number((finalNet2 + Number((finalNet2 * 0.18).toFixed(2))).toFixed(2));
+                    }
+                    totalDisc = price > 0
+                      ? Math.min(specialDisc, Math.max(0, Number((((price - netUnitPrice) / price) * 100).toFixed(2))))
+                      : specialDisc;
                   } else if (hasPromoPrice && targetPromoNeto > 0) {
                     netUnitPrice = Number((targetPromoNeto * (1 - addDisc / 100)).toFixed(6));
-                    unitPriceConIGV = Number((netUnitPrice * 1.18).toFixed(2));
+                    const finalNet2 = Number(netUnitPrice.toFixed(2));
+                    unitPriceConIGV = Number((finalNet2 + Number((finalNet2 * 0.18).toFixed(2))).toFixed(2));
                     totalDisc = price > 0
                       ? Math.min(100, Math.max(0, Number((((price - netUnitPrice) / price) * 100).toFixed(2))))
                       : Number(item.totalDiscountPct || promoInfo?.totalDiscountPct || (sapDisc + promoDisc));
                   } else {
-                    const maxAllowedCeiling = hasPromo ? Math.max(80.0, Number((sapDisc + promoDisc).toFixed(2))) : 55.0;
-                    totalDisc = isOutOfStock ? 0 : Math.min(maxAllowedCeiling, Math.max(0, sapDisc + promoDisc + addDisc));
+                    const maxAllowedCeiling = isSpecial
+                      ? specialDisc
+                      : (hasPromo 
+                          ? Math.max(80.0, Number((sapDisc + promoDisc).toFixed(2))) 
+                          : 55.0);
+                    const effectiveBaseDisc = isSpecial ? specialDisc : (sapDisc + promoDisc);
+                    const effectiveAddDisc = isSpecial ? Math.min(0, addDisc) : addDisc;
+                    totalDisc = isOutOfStock ? 0 : Math.min(maxAllowedCeiling, Math.max(0, effectiveBaseDisc + effectiveAddDisc));
                     netUnitPrice = Number((price * (1 - totalDisc / 100)).toFixed(6));
-                    unitPriceConIGV = Number((netUnitPrice * 1.18).toFixed(2));
+                    const finalNet2 = Number(netUnitPrice.toFixed(2));
+                    unitPriceConIGV = Number((finalNet2 + Number((finalNet2 * 0.18).toFixed(2))).toFixed(2));
                   }
                   const finalUnitPrice = Number(netUnitPrice.toFixed(2));
-                  const lineTotal = Number((qty * netUnitPrice).toFixed(2));
-                  const lineTax = customPrice
-                    ? Number((customPrice * qty - lineTotal).toFixed(2))
+                  const isDirectConIGV = Boolean(customPrice || (isSpecial && targetSpecialPriceConIGV > 0 && addDisc <= 0));
+                  const lineTotal = Number((qty * finalUnitPrice).toFixed(2));
+                  const lineTax = isDirectConIGV
+                    ? Number((unitPriceConIGV * qty - lineTotal).toFixed(2))
                     : Number((lineTotal * 0.18).toFixed(2));
-                  const lineTotalConIGV = customPrice
-                    ? Number((customPrice * qty).toFixed(2))
+                  const lineTotalConIGV = isDirectConIGV
+                    ? Number((unitPriceConIGV * qty).toFixed(2))
                     : Number((lineTotal + lineTax).toFixed(2));
                   const lineSavings = isOutOfStock ? 0 : Math.max(0, (qty * price) - lineTotal);
                   const hasAnyDiscount = !isOutOfStock && totalDisc > 0;
@@ -579,7 +808,7 @@ export default function SapItemGrid({
                   const displayLineSavings = Number((lineSavings * rateMultiplier).toFixed(2));
 
                   return (
-                    <Tr key={item.id || index} bg={isOutOfStock ? "#fff8f8" : "transparent"} _hover={{ bg: isOutOfStock ? "#fee2e2" : "gray.50" }} transition="background 0.2s">
+                    <Tr key={item.id || index} bg={isOutOfStock ? "#fff8f8" : isSpecial ? "#f0fdf4" : "transparent"} _hover={{ bg: isOutOfStock ? "#fee2e2" : isSpecial ? "#dcfce7" : "gray.50" }} transition="background 0.2s">
                       <Td px={3} py={2.5}>
                         <VStack align="start" spacing={0.5}>
                           <Text fontWeight="800" fontSize="xs" color="gray.900" lineHeight="short">
@@ -587,9 +816,14 @@ export default function SapItemGrid({
                           </Text>
                           <HStack spacing={2}>
                             {itemCode && (
-                              <Text fontSize="10px" color="gray.500" fontWeight="600">
+                              <Text fontSize="10px" color={isSpecial ? "teal.700" : "gray.500"} fontWeight={isSpecial ? "800" : "600"}>
                                 {itemCode}
                               </Text>
+                            )}
+                            {spItem?.sigla && (
+                              <Badge bg="teal.50" color="teal.800" border="1px solid" borderColor="teal.200" fontSize="9px" fontWeight="700" px={1.5} py={0.2} borderRadius="sm">
+                                {spItem.sigla}
+                              </Badge>
                             )}
                             {item.stock !== null && item.stock !== undefined && (
                               <Badge
@@ -607,7 +841,19 @@ export default function SapItemGrid({
                               </Badge>
                             )}
                           </HStack>
-                          {!isOutOfStock && hasPromo && (
+                          {!isOutOfStock && isSpecial && (
+                            <Box bg="#f0fdf4" border="1.5px solid #16a34a" p={1.5} borderRadius="md" mt={1} maxW="460px" boxShadow="xs">
+                              <Flex justify="space-between" align="center" gap={1.5} wrap="wrap">
+                                <Badge bg="emerald.600" color="white" fontSize="9px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
+                                  🏢 CONVENIO CLIENTE (-{totalDisc}%)
+                                </Badge>
+                                <Text fontSize="10px" color="gray.600">
+                                  P. Lista: <Text as="s">${formatThousands(price * rateMultiplier)}</Text> ➔ Convenio: <strong style={{ color: "#166534" }}>${formatThousands(displayFinalUnitPrice)} neto</strong> <Text as="span" fontSize="9px" color="gray.500">(${formatThousands(displayUnitPriceConIGV)} c/IGV)</Text>
+                                </Text>
+                              </Flex>
+                            </Box>
+                          )}
+                          {!isOutOfStock && !isSpecial && hasPromo && (
                             <Box bg="#fffbeb" border="1px dashed #f59e0b" p={1.5} borderRadius="md" mt={1} maxW="440px">
                               <Flex justify="space-between" align="center" gap={1.5}>
                                 <Badge bg="amber.400" color="amber.950" fontSize="9px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
@@ -759,15 +1005,15 @@ export default function SapItemGrid({
                             borderRadius="md"
                             fontWeight="800"
                             fontSize="xs"
-                            bg={isVolume ? "orange.100" : totalDisc > 50.009 ? "red.100" : addDisc > 0 ? "emerald.100" : addDisc < 0 ? "green.100" : "gray.100"}
-                            color={isVolume ? "orange.800" : totalDisc > 50.009 ? "red.800" : addDisc > 0 ? "emerald.800" : addDisc < 0 ? "green.800" : "gray.600"}
+                            bg={isSpecial ? "teal.100" : isVolume ? "orange.100" : totalDisc > 50.009 ? "red.100" : addDisc > 0 ? "emerald.100" : addDisc < 0 ? "green.100" : "gray.100"}
+                            color={isSpecial ? "teal.900" : isVolume ? "orange.800" : totalDisc > 50.009 ? "red.800" : addDisc > 0 ? "emerald.800" : addDisc < 0 ? "green.800" : "gray.600"}
                             _hover={{
-                              bg: isVolume ? "orange.200" : totalDisc > 50.009 ? "red.200" : addDisc > 0 ? "emerald.200" : addDisc < 0 ? "green.200" : "gray.200",
+                              bg: isSpecial ? "teal.200" : isVolume ? "orange.200" : totalDisc > 50.009 ? "red.200" : addDisc > 0 ? "emerald.200" : addDisc < 0 ? "green.200" : "gray.200",
                               transform: "scale(1.05)",
                             }}
                             transition="all 0.15s ease"
                             onClick={() => handleOpenDiscountModal(item)}
-                            title={isVolume ? `Mayoreo (${totalDisc}%). Requiere aprobación gerencial.` : totalDisc > 50.009 ? `Descuento (${totalDisc}%). Requiere aprobación comercial.` : addDisc > 0 ? `Rebaja dentro del margen (${totalDisc}%). Aprobación inmediata.` : addDisc < 0 ? `Mayor margen (${addDisc.toFixed(2)}%).` : "Toca para ajustar precio o descuento"}
+                            title={isSpecial ? `Convenio Cliente (${totalDisc}% pactado). Toca para ajustar descuento adicional o precio.` : isVolume ? `Mayoreo (${totalDisc}%). Requiere aprobación gerencial.` : totalDisc > 50.009 ? `Descuento (${totalDisc}%). Requiere aprobación comercial.` : addDisc > 0 ? `Rebaja dentro del margen (${totalDisc}%). Aprobación inmediata.` : addDisc < 0 ? `Mayor margen (${addDisc.toFixed(2)}%).` : "Toca para ajustar precio o descuento"}
                           >
                             {addDisc > 0 ? `+${addDisc.toFixed(2)}%` : addDisc < 0 ? `${addDisc.toFixed(2)}%` : "0%"}
                           </Button>
@@ -1055,6 +1301,21 @@ export default function SapItemGrid({
         onClose={() => setIsDiscountModalOpen(false)}
         item={selectedDiscountItem}
         onApplyDiscount={handleApplyDiscountFromModal}
+        specialPricesMap={specialPricesMap}
+        client={client}
+      />
+
+      {/* Catálogo de Precios Especiales por Convenio */}
+      <ClientSpecialPricesModal
+        isOpen={isSpecialPricesModalOpen}
+        onClose={() => setIsSpecialPricesModalOpen(false)}
+        specialPricesList={specialPricesList}
+        clientName={client?.CardName || client?.name || ""}
+        cardCode={clientCardCode}
+        onSelectSpecialItem={handleAddFromSpecialModal}
+        currentProducts={products}
+        currency={currency}
+        rateMultiplier={rateMultiplier}
       />
     </Box>
   );

@@ -25,37 +25,65 @@ export const MAX_DISCOUNT_CEILING = 55.0;        // Tope regular base (55.0%)
 export const VOLUME_MIN_QUANTITY = 100;          // Cantidad referencial para mayoreo (>100 uds)
 export const TAX_RATE = 0.18;                     // Tasa oficial de IGV (18%)
 
-export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount }) {
+export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount, specialPricesMap = {}, client = null }) {
   const [currentDisc, setCurrentDisc] = useState(0);
   const [priceInputStr, setPriceInputStr] = useState("0.00");
 
-  const basePrice = Number(item?.price || item?.unitPrice || 0); // Precio Lista sin IGV de SAP
+  const itemCode = item?.code || item?.productCode || item?.itemCode || item?.id || "";
+  const spItem = (specialPricesMap && (specialPricesMap[itemCode] || specialPricesMap[item?.id] || specialPricesMap[item?.code])) || null;
+  const isSpecial = Boolean(item?.isSpecialPrice || spItem || (item?.specialDiscount && Number(item.specialDiscount) > 0));
+  const specialDisc = isSpecial ? Number(item?.specialDiscount ?? spItem?.discountPercent ?? item?.discount ?? 0) : 0;
+  const specialPriceNeto = isSpecial ? Number(item?.specialPrice ?? item?.specialPriceNeto ?? spItem?.specialPrice ?? 0) : null;
+  const specialPriceConIGV = isSpecial ? Number(item?.specialPriceConIGV ?? spItem?.specialPriceConIGV ?? (specialPriceNeto ? Number((specialPriceNeto * (1 + TAX_RATE)).toFixed(2)) : 0)) : null;
+
+  const rawBasePrice = isSpecial && spItem?.listPrice && Number(item?.price || item?.unitPrice || 0) === 0
+    ? Number(spItem.listPrice)
+    : Number(item?.price || item?.unitPrice || 0);
+  const basePrice = rawBasePrice; // Precio Lista sin IGV de SAP
   const basePriceConIGV = Number((basePrice * (1 + TAX_RATE)).toFixed(2));
   const sapDisc = Number(item?.discount || item?.sapDiscount || 0);
-  const promoDisc = Number(item?.promoDiscount || 0);
-  const baseFixedDisc = Number((sapDisc + promoDisc).toFixed(1));
+  const promoDisc = isSpecial ? 0 : Number(item?.promoDiscount || 0);
+
+  // Para artículos de convenio (OSPP), la base de descuento comercial es el porcentaje pactado con el cliente (ej. 59.35%)
+  const baseFixedDisc = isSpecial
+    ? specialDisc
+    : Number((sapDisc + promoDisc).toFixed(1));
+
   const qty = Number(item?.quantity || item?.Quantity || 1);
 
   // REGLA DE NEGOCIO GRUPO LEÓN:
-  // 1. Regular: Tope de descuento comercial hasta 55.0% (los que superen 50% requieren aprobación)
+  // 1. Con Convenio Cliente (OSPP): Se respeta rigurosamente el rango oficial que manda SAP B1 (ej. 59.35%).
+  //    El descuento de convenio ES EL TECHO MÁXIMO / PISO DE PRECIO y no se permite rebajar más allá de ese valor ("hasta ahí nomás").
   // 2. Con Promoción: El piso está anclado al precio de la promoción. No se permite bajar más allá de la promo.
-  const hasPromo = Boolean(promoDisc > 0 || item?.promoPrice || item?.U_US_PROMO);
+  // 3. Regular: Tope de descuento comercial hasta 55.0%.
+  const hasPromo = Boolean(!isSpecial && (promoDisc > 0 || item?.promoPrice || item?.U_US_PROMO));
   const isEligibleForVolume = qty > VOLUME_MIN_QUANTITY;
-  const applicableCeiling = hasPromo 
-    ? Math.max(baseFixedDisc, REGULAR_DISCOUNT_CEILING) 
-    : REGULAR_DISCOUNT_CEILING;
+  const applicableCeiling = isSpecial
+    ? specialDisc
+    : (hasPromo 
+        ? Math.max(baseFixedDisc, REGULAR_DISCOUNT_CEILING) 
+        : REGULAR_DISCOUNT_CEILING);
 
-  // Precios sugeridos con descuento base (SAP + Promo)
-  const priceWithBaseSinIGV = Number((basePrice * (1 - baseFixedDisc / 100)).toFixed(2));
-  const priceWithBaseConIGV = Number((priceWithBaseSinIGV * (1 + TAX_RATE)).toFixed(2));
+  // Precios sugeridos con descuento base (SAP / Convenio + Promo)
+  const priceWithBaseSinIGV = isSpecial && specialPriceNeto > 0
+    ? specialPriceNeto
+    : Number((basePrice * (1 - baseFixedDisc / 100)).toFixed(2));
+  const priceWithBaseConIGV = isSpecial && specialPriceConIGV > 0
+    ? specialPriceConIGV
+    : Number((priceWithBaseSinIGV * (1 + TAX_RATE)).toFixed(2));
 
   // Precios límite oficiales con IGV
   const priceCeilingConIGV = basePriceConIGV;
-  const priceFloorSinIGV = Number((basePrice * (1 - applicableCeiling / 100)).toFixed(2));
-  const priceFloorConIGV = Number((priceFloorSinIGV * (1 + TAX_RATE)).toFixed(2));
+  const priceFloorSinIGV = isSpecial && specialPriceNeto > 0
+    ? specialPriceNeto
+    : Number((basePrice * (1 - applicableCeiling / 100)).toFixed(2));
+  const priceFloorConIGV = isSpecial && specialPriceConIGV > 0
+    ? specialPriceConIGV
+    : Number((priceFloorSinIGV * (1 + TAX_RATE)).toFixed(2));
 
   // Límites de ajuste de descuento adicional:
-  const maxAllowedAddDisc = Math.max(0, Number((applicableCeiling - baseFixedDisc).toFixed(2)));
+  // En artículos de convenio, maxAllowedAddDisc es 0 porque NO se permite superar el descuento pactado en SAP
+  const maxAllowedAddDisc = isSpecial ? 0 : Math.max(0, Number((applicableCeiling - baseFixedDisc).toFixed(2)));
   const minAllowedAddDisc = Number((-baseFixedDisc).toFixed(2));
 
   useEffect(() => {
@@ -64,12 +92,14 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
       setCurrentDisc(existingAddDisc);
       if (item.customPriceConIGV && Number(item.customPriceConIGV) > 0) {
         setPriceInputStr(Number(item.customPriceConIGV).toFixed(2));
+      } else if (isSpecial && specialPriceConIGV > 0 && (!existingAddDisc || existingAddDisc === 0)) {
+        setPriceInputStr(Number(specialPriceConIGV).toFixed(2));
       } else {
         const effectiveNetPrice = Number((basePrice * (1 - (baseFixedDisc + existingAddDisc) / 100)).toFixed(4));
         setPriceInputStr((effectiveNetPrice * (1 + TAX_RATE)).toFixed(2));
       }
     }
-  }, [item, isOpen, basePrice, baseFixedDisc, maxAllowedAddDisc, minAllowedAddDisc]);
+  }, [item, isOpen, basePrice, baseFixedDisc, maxAllowedAddDisc, minAllowedAddDisc, isSpecial, specialPriceConIGV]);
 
   if (!item) return null;
 
@@ -102,7 +132,11 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
   const isDiscountAboveThreshold = effectiveTotalDiscPct > APPROVAL_DISCOUNT_THRESHOLD + 0.009;
   const isPriceDiscounted = finalUnitPriceConIGV < priceWithBaseConIGV - 0.009;
   const isPriceHigher = finalUnitPriceConIGV > priceWithBaseConIGV + 0.009;
-  const requiresApproval = isDiscountAboveThreshold || isVolumeDiscount;
+  // Para convenios oficiales OSPP pactados en SAP B1, el precio de convenio acordado (ej. 59.35%)
+  // ya cuenta con autorización comercial. Solo requiere aprobación si se rebaja AÚN MÁS allá del convenio.
+  const requiresApproval = isSpecial
+    ? (finalUnitPriceConIGV < (specialPriceConIGV || priceWithBaseConIGV) - 0.05)
+    : (isDiscountAboveThreshold || isVolumeDiscount);
 
   // Manejo de escritura en el input de precio con IGV
   const handlePriceInputChange = (e) => {
@@ -246,7 +280,7 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
               </Flex>
               <Box minW={0} flex={1}>
                 <Text fontSize={{ base: "13px", sm: "sm" }} fontWeight="800" color="white" isTruncated>
-                  Ajustar Precio Unitario {isVolumeDiscount ? "• Mayoreo" : ""}
+                  Ajustar Precio Unitario {isSpecial ? "• Convenio Cliente" : isVolumeDiscount ? "• Mayoreo" : ""}
                 </Text>
                 <Text fontSize={{ base: "10.5px", sm: "11px" }} color="#a7f3d0" fontWeight="600" isTruncated maxW="100%">
                   {item.code || item.productCode || item.itemCode} • {item.name || item.description}
@@ -266,19 +300,19 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
         <ModalBody p={{ base: 3, sm: 4 }} bg="#f8fafc" overflowY="auto">
           <VStack align="stretch" spacing={3}>
             {/* 1. TARJETA DE REFERENCIA: PRECIO SUGERIDO ACTUAL (CON IGV) */}
-            <Box bg="white" p={3} borderRadius="xl" border="1px solid" borderColor="gray.200" boxShadow="xs">
+            <Box bg="white" p={3} borderRadius="xl" border="1px solid" borderColor={isSpecial ? "teal.200" : "gray.200"} boxShadow="xs">
               <Flex justify="space-between" align="center">
                 <Box>
                   <Text fontSize="10.5px" fontWeight="700" color="gray.500" textTransform="uppercase" letterSpacing="wider">
-                    Precio Sugerido (Con IGV)
+                    {isSpecial ? "Precio Convenio Cliente (Con IGV)" : "Precio Sugerido (Con IGV)"}
                   </Text>
                   <HStack spacing={1.5} align="baseline" mt={0.5}>
-                    <Text fontSize="xl" fontWeight="900" color="#064e3b" fontFamily="mono">
+                    <Text fontSize="xl" fontWeight="900" color={isSpecial ? "teal.700" : "#064e3b"} fontFamily="mono">
                       ${formatThousands(priceWithBaseConIGV)}
                     </Text>
                     <Text fontSize="xs" fontWeight="700" color="gray.400">USD</Text>
-                    <Badge colorScheme="green" bg="#ecfdf5" color="#047857" fontSize="10px" fontWeight="800" px={1.5} py={0.2} borderRadius="md">
-                      {baseFixedDisc}% desc.
+                    <Badge colorScheme={isSpecial ? "teal" : "green"} bg={isSpecial ? "teal.50" : "#ecfdf5"} color={isSpecial ? "teal.700" : "#047857"} border={isSpecial ? "1px solid" : "none"} borderColor={isSpecial ? "teal.300" : "transparent"} fontSize="10px" fontWeight="800" px={1.5} py={0.2} borderRadius="md">
+                      {isSpecial ? `🏢 ${baseFixedDisc}% CONVENIO` : `${baseFixedDisc}% desc.`}
                     </Badge>
                   </HStack>
                 </Box>
@@ -295,24 +329,44 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
             </Box>
 
             {/* 2. CONTROL PRINCIPAL DE PRECIO: STEPPER [-] [$ X.XX] [+] */}
-            <Box bg="white" p={3.5} borderRadius="xl" border="1.5px solid" borderColor="emerald.200" boxShadow="xs">
-              <Flex
-                justify="space-between"
-                align={{ base: "flex-start", xs: "center" }}
-                direction={{ base: "column", xs: "row" }}
-                gap={1}
-                mb={2}
-              >
-                <Text fontSize="11px" fontWeight="800" color="gray.700" textTransform="uppercase" letterSpacing="wide">
-                  ¿A cuánto deseas vender (c/IGV)?
-                </Text>
-                <Text fontSize="11px" color="gray.500" fontWeight="600">
-                  {hasPromo ? "Piso Oferta: " : "Piso Mínimo (55%): "}
-                  <Text as="span" fontWeight="800" color="gray.800">
-                    ${formatThousands(priceFloorConIGV)} USD (Inc. IGV)
+            <Box bg="white" p={3.5} borderRadius="xl" border="1.5px solid" borderColor={isSpecial ? "teal.300" : "emerald.200"} boxShadow="xs">
+              <VStack align="stretch" spacing={1.5} mb={2.5}>
+                <Flex justify="space-between" align="center" wrap="wrap" gap={1}>
+                  <Text fontSize="11px" fontWeight="800" color="gray.700" textTransform="uppercase" letterSpacing="wide">
+                    ¿A cuánto deseas vender (c/IGV)?
                   </Text>
-                </Text>
-              </Flex>
+                  {isSpecial && specialPriceConIGV > 0 && (
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      colorScheme="teal"
+                      fontSize="10px"
+                      h="22px"
+                      px={2}
+                      onClick={() => {
+                        setPriceInputStr(Number(specialPriceConIGV).toFixed(2));
+                        setCurrentDisc(0);
+                      }}
+                    >
+                      ↺ Restablecer Convenio (${formatThousands(specialPriceConIGV)})
+                    </Button>
+                  )}
+                </Flex>
+
+                <Flex justify="space-between" align="center" fontSize="11px" wrap="wrap" gap={1}>
+                  <Text color="gray.500" fontWeight="600">
+                    {isSpecial ? "Piso Convenio SAP: " : hasPromo ? "Piso Oferta: " : "Piso Mínimo (55%): "}
+                    <Text as="span" fontWeight="800" color={isSpecial ? "teal.800" : "gray.800"}>
+                      ${formatThousands(priceFloorConIGV)} USD (Inc. IGV)
+                    </Text>
+                  </Text>
+                  {isSpecial && (
+                    <Badge colorScheme="teal" bg="teal.50" color="teal.700" border="1px solid" borderColor="teal.200" fontSize="9px" fontWeight="800" px={1.5} py={0.2} borderRadius="sm">
+                      Tope Máximo SAP: {specialDisc}%
+                    </Badge>
+                  )}
+                </Flex>
+              </VStack>
 
               {/* Stepper interactivo con touch target táctil optimizado */}
               <Flex align="center" justify="space-between" bg="gray.50" p={1.5} borderRadius="xl" border="1px solid" borderColor="gray.200">
@@ -463,13 +517,15 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
                       isTruncated
                     >
                       {isExceedingCeiling
-                        ? `Supera el límite (mínimo $${formatThousands(priceFloorConIGV)} USD)`
+                        ? (isSpecial ? `Supera descuento de convenio (mínimo $${formatThousands(priceFloorConIGV)} USD)` : `Supera el límite (mínimo $${formatThousands(priceFloorConIGV)} USD)`)
                         : requiresApproval
-                        ? `Requiere Aprobación Comercial (${effectiveTotalDiscPct}% desc.)`
+                        ? (isSpecial ? `Rebaja bajo precio de convenio (${effectiveTotalDiscPct}% desc.)` : `Requiere Aprobación Comercial (${effectiveTotalDiscPct}% desc.)`)
                         : isPriceDiscounted
                         ? `Rebaja a $${formatThousands(finalUnitPriceConIGV)} (Aprobación directa)`
                         : isPriceHigher
                         ? `Aumento a $${formatThousands(finalUnitPriceConIGV)} (Mayor margen)`
+                        : isSpecial
+                        ? `Precio de convenio oficial pactado en SAP B1 (-${baseFixedDisc}%)`
                         : "Precio estándar sin modificaciones"}
                     </Text>
                     <Text
@@ -484,10 +540,14 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount })
                       fontWeight="600"
                     >
                       {isExceedingCeiling
-                        ? (hasPromo ? `Precio mínimo delimitado por la promoción ($${formatThousands(priceFloorConIGV)} USD).` : `El descuento comercial máximo permitido es ${applicableCeiling}%.`)
+                        ? (isSpecial
+                            ? `El convenio en SAP B1 solo autoriza hasta ${applicableCeiling}% de descuento ($${formatThousands(priceFloorConIGV)} USD). No se permite rebajar más allá del convenio.`
+                            : hasPromo 
+                            ? `Precio mínimo delimitado por la promoción ($${formatThousands(priceFloorConIGV)} USD).` 
+                            : `El descuento comercial máximo permitido es ${applicableCeiling}%.`)
                         : requiresApproval
-                        ? "Al superar el 50% de descuento se enviará a validación comercial."
-                        : "Pase directo a SAP sin necesidad de aprobación previa."}
+                        ? (isSpecial ? "Al superar el descuento de convenio se requerirá validación comercial." : "Al superar el 50% de descuento se enviará a validación comercial.")
+                        : (isSpecial ? "Convenio corporativo oficial autorizado en SAP. Pase directo." : "Pase directo a SAP sin necesidad de aprobación previa.")}
                     </Text>
                   </Box>
                 </HStack>

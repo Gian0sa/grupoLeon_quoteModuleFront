@@ -38,7 +38,7 @@ function normalizeString(str) {
  * - Búsqueda instantánea al presionar Enter o pegar.
  * - Despliegue flotante táctil con indicadores claros de stock y ofertas.
  */
-export default function ItemAutocomplete({ onSelect, isDisabled = false, placeholder }) {
+export default function ItemAutocomplete({ onSelect, isDisabled = false, placeholder, specialPricesMap = {} }) {
   const [inputValue, setInputValue] = useState("");
   const [immediateTerm, setImmediateTerm] = useState("");
   const [isOpen, setIsOpen] = useState(false);
@@ -110,40 +110,163 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
   };
 
   const sortedRecords = useMemo(() => {
-    const records = data?.records || [];
-    if (!records.length) return [];
+    if (!term || term.length < MIN_CHARS) return [];
 
     const searchRawLower = term.toLowerCase();
     const searchClean = normalizeString(term);
-    const searchTermsClean = searchRawLower.split(/[\s\-._/]+/).map(normalizeString).filter(Boolean);
+    const searchTermsClean = searchRawLower
+      .split(/[\s\-._/]+/)
+      .map(normalizeString)
+      .filter(Boolean);
 
-    return [...records].sort((a, b) => {
-      const codeClean = normalizeString(a.ITEM_CODE);
-      const nameClean = normalizeString(a.ITEM_NAME);
+    // 1. Extraer artículos de Convenio / Precios Especiales en memoria local (0ms de latencia)
+    const specialList = Object.values(specialPricesMap || {});
+    const matchingSpecialRecords = [];
 
-      const aCodeExact = codeClean === searchClean;
-      const bCodeExact = b.ITEM_CODE && normalizeString(b.ITEM_CODE) === searchClean;
-      if (aCodeExact && !bCodeExact) return -1;
-      if (!aCodeExact && bCodeExact) return 1;
+    specialList.forEach((sp) => {
+      if (!sp) return;
+      const spCode = String(sp.itemCode || "").trim();
+      const spName = String(sp.itemName || "").trim();
+      const spSigla = String(sp.sigla || "").trim();
 
-      const aCodeStarts = codeClean.startsWith(searchClean);
-      const bCodeStarts = b.ITEM_CODE && normalizeString(b.ITEM_CODE).startsWith(searchClean);
-      if (aCodeStarts && !bCodeStarts) return -1;
-      if (!aCodeStarts && bCodeStarts) return 1;
+      const spCodeClean = normalizeString(spCode);
+      const spNameClean = normalizeString(spName);
+      const spSiglaClean = normalizeString(spSigla);
 
-      const aNameStarts = nameClean.startsWith(searchClean);
-      const bNameStarts = b.ITEM_NAME && normalizeString(b.ITEM_NAME).startsWith(searchClean);
-      if (aNameStarts && !bNameStarts) return -1;
-      if (!aNameStarts && bNameStarts) return 1;
+      const isExactCode = spCodeClean === searchClean;
+      const isExactSigla = spSiglaClean === searchClean;
+      const isCodeStarts = spCodeClean.startsWith(searchClean);
+      const isSiglaStarts = spSiglaClean.startsWith(searchClean);
+      const isNameStarts = spNameClean.startsWith(searchClean);
+      const isCodeIncludes = spCodeClean.includes(searchClean);
+      const isSiglaIncludes = spSiglaClean.includes(searchClean);
+      const isNameIncludes = spNameClean.includes(searchClean);
+      const matchesAllTerms =
+        searchTermsClean.length > 0 &&
+        searchTermsClean.every(
+          (t) => spCodeClean.includes(t) || spSiglaClean.includes(t) || spNameClean.includes(t)
+        );
 
-      const aMatchesAll = searchTermsClean.every(t => codeClean.includes(t) || nameClean.includes(t));
-      const bMatchesAll = b.ITEM_CODE && searchTermsClean.every(t => normalizeString(b.ITEM_CODE).includes(t) || normalizeString(b.ITEM_NAME || "").includes(t));
-      if (aMatchesAll && !bMatchesAll) return -1;
-      if (!aMatchesAll && bMatchesAll) return 1;
-
-      return 0;
+      if (
+        isExactCode ||
+        isExactSigla ||
+        isCodeStarts ||
+        isSiglaStarts ||
+        isNameStarts ||
+        isCodeIncludes ||
+        isSiglaIncludes ||
+        isNameIncludes ||
+        matchesAllTerms
+      ) {
+        matchingSpecialRecords.push({
+          ITEM_CODE: spCode,
+          ITEM_NAME: spName,
+          SIGLA: spSigla,
+          U_TQC_SIGLA: spSigla,
+          MARCA: sp.marca || "AC DELCO",
+          STOCK_DISPONIBLE: sp.stock !== undefined && sp.stock !== null ? Number(sp.stock) : 0,
+          PRECIO_LISTA: Number(sp.listPrice || 0),
+          PRECIO_LISTA_CON_IGV: Number(sp.listPriceConIGV || (Number(sp.listPrice || 0) * 1.18).toFixed(2)),
+          PRECIO_DESCUENTO: Number(sp.specialPrice || 0),
+          PRECIO_DESCUENTO_CON_IGV: Number(sp.specialPriceConIGV || (Number(sp.specialPrice || 0) * 1.18).toFixed(2)),
+          PRECIO_VENTA: Number(sp.listPrice || 0),
+          PRECIO_CONTADO: Number(sp.specialPrice || 0),
+          PRECIO_CREDITO: Number(sp.listPrice || 0),
+          DESCUENTO_PCT: Number(sp.discountPercent || 0),
+          isSpecialPrice: true,
+          specialDiscount: Number(sp.discountPercent || 0),
+          specialPrice: Number(sp.specialPrice || 0),
+          specialPriceConIGV: Number(sp.specialPriceConIGV || 0),
+          _isSpecialConvenio: true,
+          _spData: sp,
+        });
+      }
     });
-  }, [data, term]);
+
+    // 2. Filtrar estrictamente registros traídos de la API (descartar artículos que no coinciden)
+    const rawApiRecords = data?.records || [];
+    const matchedApiRecords = [];
+
+    rawApiRecords.forEach((r) => {
+      if (!r) return;
+      const codeClean = normalizeString(r.ITEM_CODE);
+      const nameClean = normalizeString(r.ITEM_NAME);
+      const siglaClean = normalizeString(r.SIGLA || r.U_TQC_SIGLA);
+
+      const isExactCode = codeClean === searchClean;
+      const isExactSigla = siglaClean === searchClean;
+      const isCodeStarts = codeClean.startsWith(searchClean);
+      const isSiglaStarts = siglaClean.startsWith(searchClean);
+      const isNameStarts = nameClean.startsWith(searchClean);
+      const isCodeIncludes = codeClean.includes(searchClean);
+      const isSiglaIncludes = siglaClean.includes(searchClean);
+      const isNameIncludes = nameClean.includes(searchClean);
+      const matchesAllTerms =
+        searchTermsClean.length > 0 &&
+        searchTermsClean.every(
+          (t) => codeClean.includes(t) || siglaClean.includes(t) || nameClean.includes(t)
+        );
+
+      if (
+        isExactCode ||
+        isExactSigla ||
+        isCodeStarts ||
+        isSiglaStarts ||
+        isNameStarts ||
+        isCodeIncludes ||
+        isSiglaIncludes ||
+        isNameIncludes ||
+        matchesAllTerms
+      ) {
+        matchedApiRecords.push(r);
+      }
+    });
+
+    // 3. Fusionar y des-duplicar por ITEM_CODE (los de Convenio tienen prioridad)
+    const mergedMap = new Map();
+    matchingSpecialRecords.forEach((item) => {
+      mergedMap.set(item.ITEM_CODE, item);
+    });
+
+    matchedApiRecords.forEach((item) => {
+      const code = item.ITEM_CODE;
+      if (!mergedMap.has(code)) {
+        mergedMap.set(code, item);
+      } else {
+        const existing = mergedMap.get(code);
+        if (item.STOCK_DISPONIBLE !== undefined && item.STOCK_DISPONIBLE !== null) {
+          existing.STOCK_DISPONIBLE = item.STOCK_DISPONIBLE;
+        }
+      }
+    });
+
+    const combinedList = Array.from(mergedMap.values());
+
+    // 4. Ordenar con algoritmo de scoring de relevancia
+    return combinedList.sort((a, b) => {
+      const scoreItem = (it) => {
+        let score = 0;
+        const itCode = normalizeString(it.ITEM_CODE);
+        const itSigla = normalizeString(it.SIGLA || it.U_TQC_SIGLA);
+        const itName = normalizeString(it.ITEM_NAME);
+
+        // Bonificación de máxima prioridad para Convenio del cliente
+        if (it._isSpecialConvenio || it.isSpecialPrice || specialPricesMap[it.ITEM_CODE]) {
+          score += 1000;
+        }
+
+        if (itCode === searchClean || itSigla === searchClean) score += 500;
+        else if (itCode.startsWith(searchClean) || itSigla.startsWith(searchClean)) score += 300;
+        else if (itName.startsWith(searchClean)) score += 200;
+        else if (itCode.includes(searchClean) || itSigla.includes(searchClean)) score += 100;
+        else if (itName.includes(searchClean)) score += 50;
+
+        return score;
+      };
+
+      return scoreItem(b) - scoreItem(a);
+    });
+  }, [data, term, specialPricesMap]);
 
   const handleSelectItem = (r) => {
     if (!r) return;
@@ -158,24 +281,56 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
     const promoPriceConIGV = promo ? Number(promo.promoPriceConIGV || promo.U_US_PROMO || 0) : null;
     const campaignName = promo?.campaignName || (promoDiscount > 0 || promoPriceConIGV > 0 ? "Oferta del Mes" : undefined);
 
+    const sp =
+      r._spData ||
+      (specialPricesMap
+        ? specialPricesMap[r.ITEM_CODE] ||
+          specialPricesMap[r.itemCode] ||
+          specialPricesMap[String(r.ITEM_CODE || "").trim()]
+        : null) ||
+      (r.isSpecialPrice ? r : null);
+
+    const isSpecialPrice = Boolean(sp || r.isSpecialPrice);
+    const spDiscount = isSpecialPrice ? Number(sp?.discountPercent ?? r.specialDiscount ?? 0) : 0;
+    const spPrice = isSpecialPrice ? Number(sp?.specialPrice ?? r.specialPrice ?? 0) : null;
+    const spPriceConIGV = isSpecialPrice ? Number(sp?.specialPriceConIGV ?? r.specialPriceConIGV ?? 0) : null;
+
+    const basePrice = isSpecialPrice && (sp?.listPrice ?? r.PRECIO_LISTA)
+      ? Number(sp?.listPrice ?? r.PRECIO_LISTA)
+      : (Number(r.PRECIO_LISTA ?? r.PRECIO_VENTA ?? r.Price ?? 0) || 0);
+
+    const baseImporte = isSpecialPrice && spPrice
+      ? spPrice
+      : (Number(r.PRECIO_DESCUENTO ?? r.PRECIO_VENTA ?? r.PRECIO_LISTA ?? r.Price ?? 0) || 0);
+
+    const baseDiscount = isSpecialPrice ? spDiscount : (Number(r.DESCUENTO_PCT ?? r.Discount ?? 0) || 0);
+    const effectiveStockVal = stockVal ?? (isSpecialPrice && sp?.stock !== undefined && sp?.stock !== null ? Number(sp.stock) : null);
+    const effectiveStockChecked = hasValidStock || (isSpecialPrice && sp?.stock !== undefined && sp?.stock !== null);
+    const effectiveIsAgotado = isAgotado || (effectiveStockChecked && effectiveStockVal === 0);
+
     onSelect?.({
       id: r.ITEM_CODE,
-      name: r.ITEM_NAME,
-      sigla: r.SIGLA ?? r.Sigla ?? r.U_TQC_SIGLA ?? r.sigla,
-      U_TQC_SIGLA: r.U_TQC_SIGLA ?? r.SIGLA ?? r.Sigla ?? r.sigla,
-      price: Number(r.PRECIO_LISTA ?? r.PRECIO_VENTA ?? r.Price ?? 0) || 0,
-      importe: Number(r.PRECIO_DESCUENTO ?? r.PRECIO_VENTA ?? r.PRECIO_LISTA ?? r.Price ?? 0) || 0,
-      discount: Number(r.DESCUENTO_PCT ?? r.Discount ?? 0) || 0,
-      promoDiscount,
-      promoPrice,
-      promoPriceConIGV,
-      promoPriceNeto: promoPrice,
-      totalDiscountPct: promo ? Number(promo.totalDiscountPct || 0) : 0,
-      U_US_PROMO: promoPriceConIGV || promoPrice,
-      campaignName,
-      stock: stockVal,
-      stockChecked: hasValidStock,
-      isAgotado,
+      name: isSpecialPrice && (sp?.itemName || r.ITEM_NAME) ? (sp?.itemName || r.ITEM_NAME) : r.ITEM_NAME,
+      sigla: r.SIGLA ?? r.Sigla ?? r.U_TQC_SIGLA ?? r.sigla ?? sp?.sigla,
+      U_TQC_SIGLA: r.U_TQC_SIGLA ?? r.SIGLA ?? r.Sigla ?? r.sigla ?? sp?.sigla,
+      price: basePrice,
+      importe: baseImporte,
+      discount: baseDiscount,
+      promoDiscount: isSpecialPrice ? 0 : promoDiscount,
+      promoPrice: isSpecialPrice ? null : promoPrice,
+      promoPriceConIGV: isSpecialPrice ? null : promoPriceConIGV,
+      promoPriceNeto: isSpecialPrice ? null : promoPrice,
+      totalDiscountPct: isSpecialPrice ? spDiscount : (promo ? Number(promo.totalDiscountPct || 0) : 0),
+      U_US_PROMO: isSpecialPrice ? null : (promoPriceConIGV || promoPrice),
+      campaignName: isSpecialPrice ? "Convenio Cliente" : campaignName,
+      isSpecialPrice,
+      specialDiscount: spDiscount,
+      specialPrice: spPrice,
+      specialPriceNeto: spPrice,
+      specialPriceConIGV: spPriceConIGV,
+      stock: effectiveStockVal,
+      stockChecked: effectiveStockChecked,
+      isAgotado: effectiveIsAgotado,
       marca: r.MARCA,
       whsCode: r.WHS_CODE || "014",
       quantity: "",
@@ -303,6 +458,14 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
               const isAgotado = hasValidStock && stockVal === 0;
 
               const promo = promotionsMap ? (promotionsMap[r.ITEM_CODE] || promotionsMap[r.itemCode]) : null;
+              const sp =
+                r._spData ||
+                (specialPricesMap
+                  ? specialPricesMap[r.ITEM_CODE] ||
+                    specialPricesMap[r.itemCode] ||
+                    specialPricesMap[String(r.ITEM_CODE || "").trim()]
+                  : null) ||
+                (r.isSpecialPrice ? r : null);
               const isHighlighted = index === highlightedIndex;
 
               return (
@@ -327,20 +490,33 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
                     <Text fontSize={{ base: "13px", md: "xs" }} fontWeight="800" color="gray.900" noOfLines={2}>
                       {r.ITEM_NAME}
                     </Text>
-                    {promo && (
-                      <Badge
-                        bg="amber.400"
-                        color="amber.950"
-                        fontSize="0.65rem"
-                        px={1.5}
-                        py={0.2}
-                        borderRadius="md"
-                        fontWeight="900"
-                        flexShrink={0}
-                      >
-                        🏷️ OFERTA: -{promo.discountPct}%
-                      </Badge>
-                    )}
+                    <HStack spacing={1.5} flexShrink={0}>
+                      {sp ? (
+                        <Badge
+                          bg="teal.600"
+                          color="white"
+                          fontSize="0.65rem"
+                          px={1.5}
+                          py={0.2}
+                          borderRadius="md"
+                          fontWeight="900"
+                        >
+                          ⭐ CONVENIO (-{sp.discountPercent}%)
+                        </Badge>
+                      ) : promo ? (
+                        <Badge
+                          bg="amber.400"
+                          color="amber.950"
+                          fontSize="0.65rem"
+                          px={1.5}
+                          py={0.2}
+                          borderRadius="md"
+                          fontWeight="900"
+                        >
+                          🏷️ OFERTA: -{promo.discountPct}%
+                        </Badge>
+                      ) : null}
+                    </HStack>
                   </Flex>
 
                   <HStack spacing={2} wrap="wrap">
@@ -365,8 +541,23 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
                       borderRadius="md"
                       fontWeight="800"
                     >
-                      {stockVal !== null ? `Stock: ${stockVal} und` : "Consultando stock"}
+                      {stockVal !== null ? `Stock: ${stockVal} und` : (sp && sp.stock !== undefined ? `Stock: ${sp.stock} und` : "Consultando stock")}
                     </Badge>
+                    {sp && (
+                      <Text
+                        fontSize="11px"
+                        fontWeight="800"
+                        color="teal.800"
+                        bg="teal.50"
+                        px={1.5}
+                        py={0.2}
+                        borderRadius="sm"
+                        border="1px solid"
+                        borderColor="teal.200"
+                      >
+                        Pactado: ${Number(sp.specialPrice || 0).toFixed(2)} neto (${Number(sp.specialPriceConIGV || 0).toFixed(2)} c/IGV)
+                      </Text>
+                    )}
                   </HStack>
                 </Box>
               );

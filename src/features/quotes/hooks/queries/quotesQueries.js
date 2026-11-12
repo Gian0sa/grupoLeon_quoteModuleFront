@@ -104,6 +104,30 @@ export const useIgvRate = () => {
 };
 
 import { fetchActivePromotions } from "../../services/promotionService";
+import { fetchClientSpecialPrices } from "../../services/clientService";
+
+export const useClientSpecialPrices = (cardCode) => {
+    const cleanCardCode = typeof cardCode === "string" ? cardCode.trim() : (cardCode ? String(cardCode).trim() : "");
+
+    const query = useQuery({
+        queryKey: ["clientSpecialPrices", cleanCardCode],
+        queryFn: () => fetchClientSpecialPrices(cleanCardCode),
+        enabled: Boolean(cleanCardCode),
+        staleTime: 5 * 60 * 1000,
+        refetchOnWindowFocus: false,
+    });
+
+    return {
+        data: query.data,
+        specialPricesList: query.data?.list || [],
+        specialPricesMap: query.data?.map || {},
+        specialPricesCount: query.data?.count || (query.data?.list?.length || 0),
+        isLoading: query.isLoading,
+        isFetching: query.isFetching,
+        error: query.error,
+        refetch: query.refetch,
+    };
+};
 
 export const useGetPromotions = () => {
     const { data, isLoading, isFetching, refetch } = useQuery({
