@@ -19,6 +19,8 @@ import { Star, Check } from "lucide-react";
 import { useGetPromotions } from "../../quotes/hooks/queries/quotesQueries";
 
 export function ProductPriceListModal({ product, isOpen, onClose }) {
+  const { promotionsMap = {} } = useGetPromotions();
+
   if (!isOpen || !product) return null;
   const {
     ITEM_NAME,
@@ -37,7 +39,6 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
     ROTACION
   } = product;
 
-  const { promotionsMap = {} } = useGetPromotions();
   const promo = promotionsMap[ITEM_CODE] || promotionsMap[product.productCode] || (product.U_US_PROMO ? {
     promoPriceConIGV: Number(product.U_US_PROMO),
     U_US_PROMO: Number(product.U_US_PROMO),
@@ -106,7 +107,7 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      size={{ base: "full", sm: "lg", md: "2xl", lg: "3xl" }}
+      size={{ base: "md", sm: "lg", md: "2xl", lg: "3xl" }}
       isCentered
       scrollBehavior="inside"
     >
@@ -114,6 +115,8 @@ export function ProductPriceListModal({ product, isOpen, onClose }) {
       <ModalContent
         w={{ base: "calc(100vw - 16px)", sm: "90vw", md: "700px" }}
         maxW="700px"
+        h="auto"
+        minH="0"
         maxH={{ base: "calc(100dvh - 24px)", md: "90vh" }}
         my="auto"
         mx="auto"
