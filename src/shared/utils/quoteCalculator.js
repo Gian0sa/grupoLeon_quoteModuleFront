@@ -6,9 +6,15 @@ export const MAX_DISCOUNT_CEILING = 55.0;        // Tope regular base (55.0%)
 
 export const getItemMaxDiscountCeiling = (item) => {
   if (!item) return REGULAR_DISCOUNT_CEILING;
-  const isSpecial = Boolean(item.isSpecialPrice || item.campaignName === "Convenio Cliente" || item.specialPrice || item.specialDiscount);
+  const isSpecial = Boolean(
+    item.isSpecialPrice || 
+    item.campaignName === "Convenio Cliente" || 
+    item.specialPrice || 
+    item.specialDiscount ||
+    Number(item.sapDiscount ?? item.discount ?? 0) > 55.0
+  );
   if (isSpecial) {
-    const specialDisc = Number(item.specialDiscount ?? item.discount ?? 0);
+    const specialDisc = Number(item.specialDiscount ?? item.discount ?? item.sapDiscount ?? 0);
     return Math.max(REGULAR_DISCOUNT_CEILING, specialDisc);
   }
   const sapDisc = Math.max(0, Math.min(100, Number(item.sapDiscount ?? item.discount ?? 0)));
@@ -18,7 +24,7 @@ export const getItemMaxDiscountCeiling = (item) => {
     const promoBaseDisc = Number(item.totalDiscountPct || (sapDisc + promoDisc).toFixed(2));
     return Math.max(REGULAR_DISCOUNT_CEILING, Math.max(80.0, promoBaseDisc));
   }
-  return REGULAR_DISCOUNT_CEILING;
+  return Math.max(REGULAR_DISCOUNT_CEILING, sapDisc);
 };
 
 export const isItemWithoutStock = (p) => Boolean(
@@ -46,10 +52,25 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
     const isOutOfStock = isItemWithoutStock(p);
 
     // Detección de artículo de Convenio de Precios Especiales (OSPP SAP)
-    const isSpecial = !isOutOfStock && Boolean(p.isSpecialPrice || p.campaignName === "Convenio Cliente" || p.specialPrice || p.specialDiscount);
-    const specialDisc = isSpecial ? Number(p.specialDiscount ?? p.discount ?? 0) : 0;
-    const targetSpecialPriceConIGV = isSpecial && (p.specialPriceConIGV || p.targetSpecialPriceConIGV) && Number(p.specialPriceConIGV || p.targetSpecialPriceConIGV) > 0
-      ? Number(p.specialPriceConIGV || p.targetSpecialPriceConIGV)
+    const isSpecial = !isOutOfStock && Boolean(
+      p.isSpecialPrice || 
+      p.campaignName === "Convenio Cliente" || 
+      p.specialPrice || 
+      p.specialDiscount ||
+      Number(p.sapDiscount ?? p.discount ?? 0) > 55.0
+    );
+    const specialDisc = isSpecial ? Number(p.specialDiscount ?? p.discount ?? p.sapDiscount ?? 0) : 0;
+
+    // Si no tiene stock, no tiene precio ni descuento en el cálculo comercial (Demanda Back Order)
+    const rawListPrice = Math.max(0, Number(p.price ?? p.Price ?? p.unitPrice ?? p.UnitPrice ?? p.importe ?? p.itemPrice ?? (isSpecial ? p.listPrice : 0) ?? 0));
+    const listPrice = isOutOfStock ? 0 : rawListPrice;
+
+    // Respetar precio de lista y lógica inversa del IGV para artículos de convenio
+    const calculatedSpecialConIGV = isSpecial && listPrice > 0 && specialDisc > 0
+      ? Number((Number((listPrice * 1.18).toFixed(2)) * (1 - specialDisc / 100)).toFixed(2))
+      : null;
+    const targetSpecialPriceConIGV = isSpecial && (calculatedSpecialConIGV || p.specialPriceConIGV || p.targetSpecialPriceConIGV) && Number(calculatedSpecialConIGV || p.specialPriceConIGV || p.targetSpecialPriceConIGV) > 0
+      ? Number(calculatedSpecialConIGV || p.specialPriceConIGV || p.targetSpecialPriceConIGV)
       : null;
     const targetSpecialNeto = isSpecial
       ? ((p.specialPrice && Number(p.specialPrice) > 0)
@@ -57,10 +78,6 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
           : (targetSpecialPriceConIGV ? Number((targetSpecialPriceConIGV / 1.18).toFixed(6)) : null))
       : null;
     const hasSpecialPrice = Boolean(isSpecial && (targetSpecialNeto > 0 || targetSpecialPriceConIGV > 0 || specialDisc > 0));
-
-    // Si no tiene stock, no tiene precio ni descuento en el cálculo comercial (Demanda Back Order)
-    const rawListPrice = Math.max(0, Number(p.price ?? p.Price ?? p.unitPrice ?? p.UnitPrice ?? p.importe ?? p.itemPrice ?? (isSpecial ? p.listPrice : 0) ?? 0));
-    const listPrice = isOutOfStock ? 0 : rawListPrice;
 
     // Descuento base de SAP (%) - Priorizar siempre sapDiscount si existe
     const sapDisc = isOutOfStock
@@ -143,18 +160,17 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
       netUnitPrice = Number(Number(p.finalPrice).toFixed(6));
       unitTax = Number((netUnitPrice * 0.18).toFixed(6));
       unitPriceConIGV = Number((netUnitPrice + unitTax).toFixed(2));
-    } else if (customPrice) {
-      // Lógica Inversa oficial con IGV
-      unitPriceConIGV = Number(customPrice.toFixed(2));
-      netUnitPrice = Number((unitPriceConIGV / 1.18).toFixed(6));
-      const finalNet2 = Number(netUnitPrice.toFixed(2));
-      unitTax = Number((unitPriceConIGV - finalNet2).toFixed(2));
-    } else if (hasSpecialPrice && (targetSpecialNeto > 0 || targetSpecialPriceConIGV > 0)) {
+    } else if (hasSpecialPrice && (targetSpecialNeto > 0 || targetSpecialPriceConIGV > 0 || specialDisc > 0)) {
       // Convenio Oficial SAP B1 (Lógica Inversa oficial)
-      const baseSpecialNeto = targetSpecialNeto > 0 ? targetSpecialNeto : Number((targetSpecialPriceConIGV / 1.18).toFixed(6));
+      const baseSpecialNeto = targetSpecialNeto > 0 
+        ? targetSpecialNeto 
+        : (listPrice > 0 && specialDisc > 0 ? Number((listPrice * (1 - specialDisc / 100)).toFixed(6)) : Number((targetSpecialPriceConIGV / 1.18).toFixed(6)));
+      const baseSpecialConIGV = targetSpecialPriceConIGV > 0
+        ? targetSpecialPriceConIGV
+        : (listPrice > 0 && specialDisc > 0 ? Number((Number((listPrice * 1.18).toFixed(2)) * (1 - specialDisc / 100)).toFixed(2)) : Number((baseSpecialNeto * 1.18).toFixed(2)));
       const clampedAddDisc = Math.min(0, addDisc);
-      if (targetSpecialPriceConIGV > 0 && clampedAddDisc === 0) {
-        unitPriceConIGV = Number(targetSpecialPriceConIGV.toFixed(2));
+      if (clampedAddDisc === 0) {
+        unitPriceConIGV = Number(baseSpecialConIGV.toFixed(2));
         netUnitPrice = Number((unitPriceConIGV / 1.18).toFixed(6));
         const finalNet2 = Number(netUnitPrice.toFixed(2));
         unitTax = Number((unitPriceConIGV - finalNet2).toFixed(2));
@@ -164,6 +180,12 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
         unitTax = Number((finalNet2 * 0.18).toFixed(2));
         unitPriceConIGV = Number((finalNet2 + unitTax).toFixed(2));
       }
+    } else if (customPrice) {
+      // Lógica Inversa oficial con IGV
+      unitPriceConIGV = Number(customPrice.toFixed(2));
+      netUnitPrice = Number((unitPriceConIGV / 1.18).toFixed(6));
+      const finalNet2 = Number(netUnitPrice.toFixed(2));
+      unitTax = Number((unitPriceConIGV - finalNet2).toFixed(2));
     } else if (hasPromoPrice && targetPromoNeto > 0) {
       netUnitPrice = Number((targetPromoNeto * (1 - addDisc / 100)).toFixed(6));
       const finalNet2 = Number(netUnitPrice.toFixed(2));
@@ -199,7 +221,8 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
     if (isVolumeLine) {
       hasVolumeDiscount = true;
     }
-    if (!isOutOfStock && totalDisc > APPROVAL_DISCOUNT_THRESHOLD + 0.009) {
+    // Si el artículo proviene de un convenio oficial SAP (OSPP) con precio pactado, no dispara alerta comercial a menos que haya descuento adicional
+    if (!isOutOfStock && !hasSpecialPrice && totalDisc > APPROVAL_DISCOUNT_THRESHOLD + 0.009) {
       hasDiscountAboveThreshold = true;
     }
 
@@ -209,7 +232,11 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
       netSubtotalUSD += netLine;
     }
 
-    const requiresApproval = !isOutOfStock && (totalDisc > APPROVAL_DISCOUNT_THRESHOLD + 0.009 || isVolumeLine);
+    const requiresApproval = !isOutOfStock && (
+      hasSpecialPrice 
+        ? (addDisc > 0 || isVolumeLine) 
+        : (totalDisc > APPROVAL_DISCOUNT_THRESHOLD + 0.009 || isVolumeLine)
+    );
 
     return {
       ...p,
@@ -219,7 +246,7 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
       unitPrice: listPrice,
       sapDiscount: sapDisc,
       promoDiscount: promoDisc,
-      campaignName: !isOutOfStock ? (p.campaignName || (promoDisc > 0 ? "Oferta del Mes" : undefined)) : undefined,
+      campaignName: !isOutOfStock ? (p.campaignName || (hasSpecialPrice ? "Convenio Cliente" : (promoDisc > 0 ? "Oferta del Mes" : undefined))) : undefined,
       lineDiscount: addDisc,
       discountPercent: Number(totalDisc.toFixed(2)),
       discount: sapDisc,
@@ -234,7 +261,7 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
       requiresApproval,
       isHigherMargin: !isOutOfStock && addDisc < 0,
       isVolumeDiscount: isVolumeLine,
-      isExceedingCeiling: !isOutOfStock && !isLineFromSap && (sapDisc + promoDisc + addDisc > MAX_DISCOUNT_CEILING + 0.01),
+      isExceedingCeiling: !isOutOfStock && !isLineFromSap && !hasSpecialPrice && (sapDisc + promoDisc + addDisc > MAX_DISCOUNT_CEILING + 0.01),
       isOutOfStock,
       isBackOrder: isOutOfStock,
     };

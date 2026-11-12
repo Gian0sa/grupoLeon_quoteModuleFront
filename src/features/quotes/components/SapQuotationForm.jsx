@@ -1854,11 +1854,13 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       const sapUnitPrice = Number((rawPrice * rateMultiplier).toFixed(4));
       const sapCustomPrice = p.customPriceConIGV && Number(p.customPriceConIGV) > 0 ? Number(p.customPriceConIGV) : null;
 
-      const sapDisc = Number(p.sapDiscount ?? p.descuentoSAP ?? p.U_TQC_DESL ?? 0);
-      const promoDisc = Number(p.promoDiscount ?? p.promoDisc ?? p.U_TQC_DELP ?? 0);
+      const isSpecial = Boolean(p.isSpecialPrice || p.campaignName === "Convenio Cliente" || p.specialPrice || p.specialDiscount || Number(p.sapDiscount ?? p.discount ?? 0) > 55.0);
+      const specialDisc = isSpecial ? Number(p.specialDiscount ?? p.discount ?? p.sapDiscount ?? 0) : 0;
+      const sapDisc = Number(p.sapDiscount ?? p.discount ?? p.descuentoSAP ?? p.U_TQC_DESL ?? specialDisc ?? 0);
+      const promoDisc = isSpecial ? 0 : Number(p.promoDiscount ?? p.promoDisc ?? p.U_TQC_DELP ?? 0);
       const addDisc = Number(p.lineDiscount ?? p.manualDiscount ?? p.addDisc ?? p.descuentoManual ?? p.descuentoAdicional ?? p.U_TQC_DESV ?? 0);
 
-      const targetPromoPriceConIGV = !isOutOfStock && (
+      const targetPromoPriceConIGV = (!isOutOfStock && !isSpecial) && (
         (p.promoPriceConIGV && Number(p.promoPriceConIGV) > 0) ? Number(p.promoPriceConIGV) :
         (p.U_US_PROMO && Number(p.U_US_PROMO) > 0) ? Number(p.U_US_PROMO) :
         (p.promoPrice && Number(p.promoPrice) > 0 && !p.promoPriceNeto) ? Number((Number(p.promoPrice) * 1.18).toFixed(2)) :
@@ -1866,14 +1868,18 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       );
       const targetPromoNeto = targetPromoPriceConIGV
         ? Number((targetPromoPriceConIGV / 1.18).toFixed(6))
-        : (p.promoPriceNeto && Number(p.promoPriceNeto) > 0 ? Number(p.promoPriceNeto) : (p.promoPrice && Number(p.promoPrice) > 0 ? Number(p.promoPrice) : null));
-      const hasPromoPrice = Boolean(!isOutOfStock && (targetPromoNeto > 0 || targetPromoPriceConIGV > 0));
+        : ((!isOutOfStock && !isSpecial) ? (p.promoPriceNeto && Number(p.promoPriceNeto) > 0 ? Number(p.promoPriceNeto) : (p.promoPrice && Number(p.promoPrice) > 0 ? Number(p.promoPrice) : null)) : null);
+      const hasPromoPrice = Boolean(!isOutOfStock && !isSpecial && (targetPromoNeto > 0 || targetPromoPriceConIGV > 0));
 
       let netUnitPrice;
       let totalDisc;
       if (sapCustomPrice) {
         netUnitPrice = Number((sapCustomPrice / 1.18).toFixed(6));
         totalDisc = sapUnitPrice > 0 ? Math.min(100, Math.max(0, Number((((sapUnitPrice - netUnitPrice) / sapUnitPrice) * 100).toFixed(2)))) : 0;
+      } else if (isSpecial && specialDisc > 0) {
+        const clampedAddDisc = Math.min(0, addDisc);
+        totalDisc = Math.max(0, Math.min(specialDisc, Number((specialDisc + clampedAddDisc).toFixed(2))));
+        netUnitPrice = Number((sapUnitPrice * (1 - totalDisc / 100)).toFixed(6));
       } else if (hasPromoPrice && targetPromoNeto > 0) {
         netUnitPrice = Number((targetPromoNeto * (1 - addDisc / 100)).toFixed(6));
         totalDisc = sapUnitPrice > 0
@@ -1881,6 +1887,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
           : Number(p.totalDiscountPct || (sapDisc + promoDisc).toFixed(2));
       } else {
         totalDisc = Number(p.discountPercent ?? p.DiscountPercent ?? p.totalDiscount ?? (sapDisc + promoDisc + addDisc));
+        if (addDisc === 0 && totalDisc < sapDisc && sapDisc > 0) {
+          totalDisc = sapDisc;
+        }
         netUnitPrice = Number((sapUnitPrice * (1 - totalDisc / 100)).toFixed(6));
       }
 
@@ -1896,11 +1905,17 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         productName: p.productName || p.description || p.name || p.ItemDescription,
         unitPrice: sapUnitPrice,
         price: sapUnitPrice,
-        sapDiscount: sapDisc,
+        discount: isSpecial ? specialDisc : sapDisc,
+        sapDiscount: isSpecial ? specialDisc : sapDisc,
         promoDiscount: promoDisc,
         lineDiscount: addDisc,
         discountPercent: totalDisc,
         DiscountPercent: totalDisc,
+        isSpecialPrice: isSpecial,
+        specialDiscount: isSpecial ? specialDisc : 0,
+        specialPrice: isSpecial ? p.specialPrice : null,
+        specialPriceConIGV: isSpecial ? p.specialPriceConIGV : null,
+        campaignName: isSpecial ? "Convenio Cliente" : (p.campaignName || (promoDisc > 0 ? "Oferta del Mes" : undefined)),
         customPriceConIGV: sapCustomPrice,
         discountedUnitPrice: Number(netUnitPrice.toFixed(2)),
         promoPriceConIGV: targetPromoPriceConIGV,
@@ -1908,7 +1923,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         promoPrice: targetPromoNeto,
         U_US_PROMO: targetPromoPriceConIGV,
         totalDiscountPct: totalDisc,
-        U_TQC_DESL: sapDisc,
+        U_TQC_DESL: isSpecial ? specialDisc : sapDisc,
         U_TQC_DELP: valorDescLista,
         U_TQC_DESV: descVenta,
         stock: stk,

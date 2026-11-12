@@ -864,20 +864,22 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
   const grandTotalUSD = (isAlreadySyncedToSap && fallbackUSD > 0)
     ? fallbackUSD
-    : (calcRes.grandTotalUSD > 0
-        ? calcRes.grandTotalUSD
-        : (storedGrandTotal > 0 ? storedGrandTotal : Number((fallbackUSD || 0).toFixed(2))));
+    : (storedGrandTotal > 0
+        ? storedGrandTotal
+        : (calcRes.grandTotalUSD > 0
+            ? calcRes.grandTotalUSD
+            : Number((fallbackUSD || 0).toFixed(2))));
 
-  const subtotalUSD = calcRes.subtotalUSD > 0
-    ? calcRes.subtotalUSD
-    : (storedSubtotal > 0
-        ? storedSubtotal
+  const subtotalUSD = storedSubtotal > 0
+    ? storedSubtotal
+    : (calcRes.subtotalUSD > 0
+        ? calcRes.subtotalUSD
         : (grandTotalUSD > 0 ? Number((grandTotalUSD / 1.18).toFixed(2)) : 0));
 
-  const igvUSD = calcRes.igvUSD > 0
-    ? calcRes.igvUSD
-    : (storedIgv > 0
-        ? storedIgv
+  const igvUSD = storedIgv > 0
+    ? storedIgv
+    : (calcRes.igvUSD > 0
+        ? calcRes.igvUSD
         : Number(Math.max(0, grandTotalUSD - subtotalUSD).toFixed(2)));
 
   const grandTotalSOL = isSapDirect && effectiveQuote.DocTotal && (effectiveQuote.DocCurrency === "PEN" || effectiveQuote.DocCurrency === "SOL")
@@ -1748,7 +1750,9 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                         ? (effectiveQuote.docNumber && String(effectiveQuote.docNumber).startsWith("COT-") && !String(effectiveQuote.docNumber).includes("WEB")
                             ? effectiveQuote.docNumber
                             : `COT-${String(syncedDocNum || effectiveQuote.sapDocNum).padStart(6, "0")}`)
-                        : "COT-PENDIENTE (Al emitir a SAP)"}
+                        : (effectiveQuote.docNumber && !["COT-PENDIENTE", "COT-NUEVA"].includes(String(effectiveQuote.docNumber).toUpperCase().trim())
+                            ? effectiveQuote.docNumber
+                            : (effectiveQuote.id ? `COT-WEB-${String(effectiveQuote.id).padStart(6, "0")}` : "COT-PENDIENTE (Al emitir a SAP)"))}
                     </Heading>
                     {syncedDocNum && (
                       <Badge bg="emerald.900" color="emerald.100" border="1px solid" borderColor="emerald.300" fontSize="10px" px={2} py={0.5} borderRadius="md" fontWeight="900">
@@ -3193,19 +3197,40 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                         <VStack align="stretch" spacing={3}>
                           {inStockProducts.map((item, idx) => {
                             const qty = Number(item.quantity ?? 1);
-                            const sapDisc = Number(item.sapDiscount ?? item.discount ?? 0);
-                            const promoDisc = Number(item.promoDiscount ?? 0);
+                            const isSpecial = Boolean(
+                              item.isSpecialPrice || 
+                              item.specialPrice || 
+                              item.specialDiscount || 
+                              item.campaignName === "Convenio Cliente" || 
+                              Number(item.sapDiscount ?? item.discount ?? 0) > 55.0
+                            );
+                            const sapDisc = Number(item.sapDiscount ?? item.discount ?? item.specialDiscount ?? 0);
+                            const promoDisc = isSpecial ? 0 : Number(item.promoDiscount ?? 0);
                             let addDisc = Number(Number(item.lineDiscount ?? 0).toFixed(2));
-                            const maxAllowedCeiling = 80.0;
-                            const totalDisc = Number(item.discountPercent ?? Math.min(maxAllowedCeiling, Math.max(0, sapDisc + promoDisc + addDisc)));
+                            const maxAllowedCeiling = Math.max(80.0, sapDisc);
+                            let totalDisc = Number(item.discountPercent ?? Math.min(maxAllowedCeiling, Math.max(0, sapDisc + promoDisc + addDisc)));
+                            if (addDisc === 0 && totalDisc < sapDisc && sapDisc > 0) {
+                              totalDisc = sapDisc;
+                            }
                             if (addDisc === 0 && (sapDisc + promoDisc) > 0 && Math.abs(totalDisc - (sapDisc + promoDisc)) > 0.01) {
-                              addDisc = Number((totalDisc - (sapDisc + promoDisc)).toFixed(2));
+                              if (totalDisc < (sapDisc + promoDisc)) {
+                                totalDisc = sapDisc + promoDisc;
+                                addDisc = 0;
+                              } else {
+                                addDisc = Number((totalDisc - (sapDisc + promoDisc)).toFixed(2));
+                              }
                             }
                             const isVolume = qty > 100 && totalDisc > 55;
-                            const reqAppr = totalDisc > 50.009 || isVolume;
+                            const reqAppr = (isSpecial || sapDisc >= totalDisc)
+                              ? (addDisc > 0 || isVolume)
+                              : (totalDisc > 50.009 || isVolume);
                             const isHigherMargin = addDisc < 0;
 
-                            const discountedUnitPrice = Number(item.discountedUnitPrice ?? (item.price * (1 - totalDisc / 100)));
+                            const calculatedNetUnitPrice = Number((item.price * (1 - totalDisc / 100)).toFixed(2));
+                            const discountedUnitPrice = (item.discountedUnitPrice && Math.abs(Number(item.discountedUnitPrice) - calculatedNetUnitPrice) <= 0.05)
+                              ? Number(item.discountedUnitPrice)
+                              : calculatedNetUnitPrice;
+                            const lineTotalNum = Number((qty * discountedUnitPrice).toFixed(2));
                             const descText = item.description || item.ItemDescription || item.name || "Artículo";
 
                             return (
@@ -3222,7 +3247,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                     {item.itemCode || item.code || item.id || "ART"}
                                   </Badge>
                                   <Text fontSize="xs" fontWeight="900" color="emerald.900" fontFamily="mono">
-                                    ${formatThousands(item.lineTotal)}
+                                    ${formatThousands(lineTotalNum)}
                                   </Text>
                                 </Flex>
 
@@ -3348,19 +3373,40 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                             <Tbody fontSize="xs">
                               {inStockProducts.map((item, idx) => {
                                 const qty = Number(item.quantity ?? 1);
-                                const sapDisc = Number(item.sapDiscount ?? item.discount ?? 0);
-                                const promoDisc = Number(item.promoDiscount ?? 0);
+                                const isSpecial = Boolean(
+                                  item.isSpecialPrice || 
+                                  item.specialPrice || 
+                                  item.specialDiscount || 
+                                  item.campaignName === "Convenio Cliente" || 
+                                  Number(item.sapDiscount ?? item.discount ?? 0) > 55.0
+                                );
+                                const sapDisc = Number(item.sapDiscount ?? item.discount ?? item.specialDiscount ?? 0);
+                                const promoDisc = isSpecial ? 0 : Number(item.promoDiscount ?? 0);
                                 let addDisc = Number(Number(item.lineDiscount ?? 0).toFixed(2));
-                                const maxAllowedCeiling = 80.0;
-                                const totalDisc = Number(item.discountPercent ?? Math.min(maxAllowedCeiling, Math.max(0, sapDisc + promoDisc + addDisc)));
+                                const maxAllowedCeiling = Math.max(80.0, sapDisc);
+                                let totalDisc = Number(item.discountPercent ?? Math.min(maxAllowedCeiling, Math.max(0, sapDisc + promoDisc + addDisc)));
+                                if (addDisc === 0 && totalDisc < sapDisc && sapDisc > 0) {
+                                  totalDisc = sapDisc;
+                                }
                                 if (addDisc === 0 && (sapDisc + promoDisc) > 0 && Math.abs(totalDisc - (sapDisc + promoDisc)) > 0.01) {
-                                  addDisc = Number((totalDisc - (sapDisc + promoDisc)).toFixed(2));
+                                  if (totalDisc < (sapDisc + promoDisc)) {
+                                    totalDisc = sapDisc + promoDisc;
+                                    addDisc = 0;
+                                  } else {
+                                    addDisc = Number((totalDisc - (sapDisc + promoDisc)).toFixed(2));
+                                  }
                                 }
                                 const isVolume = qty > 100 && totalDisc > 55;
-                                const reqAppr = totalDisc > 50.009 || isVolume;
+                                const reqAppr = (isSpecial || sapDisc >= totalDisc)
+                                  ? (addDisc > 0 || isVolume)
+                                  : (totalDisc > 50.009 || isVolume);
                                 const isHigherMargin = addDisc < 0;
 
-                                const discountedUnitPrice = Number(item.discountedUnitPrice ?? (item.price * (1 - totalDisc / 100)));
+                                const calculatedNetUnitPrice = Number((item.price * (1 - totalDisc / 100)).toFixed(2));
+                                const discountedUnitPrice = (item.discountedUnitPrice && Math.abs(Number(item.discountedUnitPrice) - calculatedNetUnitPrice) <= 0.05)
+                                  ? Number(item.discountedUnitPrice)
+                                  : calculatedNetUnitPrice;
+                                const lineTotalNum = Number((qty * discountedUnitPrice).toFixed(2));
                                 const descText = item.description || item.ItemDescription || item.name || "Artículo";
 
                                 return (
@@ -3373,7 +3419,12 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                         <Text fontSize="11px" lineHeight="1.3" noOfLines={2} title={descText}>
                                           {descText}
                                         </Text>
-                                        {(promoDisc > 0 || item.promoPriceConIGV || item.U_US_PROMO) && (
+                                        {(isSpecial || item.campaignName === "Convenio Cliente") && (
+                                          <Badge bg="teal.600" color="white" fontSize="8.5px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
+                                            🏢 CONVENIO CLIENTE: -{totalDisc}% DTO
+                                          </Badge>
+                                        )}
+                                        {(!isSpecial && (promoDisc > 0 || item.promoPriceConIGV || item.U_US_PROMO)) && (
                                           <Badge bg="amber.400" color="amber.950" fontSize="8.5px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
                                             🏷️ {(item.campaignName || "OFERTA DEL MES").toUpperCase()}: -{totalDisc}% DTO
                                           </Badge>
@@ -3477,7 +3528,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                       </Badge>
                                     </Td>
                                     <Td textAlign="right" fontWeight="850" color="emerald.900" fontFamily="mono" px={2.5}>
-                                      ${formatThousands(item.lineTotal)}
+                                      ${formatThousands(lineTotalNum)}
                                     </Td>
                                   </Tr>
                                 );
