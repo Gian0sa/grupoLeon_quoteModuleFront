@@ -16,12 +16,16 @@ export function adaptQuote(data) {
     Address: data.clientAddress,
   };
 
-  const products = data.items.map((item) => ({
+  const products = (data.items || data.products || []).map((item) => ({
     id: item.productCode || item.code || item.id,
     name: item.productName || item.name,
     sigla: item.sigla,
     price: item.unitPrice ?? item.price,
     discount: item.discount,
+    sapDiscount: item.sapDiscount ?? item.discount ?? 0,
+    baseListDiscount: item.baseListDiscount ?? null,
+    promoDiscount: item.promoDiscount ?? 0,
+    discountPercent: item.discountPercent,
     importe: item.importe,
     quantity: item.quantity,
     isSpecialPrice: Boolean(item.isSpecialPrice),

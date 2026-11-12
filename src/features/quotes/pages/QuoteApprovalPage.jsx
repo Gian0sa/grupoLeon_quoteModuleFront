@@ -91,6 +91,7 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { cleanSellerName, cleanClientName, formatQuoteSellerName, SALES_PERSONS_MAP } from "../../../shared/utils/quoteLogisticsFormatters";
 import { useSellersData } from "../../auth/hooks/queries/authQueries";
+import { isSpecialAgreementItem } from "../utils/discountBreakdown";
 
 const isDraftState = (status) => {
   if (!status) return true;
@@ -115,36 +116,56 @@ export const isCancelledState = (status) => {
 
 export const checkHasAdditionalDiscount = (q) => {
   if (!q) return false;
-  if (Number(q.maxDiscount || q.totals?.maxDiscount || 0) > 0) {
-    return true;
-  }
   const quoteProducts = q.products || q.items || q.totals?.products || q.totals?.normalizedProducts || [];
-  const hasExplicitLineAdic = quoteProducts.some((it) => {
-    const adic = Number(it.lineDiscount ?? it.LineDiscount ?? it.additionalDiscount ?? it.U_TQC_DESV ?? 0);
-    return adic > 0;
-  });
-  if (hasExplicitLineAdic) {
+
+  if (quoteProducts.length > 0) {
+    const hasExplicitLineAdic = quoteProducts.some((it) => {
+      const isSpecial = isSpecialAgreementItem(it);
+      const adic = Number(
+        it.lineDiscount ??
+          it.LineDiscount ??
+          it.additionalDiscount ??
+          (isSpecial ? 0 : it.U_TQC_DESV) ??
+          0
+      );
+      return adic > 0;
+    });
+    if (hasExplicitLineAdic) {
+      return true;
+    }
+
+    if (Number(q.headerDiscount || q.DiscountPercent || q.totals?.headerDiscount || 0) > 0) {
+      return true;
+    }
+
+    const hasLineApprovalNeeded = quoteProducts.some((it) => {
+      const sapDisc = Number(it.sapDiscount ?? it.discount ?? 0);
+      const totalDisc = Number(it.discountPercent ?? sapDisc);
+      const adic = Number(it.lineDiscount ?? it.LineDiscount ?? it.additionalDiscount ?? 0);
+      const isSpecial = isSpecialAgreementItem(it);
+      if (isSpecial || sapDisc >= totalDisc) {
+        return adic > 0;
+      }
+      if (
+        q.hasAdditionalDiscount ||
+        q.totals?.hasAdditionalDiscount ||
+        q.totals?.requiresDiscountApproval ||
+        Number(q.maxDiscount || q.totals?.maxDiscount || 0) > 0
+      ) {
+        return totalDisc > 50.009 || adic > 0;
+      }
+      return totalDisc > 50.009;
+    });
+    return hasLineApprovalNeeded;
+  }
+
+  if (Number(q.maxDiscount || q.totals?.maxDiscount || 0) > 0) {
     return true;
   }
   if (Number(q.headerDiscount || q.DiscountPercent || q.totals?.headerDiscount || 0) > 0) {
     return true;
   }
-  if (q.hasAdditionalDiscount || q.totals?.hasAdditionalDiscount || q.totals?.requiresDiscountApproval) {
-    if (quoteProducts.length > 0) {
-      return quoteProducts.some((it) => {
-        const sapDisc = Number(it.sapDiscount ?? it.discount ?? 0);
-        const totalDisc = Number(it.discountPercent ?? sapDisc);
-        const adic = Number(it.lineDiscount ?? 0);
-        const isSpecial = Boolean(it.isSpecialPrice || it.campaignName === "Convenio Cliente" || sapDisc > 55.0);
-        if (isSpecial || sapDisc >= totalDisc) {
-          return adic > 0;
-        }
-        return totalDisc > 50.009 || adic > 0;
-      });
-    }
-    return Boolean(q.hasAdditionalDiscount || q.totals?.hasAdditionalDiscount || q.totals?.requiresDiscountApproval);
-  }
-  return false;
+  return Boolean(q.hasAdditionalDiscount || q.totals?.hasAdditionalDiscount || q.totals?.requiresDiscountApproval);
 };
 
 const cleanDeliveryForm = (df) => {

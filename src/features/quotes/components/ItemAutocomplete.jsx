@@ -158,6 +158,12 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
         isNameIncludes ||
         matchesAllTerms
       ) {
+        const rawBaseList = sp.baseListDiscount;
+        const parsedBaseList =
+          rawBaseList !== undefined && rawBaseList !== null && rawBaseList !== "" && !isNaN(Number(rawBaseList))
+            ? Number(rawBaseList)
+            : null;
+
         matchingSpecialRecords.push({
           ITEM_CODE: spCode,
           ITEM_NAME: spName,
@@ -173,6 +179,8 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
           PRECIO_CONTADO: Number(sp.specialPrice || 0),
           PRECIO_CREDITO: Number(sp.listPrice || 0),
           DESCUENTO_PCT: Number(sp.discountPercent || 0),
+          DESCUENTO_LISTA_BASE: parsedBaseList,
+          baseListDiscount: parsedBaseList,
           isSpecialPrice: true,
           specialDiscount: Number(sp.discountPercent || 0),
           specialPrice: Number(sp.specialPrice || 0),
@@ -236,6 +244,17 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
         const existing = mergedMap.get(code);
         if (item.STOCK_DISPONIBLE !== undefined && item.STOCK_DISPONIBLE !== null) {
           existing.STOCK_DISPONIBLE = item.STOCK_DISPONIBLE;
+        }
+        if (
+          item.DESCUENTO_PCT !== undefined &&
+          item.DESCUENTO_PCT !== null &&
+          item.DESCUENTO_PCT !== "" &&
+          !isNaN(Number(item.DESCUENTO_PCT))
+        ) {
+          existing.DESCUENTO_LISTA_BASE = Number(item.DESCUENTO_PCT);
+          if (existing.baseListDiscount === undefined || existing.baseListDiscount === null) {
+            existing.baseListDiscount = Number(item.DESCUENTO_PCT);
+          }
         }
       }
     });
@@ -304,6 +323,14 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
       : (Number(r.PRECIO_DESCUENTO ?? r.PRECIO_VENTA ?? r.PRECIO_LISTA ?? r.Price ?? 0) || 0);
 
     const baseDiscount = isSpecialPrice ? spDiscount : (Number(r.DESCUENTO_PCT ?? r.Discount ?? 0) || 0);
+    const resolvedBaseListDiscount = isSpecialPrice
+      ? (() => {
+          const candidate = sp?.baseListDiscount ?? r.DESCUENTO_LISTA_BASE ?? r.baseListDiscount ?? null;
+          return candidate !== undefined && candidate !== null && candidate !== "" && !isNaN(Number(candidate))
+            ? Number(candidate)
+            : null;
+        })()
+      : baseDiscount;
     const effectiveStockVal = stockVal ?? (isSpecialPrice && sp?.stock !== undefined && sp?.stock !== null ? Number(sp.stock) : null);
     const effectiveStockChecked = hasValidStock || (isSpecialPrice && sp?.stock !== undefined && sp?.stock !== null);
     const effectiveIsAgotado = isAgotado || (effectiveStockChecked && effectiveStockVal === 0);
@@ -316,6 +343,7 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
       price: basePrice,
       importe: baseImporte,
       discount: baseDiscount,
+      baseListDiscount: resolvedBaseListDiscount,
       promoDiscount: isSpecialPrice ? 0 : promoDiscount,
       promoPrice: isSpecialPrice ? null : promoPrice,
       promoPriceConIGV: isSpecialPrice ? null : promoPriceConIGV,

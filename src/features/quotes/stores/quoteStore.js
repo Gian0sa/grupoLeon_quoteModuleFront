@@ -29,15 +29,40 @@ export const normalizeQuoteItem = (item) => {
   const name = item.name || item.productName || item.description || item.ItemName || item.ItemDescription || item.Dscription || "Artículo General";
   const rawPrice = Number(item.price ?? item.unitPrice ?? item.Price ?? item.UnitPrice ?? 0);
   const price = rawPrice > 0 ? rawPrice : 0;
+  const sapDiscount = Number(item.sapDiscount ?? item.discount ?? item.Discount ?? 0);
   const discount = Number(item.discount ?? item.Discount ?? item.sapDiscount ?? 0);
   const lineDiscount = Number(Number(item.lineDiscount ?? item.LineDiscount ?? 0).toFixed(2));
-  const totalDisc = Math.max(0, Math.min(80.0, Number((discount + lineDiscount).toFixed(2))));
-  const customPriceConIGV = item.customPriceConIGV !== undefined && item.customPriceConIGV !== null && !isNaN(Number(item.customPriceConIGV))
+  const isSpecialPrice = Boolean(
+    item.isSpecialPrice ||
+      item.campaignName === "Convenio Cliente" ||
+      (item.specialPrice !== undefined && item.specialPrice !== null && Number(item.specialPrice) > 0) ||
+      (item.specialDiscount !== undefined && item.specialDiscount !== null && Number(item.specialDiscount) > 0) ||
+      sapDiscount > 55.0
+  );
+  const specialDiscount = isSpecialPrice ? Number(item.specialDiscount ?? sapDiscount ?? 0) : 0;
+  const specialPrice =
+    isSpecialPrice && item.specialPrice !== undefined && item.specialPrice !== null && item.specialPrice !== "" && !isNaN(Number(item.specialPrice))
+      ? Number(item.specialPrice)
+      : (item.specialPrice ?? null);
+  const specialPriceConIGV =
+    isSpecialPrice && item.specialPriceConIGV !== undefined && item.specialPriceConIGV !== null && item.specialPriceConIGV !== "" && !isNaN(Number(item.specialPriceConIGV))
+      ? Number(item.specialPriceConIGV)
+      : (item.specialPriceConIGV ?? null);
+  const rawBaseList = item.baseListDiscount;
+  const baseListDiscount =
+    rawBaseList !== undefined && rawBaseList !== null && rawBaseList !== "" && !isNaN(Number(rawBaseList))
+      ? Number(rawBaseList)
+      : null;
+  const customPriceConIGV = item.customPriceConIGV !== undefined && item.customPriceConIGV !== null && item.customPriceConIGV !== "" && !isNaN(Number(item.customPriceConIGV))
     ? Number(item.customPriceConIGV)
     : undefined;
+  const fallbackTotalDisc = Math.max(0, Math.min(Math.max(80.0, discount), Number((discount + lineDiscount).toFixed(2))));
   const discountedUnitPrice = customPriceConIGV && customPriceConIGV > 0
-    ? Number((customPriceConIGV / 1.18).toFixed(4))
-    : Number((price * (1 - totalDisc / 100)).toFixed(4));
+    ? Number((customPriceConIGV / 1.18).toFixed(6))
+    : Number((price * (1 - fallbackTotalDisc / 100)).toFixed(6));
+  const totalDisc = customPriceConIGV && customPriceConIGV > 0 && price > 0
+    ? Math.max(0, Math.min(100, Number((((price - discountedUnitPrice) / price) * 100).toFixed(2))))
+    : fallbackTotalDisc;
 
   // Permitir temporalmente string vacío al tipear para que el usuario pueda borrar y cambiar la cantidad libremente
   const rawQty = item.quantity ?? item.Quantity;
@@ -74,7 +99,12 @@ export const normalizeQuoteItem = (item) => {
     price,
     unitPrice: price,
     discount,
-    sapDiscount: discount,
+    sapDiscount,
+    baseListDiscount,
+    isSpecialPrice,
+    specialDiscount,
+    specialPrice,
+    specialPriceConIGV,
     lineDiscount,
     customPriceConIGV,
     discountPercent: Number(totalDisc.toFixed(2)),
