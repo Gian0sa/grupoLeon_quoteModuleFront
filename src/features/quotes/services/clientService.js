@@ -8,6 +8,36 @@ import {
 import { adaptQuote } from "../adapters/quotesAdapter";
 import { useClientPointsDelivery } from "../../clients/hooks/queries/clientQueries";
 import { useQuoteStore } from "../stores/quoteStore";
+import { axiosInstance } from "../../../shared/lib/axiosInstance";
+
+/**
+ * Obtiene los precios especiales de convenio por cliente (tabla OSPP de SAP B1).
+ * @param {string} cardCode - Código de cliente SAP (ej. CL20261126568)
+ * @returns {Promise<{ cardCode: string, count: number, list: Array, map: Object }>}
+ */
+export async function fetchClientSpecialPrices(cardCode) {
+  if (!cardCode || typeof cardCode !== "string" || !cardCode.trim()) {
+    return { cardCode: "", count: 0, list: [], map: {} };
+  }
+  const cleanCode = encodeURIComponent(cardCode.trim());
+  try {
+    const response = await axiosInstance.get(`/quoteModule/clients/${cleanCode}/special-prices`);
+    const data = response?.data;
+    if (!data) {
+      return { cardCode: cardCode.trim(), count: 0, list: [], map: {} };
+    }
+    const payload = data.data || data;
+    return {
+      cardCode: payload.cardCode || cardCode.trim(),
+      count: Number(payload.count ?? (Array.isArray(payload.list) ? payload.list.length : 0)),
+      list: Array.isArray(payload.list) ? payload.list : [],
+      map: (payload.map && typeof payload.map === "object") ? payload.map : {},
+    };
+  } catch (error) {
+    console.error(`[fetchClientSpecialPrices] Error al consultar precios especiales para ${cardCode}:`, error);
+    return { cardCode: cardCode.trim(), count: 0, list: [], map: {} };
+  }
+}
 
 export function useClientService(quoteId) {
   const {

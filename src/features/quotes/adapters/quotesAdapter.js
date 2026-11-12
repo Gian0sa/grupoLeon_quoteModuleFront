@@ -17,13 +17,21 @@ export function adaptQuote(data) {
   };
 
   const products = data.items.map((item) => ({
-    id: item.productCode,
-    name: item.productName,
+    id: item.productCode || item.code || item.id,
+    name: item.productName || item.name,
     sigla: item.sigla,
-    price: item.unitPrice,
+    price: item.unitPrice ?? item.price,
     discount: item.discount,
     importe: item.importe,
     quantity: item.quantity,
+    isSpecialPrice: Boolean(item.isSpecialPrice),
+    specialDiscount: item.specialDiscount,
+    specialPrice: item.specialPrice,
+    specialPriceNeto: item.specialPriceNeto,
+    specialPriceConIGV: item.specialPriceConIGV,
+    campaignName: item.campaignName,
+    lineDiscount: item.lineDiscount || item.LineDiscount || 0,
+    customPriceConIGV: item.customPriceConIGV,
   }));
 
   return { client, products };
