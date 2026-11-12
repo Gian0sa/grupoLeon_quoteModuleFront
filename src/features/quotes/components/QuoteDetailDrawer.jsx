@@ -93,6 +93,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuoteStore } from "../stores/quoteStore";
 import { RejectReasonModal } from "./RejectReasonModal";
 import { ObserveReasonModal } from "./ObserveReasonModal";
+import { isSpecialAgreementItem, computeSapTqcBreakdown } from "../utils/discountBreakdown";
 import QuotePdfModal from "./QuotePdfModal";
 import WhatsAppQuoteModal from "./WhatsAppQuoteModal";
 import { SapPayloadJsonModal } from "./SapPayloadJsonModal";
@@ -1408,14 +1409,20 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         const sigla = p.sigla || p.Sigla || p.U_TQC_SIGLA;
         const rawPrice = Number(p.unitPrice ?? p.price ?? p.Price ?? 0);
         const sapUnitPrice = Number((rawPrice * rateMultiplier).toFixed(4));
+        const isSpecial = isSpecialAgreementItem(p);
         const sapDisc = Number(p.sapDiscount ?? p.discount ?? p.Discount ?? 0);
-        const promoDisc = Number(p.promoDiscount ?? p.PromoDiscount ?? 0);
+        const promoDisc = isSpecial ? 0 : Number(p.promoDiscount ?? p.PromoDiscount ?? 0);
         const addDisc = Number(Number(p.lineDiscount ?? p.LineDiscount ?? 0).toFixed(2));
         const totalDisc = Number(p.discountPercent ?? (sapDisc + promoDisc + addDisc));
-        const valorDescLista = Number((sapUnitPrice * (1 - sapDisc / 100)).toFixed(2));
-        const descVenta = Number(Math.max(0, totalDisc - sapDisc).toFixed(2));
 
-        return {
+        const { descListaPct, valorDescLista, descVenta } = computeSapTqcBreakdown({
+          item: p,
+          sapUnitPrice,
+          sapDisc,
+          totalDisc,
+        });
+
+        const baseProduct = {
           ...p,
           productCode: itemCode || sigla,
           itemCode: itemCode || sigla,
@@ -1432,12 +1439,23 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
           lineDiscount: addDisc,
           discountPercent: totalDisc,
           DiscountPercent: totalDisc,
+          isSpecialPrice: isSpecial,
           customPriceConIGV: p.customPriceConIGV || p.unitPriceConIGV || null,
           discountedUnitPrice: p.discountedUnitPrice || null,
-          U_TQC_DESL: sapDisc,
-          U_TQC_DELP: valorDescLista,
-          U_TQC_DESV: descVenta,
+          baseListDiscount: descListaPct,
         };
+
+        if (descListaPct !== null) {
+          baseProduct.U_TQC_DESL = descListaPct;
+          baseProduct.U_TQC_DELP = valorDescLista;
+          baseProduct.U_TQC_DESV = descVenta;
+        } else {
+          delete baseProduct.U_TQC_DESL;
+          delete baseProduct.U_TQC_DELP;
+          delete baseProduct.U_TQC_DESV;
+        }
+
+        return baseProduct;
       });
 
       const quotePayload = {
@@ -2963,15 +2981,33 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
               const targetDoc = effectiveQuote || quote;
               const quoteProducts = targetDoc?.products || targetDoc?.items || targetDoc?.totals?.products || targetDoc?.totals?.normalizedProducts || [];
               const maxAdicDiscount = quoteProducts.reduce((max, it) => {
-                const adic = Number(it.lineDiscount ?? it.LineDiscount ?? it.additionalDiscount ?? it.U_TQC_DESV ?? 0);
+                const isSpecial = isSpecialAgreementItem(it);
+                const adic = Number(
+                  it.lineDiscount ??
+                    it.LineDiscount ??
+                    it.additionalDiscount ??
+                    (isSpecial ? 0 : it.U_TQC_DESV) ??
+                    0
+                );
                 return Math.max(max, adic);
-              }, Number(targetDoc?.maxDiscount || targetDoc?.totals?.maxDiscount || 0));
-              const hasAdditionalDiscount = 
-                maxAdicDiscount > 0 || 
-                Boolean(targetDoc?.hasAdditionalDiscount) || 
-                Boolean(targetDoc?.totals?.hasAdditionalDiscount) || 
-                Boolean(targetDoc?.totals?.hasDiscount) || 
-                Boolean(targetDoc?.totals?.requiresDiscountApproval) ||
+              }, quoteProducts.length > 0 ? 0 : Number(targetDoc?.maxDiscount || targetDoc?.totals?.maxDiscount || 0));
+              const hasAnyLineApproval = quoteProducts.some((it) => {
+                const isSpecial = isSpecialAgreementItem(it);
+                const sapDisc = Number(it.sapDiscount ?? it.discount ?? 0);
+                const totalDisc = Number(it.discountPercent ?? sapDisc);
+                const adic = Number(it.lineDiscount ?? it.LineDiscount ?? it.additionalDiscount ?? 0);
+                if (isSpecial || sapDisc >= totalDisc) return adic > 0;
+                return totalDisc > 50.009 || adic > 0;
+              });
+              const hasAdditionalDiscount =
+                maxAdicDiscount > 0 ||
+                hasAnyLineApproval ||
+                (quoteProducts.length === 0 && (
+                  Boolean(targetDoc?.hasAdditionalDiscount) ||
+                  Boolean(targetDoc?.totals?.hasAdditionalDiscount) ||
+                  Boolean(targetDoc?.totals?.hasDiscount) ||
+                  Boolean(targetDoc?.totals?.requiresDiscountApproval)
+                )) ||
                 Number(targetDoc?.headerDiscount || targetDoc?.DiscountPercent || targetDoc?.discountPercent || 0) > 0;
 
               if (!hasAdditionalDiscount) return null;

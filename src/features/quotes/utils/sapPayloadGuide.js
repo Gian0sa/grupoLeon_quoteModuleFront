@@ -7,6 +7,8 @@
  * Utilizado por el Inspector Técnico SAP exclusivo para Administradores.
  */
 
+import { isSpecialAgreementItem, computeSapTqcBreakdown } from "./discountBreakdown.js";
+
 /**
  * Diccionario maestro con la explicación técnica y empresarial de cada campo en SAP B1
  */
@@ -391,13 +393,18 @@ export function buildCanonicalSapPayload(quote = {}) {
     const itemDesc = p.productName || p.description || p.name || p.ItemDescription || "Artículo sin descripción";
     const qty = Number(p.quantity || p.Quantity || 1);
     const unitPrice = Number(p.unitPrice ?? p.price ?? p.Price ?? 0);
+    const isSpecial = isSpecialAgreementItem(p);
     const sapDisc = Number(p.sapDiscount ?? p.discount ?? p.Discount ?? 0);
-    const promoDisc = Number(p.promoDiscount ?? p.PromoDiscount ?? 0);
+    const promoDisc = isSpecial ? 0 : Number(p.promoDiscount ?? p.PromoDiscount ?? 0);
     const addDisc = Number(p.lineDiscount ?? p.LineDiscount ?? 0);
     const totalDisc = Number(p.discountPercent ?? (sapDisc + promoDisc + addDisc));
     const finalPrice = Number((unitPrice * (1 - totalDisc / 100)).toFixed(2));
-    const valorDescLista = Number((unitPrice * (1 - sapDisc / 100)).toFixed(2));
-    const descVenta = Number(Math.max(0, totalDisc - sapDisc).toFixed(2));
+    const { descListaPct, valorDescLista, descVenta } = computeSapTqcBreakdown({
+      item: p,
+      sapUnitPrice: unitPrice,
+      sapDisc,
+      totalDisc,
+    });
 
     return {
       LineNum: idx,
@@ -415,9 +422,13 @@ export function buildCanonicalSapPayload(quote = {}) {
       MeasureUnit: "NIU",
       UnitsOfMeasurment: 1.0,
       ShipDate: dueDate,
-      U_TQC_DESL: sapDisc,
-      U_TQC_DELP: valorDescLista,
-      U_TQC_DESV: descVenta,
+      ...(descListaPct !== null
+        ? {
+            U_TQC_DESL: descListaPct,
+            U_TQC_DELP: valorDescLista,
+            U_TQC_DESV: descVenta,
+          }
+        : {}),
       U_BPP_OPER: "A",
       U_tipoOpT12: "99",
       U_VS_ONEROSO: "1"

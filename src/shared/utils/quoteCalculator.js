@@ -107,6 +107,10 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
       : (p.promoPriceNeto && Number(p.promoPriceNeto) > 0 ? Number(p.promoPriceNeto) : (p.promoPrice && Number(p.promoPrice) > 0 ? Number(p.promoPrice) : null));
     const hasPromoPrice = Boolean(!isOutOfStock && !isSpecial && (targetPromoNeto > 0 || targetPromoPriceConIGV > 0));
 
+    const customPrice = !isOutOfStock && (p.customPriceConIGV || p.unitPriceConIGV || p.PriceAfterVAT) && Number(p.customPriceConIGV || p.unitPriceConIGV || p.PriceAfterVAT) > 0
+      ? Number(p.customPriceConIGV || p.unitPriceConIGV || p.PriceAfterVAT)
+      : null;
+
     // Si la línea proviene directamente de un documento emitido/registrado en SAP:
     // Respetar el total de descuento y montos oficiales aprobados en SAP sin recortarlos
     const isLineFromSap = isSapDoc || Boolean(p.isSapDirect || p.fromSap);
@@ -143,14 +147,11 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
       hasAdditionalDiscount = true;
     }
 
-    const customPrice = !isOutOfStock && (p.customPriceConIGV || p.unitPriceConIGV || p.PriceAfterVAT) && Number(p.customPriceConIGV || p.unitPriceConIGV || p.PriceAfterVAT) > 0
-      ? Number(p.customPriceConIGV || p.unitPriceConIGV || p.PriceAfterVAT)
-      : null;
-
     // Regla de simulación matemática unificada 18% SUNAT / SAP B1 por línea (Lógica Inversa):
     let netUnitPrice;
     let unitTax;
     let unitPriceConIGV;
+    let resolvedBaseSpecialConIGV = 0;
 
     if (isOutOfStock) {
       netUnitPrice = 0;
@@ -168,8 +169,18 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
       const baseSpecialConIGV = targetSpecialPriceConIGV > 0
         ? targetSpecialPriceConIGV
         : (listPrice > 0 && specialDisc > 0 ? Number((Number((listPrice * 1.18).toFixed(2)) * (1 - specialDisc / 100)).toFixed(2)) : Number((baseSpecialNeto * 1.18).toFixed(2)));
+      resolvedBaseSpecialConIGV = baseSpecialConIGV;
       const clampedAddDisc = Math.min(0, addDisc);
-      if (clampedAddDisc === 0) {
+      if (customPrice && customPrice >= baseSpecialConIGV - 0.02) {
+        unitPriceConIGV = Number(customPrice.toFixed(2));
+        netUnitPrice = Number((unitPriceConIGV / 1.18).toFixed(6));
+        const finalNet2 = Number(netUnitPrice.toFixed(2));
+        unitTax = Number((unitPriceConIGV - finalNet2).toFixed(2));
+        if (listPrice > 0) {
+          totalDisc = Math.min(specialDisc, Math.max(0, Number((((listPrice - netUnitPrice) / listPrice) * 100).toFixed(2))));
+          addDisc = Number((totalDisc - specialDisc).toFixed(2));
+        }
+      } else if (clampedAddDisc === 0) {
         unitPriceConIGV = Number(baseSpecialConIGV.toFixed(2));
         netUnitPrice = Number((unitPriceConIGV / 1.18).toFixed(6));
         const finalNet2 = Number(netUnitPrice.toFixed(2));
@@ -179,6 +190,9 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
         const finalNet2 = Number(netUnitPrice.toFixed(2));
         unitTax = Number((finalNet2 * 0.18).toFixed(2));
         unitPriceConIGV = Number((finalNet2 + unitTax).toFixed(2));
+        if (listPrice > 0) {
+          totalDisc = Math.min(specialDisc, Math.max(0, Number((((listPrice - netUnitPrice) / listPrice) * 100).toFixed(2))));
+        }
       }
     } else if (customPrice) {
       // Lógica Inversa oficial con IGV
@@ -259,7 +273,7 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
       taxTotal: lineTax,
       igvLine: lineTax,
       requiresApproval,
-      isHigherMargin: !isOutOfStock && addDisc < 0,
+      isHigherMargin: !isOutOfStock && (addDisc < 0 || Boolean(hasSpecialPrice && customPrice && resolvedBaseSpecialConIGV > 0 && unitPriceConIGV > resolvedBaseSpecialConIGV + 0.009)),
       isVolumeDiscount: isVolumeLine,
       isExceedingCeiling: !isOutOfStock && !isLineFromSap && !hasSpecialPrice && (sapDisc + promoDisc + addDisc > MAX_DISCOUNT_CEILING + 0.01),
       isOutOfStock,

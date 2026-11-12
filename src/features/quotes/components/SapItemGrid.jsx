@@ -111,6 +111,16 @@ export default function SapItemGrid({
     const specialDiscount = isSpecial ? Number(sp?.discountPercent ?? selectedItem.specialDiscount ?? selectedItem.discount ?? 0) : 0;
     const specialPrice = isSpecial ? Number(sp?.specialPrice ?? selectedItem.specialPrice ?? 0) : null;
     const specialPriceConIGV = isSpecial ? Number(sp?.specialPriceConIGV ?? selectedItem.specialPriceConIGV ?? 0) : null;
+    const rawBaseListDiscount = isSpecial
+      ? (sp?.baseListDiscount ?? selectedItem.baseListDiscount ?? null)
+      : Number(selectedItem.discount || 0);
+    const baseListDiscount =
+      rawBaseListDiscount !== undefined &&
+      rawBaseListDiscount !== null &&
+      rawBaseListDiscount !== "" &&
+      !isNaN(Number(rawBaseListDiscount))
+        ? Number(rawBaseListDiscount)
+        : null;
 
     onAddProduct({
       id: itemId,
@@ -122,6 +132,7 @@ export default function SapItemGrid({
       isTestFallback: !hasSapPrice,
       isPriceFromSap: hasSapPrice,
       discount: isSpecial ? specialDiscount : (selectedItem.discount || 0),
+      baseListDiscount,
       promoDiscount: isSpecial ? 0 : promoDiscount,
       promoPrice: isSpecial ? null : promoPrice,
       promoPriceConIGV: isSpecial ? null : promoPriceConIGV,
@@ -146,6 +157,12 @@ export default function SapItemGrid({
   };
 
   const handleAddFromSpecialModal = (sp) => {
+    const rawBaseList = sp.baseListDiscount;
+    const baseListDiscount =
+      rawBaseList !== undefined && rawBaseList !== null && rawBaseList !== "" && !isNaN(Number(rawBaseList))
+        ? Number(rawBaseList)
+        : null;
+
     handleItemSelect({
       id: sp.itemCode,
       code: sp.itemCode,
@@ -154,6 +171,7 @@ export default function SapItemGrid({
       price: Number(sp.listPrice || 0),
       importe: Number(sp.specialPrice || 0),
       discount: Number(sp.discountPercent || 0),
+      baseListDiscount,
       isSpecialPrice: true,
       specialDiscount: Number(sp.discountPercent || 0),
       specialPrice: Number(sp.specialPrice || 0),
@@ -349,7 +367,7 @@ export default function SapItemGrid({
               ? Number((targetPromoPriceConIGV / 1.18).toFixed(6))
               : ((!isOutOfStock && !isSpecial) ? (item.promoPriceNeto && Number(item.promoPriceNeto) > 0 ? Number(item.promoPriceNeto) : (promoInfo?.promoPriceNeto && Number(promoInfo.promoPriceNeto) > 0 ? Number(promoInfo.promoPriceNeto) : null)) : null);
             const hasPromoPrice = Boolean(!isOutOfStock && !isSpecial && (targetPromoNeto > 0 || targetPromoPriceConIGV > 0));
-            const addDisc = isOutOfStock ? 0 : Number(Number(item.lineDiscount || 0).toFixed(2));
+            let addDisc = isOutOfStock ? 0 : Number(Number(item.lineDiscount || 0).toFixed(2));
             const hasPromo = Boolean(hasPromoPrice || promoDisc > 0);
 
             const customPrice = !isOutOfStock && item.customPriceConIGV && Number(item.customPriceConIGV) > 0
@@ -367,17 +385,27 @@ export default function SapItemGrid({
                 ? targetSpecialPriceConIGV
                 : (price > 0 && specialDisc > 0 ? Number((Number((price * 1.18).toFixed(2)) * (1 - specialDisc / 100)).toFixed(2)) : Number((baseSpecialNeto * 1.18).toFixed(2)));
               const clampedAddDisc = Math.min(0, addDisc);
-              if (clampedAddDisc === 0) {
+              if (customPrice && customPrice >= baseSpecialConIGV - 0.02) {
+                unitPriceConIGV = Number(customPrice.toFixed(2));
+                netUnitPrice = Number((unitPriceConIGV / 1.18).toFixed(6));
+                totalDisc = price > 0
+                  ? Math.min(specialDisc, Math.max(0, Number((((price - netUnitPrice) / price) * 100).toFixed(2))))
+                  : specialDisc;
+                addDisc = Number((totalDisc - specialDisc).toFixed(2));
+              } else if (clampedAddDisc === 0) {
                 unitPriceConIGV = Number(baseSpecialConIGV.toFixed(2));
                 netUnitPrice = Number((unitPriceConIGV / 1.18).toFixed(6));
+                totalDisc = price > 0
+                  ? Math.min(specialDisc, Math.max(0, Number((((price - netUnitPrice) / price) * 100).toFixed(2))))
+                  : specialDisc;
               } else {
                 netUnitPrice = Number((baseSpecialNeto * (1 - clampedAddDisc / 100)).toFixed(6));
                 const finalNet2 = Number(netUnitPrice.toFixed(2));
                 unitPriceConIGV = Number((finalNet2 + Number((finalNet2 * 0.18).toFixed(2))).toFixed(2));
+                totalDisc = price > 0
+                  ? Math.min(specialDisc, Math.max(0, Number((((price - netUnitPrice) / price) * 100).toFixed(2))))
+                  : specialDisc;
               }
-              totalDisc = price > 0
-                ? Math.min(specialDisc, Math.max(0, Number((((price - netUnitPrice) / price) * 100).toFixed(2))))
-                : specialDisc;
             } else if (customPrice) {
               unitPriceConIGV = Number(customPrice.toFixed(2));
               netUnitPrice = Number((unitPriceConIGV / 1.18).toFixed(6));
@@ -747,7 +775,7 @@ export default function SapItemGrid({
                     ? Number((targetPromoPriceConIGV / 1.18).toFixed(6))
                     : ((!isOutOfStock && !isSpecial) ? (item.promoPriceNeto && Number(item.promoPriceNeto) > 0 ? Number(item.promoPriceNeto) : (promoInfo?.promoPriceNeto && Number(promoInfo.promoPriceNeto) > 0 ? Number(promoInfo.promoPriceNeto) : null)) : null);
                   const hasPromoPrice = Boolean(!isOutOfStock && !isSpecial && (targetPromoNeto > 0 || targetPromoPriceConIGV > 0));
-                  const addDisc = isOutOfStock ? 0 : Number(Number(item.lineDiscount || 0).toFixed(2));
+                  let addDisc = isOutOfStock ? 0 : Number(Number(item.lineDiscount || 0).toFixed(2));
                   const hasPromo = Boolean(hasPromoPrice || promoDisc > 0);
 
                   // Si el usuario fijó un precio unitario con IGV exacto (ej. $10.00 exactos), respetarlo fielmente
@@ -766,17 +794,27 @@ export default function SapItemGrid({
                       ? targetSpecialPriceConIGV
                       : (price > 0 && specialDisc > 0 ? Number((Number((price * 1.18).toFixed(2)) * (1 - specialDisc / 100)).toFixed(2)) : Number((baseSpecialNeto * 1.18).toFixed(2)));
                     const clampedAddDisc = Math.min(0, addDisc);
-                    if (clampedAddDisc === 0) {
+                    if (customPrice && customPrice >= baseSpecialConIGV - 0.02) {
+                      unitPriceConIGV = Number(customPrice.toFixed(2));
+                      netUnitPrice = Number((unitPriceConIGV / 1.18).toFixed(6));
+                      totalDisc = price > 0
+                        ? Math.min(specialDisc, Math.max(0, Number((((price - netUnitPrice) / price) * 100).toFixed(2))))
+                        : specialDisc;
+                      addDisc = Number((totalDisc - specialDisc).toFixed(2));
+                    } else if (clampedAddDisc === 0) {
                       unitPriceConIGV = Number(baseSpecialConIGV.toFixed(2));
                       netUnitPrice = Number((unitPriceConIGV / 1.18).toFixed(6));
+                      totalDisc = price > 0
+                        ? Math.min(specialDisc, Math.max(0, Number((((price - netUnitPrice) / price) * 100).toFixed(2))))
+                        : specialDisc;
                     } else {
                       netUnitPrice = Number((baseSpecialNeto * (1 - clampedAddDisc / 100)).toFixed(6));
                       const finalNet2 = Number(netUnitPrice.toFixed(2));
                       unitPriceConIGV = Number((finalNet2 + Number((finalNet2 * 0.18).toFixed(2))).toFixed(2));
+                      totalDisc = price > 0
+                        ? Math.min(specialDisc, Math.max(0, Number((((price - netUnitPrice) / price) * 100).toFixed(2))))
+                        : specialDisc;
                     }
-                    totalDisc = price > 0
-                      ? Math.min(specialDisc, Math.max(0, Number((((price - netUnitPrice) / price) * 100).toFixed(2))))
-                      : specialDisc;
                   } else if (customPrice) {
                     unitPriceConIGV = Number(customPrice.toFixed(2));
                     netUnitPrice = Number((unitPriceConIGV / 1.18).toFixed(6));

@@ -175,9 +175,7 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount, s
       const netTarget = valNum / (1 + TAX_RATE);
       const calculatedTotalDisc = ((basePrice - netTarget) / basePrice) * 100;
       const rawAddDisc = calculatedTotalDisc - baseFixedDisc;
-      const clampedAddDisc = isSpecial
-        ? 0
-        : Math.max(minAllowedAddDisc, Math.min(maxAllowedAddDisc, Number(rawAddDisc.toFixed(4))));
+      const clampedAddDisc = Math.max(minAllowedAddDisc, Math.min(maxAllowedAddDisc, Number(rawAddDisc.toFixed(4))));
       setCurrentDisc(clampedAddDisc);
     }
   };
@@ -211,9 +209,7 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount, s
       const netTarget = exactPrice / (1 + TAX_RATE);
       const calculatedTotalDisc = ((basePrice - netTarget) / basePrice) * 100;
       const rawAddDisc = calculatedTotalDisc - baseFixedDisc;
-      const clampedAddDisc = isSpecial
-        ? 0
-        : Math.max(minAllowedAddDisc, Math.min(maxAllowedAddDisc, Number(rawAddDisc.toFixed(4))));
+      const clampedAddDisc = Math.max(minAllowedAddDisc, Math.min(maxAllowedAddDisc, Number(rawAddDisc.toFixed(4))));
       setCurrentDisc(clampedAddDisc);
     }
   };
@@ -229,9 +225,7 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount, s
       const netTarget = nextVal / (1 + TAX_RATE);
       const calculatedTotalDisc = ((basePrice - netTarget) / basePrice) * 100;
       const rawAddDisc = calculatedTotalDisc - baseFixedDisc;
-      const clampedAddDisc = isSpecial
-        ? 0
-        : Math.max(minAllowedAddDisc, Math.min(maxAllowedAddDisc, Number(rawAddDisc.toFixed(4))));
+      const clampedAddDisc = Math.max(minAllowedAddDisc, Math.min(maxAllowedAddDisc, Number(rawAddDisc.toFixed(4))));
       setCurrentDisc(clampedAddDisc);
     }
   };
@@ -246,9 +240,7 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount, s
       const netTarget = nextVal / (1 + TAX_RATE);
       const calculatedTotalDisc = ((basePrice - netTarget) / basePrice) * 100;
       const rawAddDisc = calculatedTotalDisc - baseFixedDisc;
-      const clampedAddDisc = isSpecial
-        ? 0
-        : Math.max(minAllowedAddDisc, Math.min(maxAllowedAddDisc, Number(rawAddDisc.toFixed(4))));
+      const clampedAddDisc = Math.max(minAllowedAddDisc, Math.min(maxAllowedAddDisc, Number(rawAddDisc.toFixed(4))));
       setCurrentDisc(clampedAddDisc);
     }
   };
