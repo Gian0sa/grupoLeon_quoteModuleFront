@@ -208,13 +208,20 @@ export function useQuoteSocket() {
       }
 
       if (isForMe) {
+        const freshNotif = {
+          ...notif,
+          read: false,
+          createdAt: notif.createdAt || new Date().toISOString(),
+          timestamp: notif.timestamp || new Date().toISOString(),
+        };
+
         try {
           const raw = localStorage.getItem("grupoLeon_notifications");
           const all = raw ? JSON.parse(raw) : [];
           // Deduplicar: 1 sola alerta canónica por cotización
-          const rawQ = String(notif.quoteId || notif.id || "").trim();
-          const matchWeb = String(notif.title || "").match(/COT-WEB-(\d+)/i) || 
-                           String(notif.title || "").match(/COT-(\d+)/i) ||
+          const rawQ = String(freshNotif.quoteId || freshNotif.id || "").trim();
+          const matchWeb = String(freshNotif.title || "").match(/COT-WEB-(\d+)/i) || 
+                           String(freshNotif.title || "").match(/COT-(\d+)/i) ||
                            rawQ.match(/COT-WEB-(\d+)/i) || 
                            rawQ.match(/COT-(\d+)/i) || 
                            rawQ.match(/^(\d+)$/);
@@ -231,8 +238,37 @@ export function useQuoteSocket() {
             return nCanonical !== canonicalTarget;
           });
 
-          localStorage.setItem("grupoLeon_notifications", JSON.stringify([notif, ...remaining]));
+          // Poner SIEMPRE la nueva notificación de primera (índice 0)
+          localStorage.setItem("grupoLeon_notifications", JSON.stringify([freshNotif, ...remaining]));
         } catch {}
+
+        // Inyectar de inmediato como primera en la caché de React Query (0ms de latencia)
+        queryClient.setQueriesData({ queryKey: ["notifications"] }, (old) => {
+          if (!Array.isArray(old)) return [freshNotif];
+          const rawQ = String(freshNotif.quoteId || freshNotif.id || "").trim();
+          const matchWeb = String(freshNotif.title || "").match(/COT-WEB-(\d+)/i) || 
+                           String(freshNotif.title || "").match(/COT-(\d+)/i) ||
+                           rawQ.match(/COT-WEB-(\d+)/i) || 
+                           rawQ.match(/COT-(\d+)/i) || 
+                           rawQ.match(/^(\d+)$/);
+          const canonicalTarget = matchWeb ? `QUOTE-${Number(matchWeb[1])}` : rawQ;
+
+          const remaining = old.filter(n => {
+            const nQ = String(n.quoteId || n.id || "").trim();
+            const nMatch = String(n.title || "").match(/COT-WEB-(\d+)/i) || 
+                           String(n.title || "").match(/COT-(\d+)/i) ||
+                           nQ.match(/COT-WEB-(\d+)/i) || 
+                           nQ.match(/COT-(\d+)/i) || 
+                           nQ.match(/^(\d+)$/);
+            const nCanonical = nMatch ? `QUOTE-${Number(nMatch[1])}` : nQ;
+            return nCanonical !== canonicalTarget;
+          });
+
+          return [freshNotif, ...remaining];
+        });
+
+        // Notificar en el acto al drawer y al banner
+        window.dispatchEvent(new Event("localNotificationsUpdated"));
       }
 
       scheduleRefresh({ notifications: true });

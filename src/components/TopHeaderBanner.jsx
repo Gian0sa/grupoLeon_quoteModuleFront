@@ -21,6 +21,7 @@ import { useAuthStore } from "../features/auth/stores/useAuthStore";
 import { useNotifications } from "../features/quotes/hooks/queries/quotesQueries";
 import { useIsAdmin } from "../shared/utils/permissions";
 import { QUERY_KEYS } from "../shared/utils/queryKeys";
+import { subscribeToPush } from "../shared/services/pushNotificationService";
 
 export const HEADER_BRAND_IMAGE = "/assets/header-brand-bg.webp";
 export const HEADER_MAIN_BG = "linear-gradient(135deg, #0e572b 0%, #126C36 50%, #0b4a24 100%)";
@@ -88,32 +89,17 @@ export function TopHeaderBanner({
   );
 
   const notifCount = React.useMemo(() => {
-    let combined = [];
-
-    if (serverNotifs && Array.isArray(serverNotifs)) {
-      combined = [...serverNotifs];
-      try {
-        const raw = localStorage.getItem("grupoLeon_notifications");
-        const saved = raw ? JSON.parse(raw) : [];
-        if (Array.isArray(saved)) {
-          const now = Date.now();
-          const serverIds = new Set(serverNotifs.map(s => String(s.id)));
-          const serverQuoteIds = new Set(serverNotifs.map(s => String(s.quoteId)));
-          const recentLocal = saved.filter(sn => {
-            if (sn.read) return false;
-            const time = sn.createdAt || sn.timestamp ? new Date(sn.createdAt || sn.timestamp).getTime() : 0;
-            const isFresh = (now - time) < 15000;
-            return isFresh && !serverIds.has(String(sn.id)) && !serverQuoteIds.has(String(sn.quoteId));
-          });
-          combined = [...recentLocal, ...combined];
-        }
-      } catch {}
-    } else {
-      try {
-        const saved = JSON.parse(localStorage.getItem("grupoLeon_notifications") || "[]");
-        combined = Array.isArray(saved) ? [...saved] : [];
-      } catch {}
+    let rawLocal = [];
+    try {
+      const raw = localStorage.getItem("grupoLeon_notifications");
+      rawLocal = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(rawLocal)) rawLocal = [];
+    } catch {
+      rawLocal = [];
     }
+
+    const serverList = Array.isArray(serverNotifs) ? serverNotifs : [];
+    const combined = [...rawLocal, ...serverList];
 
     const filtered = combined.filter((n) => {
       if (!n || !n.title || n.read) return false;
@@ -374,7 +360,7 @@ export function TopHeaderBanner({
                     Notification.requestPermission()
                       .then((perm) => {
                         if (perm === "granted") {
-                          import("../shared/services/pushNotificationService").then((m) => m.subscribeToPush()).catch(() => {});
+                          subscribeToPush().catch(() => {});
                         }
                       })
                       .catch(() => {});

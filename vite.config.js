@@ -52,6 +52,7 @@ export default defineConfig({
             // React va en su propio chunk: si no, Rollup lo mete dentro de vendor-charts
             // (recharts depende de él) y la app descarga y parsea recharts en cada arranque.
             if (/[\\/]node_modules[\\/](react|react-dom|scheduler|react-is)[\\/]/.test(id)) return 'vendor-react';
+            if (id.includes('@chakra-ui') || id.includes('@emotion') || id.includes('framer-motion')) return 'vendor-chakra';
             if (id.includes('xlsx') || id.includes('exceljs')) return 'vendor-excel';
             if (id.includes('html2canvas') || id.includes('jspdf')) return 'vendor-pdf';
             if (id.includes('leaflet')) return 'vendor-maps';

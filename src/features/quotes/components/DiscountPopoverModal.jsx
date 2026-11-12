@@ -31,8 +31,8 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount, s
 
   const itemCode = item?.code || item?.productCode || item?.itemCode || item?.id || "";
   const spItem = (specialPricesMap && (specialPricesMap[itemCode] || specialPricesMap[item?.id] || specialPricesMap[item?.code])) || null;
-  const isSpecial = Boolean(item?.isSpecialPrice || spItem || (item?.specialDiscount && Number(item.specialDiscount) > 0));
-  const specialDisc = isSpecial ? Number(item?.specialDiscount ?? spItem?.discountPercent ?? item?.discount ?? 0) : 0;
+  const isSpecial = Boolean(item?.isSpecialPrice || spItem || (item?.specialDiscount && Number(item.specialDiscount) > 0) || Number(item?.discount || item?.sapDiscount || 0) > 55.0);
+  const specialDisc = isSpecial ? Number(item?.specialDiscount ?? spItem?.discountPercent ?? item?.discount ?? item?.sapDiscount ?? 0) : 0;
   const specialPriceNeto = isSpecial ? Number(item?.specialPrice ?? item?.specialPriceNeto ?? spItem?.specialPrice ?? 0) : null;
   const specialPriceConIGV = isSpecial ? Number(item?.specialPriceConIGV ?? spItem?.specialPriceConIGV ?? (specialPriceNeto ? Number((specialPriceNeto * (1 + TAX_RATE)).toFixed(2)) : 0)) : null;
 
@@ -59,26 +59,37 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount, s
   const hasPromo = Boolean(!isSpecial && (promoDisc > 0 || item?.promoPrice || item?.U_US_PROMO));
   const isEligibleForVolume = qty > VOLUME_MIN_QUANTITY;
   const applicableCeiling = isSpecial
-    ? specialDisc
+    ? Math.max(specialDisc, REGULAR_DISCOUNT_CEILING)
     : (hasPromo 
         ? Math.max(baseFixedDisc, REGULAR_DISCOUNT_CEILING) 
-        : REGULAR_DISCOUNT_CEILING);
+        : Math.max(REGULAR_DISCOUNT_CEILING, sapDisc));
 
   // Precios sugeridos con descuento base (SAP / Convenio + Promo)
-  const priceWithBaseSinIGV = isSpecial && specialPriceNeto > 0
-    ? specialPriceNeto
+  // Respetar precio de lista y lógica inversa del IGV para artículos de convenio
+  const calculatedSpecialPriceConIGV = isSpecial && basePriceConIGV > 0 && specialDisc > 0
+    ? Number((basePriceConIGV * (1 - specialDisc / 100)).toFixed(2))
+    : null;
+  const effectiveSpecialPriceConIGV = isSpecial
+    ? (calculatedSpecialPriceConIGV || specialPriceConIGV)
+    : null;
+  const effectiveSpecialPriceNeto = isSpecial && effectiveSpecialPriceConIGV > 0
+    ? Number((effectiveSpecialPriceConIGV / (1 + TAX_RATE)).toFixed(2))
+    : specialPriceNeto;
+
+  const priceWithBaseSinIGV = isSpecial && effectiveSpecialPriceNeto > 0
+    ? effectiveSpecialPriceNeto
     : Number((basePrice * (1 - baseFixedDisc / 100)).toFixed(2));
-  const priceWithBaseConIGV = isSpecial && specialPriceConIGV > 0
-    ? specialPriceConIGV
+  const priceWithBaseConIGV = isSpecial && effectiveSpecialPriceConIGV > 0
+    ? effectiveSpecialPriceConIGV
     : Number((priceWithBaseSinIGV * (1 + TAX_RATE)).toFixed(2));
 
   // Precios límite oficiales con IGV
   const priceCeilingConIGV = basePriceConIGV;
-  const priceFloorSinIGV = isSpecial && specialPriceNeto > 0
-    ? specialPriceNeto
+  const priceFloorSinIGV = isSpecial && effectiveSpecialPriceNeto > 0
+    ? effectiveSpecialPriceNeto
     : Number((basePrice * (1 - applicableCeiling / 100)).toFixed(2));
-  const priceFloorConIGV = isSpecial && specialPriceConIGV > 0
-    ? specialPriceConIGV
+  const priceFloorConIGV = isSpecial && effectiveSpecialPriceConIGV > 0
+    ? effectiveSpecialPriceConIGV
     : Number((priceFloorSinIGV * (1 + TAX_RATE)).toFixed(2));
 
   // Límites de ajuste de descuento adicional:
@@ -92,14 +103,14 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount, s
       setCurrentDisc(existingAddDisc);
       if (item.customPriceConIGV && Number(item.customPriceConIGV) > 0) {
         setPriceInputStr(Number(item.customPriceConIGV).toFixed(2));
-      } else if (isSpecial && specialPriceConIGV > 0 && (!existingAddDisc || existingAddDisc === 0)) {
-        setPriceInputStr(Number(specialPriceConIGV).toFixed(2));
+      } else if (isSpecial && effectiveSpecialPriceConIGV > 0 && (!existingAddDisc || existingAddDisc === 0)) {
+        setPriceInputStr(Number(effectiveSpecialPriceConIGV).toFixed(2));
       } else {
         const effectiveNetPrice = Number((basePrice * (1 - (baseFixedDisc + existingAddDisc) / 100)).toFixed(4));
         setPriceInputStr((effectiveNetPrice * (1 + TAX_RATE)).toFixed(2));
       }
     }
-  }, [item, isOpen, basePrice, baseFixedDisc, maxAllowedAddDisc, minAllowedAddDisc, isSpecial, specialPriceConIGV]);
+  }, [item, isOpen, basePrice, baseFixedDisc, maxAllowedAddDisc, minAllowedAddDisc, isSpecial, effectiveSpecialPriceConIGV]);
 
   if (!item) return null;
 
@@ -127,7 +138,9 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount, s
   const rawTotalDisc = basePrice > 0 ? ((basePrice - netTarget) / basePrice) * 100 : 0;
   const effectiveTotalDiscPct = Number(Math.max(0, Math.min(applicableCeiling, rawTotalDisc)).toFixed(2));
 
-  const isExceedingCeiling = rawTotalDisc > applicableCeiling + 0.01;
+  const isExceedingCeiling = isSpecial
+    ? (finalUnitPriceConIGV < priceFloorConIGV - 0.02)
+    : (rawTotalDisc > applicableCeiling + 0.01);
   const isVolumeDiscount = isEligibleForVolume && effectiveTotalDiscPct > APPROVAL_DISCOUNT_THRESHOLD + 0.01;
   const isDiscountAboveThreshold = effectiveTotalDiscPct > APPROVAL_DISCOUNT_THRESHOLD + 0.009;
   const isPriceDiscounted = finalUnitPriceConIGV < priceWithBaseConIGV - 0.009;
@@ -162,7 +175,9 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount, s
       const netTarget = valNum / (1 + TAX_RATE);
       const calculatedTotalDisc = ((basePrice - netTarget) / basePrice) * 100;
       const rawAddDisc = calculatedTotalDisc - baseFixedDisc;
-      const clampedAddDisc = Math.max(minAllowedAddDisc, Math.min(maxAllowedAddDisc, Number(rawAddDisc.toFixed(4))));
+      const clampedAddDisc = isSpecial
+        ? 0
+        : Math.max(minAllowedAddDisc, Math.min(maxAllowedAddDisc, Number(rawAddDisc.toFixed(4))));
       setCurrentDisc(clampedAddDisc);
     }
   };
@@ -182,7 +197,7 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount, s
       return;
     }
 
-    if (valNum < priceFloorConIGV) {
+    if (valNum < priceFloorConIGV - 0.02) {
       valNum = priceFloorConIGV;
     } else if (valNum > priceCeilingConIGV) {
       valNum = priceCeilingConIGV;
@@ -196,7 +211,9 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount, s
       const netTarget = exactPrice / (1 + TAX_RATE);
       const calculatedTotalDisc = ((basePrice - netTarget) / basePrice) * 100;
       const rawAddDisc = calculatedTotalDisc - baseFixedDisc;
-      const clampedAddDisc = Math.max(minAllowedAddDisc, Math.min(maxAllowedAddDisc, Number(rawAddDisc.toFixed(4))));
+      const clampedAddDisc = isSpecial
+        ? 0
+        : Math.max(minAllowedAddDisc, Math.min(maxAllowedAddDisc, Number(rawAddDisc.toFixed(4))));
       setCurrentDisc(clampedAddDisc);
     }
   };
@@ -212,7 +229,9 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount, s
       const netTarget = nextVal / (1 + TAX_RATE);
       const calculatedTotalDisc = ((basePrice - netTarget) / basePrice) * 100;
       const rawAddDisc = calculatedTotalDisc - baseFixedDisc;
-      const clampedAddDisc = Math.max(minAllowedAddDisc, Math.min(maxAllowedAddDisc, Number(rawAddDisc.toFixed(4))));
+      const clampedAddDisc = isSpecial
+        ? 0
+        : Math.max(minAllowedAddDisc, Math.min(maxAllowedAddDisc, Number(rawAddDisc.toFixed(4))));
       setCurrentDisc(clampedAddDisc);
     }
   };
@@ -227,7 +246,9 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount, s
       const netTarget = nextVal / (1 + TAX_RATE);
       const calculatedTotalDisc = ((basePrice - netTarget) / basePrice) * 100;
       const rawAddDisc = calculatedTotalDisc - baseFixedDisc;
-      const clampedAddDisc = Math.max(minAllowedAddDisc, Math.min(maxAllowedAddDisc, Number(rawAddDisc.toFixed(4))));
+      const clampedAddDisc = isSpecial
+        ? 0
+        : Math.max(minAllowedAddDisc, Math.min(maxAllowedAddDisc, Number(rawAddDisc.toFixed(4))));
       setCurrentDisc(clampedAddDisc);
     }
   };

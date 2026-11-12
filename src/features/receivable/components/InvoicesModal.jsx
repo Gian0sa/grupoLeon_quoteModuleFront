@@ -125,15 +125,24 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
     return { label: fallbackLabel, cuotaLabel: condicion || "Comprobante", color: "gray", icon: FileText };
   };
 
+  const formatNumber = (val, decimals = 2) => {
+    const num = Number(val || 0);
+    return num.toLocaleString("en-US", {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    });
+  };
+
   const formatMoney = (doc) => {
     const currency = doc.moneda || doc.tipoCambio || doc.TIPOCAMBIO || "USD";
     const symbol = currency === "PEN" || currency === "SOL" ? "S/" : "$";
-    const saldo = doc.saldoPendiente
-      ? (currency === "PEN" || currency === "SOL" ? doc.saldoPendiente.PEN : doc.saldoPendiente.USD)
-      : doc.totalDocumento;
+    let saldo = doc.saldoPendiente;
+    if (saldo && typeof saldo === "object") {
+      saldo = currency === "PEN" || currency === "SOL" ? saldo.PEN : saldo.USD;
+    }
     const num = Number(saldo ?? doc.totalDocumento ?? 0);
     const prefix = num < 0 ? "-" : "";
-    return `${prefix}${symbol} ${Math.abs(num).toFixed(2)}`;
+    return `${prefix}${symbol} ${formatNumber(Math.abs(num))}`;
   };
 
   // Helper para desglose financiero (Total Factura - Descuento NC = Saldo a Pagar)
@@ -668,6 +677,33 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
                         >
                           {formatMoney(doc)}
                         </Text>
+                        {(() => {
+                          const curr = (doc.moneda || doc.tipoCambio || doc.TIPOCAMBIO || "USD").toUpperCase();
+                          const isPEN = curr.includes("PEN") || curr.includes("SOL") || curr.includes("S/");
+                          if (!isPEN) return null;
+                          
+                          const rawVal = doc.saldoPendiente
+                            ? (typeof doc.saldoPendiente === "object" ? doc.saldoPendiente.PEN : doc.saldoPendiente)
+                            : doc.totalDocumento;
+                          const saldoNum = Math.abs(Number(rawVal ?? doc.totalDocumento ?? 0));
+                          let equivUSD = 0;
+                          let rate = Number(doc.docRate || doc.DocRate || doc.DOCRATE || 0);
+
+                          if (doc.saldoUsdEquivalente != null && !isNaN(Number(doc.saldoUsdEquivalente))) {
+                            equivUSD = Math.abs(Number(doc.saldoUsdEquivalente));
+                          } else if (doc.SALDO_SYS != null && !isNaN(Number(doc.SALDO_SYS))) {
+                            equivUSD = Math.abs(Number(doc.SALDO_SYS));
+                          } else {
+                            if (!rate || rate <= 0) rate = 3.371;
+                            equivUSD = Number((saldoNum / rate).toFixed(2));
+                          }
+
+                          return (
+                            <Text fontSize="10px" color="blue.600" fontWeight="700">
+                              ≈ $ {formatNumber(equivUSD)} USD
+                            </Text>
+                          );
+                        })()}
                       </VStack>
                     </Flex>
 
@@ -929,7 +965,7 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
 
                               return (
                                 <Text fontSize="10px" color="blue.600" fontWeight="700" whiteSpace="nowrap">
-                                  ≈ $ {equivUSD.toFixed(2)} USD{" "}
+                                  ≈ $ {formatNumber(equivUSD)} USD{" "}
                                   <span style={{ color: "#64748b", fontWeight: "500", fontSize: "9px" }}>
                                     (T.C. {rate.toFixed(3)})
                                   </span>
@@ -1064,71 +1100,71 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
                       <VStack align="flex-end" spacing={1} ml="auto">
                         {calcSummary.totalFacturasUSD > 0 && (
                           <Text fontSize="11.5px" color="gray.700" fontWeight="700">
-                            Facturas USD: <strong>$ {calcSummary.totalFacturasUSD.toFixed(2)}</strong>
+                            Facturas USD: <strong>$ {formatNumber(calcSummary.totalFacturasUSD)}</strong>
                           </Text>
                         )}
                         {calcSummary.totalFacturasPEN > 0 && (
                           <Text fontSize="11.5px" color="gray.700" fontWeight="700">
-                            Facturas PEN: <strong>S/ {calcSummary.totalFacturasPEN.toFixed(2)}</strong>{" "}
+                            Facturas PEN: <strong>S/ {formatNumber(calcSummary.totalFacturasPEN)}</strong>{" "}
                             <span style={{ color: "#2563eb", fontWeight: "700" }}>
-                              (≈ $ {calcSummary.totalFacturasPENEquivUSD.toFixed(2)} USD)
+                              (≈ $ {formatNumber(calcSummary.totalFacturasPENEquivUSD)} USD)
                             </span>
                           </Text>
                         )}
                         {calcSummary.totalFacturasUSD > 0 && calcSummary.totalFacturasPEN > 0 && (
                           <Text fontSize="11.5px" color="gray.900" fontWeight="800">
-                            Subtotal Facturas: <strong>$ {calcSummary.crystalFacturasUSD.toFixed(2)} USD</strong>
+                            Subtotal Facturas: <strong>$ {formatNumber(calcSummary.crystalFacturasUSD)} USD</strong>
                           </Text>
                         )}
                         {/* Boletas */}
                         {calcSummary.totalBoletasUSD > 0 && (
                           <Text fontSize="11.5px" color="gray.700" fontWeight="700">
-                            Boletas USD: <strong>$ {calcSummary.totalBoletasUSD.toFixed(2)}</strong>
+                            Boletas USD: <strong>$ {formatNumber(calcSummary.totalBoletasUSD)}</strong>
                           </Text>
                         )}
                         {calcSummary.totalBoletasPEN > 0 && (
                           <Text fontSize="11.5px" color="gray.700" fontWeight="700">
-                            Boletas PEN: <strong>S/ {calcSummary.totalBoletasPEN.toFixed(2)}</strong>{" "}
+                            Boletas PEN: <strong>S/ {formatNumber(calcSummary.totalBoletasPEN)}</strong>{" "}
                             <span style={{ color: "#2563eb", fontWeight: "700" }}>
-                              (≈ $ {calcSummary.totalBoletasPENEquivUSD.toFixed(2)} USD)
+                              (≈ $ {formatNumber(calcSummary.totalBoletasPENEquivUSD)} USD)
                             </span>
                           </Text>
                         )}
                         {calcSummary.totalBoletasUSD > 0 && calcSummary.totalBoletasPEN > 0 && (
                           <Text fontSize="11.5px" color="gray.900" fontWeight="800">
-                            Subtotal Boletas: <strong>$ {calcSummary.crystalBoletasUSD.toFixed(2)} USD</strong>
+                            Subtotal Boletas: <strong>$ {formatNumber(calcSummary.crystalBoletasUSD)} USD</strong>
                           </Text>
                         )}
 
                         {/* Letras */}
                         {calcSummary.totalLetrasUSD > 0 && (
                           <Text fontSize="11.5px" color="gray.700" fontWeight="700">
-                            Letras USD: <strong>$ {calcSummary.totalLetrasUSD.toFixed(2)}</strong>
+                            Letras USD: <strong>$ {formatNumber(calcSummary.totalLetrasUSD)}</strong>
                           </Text>
                         )}
                         {calcSummary.totalLetrasPEN > 0 && (
                           <Text fontSize="11.5px" color="gray.700" fontWeight="700">
-                            Letras PEN: <strong>S/ {calcSummary.totalLetrasPEN.toFixed(2)}</strong>{" "}
+                            Letras PEN: <strong>S/ {formatNumber(calcSummary.totalLetrasPEN)}</strong>{" "}
                             <span style={{ color: "#2563eb", fontWeight: "700" }}>
-                              (≈ $ {calcSummary.totalLetrasPENEquivUSD.toFixed(2)} USD)
+                              (≈ $ {formatNumber(calcSummary.totalLetrasPENEquivUSD)} USD)
                             </span>
                           </Text>
                         )}
                         {calcSummary.totalLetrasUSD > 0 && calcSummary.totalLetrasPEN > 0 && (
                           <Text fontSize="11.5px" color="gray.900" fontWeight="800">
-                            Subtotal Letras: <strong>$ {calcSummary.crystalLetrasUSD.toFixed(2)} USD</strong>
+                            Subtotal Letras: <strong>$ {formatNumber(calcSummary.crystalLetrasUSD)} USD</strong>
                           </Text>
                         )}
 
                         {/* Abonos / Notas de Crédito */}
                         {calcSummary.crystalAbonosUSD > 0 && (
                           <Text fontSize="11.5px" color="#0891b2" fontWeight="700">
-                            Abonos / NC: <strong>− $ {calcSummary.crystalAbonosUSD.toFixed(2)} USD</strong>
+                            Abonos / NC: <strong>− $ {formatNumber(calcSummary.crystalAbonosUSD)} USD</strong>
                           </Text>
                         )}
                         <Box pt={1} borderTop="1.5px solid #cbd5e1" w="full" textAlign="right">
                           <Text fontSize="13.5px" fontWeight="900" color="#1e40af">
-                            Saldo Final: $ {calcSummary.totalConsolidadoUSD.toFixed(2)} USD
+                            Saldo Final: $ {formatNumber(calcSummary.totalConsolidadoUSD)} USD
                           </Text>
                         </Box>
                       </VStack>
@@ -1196,7 +1232,7 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
                       {calcSummary.emissionLabel}
                     </Text>
                     <Text fontSize={{ base: "13.5px", sm: "15px" }} fontWeight="900" color="gray.800">
-                      $ {calcSummary.totalEmisionUSD.toFixed(2)}
+                      $ {formatNumber(calcSummary.totalEmisionUSD)}
                     </Text>
                     {calcSummary.hasPENEmision ? (
                       <Text fontSize="9px" color="blue.600" fontWeight="700">
@@ -1220,7 +1256,7 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
                       Abonos / NC
                     </Text>
                     <Text fontSize={{ base: "13.5px", sm: "15px" }} fontWeight="900" color="#0891b2">
-                      $ {calcSummary.crystalAbonosUSD.toFixed(2)}
+                      $ {formatNumber(calcSummary.crystalAbonosUSD)}
                     </Text>
                     <Text fontSize="9px" color="#0891b2" fontWeight="600">
                       (a favor cliente)
@@ -1239,7 +1275,7 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
                         Saldo Final USD
                       </Text>
                       <Text fontSize={{ base: "14px", sm: "16px" }} fontWeight="900" color="#15803d">
-                        $ {calcSummary.totalConsolidadoUSD.toFixed(2)}
+                        $ {formatNumber(calcSummary.totalConsolidadoUSD)}
                       </Text>
                       <Text fontSize="9px" color="green.600" fontWeight="700">
                         Total por cobrar

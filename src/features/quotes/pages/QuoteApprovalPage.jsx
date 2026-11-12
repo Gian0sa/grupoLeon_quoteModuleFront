@@ -115,20 +115,36 @@ export const isCancelledState = (status) => {
 
 export const checkHasAdditionalDiscount = (q) => {
   if (!q) return false;
-  if (q.hasAdditionalDiscount || q.totals?.hasAdditionalDiscount || q.totals?.hasDiscount || q.totals?.requiresDiscountApproval) {
-    return true;
-  }
   if (Number(q.maxDiscount || q.totals?.maxDiscount || 0) > 0) {
     return true;
   }
-  if (Number(q.headerDiscount || q.DiscountPercent || q.discountPercent || q.totals?.headerDiscount || 0) > 0) {
-    return true;
-  }
   const quoteProducts = q.products || q.items || q.totals?.products || q.totals?.normalizedProducts || [];
-  return quoteProducts.some((it) => {
+  const hasExplicitLineAdic = quoteProducts.some((it) => {
     const adic = Number(it.lineDiscount ?? it.LineDiscount ?? it.additionalDiscount ?? it.U_TQC_DESV ?? 0);
     return adic > 0;
   });
+  if (hasExplicitLineAdic) {
+    return true;
+  }
+  if (Number(q.headerDiscount || q.DiscountPercent || q.totals?.headerDiscount || 0) > 0) {
+    return true;
+  }
+  if (q.hasAdditionalDiscount || q.totals?.hasAdditionalDiscount || q.totals?.requiresDiscountApproval) {
+    if (quoteProducts.length > 0) {
+      return quoteProducts.some((it) => {
+        const sapDisc = Number(it.sapDiscount ?? it.discount ?? 0);
+        const totalDisc = Number(it.discountPercent ?? sapDisc);
+        const adic = Number(it.lineDiscount ?? 0);
+        const isSpecial = Boolean(it.isSpecialPrice || it.campaignName === "Convenio Cliente" || sapDisc > 55.0);
+        if (isSpecial || sapDisc >= totalDisc) {
+          return adic > 0;
+        }
+        return totalDisc > 50.009 || adic > 0;
+      });
+    }
+    return Boolean(q.hasAdditionalDiscount || q.totals?.hasAdditionalDiscount || q.totals?.requiresDiscountApproval);
+  }
+  return false;
 };
 
 const cleanDeliveryForm = (df) => {
@@ -3253,9 +3269,10 @@ export function QuoteApprovalPage() {
 
                   const rawDocStr = String(q.docNumber || "").trim();
                   const isPlaceholderDoc = !rawDocStr || ["COT-PENDIENTE", "COT-NUEVA", "COT-000000", "PENDIENTE"].includes(rawDocStr.toUpperCase());
+                  const numericId = (q.id && !isNaN(Number(q.id)) && Number(q.id) > 0) ? Number(q.id) : (docId && !isNaN(Number(docId)) && Number(docId) > 0 ? Number(docId) : null);
                   const displayDocNumber = (!isPlaceholderDoc && (rawDocStr.startsWith("COT-WEB-") || rawDocStr.startsWith("COT-")))
                     ? rawDocStr
-                    : (q.id ? `COT-WEB-${String(q.id).padStart(6, '0')}` : "COT-PENDIENTE");
+                    : (numericId ? `COT-WEB-${String(numericId).padStart(6, '0')}` : (sapDocNum ? `COT-${String(sapDocNum).padStart(6, '0')}` : "COT-PENDIENTE"));
 
                   return (
                     <Tr
@@ -3274,6 +3291,10 @@ export function QuoteApprovalPage() {
                             {Boolean(sapDocNum || (status === "EMITIDO" && q.docNumber && !String(q.docNumber).includes("WEB") && !String(q.docNumber).includes("PENDIENTE"))) ? (
                               <Text fontSize="sm" fontWeight="950" color="#0e572b" fontFamily="mono">
                                 {q.docNumber && String(q.docNumber).startsWith("COT-") && !String(q.docNumber).includes("WEB") ? q.docNumber : `COT-${String(sapDocNum).padStart(6, '0')}`}
+                              </Text>
+                            ) : displayDocNumber && displayDocNumber !== "COT-PENDIENTE" ? (
+                              <Text fontSize="sm" fontWeight="950" color="#0e572b" fontFamily="mono">
+                                {displayDocNumber}
                               </Text>
                             ) : (
                               <Badge
@@ -3442,9 +3463,10 @@ export function QuoteApprovalPage() {
 
               const rawDocStr = String(q.docNumber || "").trim();
               const isPlaceholderDoc = !rawDocStr || ["COT-PENDIENTE", "COT-NUEVA", "COT-000000", "PENDIENTE"].includes(rawDocStr.toUpperCase());
+              const numericId = (q.id && !isNaN(Number(q.id)) && Number(q.id) > 0) ? Number(q.id) : (docId && !isNaN(Number(docId)) && Number(docId) > 0 ? Number(docId) : null);
               const displayDocNumber = (!isPlaceholderDoc && (rawDocStr.startsWith("COT-WEB-") || rawDocStr.startsWith("COT-")))
                 ? rawDocStr
-                : (q.id ? `COT-WEB-${String(q.id).padStart(6, '0')}` : "COT-PENDIENTE");
+                : (numericId ? `COT-WEB-${String(numericId).padStart(6, '0')}` : (sapDocNum ? `COT-${String(sapDocNum).padStart(6, '0')}` : "COT-PENDIENTE"));
 
               return (
                 <Box
@@ -3463,6 +3485,10 @@ export function QuoteApprovalPage() {
                         {Boolean(sapDocNum || (status === "EMITIDO" && q.docNumber && !String(q.docNumber).includes("WEB") && !String(q.docNumber).includes("PENDIENTE"))) ? (
                           <Text fontSize="sm" fontWeight="950" color="#0e572b" fontFamily="mono">
                             {q.docNumber && String(q.docNumber).startsWith("COT-") && !String(q.docNumber).includes("WEB") ? q.docNumber : `COT-${String(sapDocNum).padStart(6, '0')}`}
+                          </Text>
+                        ) : displayDocNumber && displayDocNumber !== "COT-PENDIENTE" ? (
+                          <Text fontSize="sm" fontWeight="950" color="#0e572b" fontFamily="mono">
+                            {displayDocNumber}
                           </Text>
                         ) : (
                           <Badge

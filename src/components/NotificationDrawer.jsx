@@ -174,42 +174,33 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
     });
   };
 
-  const myNotifications = React.useMemo(() => {
-    let combined = [];
-
-    if (serverNotifs && Array.isArray(serverNotifs)) {
-      // La base de datos es la fuente de verdad absoluta
-      combined = [...serverNotifs];
-      
-      // Preservar solo notificaciones WebSocket muy recientes (< 15s) que aún no estén en serverNotifs
-      try {
-        const raw = localStorage.getItem("grupoLeon_notifications");
-        const saved = raw ? JSON.parse(raw) : [];
-        if (Array.isArray(saved)) {
-          const now = Date.now();
-          const serverIds = new Set(serverNotifs.map(s => String(s.id)));
-          const serverQuoteIds = new Set(serverNotifs.map(s => String(s.quoteId)));
-          const recentLocal = saved.filter(sn => {
-            if (sn.read) return false;
-            const time = sn.createdAt || sn.timestamp ? new Date(sn.createdAt || sn.timestamp).getTime() : 0;
-            const isFresh = (now - time) < 15000;
-            return isFresh && !serverIds.has(String(sn.id)) && !serverQuoteIds.has(String(sn.quoteId));
-          });
-          combined = [...recentLocal, ...combined];
-        }
-      } catch {}
-      
-      // Mantener sincronizado el almacenamiento local
-      try {
-        localStorage.setItem("grupoLeon_notifications", JSON.stringify(combined));
-      } catch {}
-    } else {
-      try {
-        const raw = localStorage.getItem("grupoLeon_notifications");
-        const saved = raw ? JSON.parse(raw) : [];
-        combined = Array.isArray(saved) ? [...saved] : [];
-      } catch {}
+  const getNotifTimestamp = (n) => {
+    if (!n) return 0;
+    const raw = n.createdAt || n.timestamp || n.created_at || n.date || n.updatedAt;
+    if (typeof raw === "number") return raw;
+    if (raw) {
+      const t = new Date(raw).getTime();
+      if (!isNaN(t) && t > 0) return t;
     }
+    const numId = Number(n.id);
+    if (!isNaN(numId) && numId > 0) return numId;
+    return 0;
+  };
+
+  const myNotifications = React.useMemo(() => {
+    let rawLocal = [];
+    try {
+      const raw = localStorage.getItem("grupoLeon_notifications");
+      rawLocal = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(rawLocal)) rawLocal = [];
+    } catch {
+      rawLocal = [];
+    }
+
+    const serverList = Array.isArray(serverNotifs) ? serverNotifs : [];
+    
+    // Lista combinada de candidatos (las locales traen las alertas en vivo más frescas de WebSocket)
+    const combined = [...rawLocal, ...serverList];
 
     const filteredByUser = filterForCurrentUser(combined).filter(
       (n) => !String(n.title || "").includes("- null") &&
@@ -218,18 +209,10 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
              n.quoteId !== ""
     );
 
-    // Deduplicación inteligente por cotización (conserva 1 solo mensaje canónico por cotización)
+    // 1. Deduplicación inteligente por cotización:
+    // Si hay más de una alerta para la misma cotización, la MÁS RECIENTE reemplaza a la antigua.
     const uniqueMap = new Map();
-    const sorted = [...filteredByUser].sort((a, b) => {
-      if (!a.read && b.read) return -1;
-      if (a.read && !b.read) return 1;
-      const tA = new Date(a.createdAt || a.timestamp || a.created_at || a.date || 0).getTime();
-      const tB = new Date(b.createdAt || b.timestamp || b.created_at || b.date || 0).getTime();
-      return tB - tA;
-    });
-
-    for (const notif of sorted) {
-      // Clave canónica inteligente para unificar alertas del mismo documento
+    for (const notif of filteredByUser) {
       const rawQ = String(notif.quoteId || notif.id || "").trim();
       const matchWeb = String(notif.title || "").match(/COT-WEB-(\d+)/i) || 
                        String(notif.title || "").match(/COT-(\d+)/i) ||
@@ -238,7 +221,7 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
                        rawQ.match(/^(\d+)$/);
       const canonicalKey = matchWeb ? `QUOTE-${Number(matchWeb[1])}` : rawQ;
 
-      // ⚡ Omitir de inmediato si fue descartada por el usuario (0ms)
+      // Omitir alertas descartadas manualmente
       if (
         dismissedKeys.has(String(notif.id)) ||
         dismissedKeys.has(String(notif.quoteId)) ||
@@ -248,12 +231,40 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
         continue;
       }
 
-      if (!uniqueMap.has(canonicalKey)) {
+      const existing = uniqueMap.get(canonicalKey);
+      if (!existing) {
         uniqueMap.set(canonicalKey, notif);
+      } else {
+        const timeExisting = getNotifTimestamp(existing);
+        const timeCandidate = getNotifTimestamp(notif);
+        // Si el candidato es más nuevo, o es no leído frente a uno leído, gana el candidato
+        if (timeCandidate > timeExisting || (!notif.read && existing.read)) {
+          uniqueMap.set(canonicalKey, notif);
+        }
       }
     }
 
-    return Array.from(uniqueMap.values()).slice(0, 30);
+    // 2. Ordenamiento: Priorizar SIEMPRE la ÚLTIMA / MÁS RECIENTE primero
+    // Primero no leídas (ordenadas por fecha descendente), luego leídas (ordenadas por fecha descendente)
+    const sorted = Array.from(uniqueMap.values()).sort((a, b) => {
+      // Regla 1: No leídas tienen prioridad sobre leídas
+      if (!a.read && b.read) return -1;
+      if (a.read && !b.read) return 1;
+
+      // Regla 2: La más reciente primero (timestamp descendente)
+      const tA = getNotifTimestamp(a);
+      const tB = getNotifTimestamp(b);
+      if (tA !== tB) {
+        return tB - tA; // Más reciente primero
+      }
+
+      // Regla 3: Desempate por ID numérico descendente
+      const idA = Number(a.id) || 0;
+      const idB = Number(b.id) || 0;
+      return idB - idA;
+    });
+
+    return sorted.slice(0, 40);
   }, [serverNotifs, username, userId, role, isAdmin, localVersion, dismissedKeys]);
 
   const unreadCount = React.useMemo(() => {
