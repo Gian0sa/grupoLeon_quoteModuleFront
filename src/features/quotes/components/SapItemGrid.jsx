@@ -411,9 +411,15 @@ export default function SapItemGrid({
               netUnitPrice = Number((unitPriceConIGV / 1.18).toFixed(6));
               totalDisc = price > 0 ? Math.min(100, Math.max(0, Number((((price - netUnitPrice) / price) * 100).toFixed(2)))) : 0;
             } else if (hasPromoPrice && targetPromoNeto > 0) {
-              netUnitPrice = Number((targetPromoNeto * (1 - addDisc / 100)).toFixed(6));
-              const finalNet2 = Number(netUnitPrice.toFixed(2));
-              unitPriceConIGV = Number((finalNet2 + Number((finalNet2 * 0.18).toFixed(2))).toFixed(2));
+              if (targetPromoPriceConIGV > 0 && addDisc === 0) {
+                // U_US_PROMO = precio final con IGV: se muestra exacto (es lo que se envía a SAP)
+                unitPriceConIGV = Number(Number(targetPromoPriceConIGV).toFixed(2));
+                netUnitPrice = Number((unitPriceConIGV / 1.18).toFixed(6));
+              } else {
+                netUnitPrice = Number((targetPromoNeto * (1 - addDisc / 100)).toFixed(6));
+                const finalNet2 = Number(netUnitPrice.toFixed(2));
+                unitPriceConIGV = Number((finalNet2 + Number((finalNet2 * 0.18).toFixed(2))).toFixed(2));
+              }
               totalDisc = price > 0
                 ? Math.min(100, Math.max(0, Number((((price - netUnitPrice) / price) * 100).toFixed(2))))
                 : Number(item.totalDiscountPct || promoInfo?.totalDiscountPct || (sapDisc + promoDisc));
@@ -431,7 +437,7 @@ export default function SapItemGrid({
               unitPriceConIGV = Number((finalNet2 + Number((finalNet2 * 0.18).toFixed(2))).toFixed(2));
             }
             const finalUnitPrice = Number(netUnitPrice.toFixed(2));
-            const isDirectConIGV = Boolean(customPrice || (isSpecial && targetSpecialPriceConIGV > 0 && addDisc <= 0));
+            const isDirectConIGV = Boolean(customPrice || (isSpecial && targetSpecialPriceConIGV > 0 && addDisc <= 0) || (!customPrice && hasPromoPrice && targetPromoNeto > 0 && targetPromoPriceConIGV > 0));
             const lineTotal = Number((qty * finalUnitPrice).toFixed(2));
             const lineTax = isDirectConIGV
               ? Number((unitPriceConIGV * qty - lineTotal).toFixed(2))
@@ -820,9 +826,15 @@ export default function SapItemGrid({
                     netUnitPrice = Number((unitPriceConIGV / 1.18).toFixed(6));
                     totalDisc = price > 0 ? Math.min(100, Math.max(0, Number((((price - netUnitPrice) / price) * 100).toFixed(2)))) : 0;
                   } else if (hasPromoPrice && targetPromoNeto > 0) {
-                    netUnitPrice = Number((targetPromoNeto * (1 - addDisc / 100)).toFixed(6));
-                    const finalNet2 = Number(netUnitPrice.toFixed(2));
-                    unitPriceConIGV = Number((finalNet2 + Number((finalNet2 * 0.18).toFixed(2))).toFixed(2));
+                    if (targetPromoPriceConIGV > 0 && addDisc === 0) {
+                      // U_US_PROMO = precio final con IGV: se muestra exacto (es lo que se envía a SAP)
+                      unitPriceConIGV = Number(Number(targetPromoPriceConIGV).toFixed(2));
+                      netUnitPrice = Number((unitPriceConIGV / 1.18).toFixed(6));
+                    } else {
+                      netUnitPrice = Number((targetPromoNeto * (1 - addDisc / 100)).toFixed(6));
+                      const finalNet2 = Number(netUnitPrice.toFixed(2));
+                      unitPriceConIGV = Number((finalNet2 + Number((finalNet2 * 0.18).toFixed(2))).toFixed(2));
+                    }
                     totalDisc = price > 0
                       ? Math.min(100, Math.max(0, Number((((price - netUnitPrice) / price) * 100).toFixed(2))))
                       : Number(item.totalDiscountPct || promoInfo?.totalDiscountPct || (sapDisc + promoDisc));
@@ -840,7 +852,7 @@ export default function SapItemGrid({
                     unitPriceConIGV = Number((finalNet2 + Number((finalNet2 * 0.18).toFixed(2))).toFixed(2));
                   }
                   const finalUnitPrice = Number(netUnitPrice.toFixed(2));
-                  const isDirectConIGV = Boolean(customPrice || (isSpecial && targetSpecialPriceConIGV > 0 && addDisc <= 0));
+                  const isDirectConIGV = Boolean(customPrice || (isSpecial && targetSpecialPriceConIGV > 0 && addDisc <= 0) || (!customPrice && hasPromoPrice && targetPromoNeto > 0 && targetPromoPriceConIGV > 0));
                   const lineTotal = Number((qty * finalUnitPrice).toFixed(2));
                   const lineTax = isDirectConIGV
                     ? Number((unitPriceConIGV * qty - lineTotal).toFixed(2))

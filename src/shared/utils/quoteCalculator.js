@@ -152,6 +152,7 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
     let unitTax;
     let unitPriceConIGV;
     let resolvedBaseSpecialConIGV = 0;
+    let isPromoConIGV = false;
 
     if (isOutOfStock) {
       netUnitPrice = 0;
@@ -201,10 +202,21 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
       const finalNet2 = Number(netUnitPrice.toFixed(2));
       unitTax = Number((unitPriceConIGV - finalNet2).toFixed(2));
     } else if (hasPromoPrice && targetPromoNeto > 0) {
-      netUnitPrice = Number((targetPromoNeto * (1 - addDisc / 100)).toFixed(6));
-      const finalNet2 = Number(netUnitPrice.toFixed(2));
-      unitTax = Number((finalNet2 * 0.18).toFixed(2));
-      unitPriceConIGV = Number((finalNet2 + unitTax).toFixed(2));
+      if (targetPromoPriceConIGV > 0 && addDisc === 0) {
+        // U_US_PROMO es el precio final CON IGV: se respeta exacto, igual que lo envía el
+        // backend a SAP (PriceAfterVAT). Partir del neto daba 117.91 en vez de 117.90.
+        unitPriceConIGV = Number(targetPromoPriceConIGV.toFixed(2));
+        netUnitPrice = Number((unitPriceConIGV / 1.18).toFixed(6));
+        const finalNet2 = Number(netUnitPrice.toFixed(2));
+        unitTax = Number((unitPriceConIGV - finalNet2).toFixed(2));
+      } else {
+        netUnitPrice = Number((targetPromoNeto * (1 - addDisc / 100)).toFixed(6));
+        const finalNet2 = Number(netUnitPrice.toFixed(2));
+        unitTax = Number((finalNet2 * 0.18).toFixed(2));
+        unitPriceConIGV = Number((finalNet2 + unitTax).toFixed(2));
+      }
+      // Con precio de oferta con IGV, la línea se totaliza desde el precio con IGV (como en SAP)
+      isPromoConIGV = targetPromoPriceConIGV > 0;
     } else {
       netUnitPrice = Number((listPrice * (1 - totalDisc / 100)).toFixed(6));
       const finalNet2 = Number(netUnitPrice.toFixed(2));
@@ -219,7 +231,7 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
         ? Number(Number(p.subtotal || p.lineTotal).toFixed(2))
         : Number((qty * finalUnitPrice).toFixed(2)));
 
-    const isDirectConIGV = customPrice || (hasSpecialPrice && targetSpecialPriceConIGV > 0 && addDisc <= 0);
+    const isDirectConIGV = customPrice || (hasSpecialPrice && targetSpecialPriceConIGV > 0 && addDisc <= 0) || isPromoConIGV;
 
     const lineTax = isOutOfStock
       ? 0
