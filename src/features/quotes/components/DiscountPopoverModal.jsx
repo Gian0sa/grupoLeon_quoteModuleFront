@@ -76,21 +76,33 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount, s
     ? Number((effectiveSpecialPriceConIGV / (1 + TAX_RATE)).toFixed(2))
     : specialPriceNeto;
 
+  // Oferta del Mes: U_US_PROMO es el precio final CON IGV. Es el precio exacto que se envía a SAP,
+  // así que se muestra tal cual (calcularlo desde lista × % daba 117.89 en vez de 117.90).
+  const promoPriceConIGVFixed = !isSpecial && Number(item?.promoPriceConIGV || item?.U_US_PROMO || 0) > 0
+    ? Number(Number(item.promoPriceConIGV || item.U_US_PROMO).toFixed(2))
+    : null;
+
   const priceWithBaseSinIGV = isSpecial && effectiveSpecialPriceNeto > 0
     ? effectiveSpecialPriceNeto
-    : Number((basePrice * (1 - baseFixedDisc / 100)).toFixed(2));
+    : promoPriceConIGVFixed
+      ? Number((promoPriceConIGVFixed / (1 + TAX_RATE)).toFixed(2))
+      : Number((basePrice * (1 - baseFixedDisc / 100)).toFixed(2));
   const priceWithBaseConIGV = isSpecial && effectiveSpecialPriceConIGV > 0
     ? effectiveSpecialPriceConIGV
-    : Number((priceWithBaseSinIGV * (1 + TAX_RATE)).toFixed(2));
+    : promoPriceConIGVFixed || Number((priceWithBaseSinIGV * (1 + TAX_RATE)).toFixed(2));
 
   // Precios límite oficiales con IGV
   const priceCeilingConIGV = basePriceConIGV;
   const priceFloorSinIGV = isSpecial && effectiveSpecialPriceNeto > 0
     ? effectiveSpecialPriceNeto
     : Number((basePrice * (1 - applicableCeiling / 100)).toFixed(2));
+  const computedFloorConIGV = Number((priceFloorSinIGV * (1 + TAX_RATE)).toFixed(2));
   const priceFloorConIGV = isSpecial && effectiveSpecialPriceConIGV > 0
     ? effectiveSpecialPriceConIGV
-    : Number((priceFloorSinIGV * (1 + TAX_RATE)).toFixed(2));
+    // Si el tope coincide con la oferta (misma % redondeada distinto), el piso es el precio exacto de la oferta
+    : (promoPriceConIGVFixed && Math.abs(computedFloorConIGV - promoPriceConIGVFixed) < 0.05
+        ? promoPriceConIGVFixed
+        : computedFloorConIGV);
 
   // Límites de ajuste de descuento adicional:
   // En artículos de convenio, maxAllowedAddDisc es 0 porque NO se permite superar el descuento pactado en SAP
@@ -105,12 +117,14 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount, s
         setPriceInputStr(Number(item.customPriceConIGV).toFixed(2));
       } else if (isSpecial && effectiveSpecialPriceConIGV > 0 && (!existingAddDisc || existingAddDisc === 0)) {
         setPriceInputStr(Number(effectiveSpecialPriceConIGV).toFixed(2));
+      } else if (promoPriceConIGVFixed && (!existingAddDisc || existingAddDisc === 0)) {
+        setPriceInputStr(promoPriceConIGVFixed.toFixed(2));
       } else {
         const effectiveNetPrice = Number((basePrice * (1 - (baseFixedDisc + existingAddDisc) / 100)).toFixed(4));
         setPriceInputStr((effectiveNetPrice * (1 + TAX_RATE)).toFixed(2));
       }
     }
-  }, [item, isOpen, basePrice, baseFixedDisc, maxAllowedAddDisc, minAllowedAddDisc, isSpecial, effectiveSpecialPriceConIGV]);
+  }, [item, isOpen, basePrice, baseFixedDisc, maxAllowedAddDisc, minAllowedAddDisc, isSpecial, effectiveSpecialPriceConIGV, promoPriceConIGVFixed]);
 
   if (!item) return null;
 
