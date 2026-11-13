@@ -35,12 +35,16 @@ export function ProductPriceListCard({ product, tipoPrecio }) {
     PRECIO_CREDITO
   } = product;
 
-  const promo = promotionsMap[ITEM_CODE] || promotionsMap[product.productCode] || (product.U_US_PROMO ? {
-    promoPriceConIGV: Number(product.U_US_PROMO),
-    U_US_PROMO: Number(product.U_US_PROMO),
-    promoPriceNeto: Number((Number(product.U_US_PROMO) / 1.18).toFixed(2)),
-    promoPrice: Number((Number(product.U_US_PROMO) / 1.18).toFixed(2)),
-  } : null);
+  const siglaKey = String(SIGLA || "").trim().toUpperCase();
+  const promo = promotionsMap[ITEM_CODE] || 
+    (siglaKey ? promotionsMap[siglaKey] : null) || 
+    promotionsMap[product.productCode] || 
+    (product.U_US_PROMO ? {
+      promoPriceConIGV: Number(product.U_US_PROMO),
+      U_US_PROMO: Number(product.U_US_PROMO),
+      promoPriceNeto: Number((Number(product.U_US_PROMO) / 1.18).toFixed(2)),
+      promoPrice: Number((Number(product.U_US_PROMO) / 1.18).toFixed(2)),
+    } : null);
 
   // En la Lista de Precios de Productos (Catálogo), los precios mostrados al asesor/cliente incluyen IGV
   const prvtVal = Number(PRECIO_LISTA_CON_IGV ?? U_TQC_PRVT ?? product.U_TQC_PRVT ?? 0);

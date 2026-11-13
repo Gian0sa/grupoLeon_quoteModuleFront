@@ -170,7 +170,6 @@ export default function VisitLogsMapView() {
 
     const filters = {
         vendor: selectedVendor,
-        status: statusFilter,
         dateFrom,
         dateTo,
     };
@@ -298,7 +297,7 @@ export default function VisitLogsMapView() {
         }
     };
 
-    const filteredGroups = useMemo(() => {
+    const vendorFilteredGroups = useMemo(() => {
         let result = Array.isArray(visitLogs) ? visitLogs : [];
 
         // 1. Filtrado flexible por vendedor (coincidencia con o sin prefijo como "741.")
@@ -313,6 +312,21 @@ export default function VisitLogsMapView() {
 
         return result;
     }, [visitLogs, selectedVendor]);
+
+    const filteredGroups = useMemo(() => {
+        let result = vendorFilteredGroups;
+
+        // 2. Filtrado por estado de la visita (Todos, Completadas, Pendientes, Errores)
+        if (statusFilter === "completed") {
+            result = result.filter(g => g.in && g.out);
+        } else if (statusFilter === "pending") {
+            result = result.filter(g => g.in && !g.out);
+        } else if (statusFilter === "errors") {
+            result = result.filter(g => (!g.in && g.out) || g.in?.status === "FAILED" || g.out?.status === "FAILED");
+        }
+
+        return result;
+    }, [vendorFilteredGroups, statusFilter]);
 
     const vendorRouteData = useMemo(() => {
         if (selectedVendor === "all" || !showVendorRoute) return null;
@@ -416,14 +430,14 @@ export default function VisitLogsMapView() {
     }, [groupsWithSequence]);
 
     const stats = useMemo(() => {
-        const completedVisits = filteredGroups.filter(g => g.in && g.out).length;
-        const pendingCheckOut = filteredGroups.filter(g => g.in && !g.out).length;
-        const orphanCheckOut = filteredGroups.filter(g => !g.in && g.out).length;
+        const completedVisits = vendorFilteredGroups.filter(g => g.in && g.out).length;
+        const pendingCheckOut = vendorFilteredGroups.filter(g => g.in && !g.out).length;
+        const orphanCheckOut = vendorFilteredGroups.filter(g => !g.in && g.out).length;
         const totalVisits = completedVisits + pendingCheckOut;
 
         let totalDuration = 0;
         let visitCount = 0;
-        filteredGroups.forEach(g => {
+        vendorFilteredGroups.forEach(g => {
             if (g.in && g.out) {
                 const diff = new Date(g.out.createdAt) - new Date(g.in.createdAt);
                 totalDuration += diff;
@@ -445,7 +459,20 @@ export default function VisitLogsMapView() {
             orphanCheckOut,
             avgDuration: visitCount > 0 ? `${avgHours}h ${avgMinutes}m` : "N/A",
         };
-    }, [filteredGroups]);
+    }, [vendorFilteredGroups]);
+
+    // Al filtrar por pendientes, centrar mapa en la primera visita pendiente con coordenadas válidas
+    useEffect(() => {
+        if (statusFilter === "pending" && filteredGroups.length > 0) {
+            const firstWithCoords = filteredGroups.find(
+                g => g.in && g.in.latitude && g.in.longitude && !isNaN(Number(g.in.latitude)) && Number(g.in.latitude) !== 0
+            );
+            if (firstWithCoords) {
+                setMapCenter([Number(firstWithCoords.in.latitude), Number(firstWithCoords.in.longitude)]);
+                setMapZoom(13);
+            }
+        }
+    }, [statusFilter, filteredGroups]);
 
     useEffect(() => {
         if (selectedVendor !== "all") {
@@ -792,8 +819,14 @@ export default function VisitLogsMapView() {
                         </CardBody>
                     </Card>
 
-                    {/* TARJETAS DE ESTADÍSTICAS RÁPIDAS OPTIMIZADAS */}
-                    <Estadisticas stats={stats} statBg={statBg} borderColor={borderColor} />
+                    {/* TARJETAS DE ESTADÍSTICAS RÁPIDAS OPTIMIZADAS E INTERACTIVAS */}
+                    <Estadisticas
+                        stats={stats}
+                        activeFilter={statusFilter}
+                        onFilterChange={setStatusFilter}
+                        statBg={statBg}
+                        borderColor={borderColor}
+                    />
 
                     {/* VISOR DE MAPA LEAFLET SATELITAL CON PINS SVG TEARDROP */}
                     <Card bg={cardBg} borderColor={borderColor} borderRadius="xl" boxShadow="0 4px 15px rgba(0,0,0,0.03)" overflow="hidden">
@@ -880,15 +913,36 @@ export default function VisitLogsMapView() {
                                 <Heading size={{ base: "xs", md: "sm" }} color="gray.800" fontWeight="850">
                                     {showVendorRoute && selectedVendor !== "all" ? (
                                         <>Recorrido Detallado de {selectedVendor}</>
+                                    ) : statusFilter === "pending" ? (
+                                        <>Visitas Pendientes (Sin Check-Out)</>
+                                    ) : statusFilter === "completed" ? (
+                                        <>Visitas Completadas (Check-In & Out)</>
                                     ) : (
                                         <>Registro Cronológico de Visitas</>
                                     )}
                                 </Heading>
                             </HStack>
-                            <HStack spacing={1.5}>
+                            <HStack spacing={1.5} flexWrap="wrap">
                                 <Badge colorScheme="emerald" fontSize="11px" px={2} py={0.5} borderRadius="full" fontWeight="700">
                                     {filteredGroups.length} resultado{filteredGroups.length !== 1 ? 's' : ''}
                                 </Badge>
+                                {statusFilter !== "all" && (
+                                    <Badge
+                                        colorScheme="amber"
+                                        bg="amber.100"
+                                        color="amber.900"
+                                        fontSize="11px"
+                                        px={2.5}
+                                        py={0.5}
+                                        borderRadius="full"
+                                        fontWeight="800"
+                                        cursor="pointer"
+                                        onClick={() => setStatusFilter("all")}
+                                        _hover={{ bg: "amber.200" }}
+                                    >
+                                        ✕ Quitar filtro ({statusFilter === "pending" ? "Pendientes" : "Completadas"})
+                                    </Badge>
+                                )}
                                 {groupedByDay.length > visibleDaysCount && (
                                     <Badge colorScheme="purple" fontSize="11px" px={2} py={0.5} borderRadius="full" fontWeight="700">
                                         Mostrando {visibleDaysCount} días

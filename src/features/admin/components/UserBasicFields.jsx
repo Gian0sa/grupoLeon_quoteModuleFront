@@ -49,6 +49,7 @@ import {
 } from "lucide-react";
 
 import RoleSelectorMenu, { AVAILABLE_ROLES } from "./RoleSelectorMenu";
+import BillingSapCredentialsFields from "./BillingSapCredentialsFields";
 export { AVAILABLE_ROLES };
 
 export default function UserBasicFields({
@@ -279,6 +280,20 @@ export default function UserBasicFields({
         subtitle="Define el puesto en la empresa. Este cargo se mostrará en su perfil y menú lateral de forma independiente a los permisos técnicos que le actives."
         mb={4}
       />
+
+      {/* ─── CREDENCIALES SAP PERSONALIZADAS (SOLO PARA FACTURACIÓN) ─── */}
+      {currentRoleKey === "FACTURACION" && (
+        <Box mb={4}>
+          <BillingSapCredentialsFields
+            sapUser={formData.sapUser}
+            sapPassword={formData.sapPassword}
+            onChangeSapUser={(val) => onChange({ target: { name: "sapUser", value: val } })}
+            onChangeSapPassword={(val) => onChange({ target: { name: "sapPassword", value: val } })}
+            stepNumber="3."
+            isEdit={true}
+          />
+        </Box>
+      )}
 
       {/* ─── ESTADO DE CUENTA (USUARIO ACTIVO / INACTIVO) ─── */}
       <Flex
