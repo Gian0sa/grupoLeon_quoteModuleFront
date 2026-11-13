@@ -410,7 +410,7 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
             justify="space-between"
             align={{ base: "flex-start", md: "center" }}
             gap={{ base: 2.5, md: 4 }}
-            pr={{ base: 8, md: 8 }}
+            pr={{ base: 10, md: 10 }}
           >
             <VStack align="flex-start" spacing={0.5}>
               <HStack spacing={2}>
@@ -455,7 +455,15 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
               </Badge>
             </HStack>
           </Flex>
-          <ModalCloseButton color="white" top={{ base: 3, md: 3.5 }} right={{ base: 3, md: 4 }} />
+          <ModalCloseButton
+            color="white"
+            bg="whiteAlpha.200"
+            _hover={{ bg: "whiteAlpha.300" }}
+            borderRadius="full"
+            size="md"
+            top={{ base: 3, md: 3.5 }}
+            right={{ base: 3, md: 4 }}
+          />
         </ModalHeader>
 
         <ModalBody p={{ base: 3, md: 5 }} bg="gray.50">
@@ -482,8 +490,8 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
             );
           })()}
 
-          {/* Barra de Filtros por Pestaña con Scroll Suave en Móvil */}
-          <HStack spacing={2} mb={3.5} overflowX="auto" pb={1} css={{ "&::-webkit-scrollbar": { display: "none" } }}>
+          {/* Barra de Filtros por Pestaña responsiva (sin recorte horizontal en móvil) */}
+          <Flex wrap="wrap" gap={2} mb={3.5} align="center">
             <Button
               size="xs"
               variant={filterType === "all" ? "solid" : "outline"}
@@ -571,7 +579,7 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
                 📜 Facturas Pasadas
               </Button>
             )}
-          </HStack>
+          </Flex>
 
           {/* Banner explicativo si hay facturas con deducciones o Notas de Crédito cruzadas */}
           {filteredDocs.some((d) => getDocFinancials(d).hasDiscount) && (

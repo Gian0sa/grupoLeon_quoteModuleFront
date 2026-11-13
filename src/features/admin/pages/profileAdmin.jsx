@@ -73,6 +73,11 @@ import { getPresetServiceIds } from "../utils/permissionTreeHelper";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { socket } from "../../../shared/lib/socket";
+import {
+  getBillingSapCredentials,
+  saveBillingSapCredentials,
+  deleteBillingSapCredentials
+} from "../services/billingSapService";
 
 // Helper oficial para resolver la etiqueta visual y colores del cargo del usuario
 export const getUserRoleBadge = (user) => {
@@ -538,10 +543,25 @@ export function ProfileAdmin() {
     return Array.from(ids);
   };
 
-  const handleOpenModal = (user) => {
+  const handleOpenModal = async (user) => {
     setSelectedUser(user);
 
     const userPermissions = extractServiceIds(user.permittedServices, services || []);
+
+    let existingSapUser = "";
+    if (user.role === "FACTURACION") {
+      try {
+        const billingCredsList = await getBillingSapCredentials();
+        const matched = (billingCredsList || []).find(
+          (c) => (c.id && c.id === user.id) || (c.email && user.email && c.email.toLowerCase() === user.email.toLowerCase()) || (c.username && user.username && c.username.toLowerCase() === user.username.toLowerCase())
+        );
+        if (matched) {
+          existingSapUser = matched.sapUser || "";
+        }
+      } catch (e) {
+        console.warn("Aviso al consultar credenciales SAP del usuario:", e.message);
+      }
+    }
 
     setFormData({
       userId: user.id,
@@ -553,6 +573,8 @@ export function ProfileAdmin() {
           : Number(user.salesEmployeeCode),
       role: user.role || (isUserMasterAdmin(user) ? "ADMINISTRADOR" : (user.salesEmployeeCode ? "ASESOR_VENTAS" : "ASESOR_VENTAS")),
       newPassword: "",
+      sapUser: existingSapUser,
+      sapPassword: "",
       permittedServices: userPermissions,
       active: Boolean(user.active),
     });
@@ -569,6 +591,8 @@ export function ProfileAdmin() {
       salesEmployeeCode: "",
       role: "ASESOR_VENTAS",
       newPassword: "",
+      sapUser: "",
+      sapPassword: "",
       permittedServices: [],
       active: true,
     });
@@ -668,6 +692,23 @@ export function ProfileAdmin() {
             permittedServices: payload.permittedServices,
             role: payload.role,
           });
+        }
+
+        // Si el rol es Facturación, sincronizar credenciales personales de SAP
+        if (payload.role === "FACTURACION") {
+          if (formData.sapUser?.trim()) {
+            saveBillingSapCredentials({
+              userId: payload.userId,
+              email: formData.email,
+              username: formData.username,
+              sapUser: formData.sapUser.trim(),
+              sapPass: formData.sapPassword || "",
+            }).catch((errSap) => {
+              console.warn("Aviso al sincronizar credenciales SAP:", errSap.message);
+            });
+          } else if (formData.sapUser === "") {
+            deleteBillingSapCredentials(payload.userId).catch(() => {});
+          }
         }
 
         toast({

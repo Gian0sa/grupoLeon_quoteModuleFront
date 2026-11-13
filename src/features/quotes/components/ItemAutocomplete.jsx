@@ -42,10 +42,12 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
   const [inputValue, setInputValue] = useState("");
   const [immediateTerm, setImmediateTerm] = useState("");
   const [isOpen, setIsOpen] = useState(false);
-  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
 
   const containerRef = useRef(null);
   const inputRef = useRef(null);
+  const touchStartY = useRef(0);
+  const isTouchScrolling = useRef(false);
 
   const debouncedTerm = useDebounce(inputValue, DEBOUNCE_MS);
   const { promotionsMap } = useGetPromotions();
@@ -65,6 +67,7 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
     const handleClickOutside = (e) => {
       if (containerRef.current && !containerRef.current.contains(e.target)) {
         setIsOpen(false);
+        setHighlightedIndex(-1);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -79,7 +82,7 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
     const val = e.target.value.toUpperCase();
     setImmediateTerm("");
     setInputValue(val);
-    setHighlightedIndex(0);
+    setHighlightedIndex(-1);
     if (val.trim().length >= MIN_CHARS) {
       setIsOpen(true);
     } else {
@@ -91,7 +94,7 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
     setInputValue("");
     setImmediateTerm("");
     setIsOpen(false);
-    setHighlightedIndex(0);
+    setHighlightedIndex(-1);
     if (inputRef.current) {
       inputRef.current.focus();
     }
@@ -104,7 +107,7 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
       const clean = pastedText.replace(/[\r\n\t]+/g, " ").trim().toUpperCase();
       setInputValue(clean);
       setImmediateTerm(clean);
-      setHighlightedIndex(0);
+      setHighlightedIndex(-1);
       setIsOpen(true);
     }
   };
@@ -369,31 +372,37 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
     setInputValue("");
     setImmediateTerm("");
     setIsOpen(false);
+    setHighlightedIndex(-1);
   };
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter") {
+      // ÚNICAMENTE se toma un artículo si el usuario navegó explícitamente con las flechas
       if (isOpen && sortedRecords.length > 0 && highlightedIndex >= 0) {
         e.preventDefault();
         handleSelectItem(sortedRecords[highlightedIndex]);
         return;
       }
+      // Al presionar Enter mientras se tipea, NUNCA tomar el primer producto en automático.
+      // Solo dispara la búsqueda inmediata y mantiene el menú abierto para que el usuario seleccione con clic o flechas.
       if (inputValue.trim().length >= MIN_CHARS) {
+        e.preventDefault();
         setImmediateTerm(inputValue.trim());
         setIsOpen(true);
       }
     } else if (e.key === "ArrowDown") {
       if (isOpen && sortedRecords.length > 0) {
         e.preventDefault();
-        setHighlightedIndex((prev) => Math.min(prev + 1, sortedRecords.length - 1));
+        setHighlightedIndex((prev) => (prev < sortedRecords.length - 1 ? prev + 1 : 0));
       }
     } else if (e.key === "ArrowUp") {
       if (isOpen && sortedRecords.length > 0) {
         e.preventDefault();
-        setHighlightedIndex((prev) => Math.max(prev - 1, 0));
+        setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : sortedRecords.length - 1));
       }
     } else if (e.key === "Escape") {
       setIsOpen(false);
+      setHighlightedIndex(-1);
     }
   };
 
@@ -476,7 +485,7 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
             </Flex>
           ) : sortedRecords.length === 0 ? (
             <Box p={4} textAlign="center" color="gray.500" fontSize="xs" fontWeight="700">
-              No se encontraron artículos para "{term}".
+              No se encontraron artículos para &quot;{term}&quot;.
             </Box>
           ) : (
             sortedRecords.map((r, index) => {
@@ -509,9 +518,21 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
                     e.preventDefault();
                     handleSelectItem(r);
                   }}
+                  onTouchStart={(e) => {
+                    touchStartY.current = e.touches[0]?.clientY || 0;
+                    isTouchScrolling.current = false;
+                  }}
+                  onTouchMove={(e) => {
+                    const currentY = e.touches[0]?.clientY || 0;
+                    if (Math.abs(currentY - touchStartY.current) > 8) {
+                      isTouchScrolling.current = true;
+                    }
+                  }}
                   onTouchEnd={(e) => {
-                    e.preventDefault();
-                    handleSelectItem(r);
+                    if (!isTouchScrolling.current) {
+                      e.preventDefault();
+                      handleSelectItem(r);
+                    }
                   }}
                 >
                   <Flex justify="space-between" align="flex-start" gap={2} mb={1}>

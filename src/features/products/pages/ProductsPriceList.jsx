@@ -13,10 +13,14 @@ import {
 } from "@chakra-ui/react";
 import { FiPackage, FiAlertCircle, FiChevronDown, FiSearch } from "react-icons/fi";
 import { useProductsPriceList } from "../hooks/queries/productQueries";
+import { useGetPromotions } from "../../quotes/hooks/queries/quotesQueries";
 import { ProductPriceListSearchheader } from "../components/ProductPriceListSearchheader";
 import { ProductPriceListCard } from "../components/ProductPriceListCard";
 
 export function ProductList() {
+  // Precarga silenciosa de promociones en memoria (0ms lag al buscar productos)
+  useGetPromotions();
+
   const [cardName, setCardName] = useState("");
   const [searchParams, setSearchParams] = useState(null);
   const [hasSearched, setHasSearched] = useState(false);
@@ -212,7 +216,7 @@ export function ProductList() {
               <VStack spacing={4}>
                 <Spinner size="xl" color="green.500" thickness="4px" />
                 <Text color="gray.600" fontSize="md" fontWeight="600">
-                  Buscando "{cardName}" en la base de datos...
+                  Buscando &quot;{cardName}&quot; en la base de datos...
                 </Text>
               </VStack>
             </Center>
@@ -242,7 +246,7 @@ export function ProductList() {
                   <Icon as={FiPackage} boxSize={8} />
                 </Box>
                 <Text color="gray.700" fontSize="md" fontWeight="700">
-                  No se encontraron productos para "{cardName}"
+                  No se encontraron productos para &quot;{cardName}&quot;
                 </Text>
                 <Text color="gray.500" fontSize="xs">
                   Verifica el código, sigla o término de búsqueda e intenta nuevamente.

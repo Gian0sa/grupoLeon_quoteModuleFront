@@ -449,8 +449,12 @@ export default function MyVisitsPage() {
           </CardBody>
         </Card>
 
-        {/* Tarjetas de Estadísticas */}
-        <Estadisticas stats={stats} />
+        {/* Tarjetas de Estadísticas Interactivas */}
+        <Estadisticas
+          stats={stats}
+          activeFilter={statusFilter}
+          onFilterChange={setStatusFilter}
+        />
 
         {/* Lista de Visitas Rediseñada */}
         <VStack spacing={3.5} align="stretch" pt={1}>
@@ -569,7 +573,7 @@ export default function MyVisitsPage() {
                           <HStack spacing={2}>
                             <Icon as={AlertCircle} boxSize={4} color="red.800" />
                             <Text fontSize="xs" color="red.900" fontWeight="700">
-                              🔴 Marca almacenada localmente o rechazada por el servidor. Haz clic en "Reintentar Sincronización" o conéctate a internet.
+                              🔴 Marca almacenada localmente o rechazada por el servidor. Haz clic en &quot;Reintentar Sincronización&quot; o conéctate a internet.
                             </Text>
                           </HStack>
                         </Box>

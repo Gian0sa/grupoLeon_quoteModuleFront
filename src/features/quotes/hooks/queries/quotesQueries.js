@@ -103,7 +103,7 @@ export const useIgvRate = () => {
     return { igvRate: 0.18, isLoading: false };
 };
 
-import { fetchActivePromotions } from "../../services/promotionService";
+import { fetchActivePromotions, getCachedPromotions } from "../../services/promotionService";
 import { fetchClientSpecialPrices } from "../../services/clientService";
 
 export const useClientSpecialPrices = (cardCode) => {
@@ -132,9 +132,12 @@ export const useClientSpecialPrices = (cardCode) => {
 export const useGetPromotions = () => {
     const { data, isLoading, isFetching, refetch } = useQuery({
         queryKey: ["productPromotions"],
-        queryFn: fetchActivePromotions,
-        staleTime: 60000,
-        refetchOnWindowFocus: true,
+        queryFn: () => fetchActivePromotions(false),
+        initialData: getCachedPromotions,
+        initialDataUpdatedAt: 0,
+        staleTime: 15 * 60 * 1000,
+        gcTime: 60 * 60 * 1000,
+        refetchOnWindowFocus: false,
     });
 
     const list = data?.list || [];

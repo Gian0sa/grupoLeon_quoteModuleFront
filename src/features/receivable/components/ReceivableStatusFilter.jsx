@@ -102,7 +102,7 @@ export function ReceivableStatusFilter({
   return (
     <Flex direction="column" gap={3} w="full">
       <Flex 
-        gap={{ base: 1.5, sm: 2, md: 4 }} 
+        gap={{ base: 2, sm: 2.5, md: 4 }} 
         w="full" 
         py={1} 
         px={0}
@@ -119,10 +119,10 @@ export function ReceivableStatusFilter({
               key={f.id}
               whileHover={{ scale: 1.03, y: -1 }}
               whileTap={{ scale: 0.97 }}
-              flex={{ base: "1 1 0px", md: "0 0 auto" }}
-              minW="0"
+              flex={{ base: "1 1 calc(50% - 8px)", md: "0 0 auto" }}
+              minW={{ base: "fit-content", md: "auto" }}
               py={{ base: 2, md: 2.5 }}
-              px={{ base: 3, sm: 4, md: 6 }}
+              px={{ base: 2.5, sm: 4, md: 6 }}
               borderRadius="full"
               bg={isActive ? f.activeBg : f.inactiveBg}
               color={isActive ? f.activeColor : f.inactiveColor}
@@ -142,7 +142,7 @@ export function ReceivableStatusFilter({
               transition={{ duration: 0.15 }}
               textAlign="center"
             >
-              <HStack spacing={{ base: 1, md: 2.5 }} justify="center" align="center">
+              <HStack spacing={{ base: 1.5, md: 2.5 }} justify="center" align="center">
                 <Icon 
                   as={IconComponent} 
                   boxSize={{ base: 3.5, md: 5 }} 
@@ -150,7 +150,7 @@ export function ReceivableStatusFilter({
                   flexShrink={0}
                 />
                 <Text 
-                  fontSize={{ base: "10px", sm: "11px", md: "14.5px" }} 
+                  fontSize={{ base: "11.5px", sm: "12.5px", md: "14.5px" }} 
                   fontWeight={isActive ? "700" : "600"} 
                   letterSpacing="tight"
                   whiteSpace="nowrap"
@@ -162,7 +162,7 @@ export function ReceivableStatusFilter({
                   borderRadius="full"
                   px={{ base: 1.5, md: 2.5 }}
                   py={0.5}
-                  fontSize={{ base: "9px", sm: "10px", md: "12px" }}
+                  fontSize={{ base: "10px", sm: "11px", md: "12px" }}
                   fontWeight="800"
                   bg={isActive ? f.badgeBg : "#f1f5f9"}
                   color={isActive ? f.badgeColor : f.inactiveColor}

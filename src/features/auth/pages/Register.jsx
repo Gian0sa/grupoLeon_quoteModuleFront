@@ -36,6 +36,8 @@ import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
 import SellerSelect from "../../../components/SellerSelect";
 import PermissionsTreeView from "../../admin/components/PermissionsTreeView";
 import RoleSelectorMenu, { AVAILABLE_ROLES } from "../../admin/components/RoleSelectorMenu";
+import BillingSapCredentialsFields from "../../admin/components/BillingSapCredentialsFields";
+import { saveBillingSapCredentials } from "../../admin/services/billingSapService";
 import { getPresetServiceIds } from "../../admin/utils/permissionTreeHelper";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -100,12 +102,15 @@ export function Register() {
   const role = watch("role");
   const permittedServices = watch("permittedServices") || [];
   const isSellerRole = role === "ASESOR_VENTAS" || role === "SELLER";
+  const isBillingRole = role === "FACTURACION";
 
   const { data: sellers, isLoading: isLoadingSellers } = useSellersData();
   const { data: services, isLoading: isLoadingServices } = useGetServices();
   const [selectedSeller, setSelectedSeller] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [sapUser, setSapUser] = useState("");
+  const [sapPassword, setSapPassword] = useState("");
 
   useEffect(() => {
     if (selectedSeller) {
@@ -171,7 +176,27 @@ export function Register() {
     };
 
     registerMutation.mutate(userPayload, {
-      onSuccess: () => {
+      onSuccess: async (registeredRes) => {
+        if (isBillingRole && sapUser?.trim()) {
+          try {
+            await saveBillingSapCredentials({
+              userId: registeredRes?.user?.id || registeredRes?.id,
+              email: (data.email || "").trim().toLowerCase(),
+              username: (data.name || "").trim(),
+              sapUser: sapUser.trim(),
+              sapPass: sapPassword || "",
+            });
+            toast({
+              title: "Credenciales SAP vinculadas",
+              description: `Accesos personales de SAP (${sapUser.trim()}) vinculados exitosamente a ${data.name}.`,
+              status: "success",
+              duration: 4000,
+              isClosable: true,
+            });
+          } catch (sapErr) {
+            console.warn("Aviso al vincular credenciales SAP:", sapErr.message);
+          }
+        }
         navigate("/profileAdmin");
       },
     });
@@ -227,10 +252,22 @@ export function Register() {
               </Box>
             )}
 
+            {/* 2. CREDENCIALES PERSONALES SAP (SI ES FACTURACIÓN) */}
+            {isBillingRole && (
+              <BillingSapCredentialsFields
+                sapUser={sapUser}
+                sapPassword={sapPassword}
+                onChangeSapUser={setSapUser}
+                onChangeSapPassword={setSapPassword}
+                stepNumber="2."
+                isEdit={false}
+              />
+            )}
+
             {/* 3. DATOS DE ACCESO */}
             <Box>
               <Text fontSize="xs" fontWeight="900" color="gray.700" textTransform="uppercase" letterSpacing="wider" mb={3}>
-                {isSellerRole ? "3. Credenciales y Datos de Acceso" : "2. Credenciales y Datos de Acceso"}
+                {(isSellerRole || isBillingRole) ? "3. Credenciales y Datos de Acceso" : "2. Credenciales y Datos de Acceso"}
               </Text>
               <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
                 {/* Nombre de Usuario */}
@@ -349,7 +386,7 @@ export function Register() {
             {/* 4. ÁRBOL JERÁRQUICO DE PERMISOS */}
             <Box>
               <Text fontSize="xs" fontWeight="900" color="gray.700" textTransform="uppercase" letterSpacing="wider" mb={2}>
-                {isSellerRole ? "4. Permisos del Sistema y Módulos Autorizados" : "3. Permisos del Sistema y Módulos Autorizados"}
+                {(isSellerRole || isBillingRole) ? "4. Permisos del Sistema y Módulos Autorizados" : "3. Permisos del Sistema y Módulos Autorizados"}
               </Text>
               {isLoadingServices ? (
                 <Center py={8}>
