@@ -38,6 +38,7 @@ import InvoicesModal from "../../receivable/components/InvoicesModal";
 import { fetchClientByCode } from "../../clients/services/clientService";
 import { axiosInstance } from "../../../shared/lib/axiosInstance";
 import { isSpecialAgreementItem, computeSapTqcBreakdown } from "../utils/discountBreakdown";
+import { dedupeViewHistoryLogs } from "../utils/quoteHistoryUtils";
 
 const money = (val, currency = "USD") => {
   const num = Number(val || 0);
@@ -1349,7 +1350,18 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       DocNum: null,
       isSapDirect: false,
       rejectionReason: existingDoc?.rejectionReason || null,
-      historyLog: updatedHistory,
+      historyLog: dedupeViewHistoryLogs(updatedHistory),
+      ...(existingDoc?.approvedBy ? {
+        approvedBy: existingDoc.approvedBy,
+        approvedAt: existingDoc.approvedAt || null,
+        approvedByRole: existingDoc.approvedByRole || null,
+      } : {}),
+      ...(existingDoc?.emittedBy ? {
+        emittedBy: existingDoc.emittedBy,
+        emittedAt: existingDoc.emittedAt || null,
+        emittedByRole: existingDoc.emittedByRole || null,
+        emittedSapUser: existingDoc.emittedSapUser || null,
+      } : {}),
       opNum: opNum || existingDoc?.opNum || null,
       observations: observations || existingDoc?.observations || null,
     };
@@ -2126,6 +2138,10 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     const finalOfficialDocNum = officialSapDocNum ? `COT-${String(officialSapDocNum).padStart(6, '0')}` : activeDocNumber;
     const finalStatus = isEmittedToSap ? "EMITIDO" : "APROBADO";
 
+    const resolvedApprovedBy = currentQuoteObj.approvedBy || currentQuoteObj.totals?.approvedBy || adminName;
+    const resolvedApprovedAt = currentQuoteObj.approvedAt || currentQuoteObj.totals?.approvedAt || nowIso;
+    const resolvedApprovedByRole = currentQuoteObj.approvedByRole || currentQuoteObj.totals?.approvedByRole || currentProfile;
+
     const updatedApprovedDoc = {
       ...currentQuoteObj,
       ...quotePayload,
@@ -2143,13 +2159,18 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       DocNum: officialSapDocNum || finalOfficialDocNum,
       DocEntry: officialSapDocEntry || null,
       isSapDirect: isEmittedToSap,
-      approvedAt: nowIso,
-      approvedBy: adminName,
-      approvedByRole: currentProfile,
-      evaluatedBy: adminName,
-      evaluatedByRole: currentProfile,
+      approvedAt: resolvedApprovedAt,
+      approvedBy: resolvedApprovedBy,
+      approvedByRole: resolvedApprovedByRole,
+      ...(isEmittedToSap ? {
+        emittedAt: nowIso,
+        emittedBy: adminName,
+        emittedByRole: currentProfile,
+      } : {}),
+      evaluatedBy: resolvedApprovedBy,
+      evaluatedByRole: resolvedApprovedByRole,
       updatedAt: nowIso,
-      historyLog: [
+      historyLog: dedupeViewHistoryLogs([
         {
           status: finalStatus,
           timestamp: nowIso,
@@ -2159,7 +2180,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
             : `✅ Cotización aprobada por ${adminName}`
         },
         ...(currentQuoteObj.historyLog || [])
-      ]
+      ])
     };
 
     // 1. Purgar borrador pendiente de localStorage para que no quede como 'COT-PENDIENTE' en cola
