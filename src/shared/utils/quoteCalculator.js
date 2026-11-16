@@ -1,4 +1,5 @@
 // Calculadora matemática unificada de totales de cotización/pedido para Grupo León / SAP B1
+import { reconcileLineTotalsWithSap } from "../../features/quotes/utils/sapLineReconciliation.js";
 export const APPROVAL_DISCOUNT_THRESHOLD = 50.0; // Umbral a partir del cual requiere aprobación comercial (50.0%)
 export const REGULAR_DISCOUNT_CEILING = 55.0;    // Tope comercial estándar para artículos regulares (55.0%)
 export const STANDARD_DISCOUNT_CEILING = 55.0;   // Compatibilidad estándar (55.0%)
@@ -224,14 +225,13 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
       unitPriceConIGV = Number((finalNet2 + unitTax).toFixed(2));
     }
 
+    const isDirectConIGV = customPrice || (hasSpecialPrice && targetSpecialPriceConIGV > 0 && addDisc <= 0) || isPromoConIGV;
     const finalUnitPrice = Number(netUnitPrice.toFixed(2));
     const netLine = isOutOfStock
       ? 0
       : (isLineFromSap && (p.subtotal || p.lineTotal)
         ? Number(Number(p.subtotal || p.lineTotal).toFixed(2))
-        : Number((qty * finalUnitPrice).toFixed(2)));
-
-    const isDirectConIGV = customPrice || (hasSpecialPrice && targetSpecialPriceConIGV > 0 && addDisc <= 0) || isPromoConIGV;
+        : Number((qty * (isDirectConIGV ? netUnitPrice : finalUnitPrice)).toFixed(2)));
 
     const lineTax = isOutOfStock
       ? 0
@@ -288,10 +288,34 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
       isHigherMargin: !isOutOfStock && (addDisc < 0 || Boolean(hasSpecialPrice && customPrice && resolvedBaseSpecialConIGV > 0 && unitPriceConIGV > resolvedBaseSpecialConIGV + 0.009)),
       isVolumeDiscount: isVolumeLine,
       isExceedingCeiling: !isOutOfStock && !isLineFromSap && !hasSpecialPrice && (sapDisc + promoDisc + addDisc > MAX_DISCOUNT_CEILING + 0.01),
+      isDirectConIGV: Boolean(isDirectConIGV && !isOutOfStock),
+      rawNetLineExact: isOutOfStock ? 0 : (qty * netUnitPrice),
       isOutOfStock,
       isBackOrder: isOutOfStock,
     };
   });
+
+  // Reconciliación dinámica por documento para líneas con precio fijo con IGV (Convenio,
+  // Oferta del Mes, precio editado): SAP calcula el Neto del documento desde el Bruto total
+  // (Gross / 1.18) y el IGV como diferencia, absorbiendo el ±0.01 en la línea más cercana a 0.5¢.
+  const directLines = normalizedProducts.filter((p) => p.isDirectConIGV);
+  if (directLines.length > 0) {
+    const directGrossSum = Number(directLines.reduce((acc, it) => acc + (it.lineTotalConIGV || 0), 0).toFixed(2));
+    const officialDirectNet = Number((directGrossSum / 1.18).toFixed(2));
+    const reconciledDirectNets = reconcileLineTotalsWithSap(
+      directLines.map((d) => ({ rawLineTotal: d.rawNetLineExact })),
+      officialDirectNet
+    );
+    directLines.forEach((line, idx) => {
+      const reconciledNet = reconciledDirectNets[idx];
+      if (typeof reconciledNet === "number" && !isNaN(reconciledNet)) {
+        line.lineTotal = reconciledNet;
+        line.totalPrice = reconciledNet;
+        line.taxTotal = Number((line.lineTotalConIGV - reconciledNet).toFixed(2));
+        line.igvLine = line.taxTotal;
+      }
+    });
+  }
   
   const inStockProducts = normalizedProducts.filter((p) => !p.isOutOfStock);
   const backOrderProducts = normalizedProducts.filter((p) => p.isOutOfStock);

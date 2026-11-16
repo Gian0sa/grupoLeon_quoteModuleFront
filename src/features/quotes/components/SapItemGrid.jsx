@@ -438,7 +438,7 @@ export default function SapItemGrid({
             }
             const finalUnitPrice = Number(netUnitPrice.toFixed(2));
             const isDirectConIGV = Boolean(customPrice || (isSpecial && targetSpecialPriceConIGV > 0 && addDisc <= 0) || (!customPrice && hasPromoPrice && targetPromoNeto > 0 && targetPromoPriceConIGV > 0));
-            const lineTotal = Number((qty * finalUnitPrice).toFixed(2));
+            const lineTotal = Number((qty * (isDirectConIGV ? netUnitPrice : finalUnitPrice)).toFixed(2));
             const lineTax = isDirectConIGV
               ? Number((unitPriceConIGV * qty - lineTotal).toFixed(2))
               : Number((lineTotal * 0.18).toFixed(2));
@@ -853,7 +853,7 @@ export default function SapItemGrid({
                   }
                   const finalUnitPrice = Number(netUnitPrice.toFixed(2));
                   const isDirectConIGV = Boolean(customPrice || (isSpecial && targetSpecialPriceConIGV > 0 && addDisc <= 0) || (!customPrice && hasPromoPrice && targetPromoNeto > 0 && targetPromoPriceConIGV > 0));
-                  const lineTotal = Number((qty * finalUnitPrice).toFixed(2));
+                  const lineTotal = Number((qty * (isDirectConIGV ? netUnitPrice : finalUnitPrice)).toFixed(2));
                   const lineTax = isDirectConIGV
                     ? Number((unitPriceConIGV * qty - lineTotal).toFixed(2))
                     : Number((lineTotal * 0.18).toFixed(2));

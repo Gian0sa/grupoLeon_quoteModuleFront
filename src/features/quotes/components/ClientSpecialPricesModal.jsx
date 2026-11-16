@@ -170,8 +170,102 @@ export function ClientSpecialPricesModal({
               </Text>
             </VStack>
           ) : (
-            <Box bg="white" borderRadius="xl" border="1px solid" borderColor="gray.200" overflow="hidden" boxShadow="xs">
-              <TableContainer maxH="440px" overflowY="auto">
+            <Box>
+              {/* Vista Móvil (Tarjetas sin scroll horizontal) */}
+              <Box display={{ base: "block", md: "none" }} maxH="440px" overflowY="auto" pr={0.5}>
+                <VStack spacing={2.5} align="stretch">
+                  {filteredList.map((sp) => {
+                    const itemCodeClean = String(sp.itemCode || "").trim().toUpperCase();
+                    const isAlreadyAdded = addedItemCodes.has(itemCodeClean);
+                    const stockVal = sp.stock !== undefined && sp.stock !== null ? Number(sp.stock) : null;
+                    const hasStock = stockVal !== null && stockVal > 0;
+
+                    const listPrice = Number(sp.listPrice || 0) * rateMultiplier;
+                    const specialPriceNeto = Number(sp.specialPrice || 0) * rateMultiplier;
+                    const specialPriceConIGV = Number(sp.specialPriceConIGV || (specialPriceNeto * 1.18)) * rateMultiplier;
+
+                    return (
+                      <Box
+                        key={`m-${sp.itemCode}`}
+                        bg="white"
+                        p={3}
+                        borderRadius="xl"
+                        border="1px solid"
+                        borderColor="gray.200"
+                        boxShadow="xs"
+                      >
+                        <Flex justify="space-between" align="start" gap={2} mb={1.5}>
+                          <Text fontSize="xs" fontWeight="800" color="gray.900" lineHeight="short" wordBreak="break-word">
+                            {sp.itemName || sp.itemCode}
+                          </Text>
+                          <Badge
+                            colorScheme={hasStock ? "green" : "red"}
+                            bg={hasStock ? "#16a34a" : "#dc2626"}
+                            color="white"
+                            fontSize="9px"
+                            fontWeight="800"
+                            px={1.5}
+                            py={0.5}
+                            borderRadius="sm"
+                            flexShrink={0}
+                          >
+                            {stockVal !== null ? (hasStock ? `Stk: ${stockVal}` : "STK: 0") : "Sin dato"}
+                          </Badge>
+                        </Flex>
+
+                        <HStack spacing={1.5} wrap="wrap" mb={2.5}>
+                          <Badge colorScheme="teal" fontSize="9px" fontWeight="800" px={1.5} py={0.2} borderRadius="sm">
+                            {sp.itemCode}
+                          </Badge>
+                          {sp.sigla && (
+                            <Badge bg="gray.100" color="gray.700" fontSize="9px" fontWeight="700" px={1.5} py={0.2} borderRadius="sm">
+                              {sp.sigla}
+                            </Badge>
+                          )}
+                          <Badge bg="teal.600" color="white" fontSize="9px" fontWeight="900" px={1.5} py={0.2} borderRadius="sm">
+                            -{Number(sp.discountPercent || 0).toFixed(2)}% Dto.
+                          </Badge>
+                        </HStack>
+
+                        <Flex justify="space-between" align="center" pt={2} borderTop="1px dashed" borderColor="gray.200" gap={2} wrap="wrap">
+                          <VStack align="start" spacing={0}>
+                            <Text as="s" fontSize="10px" color="gray.400" fontWeight="600">
+                              Lista: {currencySymbol}{formatThousands(listPrice.toFixed(2))}
+                            </Text>
+                            <Text fontSize="xs" fontWeight="900" color="#166534">
+                              {currencySymbol}{formatThousands(specialPriceNeto.toFixed(2))}{" "}
+                              <Text as="span" fontSize="9px" color="gray.500">neto</Text>
+                            </Text>
+                            <Text fontSize="10px" fontWeight="700" color="teal.700">
+                              {currencySymbol}{formatThousands(specialPriceConIGV.toFixed(2))} c/IGV
+                            </Text>
+                          </VStack>
+
+                          <Button
+                            size="sm"
+                            colorScheme={isAlreadyAdded ? "teal" : "green"}
+                            bg={isAlreadyAdded ? "teal.600" : "#16a34a"}
+                            color="white"
+                            _hover={{ bg: isAlreadyAdded ? "teal.700" : "#15803d" }}
+                            leftIcon={isAlreadyAdded ? <Check size={14} /> : <Plus size={14} />}
+                            onClick={() => handleAdd(sp)}
+                            fontSize="xs"
+                            fontWeight="800"
+                            borderRadius="lg"
+                            px={3}
+                          >
+                            {isAlreadyAdded ? "Agregado (+1)" : "Agregar"}
+                          </Button>
+                        </Flex>
+                      </Box>
+                    );
+                  })}
+                </VStack>
+              </Box>
+
+              {/* Vista Escritorio (Tabla completa) */}
+              <Box display={{ base: "none", md: "block" }} bg="white" borderRadius="xl" border="1px solid" borderColor="gray.200" overflow="hidden" boxShadow="xs">
+                <TableContainer maxH="440px" overflowY="auto">
                 <Table size="sm" variant="simple">
                   <Thead bg="teal.50" position="sticky" top={0} zIndex={1}>
                     <Tr>
@@ -280,6 +374,7 @@ export function ClientSpecialPricesModal({
                   </Tbody>
                 </Table>
               </TableContainer>
+              </Box>
             </Box>
           )}
         </ModalBody>

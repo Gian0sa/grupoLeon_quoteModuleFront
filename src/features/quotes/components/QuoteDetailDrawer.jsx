@@ -94,6 +94,7 @@ import { useQuoteStore } from "../stores/quoteStore";
 import { RejectReasonModal } from "./RejectReasonModal";
 import { ObserveReasonModal } from "./ObserveReasonModal";
 import { isSpecialAgreementItem, computeSapTqcBreakdown } from "../utils/discountBreakdown";
+import { reconcileLineTotalsWithSap } from "../utils/sapLineReconciliation";
 import QuotePdfModal from "./QuotePdfModal";
 import WhatsAppQuoteModal from "./WhatsAppQuoteModal";
 import { SapPayloadJsonModal } from "./SapPayloadJsonModal";
@@ -3200,6 +3201,67 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
               const inStockProducts = displayProducts.filter(it => !getItemStockInfo(it).isOutOfStock);
               const outOfStockProducts = displayProducts.filter(it => getItemStockInfo(it).isOutOfStock);
 
+              const preparedInStock = inStockProducts.map((item) => {
+                const qty = Number(item.quantity ?? 1);
+                const isSpecial = Boolean(
+                  item.isSpecialPrice ||
+                  item.specialPrice ||
+                  item.specialDiscount ||
+                  item.campaignName === "Convenio Cliente" ||
+                  Number(item.sapDiscount ?? item.discount ?? 0) > 55.0
+                );
+                const sapDisc = Number(item.sapDiscount ?? item.discount ?? item.specialDiscount ?? 0);
+                const promoDisc = isSpecial ? 0 : Number(item.promoDiscount ?? 0);
+                let addDisc = Number(Number(item.lineDiscount ?? 0).toFixed(2));
+                const maxAllowedCeiling = Math.max(80.0, sapDisc);
+                let totalDisc = Number(item.discountPercent ?? Math.min(maxAllowedCeiling, Math.max(0, sapDisc + promoDisc + addDisc)));
+                if (addDisc === 0 && totalDisc < sapDisc && sapDisc > 0) {
+                  totalDisc = sapDisc;
+                }
+                if (addDisc === 0 && (sapDisc + promoDisc) > 0 && Math.abs(totalDisc - (sapDisc + promoDisc)) > 0.01) {
+                  if (totalDisc < (sapDisc + promoDisc)) {
+                    totalDisc = sapDisc + promoDisc;
+                    addDisc = 0;
+                  } else {
+                    addDisc = Number((totalDisc - (sapDisc + promoDisc)).toFixed(2));
+                  }
+                }
+                const isVolume = qty > 100 && totalDisc > 55;
+                const reqAppr = (isSpecial || sapDisc >= totalDisc)
+                  ? (addDisc > 0 || isVolume)
+                  : (totalDisc > 50.009 || isVolume);
+                const isHigherMargin = addDisc < 0;
+
+                const calculatedNetUnitPrice = Number((item.price * (1 - totalDisc / 100)).toFixed(2));
+                const discountedUnitPrice = (item.discountedUnitPrice && Math.abs(Number(item.discountedUnitPrice) - calculatedNetUnitPrice) <= 0.05)
+                  ? Number(item.discountedUnitPrice)
+                  : calculatedNetUnitPrice;
+                const rawLineTotal = qty * discountedUnitPrice;
+                const descText = item.description || item.ItemDescription || item.name || "Artículo";
+
+                return {
+                  item,
+                  qty,
+                  isSpecial,
+                  sapDisc,
+                  promoDisc,
+                  addDisc,
+                  totalDisc,
+                  isVolume,
+                  reqAppr,
+                  isHigherMargin,
+                  discountedUnitPrice,
+                  rawLineTotal,
+                  descText,
+                };
+              });
+
+              const reconciledTotals = reconcileLineTotalsWithSap(preparedInStock, subtotalUSD);
+              const computedInStockProducts = preparedInStock.map((entry, idx) => ({
+                ...entry,
+                lineTotalNum: reconciledTotals[idx] ?? Number(entry.rawLineTotal.toFixed(2)),
+              }));
+
               return (
                 <Box bg="white" p={{ base: 3, md: 4 }} borderRadius="2xl" border="1px solid" borderColor="gray.200" boxShadow="sm" overflow="hidden" mb={5}>
                   {/* CABECERA GENERAL */}
@@ -3231,43 +3293,21 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                       {/* Vista Móvil Tabla 1 */}
                       <Box display={{ base: "block", md: "none" }}>
                         <VStack align="stretch" spacing={3}>
-                          {inStockProducts.map((item, idx) => {
-                            const qty = Number(item.quantity ?? 1);
-                            const isSpecial = Boolean(
-                              item.isSpecialPrice || 
-                              item.specialPrice || 
-                              item.specialDiscount || 
-                              item.campaignName === "Convenio Cliente" || 
-                              Number(item.sapDiscount ?? item.discount ?? 0) > 55.0
-                            );
-                            const sapDisc = Number(item.sapDiscount ?? item.discount ?? item.specialDiscount ?? 0);
-                            const promoDisc = isSpecial ? 0 : Number(item.promoDiscount ?? 0);
-                            let addDisc = Number(Number(item.lineDiscount ?? 0).toFixed(2));
-                            const maxAllowedCeiling = Math.max(80.0, sapDisc);
-                            let totalDisc = Number(item.discountPercent ?? Math.min(maxAllowedCeiling, Math.max(0, sapDisc + promoDisc + addDisc)));
-                            if (addDisc === 0 && totalDisc < sapDisc && sapDisc > 0) {
-                              totalDisc = sapDisc;
-                            }
-                            if (addDisc === 0 && (sapDisc + promoDisc) > 0 && Math.abs(totalDisc - (sapDisc + promoDisc)) > 0.01) {
-                              if (totalDisc < (sapDisc + promoDisc)) {
-                                totalDisc = sapDisc + promoDisc;
-                                addDisc = 0;
-                              } else {
-                                addDisc = Number((totalDisc - (sapDisc + promoDisc)).toFixed(2));
-                              }
-                            }
-                            const isVolume = qty > 100 && totalDisc > 55;
-                            const reqAppr = (isSpecial || sapDisc >= totalDisc)
-                              ? (addDisc > 0 || isVolume)
-                              : (totalDisc > 50.009 || isVolume);
-                            const isHigherMargin = addDisc < 0;
-
-                            const calculatedNetUnitPrice = Number((item.price * (1 - totalDisc / 100)).toFixed(2));
-                            const discountedUnitPrice = (item.discountedUnitPrice && Math.abs(Number(item.discountedUnitPrice) - calculatedNetUnitPrice) <= 0.05)
-                              ? Number(item.discountedUnitPrice)
-                              : calculatedNetUnitPrice;
-                            const lineTotalNum = Number((qty * discountedUnitPrice).toFixed(2));
-                            const descText = item.description || item.ItemDescription || item.name || "Artículo";
+                          {computedInStockProducts.map((entry, idx) => {
+                            const {
+                              item,
+                              isSpecial,
+                              sapDisc,
+                              promoDisc,
+                              addDisc,
+                              totalDisc,
+                              isVolume,
+                              reqAppr,
+                              isHigherMargin,
+                              discountedUnitPrice,
+                              lineTotalNum,
+                              descText,
+                            } = entry;
 
                             return (
                               <Box
@@ -3407,43 +3447,20 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                               </Tr>
                             </Thead>
                             <Tbody fontSize="xs">
-                              {inStockProducts.map((item, idx) => {
-                                const qty = Number(item.quantity ?? 1);
-                                const isSpecial = Boolean(
-                                  item.isSpecialPrice || 
-                                  item.specialPrice || 
-                                  item.specialDiscount || 
-                                  item.campaignName === "Convenio Cliente" || 
-                                  Number(item.sapDiscount ?? item.discount ?? 0) > 55.0
-                                );
-                                const sapDisc = Number(item.sapDiscount ?? item.discount ?? item.specialDiscount ?? 0);
-                                const promoDisc = isSpecial ? 0 : Number(item.promoDiscount ?? 0);
-                                let addDisc = Number(Number(item.lineDiscount ?? 0).toFixed(2));
-                                const maxAllowedCeiling = Math.max(80.0, sapDisc);
-                                let totalDisc = Number(item.discountPercent ?? Math.min(maxAllowedCeiling, Math.max(0, sapDisc + promoDisc + addDisc)));
-                                if (addDisc === 0 && totalDisc < sapDisc && sapDisc > 0) {
-                                  totalDisc = sapDisc;
-                                }
-                                if (addDisc === 0 && (sapDisc + promoDisc) > 0 && Math.abs(totalDisc - (sapDisc + promoDisc)) > 0.01) {
-                                  if (totalDisc < (sapDisc + promoDisc)) {
-                                    totalDisc = sapDisc + promoDisc;
-                                    addDisc = 0;
-                                  } else {
-                                    addDisc = Number((totalDisc - (sapDisc + promoDisc)).toFixed(2));
-                                  }
-                                }
-                                const isVolume = qty > 100 && totalDisc > 55;
-                                const reqAppr = (isSpecial || sapDisc >= totalDisc)
-                                  ? (addDisc > 0 || isVolume)
-                                  : (totalDisc > 50.009 || isVolume);
-                                const isHigherMargin = addDisc < 0;
-
-                                const calculatedNetUnitPrice = Number((item.price * (1 - totalDisc / 100)).toFixed(2));
-                                const discountedUnitPrice = (item.discountedUnitPrice && Math.abs(Number(item.discountedUnitPrice) - calculatedNetUnitPrice) <= 0.05)
-                                  ? Number(item.discountedUnitPrice)
-                                  : calculatedNetUnitPrice;
-                                const lineTotalNum = Number((qty * discountedUnitPrice).toFixed(2));
-                                const descText = item.description || item.ItemDescription || item.name || "Artículo";
+                              {computedInStockProducts.map((entry, idx) => {
+                                const {
+                                  item,
+                                  isSpecial,
+                                  sapDisc,
+                                  promoDisc,
+                                  addDisc,
+                                  totalDisc,
+                                  isVolume,
+                                  reqAppr,
+                                  discountedUnitPrice,
+                                  lineTotalNum,
+                                  descText,
+                                } = entry;
 
                                 return (
                                   <Tr key={`in-${idx}`} _hover={{ bg: "gray.50" }}>
