@@ -71,9 +71,14 @@ export function useHasAccess() {
 
     // 🛡️ Únicamente el Administrador Maestro posee pase general a nivel de interfaz,
     // EXCEPTO para permisos granulares explícitos como "Gestionar Ofertas del Mes y Promociones" (/promotions),
-    // y "Ver Borradores de Cotizaciones" (/quotes/drafts),
+    // "Ver Borradores de Cotizaciones" (/quotes/drafts),
+    // y "Ver Aprobadores y Emisores SAP en Seguimiento" (/quotes/approval-audit),
     // que deben respetar fielmente su activación o desactivación en el perfil del usuario.
-    const isGranularPermission = endpoint.includes("/promotions") || endpoint.includes("/quotes/drafts") || endpoint.includes("/quotes/draft");
+    const isGranularPermission =
+      endpoint.includes("/promotions") ||
+      endpoint.includes("/quotes/drafts") ||
+      endpoint.includes("/quotes/draft") ||
+      endpoint.includes("/quotes/approval-audit");
     const roleUpper = String(role || localStorage.getItem("role") || "").toUpperCase();
     if (!isGranularPermission && (roleUpper === "ADMIN" || roleUpper === "ADMINISTRADOR" || roleUpper.startsWith("ADMIN") || checkIsAdmin(endpoints, username))) {
       return true;
@@ -85,8 +90,10 @@ export function useHasAccess() {
     const targetWithSpace = endpoint.includes(":") ? endpoint.replace(":", " ") : endpoint;
     const targetWithColon = endpoint.includes(" ") ? endpoint.replace(" ", ":") : endpoint;
 
-    // Soporte de equivalencias para compatibilidad transparente de permisos
-    const candidateList = [endpoint, targetWithSpace, targetWithColon, "*"];
+    // Soporte de equivalencias para compatibilidad transparente de permisos (sin wildcard "*" para permisos granulares)
+    const candidateList = isGranularPermission
+      ? [endpoint, targetWithSpace, targetWithColon]
+      : [endpoint, targetWithSpace, targetWithColon, "*"];
     if (endpoint.includes("/promotions")) {
       candidateList.push(
         "POST /promotions",
@@ -94,6 +101,14 @@ export function useHasAccess() {
         "/promotions",
         "POST /quoteModule/promotions",
         "POST:/quoteModule/promotions"
+      );
+    } else if (endpoint.includes("/quotes/approval-audit")) {
+      candidateList.push(
+        "GET /quotes/approval-audit",
+        "GET:/quotes/approval-audit",
+        "/quotes/approval-audit",
+        "GET /quoteModule/quotes/approval-audit",
+        "GET:/quoteModule/quotes/approval-audit"
       );
     } else if (endpoint.includes("/quotes/drafts") || endpoint.includes("/quotes/draft")) {
       candidateList.push(

@@ -92,6 +92,13 @@ import { es } from "date-fns/locale";
 import { cleanSellerName, cleanClientName, formatQuoteSellerName, SALES_PERSONS_MAP } from "../../../shared/utils/quoteLogisticsFormatters";
 import { useSellersData } from "../../auth/hooks/queries/authQueries";
 import { isSpecialAgreementItem } from "../utils/discountBreakdown";
+import {
+  upsertViewHistoryLog,
+  dedupeViewHistoryLogs,
+  mergeHistoryLogs,
+  extractQuoteApprovalAudit,
+  hasGranularApprovalAuditAccess,
+} from "../utils/quoteHistoryUtils";
 
 const isDraftState = (status) => {
   if (!status) return true;
@@ -703,6 +710,14 @@ export function QuoteApprovalPage() {
     hasAccess("GET /quotes/draft") ||
     hasAccess("GET:/quotes/draft")
   );
+
+  // 🛡️ Permiso granular estricto para ver quién aprobó el proceso y/o envió el pedido a SAP
+  // (Configurable por perfil sin bypass de administrador ni alteración al flujo de facturación)
+  const authEndpoints = useAuthStore((state) => state.endpoints);
+  const canViewApprovalAudit = Boolean(
+    hasAccess("GET /quotes/approval-audit") &&
+    hasGranularApprovalAuditAccess(authEndpoints)
+  );
   const activeCurrentUsername = (authUsername || localStorage.getItem("username") || "").toLowerCase().trim();
   const activeCurrentUserId = authUserId || localStorage.getItem("userId");
 
@@ -1077,10 +1092,29 @@ export function QuoteApprovalPage() {
               observedBy: (finalStatus === "ENVIADO" || finalStatus === "APROBADO_COMERCIAL" || finalStatus === "APROBADO" || finalStatus === "CANCELADO")
                 ? null
                 : (matchedLocal.observedBy || sq.observedBy),
-              // Historial: combinar o usar el del servidor si trae registros nuevos
-              historyLog: (sq.historyLog && sq.historyLog.length >= (matchedLocal.historyLog?.length || 0))
-                ? sq.historyLog
-                : (matchedLocal.historyLog && matchedLocal.historyLog.length > 0 ? matchedLocal.historyLog : (sq.historyLog || [])),
+              // Historial: combinar ambos orígenes preservando eventos y la hora VISTO más reciente por usuario
+              historyLog: mergeHistoryLogs(sq.historyLog, matchedLocal.historyLog),
+              viewedByAdmin: Boolean(sq.viewedByAdmin || matchedLocal.viewedByAdmin || sq.totals?.viewedByAdmin || matchedLocal.totals?.viewedByAdmin),
+              viewedAt: sq.viewedAt || matchedLocal.viewedAt || sq.totals?.viewedAt || matchedLocal.totals?.viewedAt || null,
+              lastViewedAt: (() => {
+                const sqTs = sq.lastViewedAt || sq.totals?.lastViewedAt || "";
+                const lqTs = matchedLocal.lastViewedAt || matchedLocal.totals?.lastViewedAt || "";
+                return new Date(lqTs).getTime() > new Date(sqTs).getTime() ? lqTs : (sqTs || lqTs || null);
+              })(),
+              lastViewedBy: (() => {
+                const sqTs = sq.lastViewedAt || sq.totals?.lastViewedAt || "";
+                const lqTs = matchedLocal.lastViewedAt || matchedLocal.totals?.lastViewedAt || "";
+                return new Date(lqTs).getTime() > new Date(sqTs).getTime()
+                  ? (matchedLocal.lastViewedBy || matchedLocal.totals?.lastViewedBy || sq.lastViewedBy || null)
+                  : (sq.lastViewedBy || sq.totals?.lastViewedBy || matchedLocal.lastViewedBy || null);
+              })(),
+              approvedBy: sq.approvedBy || matchedLocal.approvedBy || sq.totals?.approvedBy || matchedLocal.totals?.approvedBy || null,
+              approvedByRole: sq.approvedByRole || matchedLocal.approvedByRole || sq.totals?.approvedByRole || matchedLocal.totals?.approvedByRole || null,
+              approvedAt: sq.approvedAt || matchedLocal.approvedAt || sq.totals?.approvedAt || matchedLocal.totals?.approvedAt || null,
+              emittedBy: sq.emittedBy || matchedLocal.emittedBy || sq.totals?.emittedBy || matchedLocal.totals?.emittedBy || null,
+              emittedByRole: sq.emittedByRole || matchedLocal.emittedByRole || sq.totals?.emittedByRole || matchedLocal.totals?.emittedByRole || null,
+              emittedAt: sq.emittedAt || matchedLocal.emittedAt || sq.totals?.emittedAt || matchedLocal.totals?.emittedAt || null,
+              emittedSapUser: sq.emittedSapUser || matchedLocal.emittedSapUser || sq.totals?.emittedSapUser || matchedLocal.totals?.emittedSapUser || null,
               products: sqItems.length > 0 ? sqItems : lqItems,
               client: sq.client || matchedLocal.client,
               clientName: sq.clientName || matchedLocal.clientName,
@@ -1106,6 +1140,7 @@ export function QuoteApprovalPage() {
           return {
             ...sq,
             docNumber: sq.docNumber || (sq.id ? `COT-WEB-${String(sq.id).padStart(6, '0')}` : "COT-PENDIENTE"),
+            historyLog: dedupeViewHistoryLogs(sq.historyLog),
           };
         });
 
@@ -1191,7 +1226,29 @@ export function QuoteApprovalPage() {
                 DocNum: (finalStatus === "ENVIADO" || finalStatus === "PENDIENTE_APROBACION" || finalStatus === "BORRADOR" || finalStatus === "OBSERVADO" || finalStatus === "RECHAZADO")
                   ? null
                   : ((sq.isSapDirect || sq.totals?.isSapDirect) ? (sq.DocNum || sq.totals?.DocNum || sq.sapDocNum || sq.totals?.sapDocNum) : null),
-                // Mantener datos ricos del servidor que no estén en local
+                // Mantener datos ricos del servidor que no estén en local y preservar la hora VISTO más reciente
+                historyLog: mergeHistoryLogs(sq.historyLog, localMatch.historyLog),
+                viewedByAdmin: Boolean(sq.viewedByAdmin || localMatch.viewedByAdmin || sq.totals?.viewedByAdmin || localMatch.totals?.viewedByAdmin),
+                viewedAt: sq.viewedAt || localMatch.viewedAt || sq.totals?.viewedAt || localMatch.totals?.viewedAt || null,
+                lastViewedAt: (() => {
+                  const sqTs = sq.lastViewedAt || sq.totals?.lastViewedAt || "";
+                  const lqTs = localMatch.lastViewedAt || localMatch.totals?.lastViewedAt || "";
+                  return new Date(lqTs).getTime() > new Date(sqTs).getTime() ? lqTs : (sqTs || lqTs || null);
+                })(),
+                lastViewedBy: (() => {
+                  const sqTs = sq.lastViewedAt || sq.totals?.lastViewedAt || "";
+                  const lqTs = localMatch.lastViewedAt || localMatch.totals?.lastViewedAt || "";
+                  return new Date(lqTs).getTime() > new Date(sqTs).getTime()
+                    ? (localMatch.lastViewedBy || localMatch.totals?.lastViewedBy || sq.lastViewedBy || null)
+                    : (sq.lastViewedBy || sq.totals?.lastViewedBy || localMatch.lastViewedBy || null);
+                })(),
+                approvedBy: sq.approvedBy || localMatch.approvedBy || sq.totals?.approvedBy || localMatch.totals?.approvedBy || null,
+                approvedByRole: sq.approvedByRole || localMatch.approvedByRole || sq.totals?.approvedByRole || localMatch.totals?.approvedByRole || null,
+                approvedAt: sq.approvedAt || localMatch.approvedAt || sq.totals?.approvedAt || localMatch.totals?.approvedAt || null,
+                emittedBy: sq.emittedBy || localMatch.emittedBy || sq.totals?.emittedBy || localMatch.totals?.emittedBy || null,
+                emittedByRole: sq.emittedByRole || localMatch.emittedByRole || sq.totals?.emittedByRole || localMatch.totals?.emittedByRole || null,
+                emittedAt: sq.emittedAt || localMatch.emittedAt || sq.totals?.emittedAt || localMatch.totals?.emittedAt || null,
+                emittedSapUser: sq.emittedSapUser || localMatch.emittedSapUser || sq.totals?.emittedSapUser || localMatch.totals?.emittedSapUser || null,
                 products: (sq.products && sq.products.length > 0) ? sq.products : (localMatch.products || localMatch.items || []),
                 client: sq.client || localMatch.client,
                 clientName: sq.clientName || localMatch.clientName,
@@ -1217,6 +1274,7 @@ export function QuoteApprovalPage() {
             return {
               ...sq,
               docNumber: sq.docNumber || (sq.id ? `COT-WEB-${String(sq.id).padStart(6, '0')}` : "COT-PENDIENTE"),
+              historyLog: dedupeViewHistoryLogs(sq.historyLog),
             };
           });
 
@@ -1906,6 +1964,19 @@ export function QuoteApprovalPage() {
       icon: isApproval ? CheckCircle2 : Zap,
     });
 
+    const isApprovalStatus = nextStatus === "APROBADO_COMERCIAL" || nextStatus === "APROBADO";
+    const prevTargetStatus = String(target?.approvalStatus || target?.state || target?.status || "").toUpperCase().trim();
+    const wasAlreadyApproved = ["APROBADO", "APROBADO_COMERCIAL"].includes(prevTargetStatus);
+    const resolvedApprovedBy = wasAlreadyApproved
+      ? (target?.approvedBy || target?.totals?.approvedBy || adminName)
+      : adminName;
+    const resolvedApprovedAt = wasAlreadyApproved
+      ? (target?.approvedAt || target?.totals?.approvedAt || nowIso)
+      : nowIso;
+    const resolvedApprovedRole = wasAlreadyApproved
+      ? (target?.approvedByRole || target?.totals?.approvedByRole || authRole || null)
+      : (authRole || null);
+
     const fullDoc = {
       ...(target || {}),
       id: numericId || target?.id || docId,
@@ -1914,7 +1985,18 @@ export function QuoteApprovalPage() {
       state: nextStatus,
       approvalStatus: nextStatus,
       updatedAt: nowIso,
-      historyLog: updatedHistory
+      historyLog: dedupeViewHistoryLogs(updatedHistory),
+      ...(isApprovalStatus ? {
+        approvedBy: resolvedApprovedBy,
+        approvedAt: resolvedApprovedAt,
+        approvedByRole: resolvedApprovedRole,
+        totals: {
+          ...(target?.totals || {}),
+          approvedBy: resolvedApprovedBy,
+          approvedAt: resolvedApprovedAt,
+          approvedByRole: resolvedApprovedRole,
+        }
+      } : {}),
     };
 
     // Actualizar estado reactivo optimistamente
@@ -1960,16 +2042,12 @@ export function QuoteApprovalPage() {
     const nowIso = new Date().toISOString();
     const viewerName = authUsername || "Administrador";
 
-    const isFirstView = !q.viewedByAdmin && !q.totals?.viewedByAdmin;
     const currentCount = Number(q.adminViewCount || q.totals?.adminViewCount || 0);
-    const currentLogs = Array.isArray(q.historyLog) ? q.historyLog : [];
-    const newLog = isFirstView
-      ? { status: "VISTO", timestamp: nowIso, user: viewerName, note: `👁️ Solicitud abierta y leída por ${viewerName}` }
-      : null;
-    const updatedHistory = newLog ? [newLog, ...currentLogs] : currentLogs;
+    const updatedHistory = upsertViewHistoryLog(q.historyLog, viewerName, nowIso);
 
     const viewFields = {
       viewedByAdmin: true,
+      lastViewedBy: viewerName,
       viewedAt: q.viewedAt || q.totals?.viewedAt || nowIso,
       lastViewedAt: nowIso,
       adminViewCount: currentCount + 1,
@@ -2001,8 +2079,15 @@ export function QuoteApprovalPage() {
       return old.map(item => isMatchingDoc(item, docId) ? { ...item, ...viewFields, totals: { ...(item.totals || {}), ...viewFields } } : item);
     });
 
-    const targetQuote = updated.find(i => isMatchingDoc(i, docId));
-    if (targetQuote) setSelectedQuote(targetQuote);
+    const targetQuote = updated.find(i => isMatchingDoc(i, docId)) || {
+      ...q,
+      ...viewFields,
+      totals: {
+        ...(q.totals || {}),
+        ...viewFields
+      }
+    };
+    setSelectedQuote(targetQuote);
 
     // Persistir en backend API para sincronización multiusuario (WebSocket broadcast a vendedores)
     updateQuote({
@@ -2455,8 +2540,227 @@ export function QuoteApprovalPage() {
       </VStack>
     );
   };
+
+  // Renderiza quién aprobó el proceso comercial y/o quién mandó el pedido a SAP (visible solo con permiso granular)
+  const renderApprovalAuditCell = (q, { compact = false } = {}) => {
+    const audit = extractQuoteApprovalAudit(q);
+    const {
+      approvedBy,
+      approvedAt,
+      emittedBy,
+      emittedAt,
+      emittedSapUser,
+      isSameActor,
+      isLegacySapOnly,
+    } = audit;
+
+    const formatAuditTime = (iso) => {
+      if (!iso) return null;
+      try {
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return null;
+        return d.toLocaleString("es-PE", {
+          timeZone: "America/Lima",
+          day: "2-digit",
+          month: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        });
+      } catch {
+        return null;
+      }
+    };
+
+    if (!approvedBy && !emittedBy) {
+      if (isLegacySapOnly) {
+        return (
+          <Badge
+            variant="subtle"
+            colorScheme="gray"
+            fontSize="10px"
+            px={2}
+            py={0.5}
+            borderRadius="md"
+            fontWeight="700"
+            textTransform="none"
+            whiteSpace="normal"
+          >
+            SAP previo sin auditoría
+          </Badge>
+        );
+      }
+      return (
+        <Text fontSize="xs" color="gray.400" fontWeight="600">
+          —
+        </Text>
+      );
+    }
+
+    if (isSameActor && approvedBy) {
+      const timeLabel = formatAuditTime(emittedAt || approvedAt);
+      return (
+        <VStack align={compact ? "flex-start" : "start"} spacing={0.5}>
+          <Badge
+            colorScheme="teal"
+            variant="subtle"
+            fontSize="10px"
+            px={2}
+            py={0.5}
+            borderRadius="md"
+            fontWeight="800"
+            textTransform="none"
+            whiteSpace="normal"
+          >
+            Aprobó y envió a SAP: {approvedBy}
+          </Badge>
+          {(emittedSapUser || timeLabel) && (
+            <Text fontSize="10px" color="gray.500" fontWeight="600">
+              {emittedSapUser ? `SAP: ${emittedSapUser}` : ""}
+              {emittedSapUser && timeLabel ? " · " : ""}
+              {timeLabel || ""}
+            </Text>
+          )}
+        </VStack>
+      );
+    }
+
+    const approvedTime = formatAuditTime(approvedAt);
+    const emittedTime = formatAuditTime(emittedAt);
+
+    return (
+      <VStack align={compact ? "flex-start" : "start"} spacing={1}>
+        {approvedBy && (
+          <Box>
+            <Badge
+              colorScheme="green"
+              variant="subtle"
+              fontSize="10px"
+              px={2}
+              py={0.5}
+              borderRadius="md"
+              fontWeight="800"
+              textTransform="none"
+              whiteSpace="normal"
+            >
+              Aprobó: {approvedBy}
+            </Badge>
+            {approvedTime && (
+              <Text fontSize="10px" color="gray.500" fontWeight="600" mt={0.5}>
+                {approvedTime}
+              </Text>
+            )}
+          </Box>
+        )}
+        {emittedBy && (
+          <Box>
+            <Badge
+              colorScheme="purple"
+              variant="subtle"
+              fontSize="10px"
+              px={2}
+              py={0.5}
+              borderRadius="md"
+              fontWeight="800"
+              textTransform="none"
+              whiteSpace="normal"
+            >
+              Envió SAP: {emittedBy}
+            </Badge>
+            {(emittedSapUser || emittedTime) && (
+              <Text fontSize="10px" color="gray.500" fontWeight="600" mt={0.5}>
+                {emittedSapUser ? `SAP: ${emittedSapUser}` : ""}
+                {emittedSapUser && emittedTime ? " · " : ""}
+                {emittedTime || ""}
+              </Text>
+            )}
+          </Box>
+        )}
+      </VStack>
+    );
+  };
+
+  const renderMobilePrimaryAction = (q, docId, status, { inlineAudit = false } = {}) => {
+    const isPendingApproval = ["ENVIADO", "EN_PROCESO", "PENDIENTE_APROBACION", "PENDIENTE", "OBSERVADO", "EN_EDICION"].includes(status);
+    const isPendingBilling = status === "PENDIENTE_FACTURACION" || status === "EN_FACTURACION";
+    const lockCheck = checkQuoteLock(docId, authUserId, authUsername) || (q?.id ? checkQuoteLock(q.id, authUserId, authUsername) : { isLocked: false, isOwnLock: false, hasActiveLock: false });
+    const isLockedByOther = Boolean(lockCheck.isLocked);
+    const isLockedBySelf = Boolean(lockCheck.isOwnLock);
+
+    const sharedInlineProps = inlineAudit
+      ? { minH: "40px", h: "auto", px: 4, borderRadius: "lg", whiteSpace: "nowrap", flexShrink: 0 }
+      : { h: "40px", borderRadius: "xl" };
+
+    if (isLockedByOther && (isPendingApproval || isPendingBilling)) {
+      return (
+        <Button
+          size="sm"
+          bg="#fef3c7"
+          color="#92400e"
+          variant="outline"
+          borderColor="#fcd34d"
+          _hover={{ bg: "#fde68a" }}
+          leftIcon={<Lock className="w-4 h-4 text-amber-700" />}
+          onClick={() => setLockAlertTarget({ quote: q, lockInfo: lockCheck.lockInfo })}
+          fontWeight="800"
+          title={`En revisión por ${lockCheck.lockInfo?.lockedByUsername} (${lockCheck.lockInfo?.lockedByProfile})`}
+          {...sharedInlineProps}
+        >
+          En Revisión 🔒
+        </Button>
+      );
+    }
+
+    if (isLockedBySelf && (isPendingApproval || isPendingBilling)) {
+      return (
+        <Button
+          size="sm"
+          bg="#0f766e"
+          color="white"
+          _hover={{ bg: "#115e59" }}
+          _active={{ bg: "#134e4a" }}
+          leftIcon={<Lock className="w-4 h-4 text-emerald-200" />}
+          onClick={() => {
+            markAsViewedByAdmin(q);
+            const freshDoc = quotes.find(item => isMatchingDoc(item, q.docNumber || q.id)) || q;
+            setSelectedQuote({ ...freshDoc });
+            setIsDetailOpen(true);
+          }}
+          fontWeight="900"
+          boxShadow="xs"
+          title="Estás verificando esta cotización con candado activo"
+          {...sharedInlineProps}
+        >
+          Verificando 🔒
+        </Button>
+      );
+    }
+
+    return (
+      <Button
+        size="sm"
+        bg={isAdminUser && (isPendingApproval || isPendingBilling) ? "#0f766e" : "white"}
+        color={isAdminUser && (isPendingApproval || isPendingBilling) ? "white" : "#334155"}
+        variant={isAdminUser && (isPendingApproval || isPendingBilling) ? "solid" : "outline"}
+        borderColor="#cbd5e1"
+        leftIcon={<Eye className="w-4 h-4" />}
+        onClick={() => {
+          markAsViewedByAdmin(q);
+          const freshDoc = quotes.find(item => isMatchingDoc(item, q.docNumber || q.id)) || q;
+          setSelectedQuote({ ...freshDoc });
+          setIsDetailOpen(true);
+        }}
+        fontWeight="800"
+        boxShadow="xs"
+        {...sharedInlineProps}
+      >
+        {isAdminUser && (isPendingApproval || isPendingBilling) ? "Verificar" : "Vista"}
+      </Button>
+    );
+  };
+
   // Botones de acción por fila, con diseño ultra elegante y optimizado para móvil y escritorio
-  const renderRowActions = (q, docId, status, { stack = false } = {}) => {
+  const renderRowActions = (q, docId, status, { stack = false, hidePrimary = false } = {}) => {
     const isDraft = !status || isDraftState(status);
     const isPendingApproval = ["ENVIADO", "EN_PROCESO", "PENDIENTE_APROBACION", "PENDIENTE", "OBSERVADO", "EN_EDICION"].includes(status);
     const isPendingBilling = status === "PENDIENTE_FACTURACION" || status === "EN_FACTURACION";
@@ -2805,6 +3109,14 @@ export function QuoteApprovalPage() {
     // ─────────────────────────────────────────────────────────────
     // VISTA MÓVIL (Tarjeta con botones de toque amplio)
     // ─────────────────────────────────────────────────────────────
+    const hasCorregir = !isAdminUser && (status === "OBSERVADO" || status === "EN_EDICION");
+    const hasRecall = isPendingApproval && !isAdminUser && !isViewedOrUnderReview;
+    const secondaryCount = (canViewPdfOrShare ? 1 : 0) + (hasCorregir ? 1 : 0) + (canShowQuickObserve ? 1 : 0);
+
+    if (!isDraft && hidePrimary && secondaryCount === 0 && !canShowTrashIcon && !hasRecall) {
+      return null;
+    }
+
     return (
       <VStack spacing={2} align="stretch" w="full">
         {isDraft ? (
@@ -2883,208 +3195,153 @@ export function QuoteApprovalPage() {
               borderRadius="xl"
             />
           </Grid>
-        ) : (
-          <Grid templateColumns={canShowTrashIcon ? "1fr 1fr auto" : "1fr 1fr"} gap={2} w="full">
-            {(() => {
-              const lockCheck = checkQuoteLock(docId, authUserId, authUsername) || (q?.id ? checkQuoteLock(q.id, authUserId, authUsername) : { isLocked: false, isOwnLock: false, hasActiveLock: false });
-              const isLockedByOther = Boolean(lockCheck.isLocked);
-              const isLockedBySelf = Boolean(lockCheck.isOwnLock);
+        ) : (() => {
+          const gridCols = (() => {
+            if (hidePrimary) {
+              if (secondaryCount === 0 && !canShowTrashIcon) return null;
+              if (secondaryCount <= 1 && !canShowTrashIcon) return "1fr";
+              if (secondaryCount === 1 && canShowTrashIcon) return "1fr auto";
+              return canShowTrashIcon ? "1fr 1fr auto" : "1fr 1fr";
+            }
+            const totalMain = 1 + secondaryCount;
+            if (totalMain === 1 && !canShowTrashIcon) return "1fr";
+            if (totalMain === 1 && canShowTrashIcon) return "1fr auto";
+            return canShowTrashIcon ? "1fr 1fr auto" : "1fr 1fr";
+          })();
 
-              if (isLockedByOther && (isPendingApproval || isPendingBilling)) {
-                return (
-                  <Button
-                    size="sm"
-                    h="40px"
-                    bg="#fef3c7"
-                    color="#92400e"
-                    variant="outline"
-                    borderColor="#fcd34d"
-                    _hover={{ bg: "#fde68a" }}
-                    leftIcon={<Lock className="w-4 h-4 text-amber-700" />}
-                    onClick={() => setLockAlertTarget({ quote: q, lockInfo: lockCheck.lockInfo })}
-                    fontWeight="800"
-                    borderRadius="xl"
-                    title={`En revisión por ${lockCheck.lockInfo?.lockedByUsername} (${lockCheck.lockInfo?.lockedByProfile})`}
-                  >
-                    En Revisión 🔒
-                  </Button>
-                );
-              }
+          return (
+            <>
+              {gridCols && (
+                <Grid templateColumns={gridCols} gap={2} w="full">
+                  {!hidePrimary && renderMobilePrimaryAction(q, docId, status)}
 
-              if (isLockedBySelf && (isPendingApproval || isPendingBilling)) {
-                return (
-                  <Button
-                    size="sm"
-                    h="40px"
-                    bg="#0f766e"
-                    color="white"
-                    _hover={{ bg: "#115e59" }}
-                    _active={{ bg: "#134e4a" }}
-                    leftIcon={<Lock className="w-4 h-4 text-emerald-200" />}
-                    onClick={() => {
-                      markAsViewedByAdmin(q);
-                      const freshDoc = quotes.find(item => isMatchingDoc(item, q.docNumber || q.id)) || q;
-                      setSelectedQuote({ ...freshDoc });
-                      setIsDetailOpen(true);
-                    }}
-                    fontWeight="900"
-                    borderRadius="xl"
-                    boxShadow="xs"
-                    title="Estás verificando esta cotización con candado activo"
-                  >
-                    Verificando 🔒
-                  </Button>
-                );
-              }
+                  {/* Botón Compartir Mobile (PDF y WhatsApp unificados en menú desplegable) */}
+                  {canViewPdfOrShare && (
+                    <Menu isLazy placement="bottom-end">
+                      <MenuButton
+                        as={Button}
+                        size="sm"
+                        h="40px"
+                        variant="outline"
+                        borderColor="#bbf7d0"
+                        color="#15803d"
+                        bg="#f0fdf4"
+                        _hover={{ bg: "#dcfce7", borderColor: "#86efac" }}
+                        leftIcon={<Share2 className="w-4 h-4 text-emerald-600" />}
+                        rightIcon={<ChevronDown className="w-3.5 h-3.5 text-emerald-600" />}
+                        fontWeight="800"
+                        borderRadius="xl"
+                      >
+                        Compartir
+                      </MenuButton>
+                      <MenuList minW="200px" py={1.5} borderRadius="xl" boxShadow="xl" borderColor="gray.200" zIndex={30}>
+                        <MenuItem
+                          icon={<FileText className="w-4 h-4 text-teal-600" />}
+                          onClick={() => {
+                            markAsViewedByAdmin(q);
+                            setPdfQuote(q);
+                          }}
+                          fontSize="sm"
+                          fontWeight="700"
+                          py={2.5}
+                        >
+                          Ver Talonario (PDF)
+                        </MenuItem>
+                        <MenuItem
+                          icon={<MessageSquare className="w-4 h-4 text-green-600" />}
+                          onClick={() => {
+                            markAsViewedByAdmin(q);
+                            setWhatsAppQuote(q);
+                          }}
+                          fontSize="sm"
+                          fontWeight="700"
+                          py={2.5}
+                        >
+                          Enviar por WhatsApp
+                        </MenuItem>
+                      </MenuList>
+                    </Menu>
+                  )}
 
-              return (
+                  {/* Botón Corregir para cotizaciones observadas (Mobile - SOLO PARA VENDEDOR) */}
+                  {hasCorregir && (
+                    <Button
+                      size="sm"
+                      h="40px"
+                      bg="#ea580c"
+                      color="white"
+                      _hover={{ bg: "#c2410c" }}
+                      leftIcon={<Edit3 className="w-4 h-4" />}
+                      onClick={() => handleLoadQuote(q)}
+                      fontWeight="800"
+                      borderRadius="xl"
+                      boxShadow="xs"
+                    >
+                      ✏️ Corregir
+                    </Button>
+                  )}
+
+                  {/* Administrador: Botón Observar rápido (Mobile) */}
+                  {canShowQuickObserve && (
+                    <Button
+                      size="sm"
+                      h="40px"
+                      colorScheme="orange"
+                      bg="#fff7ed"
+                      color="#c2410c"
+                      border="1.5px solid #fdba74"
+                      _hover={{ bg: "#ffedd5" }}
+                      leftIcon={<MessageSquare className="w-4 h-4 text-orange-600" />}
+                      onClick={() => handleObserveQuote(q)}
+                      fontWeight="800"
+                      borderRadius="xl"
+                    >
+                      Observar
+                    </Button>
+                  )}
+
+                  {canShowTrashIcon && (
+                    <IconButton
+                      size="sm"
+                      h="40px"
+                      w="40px"
+                      variant="outline"
+                      borderColor="#fca5a5"
+                      color="#dc2626"
+                      bg="#fef2f2"
+                      _hover={{ bg: "#fee2e2" }}
+                      icon={<Trash2 className="w-4 h-4" />}
+                      onClick={() => setDeleteConfirmDoc({ docId, status, isDraft: false, isAlreadyAnulado })}
+                      aria-label={isAlreadyAnulado ? "Eliminar definitivamente" : "Anular cotización"}
+                      title={isAlreadyAnulado ? "Eliminar cotización definitivamente del sistema" : "Anular cotización del aplicativo"}
+                      borderRadius="xl"
+                    />
+                  )}
+                </Grid>
+              )}
+
+              {/* Móvil: Vendedor Retirar Solicitud si aún no fue abierta por el admin ni está en revisión */}
+              {hasRecall && (
                 <Button
                   size="sm"
-                  h="40px"
-                  bg={isAdminUser && (isPendingApproval || isPendingBilling) ? "#0f766e" : "white"}
-                  color={isAdminUser && (isPendingApproval || isPendingBilling) ? "white" : "#334155"}
-                  variant={isAdminUser && (isPendingApproval || isPendingBilling) ? "solid" : "outline"}
-                  borderColor="#cbd5e1"
-                  leftIcon={<Eye className="w-4 h-4" />}
-                  onClick={() => {
-                    markAsViewedByAdmin(q);
-                    const freshDoc = quotes.find(item => isMatchingDoc(item, q.docNumber || q.id)) || q;
-                    setSelectedQuote({ ...freshDoc });
-                    setIsDetailOpen(true);
-                  }}
-                  fontWeight="800"
-                  borderRadius="xl"
-                  boxShadow="xs"
-                >
-                  {isAdminUser && (isPendingApproval || isPendingBilling) ? "Verificar" : "Vista"}
-                </Button>
-              );
-            })()}
-
-            {/* Botón Compartir Mobile (PDF y WhatsApp unificados en menú desplegable) */}
-            {canViewPdfOrShare && (
-              <Menu isLazy placement="bottom-end">
-                <MenuButton
-                  as={Button}
-                  size="sm"
-                  h="40px"
+                  h="38px"
                   variant="outline"
-                  borderColor="#bbf7d0"
-                  color="#15803d"
-                  bg="#f0fdf4"
-                  _hover={{ bg: "#dcfce7", borderColor: "#86efac" }}
-                  leftIcon={<Share2 className="w-4 h-4 text-emerald-600" />}
-                  rightIcon={<ChevronDown className="w-3.5 h-3.5 text-emerald-600" />}
+                  borderColor="#fdba74"
+                  color="#c2410c"
+                  bg="#fff7ed"
+                  _hover={{ bg: "#ffedd5" }}
+                  leftIcon={<Undo2 className="w-4 h-4" />}
+                  onClick={() => handleRecallQuote(q)}
                   fontWeight="800"
                   borderRadius="xl"
+                  w="full"
                 >
-                  Compartir
-                </MenuButton>
-                <MenuList minW="200px" py={1.5} borderRadius="xl" boxShadow="xl" borderColor="gray.200" zIndex={30}>
-                  <MenuItem
-                    icon={<FileText className="w-4 h-4 text-teal-600" />}
-                    onClick={() => {
-                      markAsViewedByAdmin(q);
-                      setPdfQuote(q);
-                    }}
-                    fontSize="sm"
-                    fontWeight="700"
-                    py={2.5}
-                  >
-                    Ver Talonario (PDF)
-                  </MenuItem>
-                  <MenuItem
-                    icon={<MessageSquare className="w-4 h-4 text-green-600" />}
-                    onClick={() => {
-                      markAsViewedByAdmin(q);
-                      setWhatsAppQuote(q);
-                    }}
-                    fontSize="sm"
-                    fontWeight="700"
-                    py={2.5}
-                  >
-                    Enviar por WhatsApp
-                  </MenuItem>
-                </MenuList>
-              </Menu>
-            )}
-
-            {/* Botón Corregir para cotizaciones observadas (Mobile - SOLO PARA VENDEDOR) */}
-            {!isAdminUser && (status === "OBSERVADO" || status === "EN_EDICION") && (
-              <Button
-                size="sm"
-                h="40px"
-                bg="#ea580c"
-                color="white"
-                _hover={{ bg: "#c2410c" }}
-                leftIcon={<Edit3 className="w-4 h-4" />}
-                onClick={() => handleLoadQuote(q)}
-                fontWeight="800"
-                borderRadius="xl"
-                boxShadow="xs"
-              >
-                ✏️ Corregir
-              </Button>
-            )}
-
-            {/* Administrador: Botón Observar rápido (Mobile) */}
-            {canShowQuickObserve && (
-              <Button
-                size="sm"
-                h="40px"
-                colorScheme="orange"
-                bg="#fff7ed"
-                color="#c2410c"
-                border="1.5px solid #fdba74"
-                _hover={{ bg: "#ffedd5" }}
-                leftIcon={<MessageSquare className="w-4 h-4 text-orange-600" />}
-                onClick={() => handleObserveQuote(q)}
-                fontWeight="800"
-                borderRadius="xl"
-              >
-                Observar
-              </Button>
-            )}
-
-            {canShowTrashIcon && (
-              <IconButton
-                size="sm"
-                h="40px"
-                w="40px"
-                variant="outline"
-                borderColor="#fca5a5"
-                color="#dc2626"
-                bg="#fef2f2"
-                _hover={{ bg: "#fee2e2" }}
-                icon={<Trash2 className="w-4 h-4" />}
-                onClick={() => setDeleteConfirmDoc({ docId, status, isDraft: false, isAlreadyAnulado })}
-                aria-label={isAlreadyAnulado ? "Eliminar definitivamente" : "Anular cotización"}
-                title={isAlreadyAnulado ? "Eliminar cotización definitivamente del sistema" : "Anular cotización del aplicativo"}
-                borderRadius="xl"
-              />
-            )}
-          </Grid>
-        )}
-
-        {/* Móvil: Vendedor Retirar Solicitud si aún no fue abierta por el admin ni está en revisión */}
-        {isPendingApproval && !isAdminUser && !isViewedOrUnderReview && (
-          <Button
-            size="sm"
-            h="38px"
-            variant="outline"
-            borderColor="#fdba74"
-            color="#c2410c"
-            bg="#fff7ed"
-            _hover={{ bg: "#ffedd5" }}
-            leftIcon={<Undo2 className="w-4 h-4" />}
-            onClick={() => handleRecallQuote(q)}
-            fontWeight="800"
-            borderRadius="xl"
-            w="full"
-          >
-            Retirar y Corregir Cotización
-          </Button>
-        )}
+                  Retirar y Corregir Cotización
+                </Button>
+              )}
+            </>
+          );
+        })()}
       </VStack>
     );
   };
@@ -3218,23 +3475,26 @@ export function QuoteApprovalPage() {
           </Box>
         )}
 
-        {/* TABLA PRINCIPAL OPTIMIZADA CON ALTO CONTRASTE (solo escritorio) */}
-        <Box display={{ base: "none", lg: "block" }} bg="white" borderRadius="2xl" border="1.5px solid" borderColor="#cbd5e1" boxShadow="sm" overflowX="auto" width="100%">
-          <Table variant="simple" size="md" style={{ width: "100%", minWidth: "1050px" }}>
+        {/* TABLA PRINCIPAL OPTIMIZADA CON ALTO CONTRASTE (solo escritorio, sin scroll horizontal) */}
+        <Box display={{ base: "none", lg: "block" }} bg="white" borderRadius="2xl" border="1.5px solid" borderColor="#cbd5e1" boxShadow="sm" overflow="hidden" width="100%">
+          <Table variant="simple" size="sm" w="full" style={{ width: "100%", tableLayout: "auto" }}>
             <Thead bg="#0e572b">
               <Tr>
-                <Th py={3.5} px={4} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" minW="260px">DOCUMENTO Y CLIENTE</Th>
-                <Th py={3.5} px={3} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" minW="95px" whiteSpace="nowrap">FECHA</Th>
-                <Th py={3.5} px={3} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="right" minW="110px" whiteSpace="nowrap">TOTAL (USD)</Th>
-                <Th py={3.5} px={4} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="center" minW="210px" whiteSpace="nowrap">ESTADO DE APROBACIÓN</Th>
-                <Th py={3.5} px={4} fontSize="xs" color="white" fontWeight="900" letterSpacing="wider" textAlign="right" minW="220px" whiteSpace="nowrap">ACCIONES DISPONIBLES</Th>
+                <Th py={3.5} px={4} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider">DOCUMENTO Y CLIENTE</Th>
+                <Th py={3.5} px={3} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider" w="95px" whiteSpace="nowrap">FECHA</Th>
+                <Th py={3.5} px={3} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider" textAlign="right" w="110px" whiteSpace="nowrap">TOTAL (USD)</Th>
+                <Th py={3.5} px={3} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider" textAlign="center" w="190px" whiteSpace="nowrap">ESTADO DE APROBACIÓN</Th>
+                {canViewApprovalAudit && (
+                  <Th py={3.5} px={3} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider" w="210px">APROBACIÓN / ENVÍO SAP</Th>
+                )}
+                <Th py={3.5} px={4} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider" textAlign="right" w={canViewApprovalAudit ? "130px" : "150px"} whiteSpace="nowrap">ACCIONES</Th>
               </Tr>
             </Thead>
             <Tbody>
               {((isServerLoading || isRefreshing) && quotes.length === 0) ? (
                 <>
                   <Tr bg="linear-gradient(90deg, rgba(16, 185, 129, 0.08) 0%, rgba(5, 150, 105, 0.15) 50%, rgba(16, 185, 129, 0.08) 100%)">
-                    <Td colSpan={5} py={3.5} textAlign="center" borderBottom="1.5px solid" borderColor="emerald.200">
+                    <Td colSpan={canViewApprovalAudit ? 6 : 5} py={3.5} textAlign="center" borderBottom="1.5px solid" borderColor="emerald.200">
                       <Flex align="center" justify="center" gap={3}>
                         <Spinner size="xs" color="emerald.600" speed="0.7s" thickness="2.5px" />
                         <Text fontSize="xs" fontWeight="900" color="emerald.900" letterSpacing="wide">
@@ -3261,6 +3521,11 @@ export function QuoteApprovalPage() {
                       <Td py={3.5} px={3} textAlign="center">
                         <Skeleton height="24px" width="130px" borderRadius="full" mx="auto" startColor="gray.100" endColor="green.100" speed={1.1} />
                       </Td>
+                      {canViewApprovalAudit && (
+                        <Td py={3.5} px={3}>
+                          <Skeleton height="22px" width="125px" borderRadius="md" startColor="gray.100" endColor="green.100" speed={1.1} />
+                        </Td>
+                      )}
                       <Td py={3.5} px={4} textAlign="right">
                         <HStack justify="flex-end" spacing={2}>
                           <Skeleton height="30px" width="75px" borderRadius="lg" startColor="gray.100" endColor="green.100" speed={1.1} />
@@ -3272,7 +3537,7 @@ export function QuoteApprovalPage() {
                 </>
               ) : paginatedQuotes.length === 0 ? (
                 <Tr>
-                  <Td colSpan={5} textAlign="center" py={12} color="gray.500" fontWeight="700" fontSize="sm">
+                  <Td colSpan={canViewApprovalAudit ? 6 : 5} textAlign="center" py={12} color="gray.500" fontWeight="700" fontSize="sm">
                     No se encontraron cotizaciones en este estado.
                   </Td>
                 </Tr>
@@ -3409,21 +3674,28 @@ export function QuoteApprovalPage() {
                       </Td>
 
                       {/* Fecha */}
-                      <Td fontSize="sm" color="gray.850" fontWeight="800" py={3} px={3} whiteSpace="nowrap">
+                      <Td fontSize="xs" color="gray.850" fontWeight="800" py={3} px={3} whiteSpace="nowrap">
                         {q.docDate ? String(q.docDate).split("T")[0] : (q.createdAt ? String(q.createdAt).split("T")[0] : "—")}
                       </Td>
 
                       {/* Total */}
-                      <Td textAlign="right" fontWeight="900" color="#0f172a" fontFamily="mono" fontSize="sm" py={3} px={3} whiteSpace="nowrap">
+                      <Td textAlign="right" fontWeight="900" color="#0f172a" fontFamily="mono" fontSize="xs" py={3} px={3} whiteSpace="nowrap">
                         ${formatThousands(grandTotalUSD)}
                       </Td>
 
                       {/* Píldora de Estado */}
-                      <Td textAlign="center" py={3} px={2} whiteSpace="nowrap">
+                      <Td textAlign="center" py={3} px={3}>
                         <Flex justify="center" align="center" maxW="full">
                           {renderStatusBadge(status, q)}
                         </Flex>
                       </Td>
+
+                      {/* Auditoría de Aprobación / Envío SAP (solo si tiene el permiso granular) */}
+                      {canViewApprovalAudit && (
+                        <Td py={3} px={3} verticalAlign="middle">
+                          {renderApprovalAuditCell(q)}
+                        </Td>
+                      )}
 
                       {/* Acciones */}
                       <Td textAlign="right" py={3} px={4} whiteSpace="nowrap">
@@ -3598,9 +3870,42 @@ export function QuoteApprovalPage() {
                         <Text fontSize="md" color="#0f172a" fontWeight="900" fontFamily="mono">${formatThousands(grandTotalUSD)}</Text>
                       </Box>
                     </Flex>
-                    <Flex gap={2} wrap="wrap" align="center">
-                      {renderRowActions(q, docId, status, { stack: true })}
-                    </Flex>
+                    {canViewApprovalAudit && Boolean(status) && !isDraftState(status) ? (
+                      <>
+                        <Flex gap={2} align="stretch" w="full">
+                          <Box flex="1" minW={0} bg="#f0fdfa" borderRadius="lg" px={3} py={2} border="1px solid" borderColor="#ccfbf1">
+                            <Text fontSize="10px" fontWeight="800" color="teal.700" textTransform="uppercase" mb={1}>
+                              Aprobación / Envío SAP
+                            </Text>
+                            {renderApprovalAuditCell(q, { compact: true })}
+                          </Box>
+                          {renderMobilePrimaryAction(q, docId, status, { inlineAudit: true })}
+                        </Flex>
+                        {(() => {
+                          const extraMobileActions = renderRowActions(q, docId, status, { stack: true, hidePrimary: true });
+                          if (!extraMobileActions) return null;
+                          return (
+                            <Flex gap={2} wrap="wrap" align="center">
+                              {extraMobileActions}
+                            </Flex>
+                          );
+                        })()}
+                      </>
+                    ) : (
+                      <>
+                        {canViewApprovalAudit && (
+                          <Box bg="#f0fdfa" borderRadius="lg" px={3} py={2} border="1px solid" borderColor="#ccfbf1">
+                            <Text fontSize="10px" fontWeight="800" color="teal.700" textTransform="uppercase" mb={1}>
+                              Aprobación / Envío SAP
+                            </Text>
+                            {renderApprovalAuditCell(q, { compact: true })}
+                          </Box>
+                        )}
+                        <Flex gap={2} wrap="wrap" align="center">
+                          {renderRowActions(q, docId, status, { stack: true })}
+                        </Flex>
+                      </>
+                    )}
                   </VStack>
                 </Box>
               );

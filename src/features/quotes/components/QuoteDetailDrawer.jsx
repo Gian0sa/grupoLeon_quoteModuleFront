@@ -118,6 +118,12 @@ import {
 } from "../../../shared/utils/quoteLogisticsFormatters";
 import { useSellersData } from "../../auth/hooks/queries/authQueries";
 import { updateQuote } from "../services/quoteService";
+import {
+  upsertViewHistoryLog,
+  dedupeViewHistoryLogs,
+  mergeHistoryLogs,
+  normalizeActorName,
+} from "../utils/quoteHistoryUtils";
 
 // Helper seguro para formatear fechas de registro evitando el desfase de zona horaria UTC (-5 horas en Perú)
 export const formatDateDisplay = (dateVal, fallbackIso) => {
@@ -194,7 +200,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
   const toast = useToast();
 
   const quoteId = quote?.docNumber || quote?.id;
-  const { data: serverQuote } = useGetQuoteById(quoteId, { enabled: isOpen });
+  const { data: serverQuote, isLoading: isServerQuoteLoading } = useGetQuoteById(quoteId, { enabled: isOpen });
 
   // Resetear cualquier resultado de sincronización de SAP previo al cambiar de cotización o cerrar
   React.useEffect(() => {
@@ -286,8 +292,18 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
               freshestStatus = foundInCache.approvalStatus || foundInCache.status;
             }
           }
-          if (Array.isArray(foundInCache.historyLog) && foundInCache.historyLog.length > (freshestHistory?.length || 0)) {
-            freshestHistory = foundInCache.historyLog;
+          if (Array.isArray(foundInCache.historyLog) && foundInCache.historyLog.length > 0) {
+            freshestHistory = freshestHistory
+              ? mergeHistoryLogs(freshestHistory, foundInCache.historyLog)
+              : dedupeViewHistoryLogs(foundInCache.historyLog);
+          }
+          if (foundInCache.lastViewedAt) {
+            const cacheViewMs = new Date(foundInCache.lastViewedAt).getTime();
+            const fullViewMs = full.lastViewedAt ? new Date(full.lastViewedAt).getTime() : 0;
+            if (!Number.isNaN(cacheViewMs) && cacheViewMs > fullViewMs) {
+              full.lastViewedAt = foundInCache.lastViewedAt;
+              full.lastViewedBy = foundInCache.lastViewedBy || full.lastViewedBy;
+            }
           }
           if (foundInCache.totals) freshestTotals = { ...foundInCache.totals, ...(freshestTotals || {}) };
           const cacheSapNum = (foundInCache.sapDocNum && !isNaN(Number(foundInCache.sapDocNum)) ? Number(foundInCache.sapDocNum) : null)
@@ -311,8 +327,18 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
             freshestStatus = foundInLocal.approvalStatus || foundInLocal.status;
           }
         }
-        if (Array.isArray(foundInLocal.historyLog) && foundInLocal.historyLog.length > (freshestHistory?.length || 0)) {
-          freshestHistory = foundInLocal.historyLog;
+        if (Array.isArray(foundInLocal.historyLog) && foundInLocal.historyLog.length > 0) {
+          freshestHistory = freshestHistory
+            ? mergeHistoryLogs(freshestHistory, foundInLocal.historyLog)
+            : dedupeViewHistoryLogs(foundInLocal.historyLog);
+        }
+        if (foundInLocal.lastViewedAt) {
+          const localViewMs = new Date(foundInLocal.lastViewedAt).getTime();
+          const fullViewMs = full.lastViewedAt ? new Date(full.lastViewedAt).getTime() : 0;
+          if (!Number.isNaN(localViewMs) && localViewMs > fullViewMs) {
+            full.lastViewedAt = foundInLocal.lastViewedAt;
+            full.lastViewedBy = foundInLocal.lastViewedBy || full.lastViewedBy;
+          }
         }
         if (foundInLocal.totals) freshestTotals = { ...foundInLocal.totals, ...(freshestTotals || {}) };
         const localSapNum = (foundInLocal.sapDocNum && !isNaN(Number(foundInLocal.sapDocNum)) ? Number(foundInLocal.sapDocNum) : null)
@@ -421,9 +447,28 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
       if (serverQuote.sapDocNum && !UNAPPROVED_STATUSES.includes(upperServerStatus)) {
         freshestSapDocNum = serverQuote.sapDocNum;
       }
-      if (Array.isArray(serverQuote.historyLog) && serverQuote.historyLog.length > (freshestHistory?.length || 0)) {
-        freshestHistory = serverQuote.historyLog;
+      if (Array.isArray(serverQuote.historyLog) && serverQuote.historyLog.length > 0) {
+        freshestHistory = freshestHistory
+          ? mergeHistoryLogs(freshestHistory, serverQuote.historyLog)
+          : dedupeViewHistoryLogs(serverQuote.historyLog);
       }
+      if (serverQuote.lastViewedAt) {
+        const srvViewMs = new Date(serverQuote.lastViewedAt).getTime();
+        const fullViewMs = full.lastViewedAt ? new Date(full.lastViewedAt).getTime() : 0;
+        if (!Number.isNaN(srvViewMs) && srvViewMs > fullViewMs) {
+          full.lastViewedAt = serverQuote.lastViewedAt;
+          full.lastViewedBy = serverQuote.lastViewedBy || full.lastViewedBy;
+        }
+      }
+      if (serverQuote.viewedByAdmin) full.viewedByAdmin = true;
+      if (serverQuote.viewedAt && !full.viewedAt) full.viewedAt = serverQuote.viewedAt;
+      if (serverQuote.approvedBy && !full.approvedBy) full.approvedBy = serverQuote.approvedBy;
+      if (serverQuote.approvedAt && !full.approvedAt) full.approvedAt = serverQuote.approvedAt;
+      if (serverQuote.approvedByRole && !full.approvedByRole) full.approvedByRole = serverQuote.approvedByRole;
+      if (serverQuote.emittedBy && !full.emittedBy) full.emittedBy = serverQuote.emittedBy;
+      if (serverQuote.emittedAt && !full.emittedAt) full.emittedAt = serverQuote.emittedAt;
+      if (serverQuote.emittedByRole && !full.emittedByRole) full.emittedByRole = serverQuote.emittedByRole;
+      if (serverQuote.emittedSapUser && !full.emittedSapUser) full.emittedSapUser = serverQuote.emittedSapUser;
     }
 
     // 4. Si se acaba de sincronizar con SAP en esta sesión ESPECÍFICAMENTE para esta cotización
@@ -580,72 +625,96 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
     }
   }, [isOpen, quoteId, isAdminUser, status, authUsername, authRole, authSalesCode]);
 
-  // Registro completo y continuo de auditoría de entradas/lecturas por usuario (Historial de Actividad)
-  const hasMarkedViewRef = React.useRef(false);
+  // Registro de auditoría de entradas/lecturas por usuario (sin duplicar VISTO: actualiza la hora del existente)
+  const markedQuoteKeyRef = React.useRef(null);
   const [localLogs, setLocalLogs] = React.useState(null);
 
   React.useEffect(() => {
     if (!isOpen) {
-      hasMarkedViewRef.current = false;
+      markedQuoteKeyRef.current = null;
       setLocalLogs(null);
       return;
     }
 
-    if (!quoteId || !effectiveQuote || hasMarkedViewRef.current) return;
+    if (!quoteId || !effectiveQuote) return;
+    const currentQuoteKey = String(quoteId);
+    if (markedQuoteKeyRef.current === currentQuoteKey) return;
+    if (isServerQuoteLoading) return;
 
     const viewer = authUsername || "Usuario";
     const docKey = effectiveQuote.docNumber || quoteId;
-    const rawHistory = localLogs || effectiveQuote.historyLog;
-    let currentLogs = [];
-    if (Array.isArray(rawHistory)) {
-      currentLogs = [...rawHistory];
-    } else if (typeof rawHistory === "string") {
-      try {
-        currentLogs = JSON.parse(rawHistory);
-      } catch {
-        currentLogs = [];
-      }
-    }
-
-    // Evitar registrar entradas duplicadas del MISMO usuario si ya abrió en los últimos 10 minutos
-    const TEN_MINUTES_MS = 10 * 60 * 1000;
+    const rawHistory = effectiveQuote.historyLog;
     const nowMs = Date.now();
-    const hasRecentViewBySameUser = currentLogs.some((log) => {
-      if (log.status !== "VISTO") return false;
-      const logUser = String(log.user || "").trim().toLowerCase();
-      const isSameUser = logUser === viewer.trim().toLowerCase();
-      const logTime = log.timestamp ? new Date(log.timestamp).getTime() : 0;
-      return isSameUser && (nowMs - logTime < TEN_MINUTES_MS);
-    });
+    const lastViewedAtMs = effectiveQuote.lastViewedAt ? new Date(effectiveQuote.lastViewedAt).getTime() : 0;
+    const lastViewerNorm = normalizeActorName(effectiveQuote.lastViewedBy);
+    const viewerNorm = normalizeActorName(viewer);
+    const wasJustMarkedByCaller =
+      Boolean(lastViewerNorm && viewerNorm && lastViewerNorm === viewerNorm) &&
+      !Number.isNaN(lastViewedAtMs) &&
+      nowMs - lastViewedAtMs < 5000;
 
-    hasMarkedViewRef.current = true;
+    markedQuoteKeyRef.current = currentQuoteKey;
 
-    if (!hasRecentViewBySameUser) {
-      const nowIso = new Date().toISOString();
-      const newLog = {
-        status: "VISTO",
-        timestamp: nowIso,
-        user: viewer,
-        note: `👁️ Solicitud abierta y leída por ${viewer}`
-      };
-      const updatedLogs = [newLog, ...currentLogs];
-      setLocalLogs(updatedLogs);
-
-      axiosInstance.put(`/quoteModule/quotes/${docKey}`, {
-        id: effectiveQuote.id,
-        docNumber: effectiveQuote.docNumber || quoteId,
-        viewedByAdmin: true,
-        lastViewedBy: viewer,
-        viewedAt: nowIso,
-        historyLog: updatedLogs
-      }).then(() => {
-        queryClient.invalidateQueries({ queryKey: ["quotes"] });
-        window.dispatchEvent(new CustomEvent("quoteHistoryUpdated", { detail: { quoteId: docKey, newLog } }));
-      }).catch((err) => {
-        console.warn("Aviso al registrar entrada en historial:", err?.message);
-      });
+    if (wasJustMarkedByCaller) {
+      const syncedLogs = upsertViewHistoryLog(rawHistory, viewer, effectiveQuote.lastViewedAt);
+      setLocalLogs(syncedLogs);
+      return;
     }
-  }, [isOpen, quoteId, effectiveQuote, authUsername, queryClient, localLogs]);
+
+    const nowIso = new Date().toISOString();
+    const updatedLogs = upsertViewHistoryLog(rawHistory, viewer, nowIso);
+    const updatedViewEntry = updatedLogs.find(
+      (l) =>
+        String(l?.status || "").toUpperCase().trim() === "VISTO" &&
+        normalizeActorName(l?.user) === viewerNorm
+    );
+    const nextViewedByAdmin = isAdminUser
+      ? true
+      : Boolean(effectiveQuote.viewedByAdmin || effectiveQuote.totals?.viewedByAdmin);
+
+    setLocalLogs(updatedLogs);
+
+    try {
+      const stored = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
+      if (Array.isArray(stored) && stored.length > 0) {
+        let changed = false;
+        const nextStored = stored.map((item) => {
+          const itemDoc = item?.docNumber ? String(item.docNumber) : "";
+          const itemId = item?.id !== undefined && item?.id !== null ? String(item.id) : "";
+          if (itemDoc === String(docKey) || itemId === String(effectiveQuote.id || quoteId)) {
+            changed = true;
+            return {
+              ...item,
+              viewedByAdmin: nextViewedByAdmin,
+              lastViewedBy: viewer,
+              viewedAt: item.viewedAt || effectiveQuote.viewedAt || nowIso,
+              lastViewedAt: nowIso,
+              historyLog: updatedLogs,
+            };
+          }
+          return item;
+        });
+        if (changed) {
+          localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(nextStored));
+        }
+      }
+    } catch {}
+
+    axiosInstance.put(`/quoteModule/quotes/${docKey}`, {
+      id: effectiveQuote.id,
+      docNumber: effectiveQuote.docNumber || quoteId,
+      viewedByAdmin: nextViewedByAdmin,
+      lastViewedBy: viewer,
+      viewedAt: effectiveQuote.viewedAt || effectiveQuote.totals?.viewedAt || nowIso,
+      lastViewedAt: nowIso,
+      historyLog: updatedLogs
+    }).then(() => {
+      queryClient.invalidateQueries({ queryKey: ["quotes"] });
+      window.dispatchEvent(new CustomEvent("quoteHistoryUpdated", { detail: { quoteId: docKey, newLog: updatedViewEntry } }));
+    }).catch((err) => {
+      console.warn("Aviso al registrar entrada en historial:", err?.message);
+    });
+  }, [isOpen, quoteId, effectiveQuote, authUsername, queryClient, isServerQuoteLoading, isAdminUser]);
 
   if (!effectiveQuote) return null;
 
@@ -696,16 +765,9 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
   // Mapear historial y asegurar que siempre exista una línea de tiempo visible
   const historyLog = React.useMemo(() => {
-    let raw = localLogs || effectiveQuote.historyLog;
-    if (typeof raw === "string") {
-      try {
-        raw = JSON.parse(raw);
-      } catch {
-        raw = [];
-      }
-    }
-
-    let logs = Array.isArray(raw) ? [...raw] : [];
+    let logs = localLogs
+      ? mergeHistoryLogs(effectiveQuote.historyLog, localLogs)
+      : dedupeViewHistoryLogs(effectiveQuote.historyLog);
 
     // Si no existen logs en BD (ej. cotizaciones históricas o sincronizadas directas de SAP),
     // reconstruir el ciclo de vida del documento a partir de los datos registrados
@@ -730,11 +792,12 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
       }
 
       if (effectiveQuote.viewedByAdmin || effectiveQuote.viewedAt || effectiveQuote.totals?.viewedByAdmin) {
+        const viewerFallback = effectiveQuote.lastViewedBy || effectiveQuote.evaluatedBy || "Administración";
         logs.push({
           status: "VISTO",
-          timestamp: effectiveQuote.viewedAt || effectiveQuote.lastViewedAt || createdTime,
-          user: effectiveQuote.evaluatedBy || "Administración",
-          note: "👁️ Solicitud abierta y leída por Administración"
+          timestamp: effectiveQuote.lastViewedAt || effectiveQuote.viewedAt || createdTime,
+          user: viewerFallback,
+          note: `👁️ Solicitud abierta y leída por ${viewerFallback}`
         });
       }
 
@@ -775,9 +838,11 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
       String(effectiveQuote.approvalStatus || effectiveQuote.status || effectiveQuote.state || "").toUpperCase().trim()
     );
 
+    const dedupedLogs = dedupeViewHistoryLogs(logs);
+
     const cleanTimelineLogs = isSubmittedOrBeyond
-      ? logs.filter((l) => l.status !== "BORRADOR" && l.status !== "DRAFT" && String(l.note || "").toLowerCase() !== "borrador guardado")
-      : logs;
+      ? dedupedLogs.filter((l) => l.status !== "BORRADOR" && l.status !== "DRAFT" && String(l.note || "").toLowerCase() !== "borrador guardado")
+      : dedupedLogs;
 
     return cleanTimelineLogs.map((item, index) => {
       let ts = item.timestamp || item.date || item.createdAt;
@@ -796,6 +861,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
     effectiveQuote.viewedByAdmin,
     effectiveQuote.viewedAt,
     effectiveQuote.lastViewedAt,
+    effectiveQuote.lastViewedBy,
     effectiveQuote.approvalStatus,
     effectiveQuote.status,
     effectiveQuote.state,
@@ -1613,6 +1679,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
         // Sincronizar en Backend con estado oficial EMITIDO y sapDocNum
         try {
+          const syncNowIso = new Date().toISOString();
           await updateQuote({
             ...effectiveQuote,
             ...quotePayload,
@@ -1626,6 +1693,13 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
             DocNum: Number(sapDocNum),
             DocEntry: Number(sapDocEntry),
             isSapDirect: true,
+            approvedBy: effectiveQuote.approvedBy || adminUsername,
+            approvedByRole: effectiveQuote.approvedByRole || authRole || null,
+            approvedAt: effectiveQuote.approvedAt || syncNowIso,
+            emittedBy: adminUsername,
+            emittedByRole: authRole || null,
+            emittedAt: syncNowIso,
+            historyLog: dedupeViewHistoryLogs(effectiveQuote.historyLog),
           });
         } catch (e) {
           console.warn("⚠️ Aviso sincronizando estado emitido en servidor:", e.message);
