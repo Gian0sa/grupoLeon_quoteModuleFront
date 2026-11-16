@@ -16,9 +16,8 @@ import {
   Spinner,
   Badge,
   Button,
-  useBreakpointValue,
 } from "@chakra-ui/react";
-import { Check, Download, FileText } from "lucide-react";
+import { Check, Download } from "lucide-react";
 import {
   useGetCompareOrderAndDeliveryNote,
   useGetDeliveryNoteByCode,
@@ -26,17 +25,8 @@ import {
   useGetOrderByCode,
   useGetSeguimientoAlmacen,
 } from "../hooks/queries/reportQueries";
-import {
-  getOrderByCode,
-  getDeliveryNoteByCode,
-  getInvoiceByCode,
-} from "../services/reportService";
-import {
-  generateOrderPDF,
-  generateDeliveryPDF,
-  downloadInvoicePDF,
-  downloadInvoicePDFdirectly,
-} from "../utils/pdfGenerators";
+import { getInvoiceByCode } from "../services/reportService";
+import { downloadInvoicePDFdirectly } from "../utils/pdfGenerators";
 
 // Etapas de la entrega dentro de almacén (las devuelve el módulo de almacén)
 const ETAPAS_ALMACEN = {
@@ -51,51 +41,15 @@ const ETAPAS_ALMACEN = {
   ENTREGADA_TIENDA: { color: "green", texto: "Entregada en tienda" },
 };
 
+const getOrdinalEntregaLabel = (index) => {
+  if (index === 1) return "1ra Entrega";
+  if (index === 2) return "2da Entrega";
+  if (index === 3) return "3ra Entrega";
+  return `${index}ta Entrega`;
+};
+
 export default function TrackingPage({ orden, data }) {
-  const [loadingOrden, setLoadingOrden] = useState(false);
-  const [loadingEntrega, setLoadingEntrega] = useState(false);
-  const [loadingFactura, setLoadingFactura] = useState(false);
-
-  const handleDownloadDelivery = async (eId) => {
-    if (!eId) return;
-    setLoadingEntrega(true);
-    try {
-      const deliveryData = await getDeliveryNoteByCode(eId);
-      if (deliveryData) {
-        await generateDeliveryPDF(deliveryData);
-      }
-    } catch (err) {
-      console.error("Error al generar PDF de entrega:", err);
-      alert("No se pudo generar la guía de entrega.");
-    } finally {
-      setLoadingEntrega(false);
-    }
-  };
-
-  const handleDownloadInvoice = async (facturaId) => {
-    if (!facturaId) return;
-    setLoadingFactura(true);
-    try {
-      let referenceCode =
-        facturaDetalle?.numAtCard ||
-        facturaDetalle?.NumAtCard ||
-        facturas[0]?.numAtCard;
-      if (!referenceCode) {
-        const invoiceData = await getInvoiceByCode(facturaId);
-        referenceCode = invoiceData?.numAtCard || invoiceData?.NumAtCard;
-      }
-      if (referenceCode) {
-        await downloadInvoicePDFdirectly(referenceCode);
-      } else {
-        await downloadInvoicePDFdirectly(facturaId);
-      }
-    } catch (err) {
-      console.error("Error al descargar factura:", err);
-      alert(`No se pudo descargar la factura: ${err.message || "Error desconocido"}`);
-    } finally {
-      setLoadingFactura(false);
-    }
-  };
+  const [loadingFacturaId, setLoadingFacturaId] = useState(null);
 
   // Responsive values
   const bgMain = useColorModeValue("white", "gray.800");
@@ -158,47 +112,105 @@ export default function TrackingPage({ orden, data }) {
     codigo: orden?.CardCode || "",
   };
 
-  // Buscar el primer registro que tenga entrega o factura
-  const seguimientoData =
-    data?.find(
-      (item) => item.DELIVERY_DATE !== null || item.INVOICE_DATE !== null
-    ) || {};
+  // Extraer todas las entregas únicas ordenadas cronológicamente
+  const entregasMap = new Map();
+  (Array.isArray(data) ? data : []).forEach((item) => {
+    if (item?.DELIVERY_ENTRY) {
+      const key = String(item.DELIVERY_ENTRY);
+      if (!entregasMap.has(key)) {
+        entregasMap.set(key, {
+          id: item.DELIVERY_ENTRY,
+          docNum: item.DELIVERY_DOC_NUM,
+          currency: item.DELIVERY_CURRENCY,
+          rawDate: item.DELIVERY_DATE,
+          fecha: item.DELIVERY_DATE
+            ? new Date(
+                String(item.DELIVERY_DATE).includes("T")
+                  ? item.DELIVERY_DATE
+                  : `${item.DELIVERY_DATE}T00:00:00`
+              ).toLocaleDateString("es-ES")
+            : "--",
+          monto: item.MONTO_DELIVERYNOTE || 0,
+          montoUsd: item.MONTO_DELIVERYNOTE_USD,
+          lines: Array.isArray(item.DELIVERY_LINES) ? item.DELIVERY_LINES : [],
+          almacen: item.ALMACEN_TRACKING || null,
+          facturaId: item.INVOICE_ENTRY || null,
+          facturaNumAtCard: item.INVOICE_NUM_AT_CARD || null,
+          facturaDocNum: item.INVOICE_DOC_NUM || null,
+        });
+      } else {
+        const existing = entregasMap.get(key);
+        if (!existing.facturaId && item.INVOICE_ENTRY) {
+          existing.facturaId = item.INVOICE_ENTRY;
+          existing.facturaNumAtCard = item.INVOICE_NUM_AT_CARD || existing.facturaNumAtCard;
+          existing.facturaDocNum = item.INVOICE_DOC_NUM || existing.facturaDocNum;
+        }
+        if (!existing.almacen && item.ALMACEN_TRACKING) {
+          existing.almacen = item.ALMACEN_TRACKING;
+        }
+        if ((!existing.lines || existing.lines.length === 0) && Array.isArray(item.DELIVERY_LINES) && item.DELIVERY_LINES.length > 0) {
+          existing.lines = item.DELIVERY_LINES;
+        }
+      }
+    }
+  });
+  const entregas = Array.from(entregasMap.values())
+    .sort((a, b) => {
+      const da = a.rawDate ? new Date(a.rawDate).getTime() : 0;
+      const db = b.rawDate ? new Date(b.rawDate).getTime() : 0;
+      if (da !== db) return da - db;
+      return (Number(a.id) || 0) - (Number(b.id) || 0);
+    })
+    .map((e, idx) => ({ ...e, deliveryIndex: idx + 1 }));
 
-  const entregas = seguimientoData.DELIVERY_DATE
-    ? [
-        {
-          id: seguimientoData.DELIVERY_ENTRY,
-          docNum: seguimientoData.DELIVERY_DOC_NUM,
-          currency: seguimientoData.DELIVERY_CURRENCY,
-          fecha: new Date(seguimientoData.DELIVERY_DATE).toLocaleDateString(
-            "es-ES"
-          ),
-          monto: seguimientoData.MONTO_DELIVERYNOTE || 0,
-          montoUsd: seguimientoData.MONTO_DELIVERYNOTE_USD,
-        },
-      ]
-    : [];
-
-  const facturas = seguimientoData.INVOICE_DATE
-    ? [
-        {
-          id: seguimientoData.INVOICE_ENTRY,
-          numAtCard: seguimientoData.INVOICE_NUM_AT_CARD,
-          docNum: seguimientoData.INVOICE_DOC_NUM,
-          currency: seguimientoData.INVOICE_CURRENCY,
-          fecha: new Date(seguimientoData.INVOICE_DATE).toLocaleDateString(
-            "es-ES"
-          ),
-          monto: seguimientoData.MONTO_INVOICE || 0,
-          montoUsd: seguimientoData.MONTO_INVOICE_USD,
-        },
-      ]
-    : [];
+  // Extraer todas las facturas únicas ordenadas cronológicamente y vinculadas a su entrega
+  const facturasMap = new Map();
+  (Array.isArray(data) ? data : []).forEach((item) => {
+    if (item?.INVOICE_ENTRY) {
+      const key = String(item.INVOICE_ENTRY);
+      if (!facturasMap.has(key)) {
+        const matchedDelivery = entregas.find(
+          (e) => String(e.id) === String(item.DELIVERY_ENTRY)
+        );
+        facturasMap.set(key, {
+          id: item.INVOICE_ENTRY,
+          numAtCard: item.INVOICE_NUM_AT_CARD,
+          docNum: item.INVOICE_DOC_NUM,
+          currency: item.INVOICE_CURRENCY,
+          rawDate: item.INVOICE_DATE,
+          fecha: item.INVOICE_DATE
+            ? new Date(
+                String(item.INVOICE_DATE).includes("T")
+                  ? item.INVOICE_DATE
+                  : `${item.INVOICE_DATE}T00:00:00`
+              ).toLocaleDateString("es-ES")
+            : "--",
+          monto: item.MONTO_INVOICE || 0,
+          montoUsd: item.MONTO_INVOICE_USD,
+          deliveryId: item.DELIVERY_ENTRY || null,
+          deliveryDocNum: matchedDelivery?.docNum || item.DELIVERY_DOC_NUM || null,
+          deliveryIndex: matchedDelivery?.deliveryIndex || null,
+        });
+      }
+    }
+  });
+  const facturas = Array.from(facturasMap.values())
+    .sort((a, b) => {
+      const da = a.rawDate ? new Date(a.rawDate).getTime() : 0;
+      const db = b.rawDate ? new Date(b.rawDate).getTime() : 0;
+      if (da !== db) return da - db;
+      return (Number(a.id) || 0) - (Number(b.id) || 0);
+    })
+    .map((f, idx) => ({
+      ...f,
+      invoiceIndex: idx + 1,
+    }));
 
   // IDs para los servicios
   const orderId = ordenData.id;
   const entregaId = entregas[0]?.id;
   const facturaId = facturas[0]?.id;
+  const deliveryIdsParam = entregas.map((e) => e.id).join(",");
 
   const { data: orderDetail } = useGetOrderByCode(orderId, Boolean(orderId));
 
@@ -232,9 +244,7 @@ export default function TrackingPage({ orden, data }) {
         : "--");
 
   const { data: comparisonData, isLoading } =
-    useGetCompareOrderAndDeliveryNote(orderId, entregaId, {
-      enabled: Boolean(orderId),
-    });
+    useGetCompareOrderAndDeliveryNote(orderId, deliveryIdsParam || undefined, Boolean(orderId));
 
   const { data: entregaDetalle, isLoading: loadingEntregaDetalle } =
     useGetDeliveryNoteByCode(entregaId, Boolean(entregaId));
@@ -245,10 +255,38 @@ export default function TrackingPage({ orden, data }) {
   // Paso 4: salida física desde almacén (SAP no la registra; la registra el WMS)
   const { data: almacen, isLoading: cargandoAlmacen } =
     useGetSeguimientoAlmacen(entregaId, Boolean(entregaId));
-  const etapa = ETAPAS_ALMACEN[almacen?.etapa] || null;
-  const salioAlmacen = almacen?.etapa === "DESPACHADA" || almacen?.etapa === "ENTREGADA_TIENDA";
 
-  // Mapear productos comparados
+  const handleDownloadInvoice = async (targetFacturaId, explicitNumAtCard) => {
+    if (!targetFacturaId) return;
+    setLoadingFacturaId(targetFacturaId);
+    try {
+      const matchedFactura = facturas.find(
+        (f) => String(f.id) === String(targetFacturaId)
+      );
+      let referenceCode =
+        explicitNumAtCard ||
+        matchedFactura?.numAtCard ||
+        (String(targetFacturaId) === String(facturaId)
+          ? facturaDetalle?.numAtCard || facturaDetalle?.NumAtCard
+          : null);
+      if (!referenceCode) {
+        const invoiceData = await getInvoiceByCode(targetFacturaId);
+        referenceCode = invoiceData?.numAtCard || invoiceData?.NumAtCard;
+      }
+      if (referenceCode) {
+        await downloadInvoicePDFdirectly(referenceCode);
+      } else {
+        await downloadInvoicePDFdirectly(targetFacturaId);
+      }
+    } catch (err) {
+      console.error("Error al descargar factura:", err);
+      alert(`No se pudo descargar la factura: ${err.message || "Error desconocido"}`);
+    } finally {
+      setLoadingFacturaId(null);
+    }
+  };
+
+  // Mapear productos comparados incluyendo el desglose por entrega
   const productosComparados = (comparisonData || []).map((item) => ({
     codigo: item.ItemCode,
     descripcion: item.Description,
@@ -256,7 +294,91 @@ export default function TrackingPage({ orden, data }) {
     cantidadEntregada: item.DeliveredQty,
     cantidadPendiente: Math.max(item.RequestedQty - item.DeliveredQty, 0),
     tieneDiferencia: item.hasDifference,
+    deliveriesBreakdown: Array.isArray(item.deliveriesBreakdown)
+      ? item.deliveriesBreakdown
+      : [],
   }));
+
+  const tieneMultiplesEntregas = entregas.length > 1;
+  const totalPendientes = productosComparados.reduce(
+    (acc, p) => acc + p.cantidadPendiente,
+    0
+  );
+  const esEntregaParcialIncompleta = entregas.length > 0 && totalPendientes > 0;
+
+  // Helper para calcular monto y moneda de cada guía de entrega
+  const resolveEntregaMonetary = (e, idx) => {
+    const detail = idx === 0 ? entregaDetalle : null;
+    const entregaCurrency = detail?.currency || e.currency || resolvedCurrency;
+    const isEntregaUSD =
+      String(entregaCurrency || "").toUpperCase().trim() === "USD" ||
+      String(entregaCurrency || "").includes("$");
+
+    let entregaMonto = 0;
+    if (isEntregaUSD) {
+      if (detail?.totalUsd != null && Number(detail.totalUsd) > 0) {
+        entregaMonto = Number(detail.totalUsd);
+      } else if (detail?.totalFc != null && Number(detail.totalFc) > 0) {
+        entregaMonto = Number(detail.totalFc);
+      } else if (detail?.total != null) {
+        const rawTot = Number(detail.total);
+        entregaMonto =
+          rawTot > 0 && docRate > 1.2 && rawTot > (ordenData?.montoUsd || 0) * 1.5
+            ? Number((rawTot / docRate).toFixed(2))
+            : rawTot;
+      } else if (e.montoUsd != null && Number(e.montoUsd) > 0) {
+        entregaMonto = Number(e.montoUsd);
+      } else if (e.monto != null) {
+        const rawM = Number(e.monto);
+        entregaMonto =
+          rawM > 0 && docRate > 1.2 && rawM > (ordenData?.montoUsd || 0) * 1.5
+            ? Number((rawM / docRate).toFixed(2))
+            : rawM;
+      } else {
+        entregaMonto = Number(ordenData?.montoUsd || 0);
+      }
+    } else {
+      entregaMonto = Number(detail?.total ?? detail?.totalLocal ?? e.monto ?? 0);
+    }
+
+    return { entregaMonto, entregaCurrency };
+  };
+
+  // Helper para obtener las líneas de productos entregados en una guía específica
+  const getDeliveryItemsForGuide = (e) => {
+    if (Array.isArray(e.lines) && e.lines.length > 0) {
+      return e.lines.map((line) => ({
+        itemCode: line.itemCode || line.ItemCode || "",
+        description: line.description || line.Description || line.itemCode || "",
+        quantity: Number(line.quantity ?? line.Quantity ?? 0),
+      }));
+    }
+    const fromBreakdown = [];
+    productosComparados.forEach((prod) => {
+      const matched = prod.deliveriesBreakdown.find(
+        (bd) => String(bd.deliveryEntry) === String(e.id)
+      );
+      if (matched && Number(matched.quantity) > 0) {
+        fromBreakdown.push({
+          itemCode: prod.codigo,
+          description: prod.descripcion,
+          quantity: Number(matched.quantity),
+        });
+      }
+    });
+    return fromBreakdown;
+  };
+
+  // Estado general de salida de almacén (soporta 1 o múltiples entregas)
+  const almacenPrimario = entregas[0]?.almacen || almacen;
+  const etapa = ETAPAS_ALMACEN[almacenPrimario?.etapa] || null;
+  const salioAlmacen = tieneMultiplesEntregas
+    ? entregas.some((e, idx) => {
+        const alm = e.almacen || (idx === 0 ? almacen : null);
+        return alm?.etapa === "DESPACHADA" || alm?.etapa === "ENTREGADA_TIENDA";
+      })
+    : almacenPrimario?.etapa === "DESPACHADA" ||
+      almacenPrimario?.etapa === "ENTREGADA_TIENDA";
 
   return (
     <Box
@@ -288,9 +410,35 @@ export default function TrackingPage({ orden, data }) {
           <Box flex={1} minW={0} bg={bgSection} p={{ base: 2.5, sm: 3, md: 4 }} borderRadius="xl" border="1px solid" borderColor={borderColor}>
             {/* Pedido Header */}
             <VStack align="start" spacing={1} w="full" mb={3}>
-              <Text fontWeight="800" fontSize={{ base: "15px", md: "lg" }} color="green.600">
-                Pedido #{ordenData?.numero || orden?.DocEntry}
-              </Text>
+              <Flex justify="space-between" align="center" wrap="wrap" gap={2} w="full">
+                <Text fontWeight="800" fontSize={{ base: "15px", md: "lg" }} color="green.600">
+                  Pedido #{ordenData?.numero || orden?.DocEntry}
+                </Text>
+                {tieneMultiplesEntregas && totalPendientes === 0 && (
+                  <Badge
+                    colorScheme="teal"
+                    fontSize="10.5px"
+                    px={2.5}
+                    py={0.5}
+                    borderRadius="full"
+                    fontWeight="800"
+                  >
+                    ✅ Completado en {entregas.length} entregas
+                  </Badge>
+                )}
+                {esEntregaParcialIncompleta && (
+                  <Badge
+                    colorScheme="orange"
+                    fontSize="10.5px"
+                    px={2.5}
+                    py={0.5}
+                    borderRadius="full"
+                    fontWeight="800"
+                  >
+                    📦 Entrega Parcial ({totalPendientes} uds. pendientes)
+                  </Badge>
+                )}
+              </Flex>
 
               <Box w="full">
                 <Text fontSize="11px" fontWeight="700" color="gray.500" textTransform="uppercase">
@@ -312,7 +460,7 @@ export default function TrackingPage({ orden, data }) {
             </VStack>
 
             {/* Productos Section */}
-            <Box mb={4} w="full">
+            <Box mb={3} w="full">
               <Text fontWeight="800" fontSize="13px" mb={2} color="green.700" textTransform="uppercase" letterSpacing="wide">
                 Productos
               </Text>
@@ -334,6 +482,9 @@ export default function TrackingPage({ orden, data }) {
                     <Tbody>
                       {productosComparados.map((prod, idx) => {
                         const esPendiente = prod.cantidadPendiente > 0;
+                        const mostrarPillsDesglose =
+                          prod.deliveriesBreakdown.length > 1 ||
+                          (tieneMultiplesEntregas && prod.deliveriesBreakdown.length > 0);
 
                         return (
                           <Tr
@@ -369,6 +520,39 @@ export default function TrackingPage({ orden, data }) {
                                 >
                                   {prod.descripcion}
                                 </Text>
+                                {mostrarPillsDesglose && (
+                                  <Flex wrap="wrap" gap={1} pt={0.5}>
+                                    {prod.deliveriesBreakdown.map((bd, bdIdx) => {
+                                      const matchedEntrega = entregas.find(
+                                        (e) => String(e.id) === String(bd.deliveryEntry)
+                                      );
+                                      const resolvedIndex =
+                                        bd.deliveryIndex ||
+                                        matchedEntrega?.deliveryIndex ||
+                                        bdIdx + 1;
+                                      const resolvedDocNum =
+                                        bd.deliveryDocNum ||
+                                        bd.docNum ||
+                                        matchedEntrega?.docNum ||
+                                        bd.deliveryEntry;
+
+                                      return (
+                                        <Badge
+                                          key={bdIdx}
+                                          colorScheme={resolvedIndex === 1 ? "green" : "teal"}
+                                          variant="subtle"
+                                          fontSize="9.5px"
+                                          px={1.5}
+                                          py={0.5}
+                                          borderRadius="md"
+                                          fontWeight="700"
+                                        >
+                                          {getOrdinalEntregaLabel(resolvedIndex)} (#{resolvedDocNum}): {bd.quantity} uds.
+                                        </Badge>
+                                      );
+                                    })}
+                                  </Flex>
+                                )}
                               </VStack>
                             </Td>
                             <Td color={textBase} textAlign="center" fontWeight="700" fontSize="12px" px={1}>
@@ -391,6 +575,138 @@ export default function TrackingPage({ orden, data }) {
                 </Box>
               )}
             </Box>
+
+            {/* Desglose de Entregas Parciales / Múltiples */}
+            {(tieneMultiplesEntregas || esEntregaParcialIncompleta) && (
+              <Box
+                bg="white"
+                border="1px solid"
+                borderColor="green.200"
+                borderRadius="lg"
+                p={3}
+                mb={3}
+              >
+                <Text
+                  fontWeight="800"
+                  fontSize="11.5px"
+                  color="green.700"
+                  textTransform="uppercase"
+                  letterSpacing="wide"
+                  mb={2.5}
+                >
+                  DESGLOSE DE ENTREGAS DEL PEDIDO
+                </Text>
+
+                <VStack align="stretch" spacing={2.5}>
+                  {entregas.map((e, idx) => {
+                    const { entregaMonto, entregaCurrency } = resolveEntregaMonetary(e, idx);
+                    const guideItems = getDeliveryItemsForGuide(e);
+                    const totalUnidadesGuia = guideItems.reduce(
+                      (acc, item) => acc + Number(item.quantity || 0),
+                      0
+                    );
+                    const isLastAndCompleted =
+                      tieneMultiplesEntregas &&
+                      totalPendientes === 0 &&
+                      idx === entregas.length - 1;
+                    const badgeLabel = isLastAndCompleted
+                      ? `${getOrdinalEntregaLabel(e.deliveryIndex)} (Completado)`
+                      : getOrdinalEntregaLabel(e.deliveryIndex);
+                    const docNumLabel =
+                      idx === 0 && entregaDetalle?.docNum
+                        ? entregaDetalle.docNum
+                        : e.docNum || e.id;
+
+                    return (
+                      <Box
+                        key={e.id || idx}
+                        p={2.5}
+                        bg="gray.50"
+                        borderRadius="md"
+                        border="1px solid"
+                        borderColor="gray.200"
+                      >
+                        <Flex
+                          justify="space-between"
+                          align="center"
+                          wrap="wrap"
+                          gap={1.5}
+                          mb={guideItems.length > 0 ? 1.5 : 0}
+                        >
+                          <HStack spacing={1.5} wrap="wrap">
+                            <Badge
+                              colorScheme={isLastAndCompleted ? "teal" : "green"}
+                              fontSize="10px"
+                              px={2}
+                              py={0.5}
+                              borderRadius="md"
+                              fontWeight="800"
+                            >
+                              {badgeLabel}
+                            </Badge>
+                            <Text fontSize="12px" fontWeight="700" color="gray.800">
+                              Guía #{docNumLabel}
+                            </Text>
+                            <Text fontSize="11.5px" color="gray.500">
+                              · {e.fecha}
+                            </Text>
+                          </HStack>
+                          <Text fontSize="12px" fontWeight="800" color="green.700">
+                            {formatDocumentMoney(entregaMonto, entregaCurrency)}
+                          </Text>
+                        </Flex>
+
+                        {guideItems.length > 0 && (
+                          <Box>
+                            <Text fontSize="11px" color="gray.600" mb={1} fontWeight="600">
+                              En la {getOrdinalEntregaLabel(e.deliveryIndex).toLowerCase()} se dio ({totalUnidadesGuia} uds.):
+                            </Text>
+                            <Flex wrap="wrap" gap={1}>
+                              {guideItems.map((item, iIdx) => (
+                                <Badge
+                                  key={iIdx}
+                                  bg="white"
+                                  color="gray.700"
+                                  border="1px solid"
+                                  borderColor="gray.300"
+                                  fontSize="10px"
+                                  fontWeight="600"
+                                  px={1.5}
+                                  py={0.5}
+                                  borderRadius="md"
+                                  whiteSpace="normal"
+                                >
+                                  {item.quantity}x {item.description}
+                                </Badge>
+                              ))}
+                            </Flex>
+                          </Box>
+                        )}
+                      </Box>
+                    );
+                  })}
+
+                  {esEntregaParcialIncompleta && (
+                    <Box
+                      p={2.5}
+                      bg="orange.50"
+                      border="1px solid"
+                      borderColor="orange.200"
+                      borderRadius="md"
+                    >
+                      <Text fontSize="11.5px" fontWeight="700" color="orange.800" lineHeight="1.35">
+                        ⏳ Saldo pendiente por completar en próxima entrega: {totalPendientes} unidades (
+                        {productosComparados
+                          .filter((p) => p.cantidadPendiente > 0)
+                          .map((p) => `${p.cantidadPendiente}x ${p.descripcion}`)
+                          .join(", ")}
+                        )
+                      </Text>
+                    </Box>
+                  )}
+                </VStack>
+              </Box>
+            )}
 
             {/* Orden de venta monto */}
             <Box bg="white" p={3} borderRadius="lg" border="1px solid" borderColor="gray.100">
@@ -421,75 +737,105 @@ export default function TrackingPage({ orden, data }) {
           </Flex>
 
           <Box flex={1} minW={0} bg={bgSection} p={{ base: 2.5, sm: 3, md: 4 }} borderRadius="xl" border="1px solid" borderColor={borderColor}>
-            <Text fontWeight="800" fontSize="13px" mb={2} color="green.700" textTransform="uppercase" letterSpacing="wide">
-              Entrega SAP (documento)
-            </Text>
-            <Box bg="white" p={3} borderRadius="lg" border="1px solid" borderColor="gray.100">
-              {entregas.length > 0 ? (
-                entregas.map((e, idx) => (
-                  <VStack key={idx} align="stretch" spacing={2}>
-                    <Flex justify="space-between" align="center">
-                      <Text fontSize="13px" color="gray.600">N° de Entrega (Guía):</Text>
-                      <Badge colorScheme="green" fontSize="12.5px" px={2.5} py={0.5} borderRadius="md" fontWeight="800">
-                        {entregaDetalle?.docNum 
-                          ? `#${entregaDetalle.docNum}` 
-                          : e.docNum 
-                          ? `#${e.docNum}` 
-                          : loadingEntregaDetalle 
-                          ? <Spinner size="xs" color="green.600" /> 
-                          : `#${e.id}`}
-                      </Badge>
-                    </Flex>
-                    <Flex justify="space-between" align="center">
-                      <Text fontSize="13px" color="gray.600">Fecha del documento:</Text>
-                      <Text fontSize="13px" fontWeight="700" color="gray.800">{e.fecha}</Text>
-                    </Flex>
-                    {(entregaDetalle?.total !== undefined || entregaDetalle?.totalUsd !== undefined || e.monto !== undefined) && (() => {
-                      const entregaCurrency = entregaDetalle?.currency || e.currency || resolvedCurrency;
-                      const isEntregaUSD = String(entregaCurrency || "").toUpperCase().trim() === "USD" || String(entregaCurrency || "").includes("$");
+            <Flex justify="space-between" align="center" wrap="wrap" gap={2} mb={2}>
+              <Text fontWeight="800" fontSize="13px" color="green.700" textTransform="uppercase" letterSpacing="wide">
+                Entrega SAP (documento)
+              </Text>
+              {tieneMultiplesEntregas && (
+                <Badge colorScheme="green" variant="subtle" fontSize="10.5px" px={2} py={0.5} borderRadius="full" fontWeight="800">
+                  ({entregas.length} guías emitidas)
+                </Badge>
+              )}
+            </Flex>
 
-                      let entregaMonto = 0;
-                      if (isEntregaUSD) {
-                        if (entregaDetalle?.totalUsd != null && Number(entregaDetalle.totalUsd) > 0) {
-                          entregaMonto = Number(entregaDetalle.totalUsd);
-                        } else if (entregaDetalle?.totalFc != null && Number(entregaDetalle.totalFc) > 0) {
-                          entregaMonto = Number(entregaDetalle.totalFc);
-                        } else if (entregaDetalle?.total != null) {
-                          const rawTot = Number(entregaDetalle.total);
-                          entregaMonto = (rawTot > 0 && docRate > 1.2 && rawTot > (ordenData?.montoUsd || 0) * 1.5)
-                            ? Number((rawTot / docRate).toFixed(2))
-                            : rawTot;
-                        } else if (e.montoUsd != null && Number(e.montoUsd) > 0) {
-                          entregaMonto = Number(e.montoUsd);
-                        } else if (e.monto != null) {
-                          const rawM = Number(e.monto);
-                          entregaMonto = (rawM > 0 && docRate > 1.2 && rawM > (ordenData?.montoUsd || 0) * 1.5)
-                            ? Number((rawM / docRate).toFixed(2))
-                            : rawM;
-                        } else {
-                          entregaMonto = Number(ordenData?.montoUsd || 0);
-                        }
-                      } else {
-                        entregaMonto = Number(entregaDetalle?.total ?? entregaDetalle?.totalLocal ?? e.monto ?? 0);
-                      }
+            {entregas.length > 0 ? (
+              <VStack align="stretch" spacing={3}>
+                {entregas.map((e, idx) => {
+                  const detail = idx === 0 ? entregaDetalle : null;
+                  const { entregaMonto, entregaCurrency } = resolveEntregaMonetary(e, idx);
+                  const guideItems = getDeliveryItemsForGuide(e);
 
-                      return (
+                  const headerLabel =
+                    idx === 0
+                      ? "1ra Entrega (Parcial Inicial)"
+                      : totalPendientes === 0 && idx === entregas.length - 1
+                      ? `${getOrdinalEntregaLabel(e.deliveryIndex)} (Completado)`
+                      : getOrdinalEntregaLabel(e.deliveryIndex);
+
+                  return (
+                    <Box
+                      key={e.id || idx}
+                      bg="white"
+                      p={3}
+                      borderRadius="lg"
+                      border="1px solid"
+                      borderColor={tieneMultiplesEntregas ? "green.200" : "gray.100"}
+                    >
+                      <VStack align="stretch" spacing={2}>
+                        {tieneMultiplesEntregas && (
+                          <Flex justify="space-between" align="center" pb={1} borderBottom="1px dashed" borderColor="gray.200">
+                            <Badge
+                              colorScheme={idx === 0 ? "green" : "teal"}
+                              fontSize="10.5px"
+                              px={2}
+                              py={0.5}
+                              borderRadius="md"
+                              fontWeight="800"
+                            >
+                              {headerLabel}
+                            </Badge>
+                          </Flex>
+                        )}
                         <Flex justify="space-between" align="center">
-                          <Text fontSize="13px" color="gray.600">Monto entregado:</Text>
-                          <Text fontSize="13px" fontWeight="800" color="green.600">
-                            {formatDocumentMoney(entregaMonto, entregaCurrency)}
-                          </Text>
+                          <Text fontSize="13px" color="gray.600">N° de Entrega (Guía):</Text>
+                          <Badge colorScheme="green" fontSize="12.5px" px={2.5} py={0.5} borderRadius="md" fontWeight="800">
+                            {detail?.docNum
+                              ? `#${detail.docNum}`
+                              : e.docNum
+                              ? `#${e.docNum}`
+                              : idx === 0 && loadingEntregaDetalle
+                              ? <Spinner size="xs" color="green.600" />
+                              : `#${e.id}`}
+                          </Badge>
                         </Flex>
-                      );
-                    })()}
-                  </VStack>
-                ))
-              ) : (
+                        <Flex justify="space-between" align="center">
+                          <Text fontSize="13px" color="gray.600">Fecha del documento:</Text>
+                          <Text fontSize="13px" fontWeight="700" color="gray.800">{e.fecha}</Text>
+                        </Flex>
+                        {(detail?.total !== undefined || detail?.totalUsd !== undefined || e.monto !== undefined) && (
+                          <Flex justify="space-between" align="center">
+                            <Text fontSize="13px" color="gray.600">Monto entregado:</Text>
+                            <Text fontSize="13px" fontWeight="800" color="green.600">
+                              {formatDocumentMoney(entregaMonto, entregaCurrency)}
+                            </Text>
+                          </Flex>
+                        )}
+                        {tieneMultiplesEntregas && guideItems.length > 0 && (
+                          <Box pt={1.5} borderTop="1px solid" borderColor="gray.100">
+                            <Text fontSize="11px" fontWeight="700" color="gray.500" mb={1}>
+                              Ítems entregados en esta guía:
+                            </Text>
+                            <VStack align="stretch" spacing={1}>
+                              {guideItems.map((line, lIdx) => (
+                                <Text key={lIdx} fontSize="11.5px" color="gray.700" fontWeight="600">
+                                  • {line.quantity} uds. · {line.description}
+                                </Text>
+                              ))}
+                            </VStack>
+                          </Box>
+                        )}
+                      </VStack>
+                    </Box>
+                  );
+                })}
+              </VStack>
+            ) : (
+              <Box bg="white" p={3} borderRadius="lg" border="1px solid" borderColor="gray.100">
                 <Text fontSize="12.5px" color="gray.400" textAlign="center">
                   No se ha realizado entrega
                 </Text>
-              )}
-            </Box>
+              </Box>
+            )}
           </Box>
         </Flex>
 
@@ -508,97 +854,143 @@ export default function TrackingPage({ orden, data }) {
           </Flex>
 
           <Box flex={1} minW={0} bg={bgSection} p={{ base: 2.5, sm: 3, md: 4 }} borderRadius="xl" border="1px solid" borderColor={borderColor}>
-            <Text fontWeight="800" fontSize="13px" mb={2} color="green.700" textTransform="uppercase" letterSpacing="wide">
-              Facturación
-            </Text>
-            <Box bg="white" p={3} borderRadius="lg" border="1px solid" borderColor="gray.100">
-              {facturas.length > 0 ? (
-                facturas.map((f, idx) => (
-                  <VStack key={idx} align="stretch" spacing={2}>
-                    <Flex justify="space-between" align="center">
-                      <Text fontSize="13px" color="gray.600">N° Factura:</Text>
-                      <Badge colorScheme="purple" fontSize="12.5px" px={2.5} py={0.5} borderRadius="md" fontWeight="800">
-                        {facturaDetalle?.numAtCard 
-                          ? facturaDetalle.numAtCard 
-                          : f.numAtCard 
-                          ? f.numAtCard 
-                          : (facturaDetalle?.docNum ? `#${facturaDetalle.docNum}` : f.docNum ? `#${f.docNum}` : null) 
-                          || (loadingFacturaDetalle ? <Spinner size="xs" color="purple.600" /> : `#${f.id}`)}
-                      </Badge>
-                    </Flex>
-                    <Flex justify="space-between" align="center">
-                      <Text fontSize="13px" color="gray.600">Fecha factura:</Text>
-                      <Text fontSize="13px" fontWeight="700" color="gray.800">{f.fecha}</Text>
-                    </Flex>
-                    {(() => {
-                      const facturaCurrency = facturaDetalle?.currency || f.currency || resolvedCurrency;
-                      const isFacturaUSD = String(facturaCurrency || "").toUpperCase().trim() === "USD" || String(facturaCurrency || "").includes("$");
+            <Flex justify="space-between" align="center" wrap="wrap" gap={2} mb={2}>
+              <Text fontWeight="800" fontSize="13px" color="green.700" textTransform="uppercase" letterSpacing="wide">
+                Facturación
+              </Text>
+              {facturas.length > 1 && (
+                <Badge colorScheme="purple" variant="subtle" fontSize="10.5px" px={2} py={0.5} borderRadius="full" fontWeight="800">
+                  ({facturas.length} facturas emitidas)
+                </Badge>
+              )}
+            </Flex>
 
-                      let facturaMonto = 0;
-                      if (isFacturaUSD) {
-                        if (facturaDetalle?.totalUsd != null && Number(facturaDetalle.totalUsd) > 0) {
-                          facturaMonto = Number(facturaDetalle.totalUsd);
-                        } else if (facturaDetalle?.totalFc != null && Number(facturaDetalle.totalFc) > 0) {
-                          facturaMonto = Number(facturaDetalle.totalFc);
-                        } else if (facturaDetalle?.total != null) {
-                          const rawTot = Number(facturaDetalle.total);
-                          facturaMonto = (rawTot > 0 && docRate > 1.2 && rawTot > (ordenData?.montoUsd || 0) * 1.5)
-                            ? Number((rawTot / docRate).toFixed(2))
-                            : rawTot;
-                        } else if (f.montoUsd != null && Number(f.montoUsd) > 0) {
-                          facturaMonto = Number(f.montoUsd);
-                        } else if (f.monto != null) {
-                          const rawM = Number(f.monto);
-                          facturaMonto = (rawM > 0 && docRate > 1.2 && rawM > (ordenData?.montoUsd || 0) * 1.5)
-                            ? Number((rawM / docRate).toFixed(2))
-                            : rawM;
-                        } else {
-                          facturaMonto = Number(ordenData?.montoUsd || 0);
-                        }
-                      } else {
-                        facturaMonto = Number(facturaDetalle?.total ?? facturaDetalle?.totalLocal ?? f.monto ?? 0);
-                      }
+            {facturas.length > 0 ? (
+              <VStack align="stretch" spacing={3}>
+                {facturas.map((f, idx) => {
+                  const detail = idx === 0 ? facturaDetalle : null;
+                  const facturaCurrency = detail?.currency || f.currency || resolvedCurrency;
+                  const isFacturaUSD =
+                    String(facturaCurrency || "").toUpperCase().trim() === "USD" ||
+                    String(facturaCurrency || "").includes("$");
 
-                      return (
+                  let facturaMonto = 0;
+                  if (isFacturaUSD) {
+                    if (detail?.totalUsd != null && Number(detail.totalUsd) > 0) {
+                      facturaMonto = Number(detail.totalUsd);
+                    } else if (detail?.totalFc != null && Number(detail.totalFc) > 0) {
+                      facturaMonto = Number(detail.totalFc);
+                    } else if (detail?.total != null) {
+                      const rawTot = Number(detail.total);
+                      facturaMonto =
+                        rawTot > 0 && docRate > 1.2 && rawTot > (ordenData?.montoUsd || 0) * 1.5
+                          ? Number((rawTot / docRate).toFixed(2))
+                          : rawTot;
+                    } else if (f.montoUsd != null && Number(f.montoUsd) > 0) {
+                      facturaMonto = Number(f.montoUsd);
+                    } else if (f.monto != null) {
+                      const rawM = Number(f.monto);
+                      facturaMonto =
+                        rawM > 0 && docRate > 1.2 && rawM > (ordenData?.montoUsd || 0) * 1.5
+                          ? Number((rawM / docRate).toFixed(2))
+                          : rawM;
+                    } else {
+                      facturaMonto = Number(ordenData?.montoUsd || 0);
+                    }
+                  } else {
+                    facturaMonto = Number(detail?.total ?? detail?.totalLocal ?? f.monto ?? 0);
+                  }
+
+                  const deliveryOrdinal = getOrdinalEntregaLabel(f.deliveryIndex || idx + 1);
+                  const headerBadgeText = f.deliveryDocNum
+                    ? `Factura de ${deliveryOrdinal} (Guía #${f.deliveryDocNum})`
+                    : `Factura de ${deliveryOrdinal}`;
+
+                  return (
+                    <Box
+                      key={f.id || idx}
+                      bg="white"
+                      p={3}
+                      borderRadius="lg"
+                      border="1px solid"
+                      borderColor={facturas.length > 1 ? "purple.200" : "gray.100"}
+                    >
+                      <VStack align="stretch" spacing={2}>
+                        {facturas.length > 1 && (
+                          <Flex justify="space-between" align="center" pb={1} borderBottom="1px dashed" borderColor="gray.200">
+                            <Badge
+                              colorScheme="purple"
+                              variant="subtle"
+                              fontSize="10.5px"
+                              px={2}
+                              py={0.5}
+                              borderRadius="md"
+                              fontWeight="800"
+                            >
+                              {headerBadgeText}
+                            </Badge>
+                          </Flex>
+                        )}
+                        <Flex justify="space-between" align="center">
+                          <Text fontSize="13px" color="gray.600">N° Factura:</Text>
+                          <Badge colorScheme="purple" fontSize="12.5px" px={2.5} py={0.5} borderRadius="md" fontWeight="800">
+                            {detail?.numAtCard
+                              ? detail.numAtCard
+                              : f.numAtCard
+                              ? f.numAtCard
+                              : (detail?.docNum ? `#${detail.docNum}` : f.docNum ? `#${f.docNum}` : null) ||
+                                (idx === 0 && loadingFacturaDetalle ? (
+                                  <Spinner size="xs" color="purple.600" />
+                                ) : (
+                                  `#${f.id}`
+                                ))}
+                          </Badge>
+                        </Flex>
+                        <Flex justify="space-between" align="center">
+                          <Text fontSize="13px" color="gray.600">Fecha factura:</Text>
+                          <Text fontSize="13px" fontWeight="700" color="gray.800">{f.fecha}</Text>
+                        </Flex>
                         <Flex justify="space-between" align="center">
                           <Text fontSize="13px" color="gray.600">Monto facturado:</Text>
                           <Text fontSize="13px" fontWeight="800" color="green.600">
                             {formatDocumentMoney(facturaMonto, facturaCurrency)}
                           </Text>
                         </Flex>
-                      );
-                    })()}
-                    <Button
-                      size="sm"
-                      colorScheme="green"
-                      bg="linear-gradient(135deg, #14532d 0%, #166534 50%, #15803d 100%)"
-                      color="white"
-                      leftIcon={<Download size={14} />}
-                      isLoading={loadingFactura}
-                      loadingText="Descargando Factura..."
-                      onClick={() => handleDownloadInvoice(f.id)}
-                      borderRadius="xl"
-                      mt={1.5}
-                      w="full"
-                      fontWeight="700"
-                      fontSize="12px"
-                      boxShadow="0 4px 12px rgba(22, 101, 52, 0.2)"
-                      _hover={{
-                        bg: "linear-gradient(135deg, #0f3d21 0%, #14532d 50%, #166534 100%)",
-                        transform: "translateY(-1px)",
-                      }}
-                      transition="all 0.2s"
-                    >
-                      Descargar Factura PDF
-                    </Button>
-                  </VStack>
-                ))
-              ) : (
+                        <Button
+                          size="sm"
+                          colorScheme="green"
+                          bg="linear-gradient(135deg, #14532d 0%, #166534 50%, #15803d 100%)"
+                          color="white"
+                          leftIcon={<Download size={14} />}
+                          isLoading={loadingFacturaId === f.id}
+                          loadingText="Descargando Factura..."
+                          onClick={() => handleDownloadInvoice(f.id, f.numAtCard || detail?.numAtCard)}
+                          borderRadius="xl"
+                          mt={1.5}
+                          w="full"
+                          fontWeight="700"
+                          fontSize="12px"
+                          boxShadow="0 4px 12px rgba(22, 101, 52, 0.2)"
+                          _hover={{
+                            bg: "linear-gradient(135deg, #0f3d21 0%, #14532d 50%, #166534 100%)",
+                            transform: "translateY(-1px)",
+                          }}
+                          transition="all 0.2s"
+                        >
+                          Descargar Factura PDF
+                        </Button>
+                      </VStack>
+                    </Box>
+                  );
+                })}
+              </VStack>
+            ) : (
+              <Box bg="white" p={3} borderRadius="lg" border="1px solid" borderColor="gray.100">
                 <Text fontSize="12.5px" color="gray.400" textAlign="center">
                   No se ha emitido factura
                 </Text>
-              )}
-            </Box>
+              </Box>
+            )}
           </Box>
         </Flex>
 
@@ -619,63 +1011,164 @@ export default function TrackingPage({ orden, data }) {
             <Text fontWeight="800" fontSize="13px" mb={2} color="green.700" textTransform="uppercase" letterSpacing="wide">
               Despacho Almacén
             </Text>
-            <Box bg="white" p={3} borderRadius="lg" border="1px solid" borderColor="gray.100">
-              {!entregaId ? (
-                <Text fontSize="12.5px" color="gray.400" textAlign="center">
-                  Aún no hay entrega para almacén
-                </Text>
-              ) : cargandoAlmacen ? (
-                <Flex justify="center" py={1}><Spinner size="sm" color="green.500" /></Flex>
-              ) : !etapa ? (
-                <Text fontSize="12.5px" color="gray.400" textAlign="center">
-                  No se pudo consultar almacén
-                </Text>
-              ) : (
-                <VStack align="stretch" spacing={2}>
-                  <Flex justify="space-between" align="center" gap={2}>
-                    <Text fontSize="13px" color="gray.600">Estado:</Text>
-                    <Badge colorScheme={etapa.color} fontSize="11.5px" px={2.5} py={0.5} borderRadius="md" fontWeight="800">
-                      {etapa.texto}
-                    </Badge>
-                  </Flex>
-                  {almacen.bultos ? (
-                    <Flex justify="space-between" align="center">
-                      <Text fontSize="13px" color="gray.600">Bultos:</Text>
-                      <Text fontSize="13px" fontWeight="700" color="gray.800">
-                        {almacen.bultos}{almacen.pesoKg ? ` · ${almacen.pesoKg} Kg` : ""}
-                      </Text>
+
+            {tieneMultiplesEntregas ? (
+              <VStack align="stretch" spacing={3}>
+                {entregas.map((e, idx) => {
+                  const alm = e.almacen || (idx === 0 ? almacen : null);
+                  const etapaGuia = ETAPAS_ALMACEN[alm?.etapa] || null;
+                  const salioGuia =
+                    alm?.etapa === "DESPACHADA" || alm?.etapa === "ENTREGADA_TIENDA";
+                  const docNumGuia =
+                    idx === 0 && entregaDetalle?.docNum
+                      ? entregaDetalle.docNum
+                      : e.docNum || e.id;
+
+                  return (
+                    <Box
+                      key={e.id || idx}
+                      bg="white"
+                      p={3}
+                      borderRadius="lg"
+                      border="1px solid"
+                      borderColor="gray.200"
+                    >
+                      <Flex
+                        justify="space-between"
+                        align="center"
+                        pb={2}
+                        mb={2}
+                        borderBottom="1px dashed"
+                        borderColor="gray.200"
+                      >
+                        <Text fontSize="12px" fontWeight="800" color="gray.700">
+                          Guía #{docNumGuia} ({getOrdinalEntregaLabel(e.deliveryIndex)})
+                        </Text>
+                      </Flex>
+
+                      {idx === 0 && cargandoAlmacen && !alm ? (
+                        <Flex justify="center" py={1}>
+                          <Spinner size="sm" color="green.500" />
+                        </Flex>
+                      ) : !etapaGuia ? (
+                        <Text fontSize="12.5px" color="gray.400" textAlign="center">
+                          No se pudo consultar almacén
+                        </Text>
+                      ) : (
+                        <VStack align="stretch" spacing={2}>
+                          <Flex justify="space-between" align="center" gap={2}>
+                            <Text fontSize="13px" color="gray.600">Estado:</Text>
+                            <Badge
+                              colorScheme={etapaGuia.color}
+                              fontSize="11.5px"
+                              px={2.5}
+                              py={0.5}
+                              borderRadius="md"
+                              fontWeight="800"
+                            >
+                              {etapaGuia.texto}
+                            </Badge>
+                          </Flex>
+                          {alm.bultos ? (
+                            <Flex justify="space-between" align="center">
+                              <Text fontSize="13px" color="gray.600">Bultos:</Text>
+                              <Text fontSize="13px" fontWeight="700" color="gray.800">
+                                {alm.bultos}{alm.pesoKg ? ` · ${alm.pesoKg} Kg` : ""}
+                              </Text>
+                            </Flex>
+                          ) : null}
+                          {salioGuia && alm.salida && (
+                            <>
+                              <Flex justify="space-between" align="center">
+                                <Text fontSize="13px" color="gray.600">
+                                  {alm.etapa === "ENTREGADA_TIENDA" ? "Fecha de recojo:" : "Fecha de salida:"}
+                                </Text>
+                                <Text fontSize="13px" fontWeight="700" color="gray.800">
+                                  {alm.salida.fecha ? new Date(alm.salida.fecha).toLocaleString("es-PE") : "--"}
+                                </Text>
+                              </Flex>
+                              <Flex justify="space-between" align="center" gap={2}>
+                                <Text fontSize="13px" color="gray.600">
+                                  {alm.etapa === "ENTREGADA_TIENDA" ? "Recogió:" : "Vehículo / chofer:"}
+                                </Text>
+                                <Text fontSize="13px" fontWeight="700" color="gray.800" textAlign="right">
+                                  {alm.etapa === "ENTREGADA_TIENDA"
+                                    ? `${alm.salida.recibidoPorNombre || "--"}${alm.salida.recibidoPorDni ? ` (DNI ${alm.salida.recibidoPorDni})` : ""}`
+                                    : `${alm.salida.vehiculoPlaca || "--"} · ${alm.salida.choferNombre || "--"}`}
+                                </Text>
+                              </Flex>
+                            </>
+                          )}
+                          {alm.guiasJuntas?.length > 0 && (
+                            <Text fontSize="11.5px" color="gray.500">
+                              Sale junto con la(s) guía(s): {alm.guiasJuntas.join(", ")}
+                            </Text>
+                          )}
+                        </VStack>
+                      )}
+                    </Box>
+                  );
+                })}
+              </VStack>
+            ) : (
+              <Box bg="white" p={3} borderRadius="lg" border="1px solid" borderColor="gray.100">
+                {!entregaId ? (
+                  <Text fontSize="12.5px" color="gray.400" textAlign="center">
+                    Aún no hay entrega para almacén
+                  </Text>
+                ) : cargandoAlmacen && !almacenPrimario ? (
+                  <Flex justify="center" py={1}><Spinner size="sm" color="green.500" /></Flex>
+                ) : !etapa ? (
+                  <Text fontSize="12.5px" color="gray.400" textAlign="center">
+                    No se pudo consultar almacén
+                  </Text>
+                ) : (
+                  <VStack align="stretch" spacing={2}>
+                    <Flex justify="space-between" align="center" gap={2}>
+                      <Text fontSize="13px" color="gray.600">Estado:</Text>
+                      <Badge colorScheme={etapa.color} fontSize="11.5px" px={2.5} py={0.5} borderRadius="md" fontWeight="800">
+                        {etapa.texto}
+                      </Badge>
                     </Flex>
-                  ) : null}
-                  {salioAlmacen && almacen.salida && (
-                    <>
+                    {almacenPrimario.bultos ? (
                       <Flex justify="space-between" align="center">
-                        <Text fontSize="13px" color="gray.600">
-                          {almacen.etapa === "ENTREGADA_TIENDA" ? "Fecha de recojo:" : "Fecha de salida:"}
-                        </Text>
+                        <Text fontSize="13px" color="gray.600">Bultos:</Text>
                         <Text fontSize="13px" fontWeight="700" color="gray.800">
-                          {almacen.salida.fecha ? new Date(almacen.salida.fecha).toLocaleString("es-PE") : "--"}
+                          {almacenPrimario.bultos}{almacenPrimario.pesoKg ? ` · ${almacenPrimario.pesoKg} Kg` : ""}
                         </Text>
                       </Flex>
-                      <Flex justify="space-between" align="center" gap={2}>
-                        <Text fontSize="13px" color="gray.600">
-                          {almacen.etapa === "ENTREGADA_TIENDA" ? "Recogió:" : "Vehículo / chofer:"}
-                        </Text>
-                        <Text fontSize="13px" fontWeight="700" color="gray.800" textAlign="right">
-                          {almacen.etapa === "ENTREGADA_TIENDA"
-                            ? `${almacen.salida.recibidoPorNombre || "--"}${almacen.salida.recibidoPorDni ? ` (DNI ${almacen.salida.recibidoPorDni})` : ""}`
-                            : `${almacen.salida.vehiculoPlaca || "--"} · ${almacen.salida.choferNombre || "--"}`}
-                        </Text>
-                      </Flex>
-                    </>
-                  )}
-                  {almacen.guiasJuntas?.length > 0 && (
-                    <Text fontSize="11.5px" color="gray.500">
-                      Sale junto con la(s) guía(s): {almacen.guiasJuntas.join(", ")}
-                    </Text>
-                  )}
-                </VStack>
-              )}
-            </Box>
+                    ) : null}
+                    {salioAlmacen && almacenPrimario.salida && (
+                      <>
+                        <Flex justify="space-between" align="center">
+                          <Text fontSize="13px" color="gray.600">
+                            {almacenPrimario.etapa === "ENTREGADA_TIENDA" ? "Fecha de recojo:" : "Fecha de salida:"}
+                          </Text>
+                          <Text fontSize="13px" fontWeight="700" color="gray.800">
+                            {almacenPrimario.salida.fecha ? new Date(almacenPrimario.salida.fecha).toLocaleString("es-PE") : "--"}
+                          </Text>
+                        </Flex>
+                        <Flex justify="space-between" align="center" gap={2}>
+                          <Text fontSize="13px" color="gray.600">
+                            {almacenPrimario.etapa === "ENTREGADA_TIENDA" ? "Recogió:" : "Vehículo / chofer:"}
+                          </Text>
+                          <Text fontSize="13px" fontWeight="700" color="gray.800" textAlign="right">
+                            {almacenPrimario.etapa === "ENTREGADA_TIENDA"
+                              ? `${almacenPrimario.salida.recibidoPorNombre || "--"}${almacenPrimario.salida.recibidoPorDni ? ` (DNI ${almacenPrimario.salida.recibidoPorDni})` : ""}`
+                              : `${almacenPrimario.salida.vehiculoPlaca || "--"} · ${almacenPrimario.salida.choferNombre || "--"}`}
+                          </Text>
+                        </Flex>
+                      </>
+                    )}
+                    {almacenPrimario.guiasJuntas?.length > 0 && (
+                      <Text fontSize="11.5px" color="gray.500">
+                        Sale junto con la(s) guía(s): {almacenPrimario.guiasJuntas.join(", ")}
+                      </Text>
+                    )}
+                  </VStack>
+                )}
+              </Box>
+            )}
           </Box>
         </Flex>
       </VStack>
