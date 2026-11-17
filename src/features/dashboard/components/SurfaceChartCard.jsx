@@ -18,16 +18,19 @@ import {
 } from "recharts";
 import { TrendingUp } from "lucide-react";
 import { motion } from "framer-motion";
+import { useHeaderTheme } from "../../../hooks/useHeaderTheme";
 
 const MotionBox = motion(Box);
 
 // Tooltip personalizado y estilizado para el gráfico
-const CustomTooltip = ({ active, payload, label }) => {
+const CustomTooltip = ({ active, payload, label, isGreen = true, theme }) => {
   if (active && payload && payload.length) {
     const validEntries = payload.filter(
       (e) => e.value !== null && e.value !== undefined
     );
     if (!validEntries.length) return null;
+
+    const ventasColor = isGreen ? "#10b981" : (theme?.chartWaveColor || "#10b981");
 
     return (
       <Box
@@ -50,7 +53,7 @@ const CustomTooltip = ({ active, payload, label }) => {
                 w="6px"
                 h="6px"
                 borderRadius="full"
-                bg={entry.dataKey === "Ventas" || entry.dataKey === "Avance" ? "#10b981" : "#3b82f6"}
+                bg={entry.dataKey === "Ventas" || entry.dataKey === "Avance" ? ventasColor : "#3b82f6"}
               />
               <Text fontSize="10.5px" color="gray.300" fontWeight="600">
                 {entry.name || entry.dataKey}:
@@ -71,6 +74,8 @@ const CustomTooltip = ({ active, payload, label }) => {
 };
 
 export function SurfaceChartCard({ data, isCurrentMonth = true }) {
+  const { theme } = useHeaderTheme();
+  const isGreen = !theme?.key || theme.key === "green";
   const [now, setNow] = useState(new Date());
 
   // Actualización en tiempo real cada minuto
@@ -122,11 +127,11 @@ export function SurfaceChartCard({ data, isCurrentMonth = true }) {
       whileHover={{ y: -3 }}
       transition={{ duration: 0.2 }}
       bg="white"
-      borderRadius="3xl"
-      p={{ base: 4, md: 5 }}
+      borderRadius={{ base: "xl", md: "3xl" }}
+      p={{ base: 3.5, sm: 4, md: 5 }}
       w="full"
-      h={{ base: "auto", md: "245px" }}
-      minH={{ base: "auto", md: "245px" }}
+      h={{ base: "192px", sm: "205px", md: "245px" }}
+      minH={{ base: "188px", sm: "200px", md: "245px" }}
       display="flex"
       flexDirection="column"
       justifyContent="space-between"
@@ -139,7 +144,12 @@ export function SurfaceChartCard({ data, isCurrentMonth = true }) {
       {/* ── Header fijo en HOY con badge live y métricas rápidas ── */}
       <Flex justify="space-between" align="center" mb={1}>
         <HStack spacing={2}>
-          <Box p={1.5} borderRadius="xl" bg="emerald.50" color="emerald.600">
+          <Box
+            p={1.5}
+            borderRadius="xl"
+            bg={isGreen ? "emerald.50" : (theme?.accentLightBg || "emerald.50")}
+            color={isGreen ? "emerald.600" : (theme?.accentTextColor || "emerald.600")}
+          >
             <Icon as={TrendingUp} boxSize={4} />
           </Box>
           <VStack align="start" spacing={0}>
@@ -155,18 +165,18 @@ export function SurfaceChartCard({ data, isCurrentMonth = true }) {
               </Text>
               <HStack
                 spacing={1}
-                bg="emerald.50"
+                bg={isGreen ? "emerald.50" : (theme?.accentLightBg || "emerald.50")}
                 px={1.5}
                 py={0.2}
                 borderRadius="full"
                 border="1px solid"
-                borderColor="emerald.200"
+                borderColor={isGreen ? "emerald.200" : (theme?.accentBorderColor || "emerald.200")}
               >
                 <Box
                   w="4.5px"
                   h="4.5px"
                   borderRadius="full"
-                  bg="emerald.500"
+                  bg={isGreen ? "emerald.500" : (theme?.chartWaveColor || "emerald.500")}
                   sx={{
                     "@keyframes livePulse": {
                       "0%": { transform: "scale(0.95)", opacity: 0.5 },
@@ -176,7 +186,12 @@ export function SurfaceChartCard({ data, isCurrentMonth = true }) {
                     animation: "livePulse 1.5s infinite ease-in-out",
                   }}
                 />
-                <Text fontSize="8px" color="emerald.700" fontWeight="800" letterSpacing="0.3px">
+                <Text
+                  fontSize="8px"
+                  color={isGreen ? "emerald.700" : (theme?.accentTextColor || "emerald.700")}
+                  fontWeight="800"
+                  letterSpacing="0.3px"
+                >
                   HOY
                 </Text>
               </HStack>
@@ -192,7 +207,12 @@ export function SurfaceChartCard({ data, isCurrentMonth = true }) {
         {/* Leyenda y Montos en Vivo de Hoy (en lugar de selector de píldoras) */}
         <HStack spacing={2.5} align="center">
           <HStack spacing={1}>
-            <Box w="6px" h="6px" borderRadius="full" bg="#10b981" />
+            <Box
+              w="6px"
+              h="6px"
+              borderRadius="full"
+              bg={isGreen ? "#10b981" : (theme?.chartWaveColor || "#10b981")}
+            />
             <Text fontSize="9.5px" fontWeight="700" color="gray.600">
               Hoy: {fmt(ventasValidas)}
             </Text>
@@ -209,15 +229,15 @@ export function SurfaceChartCard({ data, isCurrentMonth = true }) {
       </Flex>
 
       {/* ── Gráfico de Olas Fluidas (AreaChart Natural) sin líneas rígidas ni puntos ── */}
-      <Box w="full" h="150px" minH="150px" mt={1} mb={0}>
-        <ResponsiveContainer width="100%" height={150} minWidth={100} minHeight={150} debounce={50}>
+      <Box w="full" h={{ base: "120px", md: "150px" }} minH={{ base: "120px", md: "150px" }} mt={1} mb={0}>
+        <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={110} debounce={50}>
           <AreaChart data={waveData} margin={{ top: 10, right: 8, left: 8, bottom: 0 }}>
             <defs>
               {/* Gradiente Ola Verde Esmeralda (Ventas Hoy) */}
               <linearGradient id="waveVentas" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#10b981" stopOpacity={0.50} />
-                <stop offset="50%" stopColor="#10b981" stopOpacity={0.20} />
-                <stop offset="100%" stopColor="#10b981" stopOpacity={0.0} />
+                <stop offset="0%" stopColor={isGreen ? "#10b981" : (theme?.chartWaveColor || "#10b981")} stopOpacity={0.50} />
+                <stop offset="50%" stopColor={isGreen ? "#10b981" : (theme?.chartWaveColor || "#10b981")} stopOpacity={0.20} />
+                <stop offset="100%" stopColor={isGreen ? "#10b981" : (theme?.chartWaveColor || "#10b981")} stopOpacity={0.0} />
               </linearGradient>
 
               {/* Gradiente Ola Azul Zafiro (Meta Diaria) */}
@@ -236,7 +256,7 @@ export function SurfaceChartCard({ data, isCurrentMonth = true }) {
               tickLine={false}
             />
             <YAxis hide={true} domain={[0, 'auto']} />
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip content={<CustomTooltip isGreen={isGreen} theme={theme} />} />
 
             {/* Ola de Fondo: Meta Diaria (Curva Natural de Agua) */}
             <Area
@@ -257,13 +277,18 @@ export function SurfaceChartCard({ data, isCurrentMonth = true }) {
               type="natural"
               dataKey="Ventas"
               name="Ventas Hoy"
-              stroke="#10b981"
+              stroke={isGreen ? "#10b981" : (theme?.chartWaveColor || "#10b981")}
               strokeWidth={2.2}
               strokeOpacity={0.9}
               fillOpacity={1}
               fill="url(#waveVentas)"
               dot={false}
-              activeDot={{ r: 4.5, fill: "#10b981", stroke: "#ffffff", strokeWidth: 2 }}
+              activeDot={{
+                r: 4.5,
+                fill: isGreen ? "#10b981" : (theme?.chartWaveColor || "#10b981"),
+                stroke: "#ffffff",
+                strokeWidth: 2,
+              }}
             />
           </AreaChart>
         </ResponsiveContainer>

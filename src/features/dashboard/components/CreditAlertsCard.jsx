@@ -21,10 +21,14 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { useGetAccountsReceivable } from "../../receivable/hooks/receivableQueries";
+import { useHeaderTheme } from "../../../hooks/useHeaderTheme";
 
 export function CreditAlertsCard({ selectedSeller, canFilterSellers }) {
   const navigate = useNavigate();
   const { username, salesEmployeeCode } = useAuthStore();
+  const { theme } = useHeaderTheme();
+  const isGreen = !theme?.key || theme.key === "green";
+  const sellerBadgeScheme = isGreen ? "green" : (theme?.accentColorScheme || "green");
 
   const isSellerProfile = !!salesEmployeeCode;
 
@@ -119,7 +123,7 @@ export function CreditAlertsCard({ selectedSeller, canFilterSellers }) {
 
     if (displayClients.length > 0) {
       return (
-        <VStack spacing={2.5} align="stretch" w="100%">
+        <VStack spacing={{ base: 1.5, md: 2.5 }} align="stretch" w="100%">
           {displayClients.map((client, idx) => {
             const clientName = client.clientName || client.nombre || client.cardName || "Cliente";
             const docNum = client.clientCode || client.ruc || client.licTradNum || "";
@@ -141,9 +145,9 @@ export function CreditAlertsCard({ selectedSeller, canFilterSellers }) {
             return (
               <Box
                 key={client.clientCode || client.ruc || idx}
-                py={2.5}
-                px={3.5}
-                borderRadius="2xl"
+                py={{ base: 1.5, md: 2.5 }}
+                px={{ base: 2, md: 3.5 }}
+                borderRadius={{ base: "lg", md: "2xl" }}
                 bg="gray.50"
                 border="1px solid"
                 borderColor="gray.100"
@@ -151,25 +155,25 @@ export function CreditAlertsCard({ selectedSeller, canFilterSellers }) {
                 _hover={{ bg: "white", boxShadow: "0 6px 20px rgba(0,0,0,0.06)", borderColor: "red.200" }}
               >
                 <Flex align="center" justify="space-between" gap={2}>
-                  <HStack spacing={2.5} minW={0} flex={1}>
+                  <HStack spacing={{ base: 1.5, md: 2.5 }} minW={0} flex={1}>
                     {/* Ícono de Empresa / Cliente para diferenciar visualmente de la cabecera */}
                     <Flex
-                      w="34px"
-                      h="34px"
-                      borderRadius="xl"
+                      w={{ base: "22px", md: "34px" }}
+                      h={{ base: "22px", md: "34px" }}
+                      borderRadius="md"
                       bg="gray.100"
                       color="gray.600"
                       align="center"
                       justify="center"
                       flexShrink={0}
                     >
-                      <Icon as={FiBriefcase} boxSize={4} />
+                      <Icon as={FiBriefcase} boxSize={{ base: 2.5, md: 4 }} />
                     </Flex>
                     <Box minW={0} flex={1}>
-                      <HStack spacing={1.5} mb={0.5} flexWrap="wrap">
+                      <HStack spacing={1} mb={0.5} flexWrap="wrap">
                         <Text
                           fontWeight="750"
-                          fontSize={{ base: "xs", sm: "sm" }}
+                          fontSize={{ base: "10.5px", sm: "xs", md: "sm" }}
                           color="gray.800"
                           noOfLines={1}
                         >
@@ -178,15 +182,15 @@ export function CreditAlertsCard({ selectedSeller, canFilterSellers }) {
                         {(() => {
                           const eqUSD = getEquivUSD(client);
                           if (eqUSD >= 500) {
-                            return <Badge colorScheme="red" variant="solid" borderRadius="full" fontSize="10px" px={2.5} flexShrink={0}>🔴 ALTO RIESGO ({overdueDocs})</Badge>;
+                            return <Badge colorScheme="red" variant="solid" borderRadius="full" fontSize={{ base: "7.5px", md: "10px" }} px={{ base: 1.5, md: 2.5 }} flexShrink={0}>🔴 ALTO RIESGO ({overdueDocs})</Badge>;
                           }
                           if (eqUSD >= 100) {
-                            return <Badge colorScheme="orange" variant="solid" borderRadius="full" fontSize="10px" px={2.5}>🟠 MORA ALTA ({overdueDocs})</Badge>;
+                            return <Badge colorScheme="orange" variant="solid" borderRadius="full" fontSize={{ base: "7.5px", md: "10px" }} px={{ base: 1.5, md: 2.5 }}>🟠 MORA ALTA ({overdueDocs})</Badge>;
                           }
-                          return <Badge colorScheme="red" variant="subtle" borderRadius="full" fontSize="10px" px={2.5} flexShrink={0}>MORA ({overdueDocs})</Badge>;
+                          return <Badge colorScheme="red" variant="subtle" borderRadius="full" fontSize={{ base: "7.5px", md: "10px" }} px={{ base: 1.5, md: 2.5 }} flexShrink={0}>MORA ({overdueDocs})</Badge>;
                         })()}
                       </HStack>
-                      <Text fontSize="xs" color="gray.500" fontWeight="medium" noOfLines={1}>
+                      <Text fontSize={{ base: "9.5px", md: "xs" }} color="gray.500" fontWeight="medium" noOfLines={1}>
                         {docNum && (
                           <Text as="span" color="gray.600" fontWeight="600">
                             {docNum} •{" "}
@@ -221,8 +225,8 @@ export function CreditAlertsCard({ selectedSeller, canFilterSellers }) {
           w="40px"
           h="40px"
           borderRadius="full"
-          bg="green.50"
-          color="green.600"
+          bg={isGreen ? "green.50" : (theme?.accentLightBg || "green.50")}
+          color={isGreen ? "green.600" : (theme?.accentTextColor || "green.600")}
           align="center"
           justify="center"
           mb={2}
@@ -246,8 +250,8 @@ export function CreditAlertsCard({ selectedSeller, canFilterSellers }) {
       w="full"
       h="100%"
       bg="white"
-      borderRadius="3xl"
-      p={{ base: 3.5, sm: 4.5, md: 5 }}
+      borderRadius={{ base: "xl", md: "3xl" }}
+      p={{ base: 2.5, sm: 3.5, md: 5 }}
       boxShadow="0 10px 30px rgba(0,0,0,0.04)"
       transition="transform 0.2s, box-shadow 0.2s"
       _hover={{ boxShadow: "0 12px 35px rgba(0,0,0,0.07)" }}
@@ -258,24 +262,24 @@ export function CreditAlertsCard({ selectedSeller, canFilterSellers }) {
     >
       <Box flex={1} display="flex" flexDirection="column">
         {/* Header Tarjeta */}
-        <Flex align="center" justify="space-between" mb={4} gap={2}>
-          <HStack spacing={{ base: 2, sm: 3 }} minW={0} flex={1}>
+        <Flex align="center" justify="space-between" mb={{ base: 1.5, md: 4 }} gap={2}>
+          <HStack spacing={{ base: 1.5, sm: 3 }} minW={0} flex={1}>
             <Flex
-              w={{ base: "38px", sm: "42px" }}
-              h={{ base: "38px", sm: "42px" }}
-              borderRadius="2xl"
+              w={{ base: "26px", sm: "38px", md: "42px" }}
+              h={{ base: "26px", sm: "38px", md: "42px" }}
+              borderRadius={{ base: "md", md: "2xl" }}
               bg="red.50"
               align="center"
               justify="center"
               color="red.600"
               flexShrink={0}
             >
-              <Icon as={FiAlertCircle} boxSize={5} />
+              <Icon as={FiAlertCircle} boxSize={{ base: 3.5, md: 5 }} />
             </Flex>
             <Box minW={0} flex={1}>
               <Flex gap={1.5} flexWrap="wrap" align="center">
                 <Text
-                  fontSize={{ base: "sm", sm: "md" }}
+                  fontSize={{ base: "12.5px", sm: "sm", md: "md" }}
                   fontWeight="800"
                   color="gray.800"
                   letterSpacing="tight"
@@ -285,11 +289,11 @@ export function CreditAlertsCard({ selectedSeller, canFilterSellers }) {
                 </Text>
                 {criticalClients.length > 0 && (
                   <Badge
-                    colorScheme={vendedorNombre ? "purple" : "red"}
+                    colorScheme={vendedorNombre ? sellerBadgeScheme : "red"}
                     borderRadius="full"
-                    px={2.5}
-                    py={0.5}
-                    fontSize="10px"
+                    px={{ base: 1.5, md: 2.5 }}
+                    py={0.2}
+                    fontSize={{ base: "8.5px", md: "10px" }}
                     fontWeight="800"
                     flexShrink={0}
                   >
@@ -297,7 +301,13 @@ export function CreditAlertsCard({ selectedSeller, canFilterSellers }) {
                   </Badge>
                 )}
               </Flex>
-              <Text fontSize="xs" color="gray.500" display={{ base: "none", xl: "block" }} noOfLines={1}>
+              <Text
+                fontSize="xs"
+                color="gray.500"
+                display={{ base: "none", lg: "block" }}
+                sx={{ "@media (max-width: 991px)": { display: "none !important" } }}
+                noOfLines={1}
+              >
                 {isSellerProfile && !canFilterSellers
                   ? "Estado de cuenta de clientes a tu cargo"
                   : vendedorNombre
@@ -314,7 +324,9 @@ export function CreditAlertsCard({ selectedSeller, canFilterSellers }) {
             rightIcon={<FiArrowRight />}
             onClick={() => navigate("/receivable")}
             flexShrink={0}
-            px={1.5}
+            px={1}
+            h={{ base: "20px", md: "24px" }}
+            fontSize={{ base: "10.5px", md: "11px" }}
           >
             Ver Lista
           </Button>
@@ -325,7 +337,7 @@ export function CreditAlertsCard({ selectedSeller, canFilterSellers }) {
       </Box>
 
       {/* Footer Simétrico de la Tarjeta */}
-      <Box pt={3} mt="auto" borderTop="1px solid" borderColor="gray.100">
+      <Box pt={{ base: 1.5, md: 3 }} mt="auto" borderTop="1px solid" borderColor="gray.100">
         <Button
           size="xs"
           variant="ghost"
@@ -333,6 +345,8 @@ export function CreditAlertsCard({ selectedSeller, canFilterSellers }) {
           rightIcon={<FiArrowRight />}
           onClick={() => navigate("/receivable")}
           w="100%"
+          h={{ base: "22px", md: "28px" }}
+          fontSize={{ base: "10px", md: "xs" }}
           fontWeight="700"
         >
           {criticalClients.length > displayClients.length

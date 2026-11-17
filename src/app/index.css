@@ -30,16 +30,25 @@
 
 /* Scroll nativo fluido y libre tanto en PC (rueda/mouse) como en Moviles (gesto tactil) */
 html {
-  overflow-x: hidden;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
 
 body {
-  overflow-x: hidden;
-  overflow-y: visible;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
   margin: 0;
   padding: 0;
+}
+
+#root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
 }
 
 /* Optimizacion de respuesta tactil y prevencion de outlines de foco */

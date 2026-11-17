@@ -6,6 +6,9 @@
     <meta name="googlebot" content="notranslate" />
     <meta http-equiv="Content-Language" content="es" />
     <meta name="color-scheme" content="light" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -29,6 +32,47 @@
   </head>
   <body class="notranslate" translate="no">
     <div id="root" class="notranslate" translate="no"></div>
+    <script>
+      (function () {
+        var RELOAD_KEY = 'autopartes_asset_reload_ts';
+        var COOLDOWN_MS = 15000;
+        var recovering = false;
+
+        function recoverFromStaleAssets() {
+          if (recovering) return;
+          try {
+            var now = Date.now();
+            var last = Number(sessionStorage.getItem(RELOAD_KEY) || 0);
+            if (last && now - last < COOLDOWN_MS) return;
+            sessionStorage.setItem(RELOAD_KEY, String(now));
+          } catch (_) {}
+
+          recovering = true;
+          var cleanup = Promise.resolve();
+          if (typeof caches !== 'undefined' && caches.keys) {
+            cleanup = caches.keys().then(function (keys) {
+              return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+            }).catch(function () {});
+          }
+          cleanup.finally(function () {
+            window.location.reload();
+          });
+        }
+
+        window.addEventListener('error', function (event) {
+          var target = event && event.target;
+          if (!target || target === window) return;
+          var url = target.src || target.href || '';
+          if (url.indexOf('/assets/') !== -1) {
+            recoverFromStaleAssets();
+          }
+        }, true);
+
+        window.addEventListener('vite:preloadError', function () {
+          recoverFromStaleAssets();
+        });
+      })();
+    </script>
     <script type="module" src="/src/app/main.jsx"></script>
     <script>
       window.deferredPwaPrompt = null;

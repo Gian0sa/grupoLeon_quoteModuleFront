@@ -44,11 +44,22 @@ const isSessionExpired = () => {
   return Date.now() - lastActivity > IDLE_TIMEOUT_MS;
 };
 
+const clearHeaderThemeStorage = () => {
+  try {
+    Object.keys(localStorage).forEach((key) => {
+      if (key.startsWith('grupoLeon_headerTheme_')) {
+        localStorage.removeItem(key);
+      }
+    });
+  } catch (e) {}
+};
+
 // Si expiró la sesión por inactividad prolongada (y no está en ruta protegida con trabajo), limpiar
 if (isSessionExpired() && !isProtectedCurrentRoute()) {
   ['userId', 'username', 'salesEmployeeCode', 'endpoints', 'role', 'lastRoute', 'sessionLoginTime', 'lastUserActivityTime'].forEach((key) => {
     try { localStorage.removeItem(key); } catch (e) {}
   });
+  clearHeaderThemeStorage();
 }
 
 export const useAuthStore = create((set) => ({
@@ -155,6 +166,7 @@ export const useAuthStore = create((set) => ({
       ['userId', 'username', 'salesEmployeeCode', 'endpoints', 'lastRoute', 'sessionLoginTime', 'lastUserActivityTime'].forEach((key) =>
         localStorage.removeItem(key)
       );
+      clearHeaderThemeStorage();
     } catch (e) {}
 
     // Limpieza profunda de memoria RAM (React Query), sessionStorage y cachés volátiles

@@ -113,27 +113,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     localStorage.getItem("username") ||
     "";
 
-  // Intentar empatar al usuario logueado con la lista de vendedores de SAP
-  const matchedSellerByUsername = useMemo(() => {
-    if (!sessionUsername || !sellersList || sellersList.length === 0) return null;
-    const norm = sessionUsername.toLowerCase().trim();
-    return sellersList.find((s) => {
-      const sLabel = String(s.label || "").toLowerCase();
-      const sEmail = String(s.email || "").toLowerCase();
-      return (
-        sLabel.includes(norm) ||
-        (norm.length >= 3 && sLabel.includes(norm.slice(0, 4))) ||
-        (sEmail && sEmail.includes(norm))
-      );
-    }) || null;
-  }, [sessionUsername, sellersList]);
-
-  const effectiveSessionSalesCode = Number(
-    sessionSalesCode > 0 ? sessionSalesCode : (matchedSellerByUsername?.value || 0)
-  );
-
   const localRole = (localStorage.getItem("role") || "").toUpperCase();
-  const roleUpper = String(role || localRole || "").toUpperCase();
+  const profileRole = (userProfile?.role || "").toUpperCase();
+  const roleUpper = String(role || profileRole || localRole || "").toUpperCase();
 
   // 🛡️ Privilegios de Administrador Maestro:
   // Si posee permisos de administrador, SIEMPRE tiene facultades de Administrador
@@ -146,14 +128,67 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     checkIsAdmin(endpoints, sessionUsername || username)
   );
 
-  // El selector con la lista completa de vendedores le sale al Administrador
-  const canSelectSeller = isAdmin;
+  // 🛡️ Identificación de perfil de Facturación y permisos de emisión directa a SAP:
+  // Permite abrir el selector de vendedor y emitir directamente a SAP desde Nueva Cotización
+  const hasBillingApprovalAccess =
+    hasAccess("POST /quotes/approval") ||
+    hasAccess("POST:/quotes/approval") ||
+    hasAccess("POST /quotations/approve") ||
+    hasAccess("POST /quotes/sap/order") ||
+    hasAccess("POST:/quotes/sap/order");
 
-  // Es vendedor de campo únicamente si NO es Administrador y tiene código de vendedor en SAP (≠ 20)
-  const isSeller = !isAdmin && Boolean(effectiveSessionSalesCode > 0 && effectiveSessionSalesCode !== 20);
+  const hasSapCreateAccess =
+    hasAccess("POST /quotes/sap/create") ||
+    hasAccess("POST:/quotes/sap/create");
+
+  const isBilling = Boolean(
+    !isAdmin && (
+      roleUpper === "FACTURACION" ||
+      roleUpper === "FACTURACIÓN" ||
+      roleUpper.includes("FACTUR") ||
+      ((!sessionSalesCode || sessionSalesCode === 20) && hasBillingApprovalAccess)
+    )
+  );
+
+  // El selector con la lista completa de vendedores se habilita para Administradores y para Facturación
+  // (para que puedan cotizar como 20 - 001.Ofic Administración o asignar a cualquier vendedor comercial)
+  const canSelectSeller = isAdmin || isBilling;
+
+  // Intentar empatar al usuario logueado con la lista de vendedores de SAP (solo para vendedores de campo)
+  const matchedSellerByUsername = useMemo(() => {
+    if (!sessionUsername || !sellersList || sellersList.length === 0) return null;
+    if (canSelectSeller && (!sessionSalesCode || sessionSalesCode === 20)) return null;
+    const norm = sessionUsername.toLowerCase().trim();
+    return sellersList.find((s) => {
+      const sLabel = String(s.label || "").toLowerCase();
+      const sEmail = String(s.email || "").toLowerCase();
+      return (
+        sLabel.includes(norm) ||
+        (norm.length >= 3 && sLabel.includes(norm.slice(0, 4))) ||
+        (sEmail && sEmail.includes(norm))
+      );
+    }) || null;
+  }, [sessionUsername, sellersList, canSelectSeller, sessionSalesCode]);
+
+  const effectiveSessionSalesCode = Number(
+    sessionSalesCode > 0 ? sessionSalesCode : (matchedSellerByUsername?.value || 0)
+  );
+
+  // Es vendedor de campo únicamente si NO puede elegir vendedor (no es Admin ni Facturación) y tiene código en SAP (≠ 20)
+  const isSeller = !canSelectSeller && Boolean(effectiveSessionSalesCode > 0 && effectiveSessionSalesCode !== 20);
+
+  // ⚡ Permiso para aprobar y emitir directamente a SAP B1 sin pasar por cola de validación:
+  // - Administradores Maestros (siempre)
+  // - Facturación cuando posee permiso "Aprobar y Auditar Cotizaciones" o "Enviar Cotización a SAP"
+  // - Otros perfiles no-vendedores (ej. Supervisor) con permiso explícito de aprobación o envío SAP
+  const canDirectEmitSap = Boolean(
+    isAdmin ||
+    (isBilling && (hasBillingApprovalAccess || hasSapCreateAccess)) ||
+    (!isSeller && (hasBillingApprovalAccess || (roleUpper === "SUPERVISOR" && hasSapCreateAccess)))
+  );
 
   // 🛡️ Permisos operativos para áreas financieras/logísticas (Facturación y Supervisión)
-  const canManageFinance = isAdmin || roleUpper === "FACTURACION" || roleUpper === "SUPERVISOR";
+  const canManageFinance = isAdmin || isBilling || roleUpper === "FACTURACION" || roleUpper === "SUPERVISOR";
   // 🛡️ Permiso granular para modificar la moneda del documento (USD / Soles)
   const canChangeCurrency = isAdmin || hasAccess("PUT:/quotes/currency");
 
@@ -209,10 +244,10 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     if (storeSlpCode && !isNaN(Number(storeSlpCode)) && Number(storeSlpCode) > 0) return Number(storeSlpCode);
     if (storeSalesEmployeeCode && !isNaN(Number(storeSalesEmployeeCode)) && Number(storeSalesEmployeeCode) > 0) return Number(storeSalesEmployeeCode);
     if (isSeller && effectiveSessionSalesCode) return effectiveSessionSalesCode;
-    if (salesEmployeeCode && !isNaN(Number(salesEmployeeCode))) return Number(salesEmployeeCode);
+    if (!canSelectSeller && salesEmployeeCode && !isNaN(Number(salesEmployeeCode))) return Number(salesEmployeeCode);
     const localSlp = localStorage.getItem("salesEmployeeCode");
-    if (localSlp && !isNaN(Number(localSlp))) return Number(localSlp);
-    if (matchedSellerByUsername) return matchedSellerByUsername.value;
+    if (!canSelectSeller && localSlp && !isNaN(Number(localSlp))) return Number(localSlp);
+    if (!canSelectSeller && matchedSellerByUsername) return matchedSellerByUsername.value;
     return canSelectSeller ? 20 : undefined;
   });
 
@@ -244,7 +279,13 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       return;
     }
 
-    // 4. Fallback de sesión / admin
+    // 4. Si es Administrador o Facturación en cotización nueva, conservar su elección o iniciar en 20 (Oficina Admin)
+    if (canSelectSeller) {
+      setSelectedSlpCode((prev) => (prev && Number(prev) > 0 ? Number(prev) : 20));
+      return;
+    }
+
+    // 5. Fallback de sesión para vendedores
     if (salesEmployeeCode && !isNaN(Number(salesEmployeeCode)) && Number(salesEmployeeCode) > 0) {
       setSelectedSlpCode(Number(salesEmployeeCode));
     } else {
@@ -253,8 +294,6 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         setSelectedSlpCode(Number(localSlp));
       } else if (matchedSellerByUsername) {
         setSelectedSlpCode(matchedSellerByUsername.value);
-      } else if (canSelectSeller && !selectedSlpCode) {
-        setSelectedSlpCode(20);
       }
     }
   }, [isSeller, effectiveSessionSalesCode, storeSlpCode, storeSalesEmployeeCode, storeSellerName, storeCreatedByUsername, salesEmployeeCode, canSelectSeller, matchedSellerByUsername, sellersList]);
@@ -265,6 +304,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
   const activeSeller = useMemo(() => {
     if (selectedSlpCode) {
+      if (Number(selectedSlpCode) === 20) return "001.Ofic Administración";
       const matched = sellersList.find((s) => s.value === Number(selectedSlpCode));
       if (matched) return matched.label;
     }
@@ -279,14 +319,15 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       return effectiveStoreSeller;
     }
     if (sellerName && sellerName !== "Vendedor SAP" && sellerName !== "Vendedor Autorizado") return sellerName;
-    return sessionUsername || localSeller || (canSelectSeller ? "001.Ofic Administración" : "Vendedor Autorizado");
+    if (canSelectSeller) return "001.Ofic Administración";
+    return sessionUsername || localSeller || "Vendedor Autorizado";
   }, [selectedSlpCode, sellersList, isSeller, effectiveSessionSalesCode, sessionUsername, matchedSellerByUsername, effectiveStoreSeller, sellerName, localSeller, canSelectSeller]);
 
   const sellerDisplayName = useMemo(() => {
     if (selectedSlpCode) {
+      if (Number(selectedSlpCode) === 20) return "20 - 001.Ofic Administración (Oficina / Admin)";
       const matched = sellersList.find((s) => s.value === Number(selectedSlpCode));
       if (matched) return `${matched.value} - ${matched.label}`;
-      if (selectedSlpCode === 20) return "20 - 001.Ofic Administración (Oficina / Admin)";
     }
     if (isSeller && effectiveSessionSalesCode) {
       const matched = sellersList.find((s) => s.value === effectiveSessionSalesCode);
@@ -560,9 +601,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     ["ENVIADO", "EN_PROCESO", "PENDIENTE_APROBACION", "PENDIENTE_FACTURACION", "OBSERVADO", "EN_EDICION"].includes(String(approvalStatus || "").toUpperCase().trim())
   );
 
-  // Devolver con Observación y Rechazar: SOLO cuando el cliente/vendedor envió la cotización y el administrador está verificando
+  // Devolver con Observación y Rechazar: cuando el vendedor envió la cotización y un aprobador (Admin/Facturación) está verificando
   const canAdminObserveOrReject = Boolean(
-    isAdmin &&
+    canDirectEmitSap &&
     isSubmittedQuote &&
     ["ENVIADO", "EN_PROCESO", "PENDIENTE_APROBACION", "PENDIENTE_FACTURACION"].includes(approvalStatus) &&
     !isApprovedOrder
@@ -575,16 +616,16 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   );
 
   // Si la cotización está observada o en edición, el vendedor está en modo corrección activa.
-  // El Administrador siempre entra en modo revisión bloqueado por defecto a menos que active explícitamente adminForceEditMode.
-  const isCorrectionMode = !isAdmin && (approvalStatus === "OBSERVADO" || approvalStatus === "EN_EDICION");
+  // El aprobador siempre entra en modo revisión bloqueado por defecto a menos que active explícitamente adminForceEditMode.
+  const isCorrectionMode = !canDirectEmitSap && (approvalStatus === "OBSERVADO" || approvalStatus === "EN_EDICION");
 
-  // El Administrador está en modo "Solo Revisión" cuando es una cotización enviada/en proceso y no está en corrección ni forzando edición
-  const isAdminReviewing = Boolean(isAdmin && isSubmittedQuote && !adminForceEditMode && !isCorrectionMode);
+  // El aprobador (Admin o Facturación) está en modo "Solo Revisión" cuando es una cotización enviada/en proceso y no está en corrección ni forzando edición
+  const isAdminReviewing = Boolean(canDirectEmitSap && isSubmittedQuote && !adminForceEditMode && !isCorrectionMode);
 
   // Los campos comerciales (Cliente, Grilla de Productos) solo se bloquean si es solo lectura o revisión estricta
   const isSellerFieldsLocked = (isReadOnly && !isCorrectionMode) || (isAdminReviewing && !adminForceEditMode);
 
-  // Despacho y Logística son editables si no está en revisión estricta o si el admin habilita edición
+  // Despacho y Logística son editables si no está en revisión estricta o si el aprobador habilita edición
   const isDeliveryLocked = (isReadOnly && !isCorrectionMode) || (isAdminReviewing && !adminForceEditMode);
   const revealTabs = true; // Flujo unificado: Pestaña de logística y pagos accesible al inicio
 
@@ -592,8 +633,8 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     setAdminForceEditMode(false);
     if (quoteId) {
       setDocNumber(quoteId);
-      // Adquirir candado de revisión activa para esta cotización si es de validación y el usuario es evaluador administrativo
-      if (isSubmittedQuote && isAdmin) {
+      // Adquirir candado de revisión activa para esta cotización si es de validación y el usuario es evaluador administrativo/facturación
+      if (isSubmittedQuote && canDirectEmitSap) {
         const lockCheck = checkQuoteLock(quoteId, userId, username || localSeller);
         if (lockCheck.isLocked) {
           toast({
@@ -623,7 +664,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         releaseQuoteLock(quoteId, userId);
       }
     };
-  }, [quoteId, isSubmittedQuote, userId, username, localSeller, role, endpoints, isAdmin]);
+  }, [quoteId, isSubmittedQuote, userId, username, localSeller, role, endpoints, canDirectEmitSap]);
 
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isJsonModalOpen, setIsJsonModalOpen] = useState(false);
@@ -1026,10 +1067,10 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     clientCreditInfo,
     isCreditSale,
     sellerName: activeSeller,
-    SlpCode: selectedSlpCode || (isAdmin ? 20 : undefined),
-    slpCode: selectedSlpCode || (isAdmin ? 20 : undefined),
-    salesEmployeeCode: selectedSlpCode || (isAdmin ? 20 : undefined),
-    salesPersonCode: selectedSlpCode || (isAdmin ? 20 : undefined),
+    SlpCode: selectedSlpCode || (canSelectSeller ? 20 : undefined),
+    slpCode: selectedSlpCode || (canSelectSeller ? 20 : undefined),
+    salesEmployeeCode: selectedSlpCode || (canSelectSeller ? 20 : undefined),
+    salesPersonCode: selectedSlpCode || (canSelectSeller ? 20 : undefined),
     docDate,
     docDueDate,
     deliveryDate: deliveryDate ? (deliveryDate instanceof Date ? deliveryDate.toISOString().split("T")[0] : deliveryDate) : null,
@@ -1054,7 +1095,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     totals,
     activeSeller,
     selectedSlpCode,
-    isAdmin,
+    canSelectSeller,
     docDate,
     docDueDate,
     deliveryDate,
@@ -1228,6 +1269,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
     const currentLoggedInUsername = String(username || localSeller || "").toLowerCase().trim();
     const effectiveSlpCode = (() => {
+      if (canSelectSeller && selectedSlpCode && !isNaN(Number(selectedSlpCode))) {
+        return Number(selectedSlpCode);
+      }
       if (selectedSlpCode && !isNaN(Number(selectedSlpCode)) && Number(selectedSlpCode) !== 20) {
         return Number(selectedSlpCode);
       }
@@ -1241,7 +1285,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     })();
 
     const matchedSlpObj = effectiveSlpCode ? sellersList.find((s) => s.value === Number(effectiveSlpCode)) : null;
-    let finalSellerName = matchedSlpObj?.label;
+    let finalSellerName = Number(effectiveSlpCode) === 20 ? "001.Ofic Administración" : matchedSlpObj?.label;
     if (!finalSellerName && originalSellerName && !/^(vendedor\s*autorizado|vendedor|sin\s*vendedor|001\.ofic administración)$/i.test(originalSellerName)) {
       finalSellerName = originalSellerName;
     }
@@ -1499,7 +1543,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
             };
 
             const cleanedNotifs = existingNotifs.filter(n => String(n.quoteId || n.id) !== String(assignedNumber));
-            const myRoleNotif = isAdmin ? notifAdminObj : notifSellerObj;
+            const myRoleNotif = canDirectEmitSap ? notifAdminObj : notifSellerObj;
             localStorage.setItem("grupoLeon_notifications", JSON.stringify([myRoleNotif, ...cleanedNotifs]));
             window.dispatchEvent(new Event("localNotificationsUpdated"));
           } catch (e) {}
@@ -1827,6 +1871,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     );
 
     const effectiveSlpCode = (() => {
+      if (canSelectSeller && selectedSlpCode && !isNaN(Number(selectedSlpCode))) {
+        return Number(selectedSlpCode);
+      }
       if (selectedSlpCode && !isNaN(Number(selectedSlpCode)) && Number(selectedSlpCode) !== 20) {
         return Number(selectedSlpCode);
       }
@@ -1841,6 +1888,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
     const origSeller = currentQuoteObj.sellerName || currentQuoteObj.totals?.sellerName || storeSellerName;
     const resolvedSellerName = (() => {
+      if (Number(effectiveSlpCode) === 20) return "001.Ofic Administración";
       if (effectiveSlpCode && sellersList?.length > 0) {
         const found = sellersList.find((s) => s.value === Number(effectiveSlpCode));
         if (found && found.label) return found.label;
@@ -2017,7 +2065,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       clientDocument: client?.CardCode || client?.clientDocument || client?.FederalTaxID || clientDocDigits,
       clientName: client?.CardName || client?.name || client?.clientName,
       sellerName: resolvedSellerName || activeSeller || sellerUsername,
-      createdByUsername: currentQuoteObj.createdByUsername || origSeller || sellerUsername,
+      createdByUsername: currentQuoteObj.createdByUsername || storeCreatedByUsername || sessionUsername || username || origSeller || sellerUsername,
       SlpCode: effectiveSlpCode,
       slpCode: effectiveSlpCode,
       salesPersonCode: effectiveSlpCode,
@@ -2220,10 +2268,6 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
     setValidationStepText("Sincronizando estado oficial con el servidor...");
     try {
-      await updateQuote({
-        ...updatedApprovedDoc,
-        originalDocNumber: activeDocNumber !== finalOfficialDocNum ? activeDocNumber : undefined,
-      });
       queryClient.setQueriesData({ queryKey: ["quotes"] }, (old) => {
         if (!Array.isArray(old)) return old;
         return old.map(q => {
@@ -2234,13 +2278,15 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       queryClient.invalidateQueries({ queryKey: ["quotes"] });
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
 
-      setValidationStepText("Notificando al Asesor de Ventas en tiempo real...");
-      await new Promise((res) => setTimeout(res, 500));
-
-      setValidationStepText("✅ Aprobación y Emisión SAP completadas.");
-      await new Promise((res) => setTimeout(res, 350));
-
       if (officialSapDocNum) {
+        // ⚡ createOrderInSap ya persistió el registro EMITIDO en MySQL; sincronizamos campos extendidos en segundo plano sin bloquear el modal
+        Promise.resolve(
+          updateQuote({
+            ...updatedApprovedDoc,
+            originalDocNumber: activeDocNumber !== finalOfficialDocNum ? activeDocNumber : undefined,
+          })
+        ).catch((syncErr) => console.warn("⚠️ Aviso sincronizando metadatos post-emisión:", syncErr));
+
         setSapSyncResult({
           quoteId: finalOfficialDocNum,
           docNum: officialSapDocNum,
@@ -2266,6 +2312,11 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         setIsSendingToValidation(false);
         setIsSapSuccessModalOpen(true);
       } else {
+        await updateQuote({
+          ...updatedApprovedDoc,
+          originalDocNumber: activeDocNumber !== finalOfficialDocNum ? activeDocNumber : undefined,
+        });
+
         toast({
           title: "✅ Demanda Back Order Registrada",
           description: `La cotización ${finalOfficialDocNum} fue procesada para compras e importaciones por falta de stock.`,
@@ -2554,18 +2605,12 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       const result = handleSaveAction("ENVIADO");
       let assignedDocNumber = activeDocNumber;
       if (result && result.savePromise) {
-        setValidationStepText("Persistiendo cotización en la base de datos MySQL...");
+        setValidationStepText("Persistiendo cotización y notificando en tiempo real...");
         const savedRes = await result.savePromise;
         if (savedRes && savedRes.docNumber) {
           assignedDocNumber = savedRes.docNumber;
         }
       }
-
-      setValidationStepText("Notificando en tiempo real vía WebSocket a Facturación...");
-      await new Promise((res) => setTimeout(res, 800));
-
-      setValidationStepText("✅ Cotización registrada con éxito. Redirigiendo...");
-      await new Promise((res) => setTimeout(res, 600));
 
       if (clientDebtInfo?.hasTotalDebt) {
         toast({
@@ -2605,6 +2650,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   const handleNewQuote = async () => {
     isExplicitlyClearedRef.current = true;
     clear();
+    if (canSelectSeller) {
+      setSelectedSlpCode(20);
+    }
     if (typeof setWhsCode === "function") setWhsCode("014");
     setDocType("OFERTA_VENTA");
     setDocNumber("");
@@ -2940,7 +2988,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                 )}
               </Badge>
             )}
-            {isAdmin && isSubmittedQuote && (
+            {canDirectEmitSap && isSubmittedQuote && (
               <Button
                 size="xs"
                 h={{ base: "20px", md: "24px" }}
@@ -2953,7 +3001,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                 borderRadius="md"
                 px={2}
               >
-                {adminForceEditMode ? "🔒 Bloquear" : "✏️ Modificar (Admin)"}
+                {adminForceEditMode ? "🔒 Bloquear" : (isAdmin ? "✏️ Modificar (Admin)" : "✏️ Modificar")}
               </Button>
             )}
           </HStack>
@@ -3611,7 +3659,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
               <Tab flexShrink={0} whiteSpace="nowrap" minH={{ base: "44px", md: "auto" }} _selected={{ bg: "white", color: "#166534", fontWeight: "800", borderTop: "3px solid #166534" }}>
                 <HStack spacing={1.5} fontSize="xs">
                   <Truck className="w-3.5 h-3.5" />
-                  <Text>{isAdmin ? "Logística, Pagos y Anexos" : "Logística y Despacho"}</Text>
+                  <Text>{canDirectEmitSap ? "Logística, Pagos y Anexos" : "Logística y Despacho"}</Text>
                 </HStack>
               </Tab>
             )}
@@ -3620,7 +3668,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
           <TabPanels p={{ base: 2, md: 4 }}>
             {/* Pestaña 1: Contenido (Grid de productos) */}
             <TabPanel p={0}>
-              {isAdmin && isSellerFieldsLocked && (
+              {canDirectEmitSap && isSellerFieldsLocked && (
                 <Flex justify="space-between" align="center" bg="#fefce8" border="1.5px solid #fef08a" p={2.5} borderRadius="lg" mb={3} wrap="wrap" gap={2}>
                   <HStack spacing={2}>
                     <Lock className="w-4 h-4 text-amber-600" />
@@ -3642,7 +3690,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                   </Button>
                 </Flex>
               )}
-              {isAdmin && adminForceEditMode && (
+              {canDirectEmitSap && adminForceEditMode && (
                 <Flex justify="space-between" align="center" bg="#eff6ff" border="1.5px solid #bfdbfe" p={2.5} borderRadius="lg" mb={3} wrap="wrap" gap={2}>
                   <HStack spacing={2}>
                     <Edit3 className="w-4 h-4 text-blue-600" />
@@ -3735,13 +3783,13 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         <VStack align="stretch" spacing={3}>
           <Box bg="white" p={{ base: 3, md: 4 }} borderRadius="xl" border="1px solid" borderColor="gray.200" boxShadow="sm">
             <FormControl>
-              <Flex justify="space-between" align="center" mb={1.5}>
+              <Flex justify="space-between" align="center" mb={1.5} wrap="wrap" gap={1.5}>
                 <FormLabel fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="gray.700" mb={0}>
                   Empleado de Ventas / Asesor Comercial {isSellerFieldsLocked && "🔒"}
                 </FormLabel>
                 {canSelectSeller && (
-                  <Badge colorScheme="purple" fontSize="10px" px={2} py={0.5} borderRadius="md">
-                    Admin / Asignación Oficial
+                  <Badge colorScheme={isAdmin ? "purple" : "blue"} fontSize="10px" px={2} py={0.5} borderRadius="md" maxW="100%" whiteSpace="normal" textAlign="center">
+                    {isAdmin ? "Admin / Asignación Oficial" : "Facturación / Asignación de Vendedor"}
                   </Badge>
                 )}
               </Flex>
@@ -3814,7 +3862,8 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
           boxShadow="0 4px 20px -2px rgba(15, 81, 50, 0.35)"
           border="1px solid"
           borderColor="rgba(255,255,255,0.15)"
-          minW={{ base: "full", lg: "380px" }}
+          w="full"
+          minW={{ base: 0, lg: "380px" }}
           alignSelf="start"
         >
           <Text fontSize="xs" fontWeight="800" textTransform="uppercase" letterSpacing="wider" color="#a7f3d0" mb={3}>
@@ -3918,7 +3967,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
             <Badge colorScheme="green" bg="#dcfce7" color="#166534" border="1px solid #86efac" p={3} borderRadius="lg" fontSize="xs" fontWeight="800" w={{ base: "full", sm: "auto" }} textAlign="center">
               {approvalStatus === "APROBADO" ? "✅ 3. Orden de Venta Aprobada (Solo Lectura)" : "✅ Cotización Aprobada (Solo Lectura)"}
             </Badge>
-          ) : isAdmin ? (
+          ) : canDirectEmitSap ? (
             <>
               <Button
                 bg="#0f5132"
@@ -3937,7 +3986,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                 isLoading={isSendingToValidation}
                 isDisabled={isSendingToValidation}
               >
-                ⚡ Aprobar y Emitir a SAP
+                {isSubmittedVendorQuote ? "⚡ Aprobar y Emitir a SAP" : "⚡ Emitir Directamente a SAP"}
               </Button>
 
               {canAdminObserveOrReject && (

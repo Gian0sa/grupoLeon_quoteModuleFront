@@ -39,7 +39,7 @@ export default function ImportacionesPage() {
         title="Órdenes de Importación"
         subtitle="Seguimiento de compras internacionales y demanda comercial sin stock"
         showBack={true}
-        mb={4}
+        mb={{ base: 2.5, md: 4 }}
       />
 
       <Box maxW="1280px" mx="auto" px={{ base: 4, md: 6 }}>

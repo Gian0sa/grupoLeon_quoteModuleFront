@@ -1038,14 +1038,32 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
   const getStatusAlert = () => {
     switch (status) {
       case "COMPLETADO":
-      case "PEDIDO_EMITIDO":
       case "FACTURADO":
+        return {
+          bg: "blue.50",
+          border: "blue.200",
+          color: "blue.800",
+          titleColor: "blue.900",
+          iconColor: "blue.600",
+          badgeScheme: "blue",
+          icon: Receipt,
+          title: "Facturado en SAP ✓",
+          subtitle: "ETAPA FINAL: FACTURADO EN SAP B1",
+          desc: `Orden de venta #${effectiveQuote.sapDocNum || effectiveQuote.DocNum || "—"} facturada y cerrada oficialmente en SAP Business One.`,
+          subdesc: "Comprobante facturado en SAP. Ciclo comercial completado.",
+          subdescIcon: Receipt,
+          timeInStage: "Facturado en SAP"
+        };
+      case "PEDIDO_EMITIDO":
+      case "EMITIDO":
+      case "EMITIDO_SAP":
         return {
           bg: "emerald.50",
           border: "emerald.200",
           color: "emerald.800",
           titleColor: "emerald.900",
           iconColor: "emerald.600",
+          badgeScheme: "emerald",
           icon: CheckCircle2,
           title: "Orden de Venta Emitida en SAP ✓",
           subtitle: "ETAPA FINAL: ORDEN DE VENTA EMITIDA EN SAP B1",
@@ -1467,6 +1485,9 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
           ? quoteOriginalSlp
           : ((authSalesCode && !isNaN(Number(authSalesCode)) && Number(authSalesCode) > 0) ? Number(authSalesCode) : (isAdminUser ? 20 : 20));
       }
+      if (Number(resolvedSlp) === 20 && !resolvedSellerLabel) {
+        resolvedSellerLabel = "001.Ofic Administración";
+      }
 
       const isSol = effectiveQuote.currency === "SOL" || effectiveQuote.currency === "PEN" || effectiveQuote.DocCurrency === "SOL" || effectiveQuote.DocCurrency === "PEN" || effectiveQuote.totals?.currency === "SOL";
       const rateMultiplier = isSol ? Number(effectiveQuote.DocRate || effectiveQuote.totals?.exchangeRate || effectiveQuote.totals?.tc || 3.43) : 1;
@@ -1658,9 +1679,10 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         docRate: docRate,
         companyDB: sapData.CompanyDB || "SBO_AJUSTES_2025",
       });
+      setIsSyncingSap(false);
       setIsSapSuccessModalOpen(true);
 
-      // ─── Post-Emisión Oficial a SAP: Purgar de localStorage y sincronizar estado oficial en backend ───
+      // ─── Post-Emisión Oficial a SAP: Purgar de localStorage y sincronizar estado oficial en backend sin bloquear UI ───
       if (sapDocNum) {
         const targetDocNum = String(quotePayload.docNumber || effectiveQuote.docNumber || "");
         const targetId = String(quotePayload.id || effectiveQuote.id || "");
@@ -1677,10 +1699,10 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
           window.dispatchEvent(new Event("localQuotesUpdated"));
         } catch (e) {}
 
-        // Sincronizar en Backend con estado oficial EMITIDO y sapDocNum
-        try {
-          const syncNowIso = new Date().toISOString();
-          await updateQuote({
+        // Sincronizar en Backend con estado oficial EMITIDO y sapDocNum en segundo plano (createOrderInSap ya persistió en MySQL)
+        const syncNowIso = new Date().toISOString();
+        Promise.resolve(
+          updateQuote({
             ...effectiveQuote,
             ...quotePayload,
             id: officialDocNumber,
@@ -1700,10 +1722,10 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
             emittedByRole: authRole || null,
             emittedAt: syncNowIso,
             historyLog: dedupeViewHistoryLogs(effectiveQuote.historyLog),
-          });
-        } catch (e) {
+          })
+        ).catch((e) => {
           console.warn("⚠️ Aviso sincronizando estado emitido en servidor:", e.message);
-        }
+        });
 
         // Notificar en tiempo real al Asesor de Ventas
         try {
@@ -2248,8 +2270,25 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                             </Button>
                           </>
                         )}
-                        <Badge colorScheme={sapDoc ? "teal" : "green"} variant="solid" px={3} py={1} borderRadius="full" fontSize="xs">
-                          {sapDoc ? "ORDEN DE VENTA EMITIDA EN SAP" : "ORDEN APROBADA"}
+                        <Badge
+                          colorScheme={(status === "COMPLETADO" || status === "FACTURADO") ? "blue" : (sapDoc ? "teal" : "green")}
+                          variant="solid"
+                          px={3}
+                          py={1}
+                          borderRadius="full"
+                          fontSize="xs"
+                          display="inline-flex"
+                          alignItems="center"
+                          gap={1.5}
+                        >
+                          {(status === "COMPLETADO" || status === "FACTURADO") ? (
+                            <>
+                              <Receipt className="w-3.5 h-3.5" />
+                              <Text as="span">FACTURADO EN SAP</Text>
+                            </>
+                          ) : (
+                            sapDoc ? "ORDEN DE VENTA EMITIDA EN SAP" : "ORDEN APROBADA"
+                          )}
                         </Badge>
                       </HStack>
                     </Flex>
@@ -2810,14 +2849,19 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                     </Box>
                     <VStack align="stretch" spacing={1}>
                       <Heading fontSize="xs" fontWeight="900" color={alertDetails.titleColor} textTransform="uppercase">
-                        {alertDetails.title} <Badge ml={2} colorScheme={status === "RECHAZADO" ? "red" : "emerald"} variant="solid" fontSize="8px">{alertDetails.subtitle}</Badge>
+                        {alertDetails.title} <Badge ml={2} colorScheme={status === "RECHAZADO" ? "red" : (alertDetails.badgeScheme || "emerald")} variant="solid" fontSize="8px">{alertDetails.subtitle}</Badge>
                       </Heading>
                       <Text fontSize="xs" color="gray.700" fontWeight="600">
                         {alertDetails.desc}
                       </Text>
-                      <Text fontSize="xs" color="gray.600" fontStyle="italic" bg="white" p={2} borderRadius="md" border="1px solid" borderColor="gray.200" mt={1}>
-                        💡 {alertDetails.subdesc}
-                      </Text>
+                      <Flex align="center" gap={1.5} fontSize="xs" color="gray.600" fontStyle="italic" bg="white" p={2} borderRadius="md" border="1px solid" borderColor="gray.200" mt={1}>
+                        {alertDetails.subdescIcon ? (
+                          <ChakraIcon as={alertDetails.subdescIcon} w={3.5} h={3.5} color={alertDetails.iconColor} flexShrink={0} />
+                        ) : (
+                          <Text as="span">💡</Text>
+                        )}
+                        <Text as="span">{alertDetails.subdesc}</Text>
+                      </Flex>
                     </VStack>
                   </HStack>
 
@@ -2851,8 +2895,20 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                         fontWeight="900"
                         variant="solid"
                         px={2}
+                        py={0.5}
+                        borderRadius="md"
+                        display="inline-flex"
+                        alignItems="center"
+                        gap={1}
                       >
-                        {status}
+                        {(status === "COMPLETADO" || status === "FACTURADO") ? (
+                          <>
+                            <Receipt className="w-3.5 h-3.5" />
+                            <Text as="span">FACTURADO EN SAP</Text>
+                          </>
+                        ) : (
+                          status
+                        )}
                       </Badge>
                     </Box>
                     <Box>

@@ -69,15 +69,15 @@ export function SearchHeader({
       refreshQueries={refreshQueries}
     >
       {/* Panel de vidrio: integra la búsqueda al header */}
-      <Box p={{ base: 2, md: 3 }} mt={{ base: 1, md: 2 }} {...HEADER_GLASS_PANEL_PROPS}>
-        <InputGroup size="md">
+      <Box {...HEADER_GLASS_PANEL_PROPS} p={{ base: 2, md: 3 }} mt={{ base: 0, md: 2 }} borderRadius={{ base: "xl", md: "2xl" }}>
+        <InputGroup size={{ base: "sm", md: "md" }}>
           <InputLeftElement
             pointerEvents="auto"
             cursor="pointer"
-            h="44px"
+            h={{ base: "40px", md: "44px" }}
             onClick={() => triggerSearch(localValue)}
           >
-            <Icon as={FiSearch} color="gray.400" boxSize={4} />
+            <Icon as={FiSearch} color="gray.400" boxSize={{ base: 4, md: 4 }} />
           </InputLeftElement>
           <Input
             value={localValue}
@@ -85,14 +85,14 @@ export function SearchHeader({
             bg="white"
             color="gray.800"
             borderRadius="full"
-            h="44px"
-            fontSize="13.5px"
+            h={{ base: "40px", md: "44px" }}
+            fontSize={{ base: "13.5px", md: "13.5px" }}
             _placeholder={{ color: "gray.400" }}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
           />
           {localValue && (
-            <InputRightElement h="44px">
+            <InputRightElement h={{ base: "40px", md: "44px" }}>
               <IconButton
                 aria-label="Limpiar búsqueda"
                 icon={<Icon as={FiX} />}

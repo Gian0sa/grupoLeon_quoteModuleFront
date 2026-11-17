@@ -167,12 +167,12 @@ export function Register() {
     }
 
     const userPayload = {
-      role: data.role || "ASESOR_VENTAS",
+      role: data.role || role || "ASESOR_VENTAS",
       username: (data.name || "").trim(),
       email: (data.email || "").trim().toLowerCase(),
       password: data.password,
       salesEmployeeCode: isSellerRole ? (Number(data.salesPerson?.value || selectedSeller?.value) || null) : null,
-      permittedServices: (data.permittedServices || []).map(Number).filter((id) => id > 0),
+      permittedServices: ((data.permittedServices && data.permittedServices.length > 0) ? data.permittedServices : permittedServices).map(Number).filter((id) => id > 0),
     };
 
     registerMutation.mutate(userPayload, {

@@ -267,7 +267,7 @@ export default function MyVisitsPage() {
         title="Mis Visitas"
         subtitle="Historial de check-in, check-out y seguimiento de campo"
         showBack={true}
-        mb={6}
+        mb={{ base: 2.5, md: 6 }}
       />
 
       <Box maxW="1200px" mx="auto" px={{ base: 3, md: 6 }}>

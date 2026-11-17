@@ -95,11 +95,11 @@ export function SalesStats({ data }) {
       whileHover={{ y: -3 }}
       transition={{ duration: 0.2 }}
       bg="white"
-      borderRadius="3xl"
-      p={{ base: 4, md: 6 }}
+      borderRadius={{ base: "xl", md: "3xl" }}
+      p={{ base: 3.5, sm: 4, md: 6 }}
       w="full"
-      h={{ base: "225px", md: "245px" }}
-      minH={{ base: "220px", md: "245px" }}
+      h={{ base: "192px", sm: "205px", md: "245px" }}
+      minH={{ base: "188px", sm: "200px", md: "245px" }}
       display="flex"
       flexDirection="column"
       justifyContent="space-between"
@@ -114,8 +114,8 @@ export function SalesStats({ data }) {
         position="absolute"
         top="-20px"
         right="-20px"
-        w="100px"
-        h="100px"
+        w={{ base: "75px", md: "100px" }}
+        h={{ base: "75px", md: "100px" }}
         borderRadius="full"
         bg="blue.50"
         opacity={0.6}
@@ -125,8 +125,8 @@ export function SalesStats({ data }) {
       {/* Header */}
       <Flex justify="space-between" align="center">
         <HStack spacing={2}>
-          <Box p={2} borderRadius="xl" bg="blue.50" color="blue.600">
-            <Icon as={ShoppingBag} boxSize={5} />
+          <Box p={{ base: 1.5, md: 2 }} borderRadius="xl" bg="blue.50" color="blue.600">
+            <Icon as={ShoppingBag} boxSize={{ base: 4, md: 5 }} />
           </Box>
           <Text fontSize="xs" color="gray.500" fontWeight="bold" textTransform="uppercase" letterSpacing="wider">
             Pedidos del Mes
@@ -139,11 +139,11 @@ export function SalesStats({ data }) {
       </Flex>
 
       {/* Valor principal */}
-      <VStack align="start" spacing={0} my={1}>
-        <Text fontSize={{ base: "xl", sm: "2xl", md: "3xl" }} fontWeight="900" color="gray.800" lineHeight="1" letterSpacing="tight">
+      <VStack align="start" spacing={0} my={{ base: 0.5, md: 1 }}>
+        <Text fontSize={{ base: "2xl", sm: "2xl", md: "3xl" }} fontWeight="900" color="gray.800" lineHeight="1" letterSpacing="tight">
           ${pedidosMes}
         </Text>
-        <Text fontSize={{ base: "11px", sm: "xs" }} color="gray.400" mt={1} fontWeight="medium">
+        <Text fontSize={{ base: "xs", sm: "xs" }} color="gray.400" mt={1} fontWeight="medium">
           Total de pedidos: <Text as="span" color="gray.700" fontWeight="bold">{cantidadPedidos}</Text>
         </Text>
       </VStack>
@@ -153,7 +153,7 @@ export function SalesStats({ data }) {
         <Flex justify="space-between" align="center" mb={1.5}>
           <HStack spacing={1}>
             <Icon as={Clock} boxSize={3.5} color="gray.400" />
-            <Text fontSize={{ base: "10.5px", sm: "xs" }} color="gray.500" fontWeight="semibold">
+            <Text fontSize={{ base: "11px", sm: "xs" }} color="gray.500" fontWeight="semibold">
               Dif: ${diferencia}
             </Text>
           </HStack>

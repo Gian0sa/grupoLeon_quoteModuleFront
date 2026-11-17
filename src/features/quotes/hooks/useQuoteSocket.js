@@ -432,6 +432,11 @@ export function useQuoteSocket() {
       }
     };
 
+    const handleHeaderThemeUpdated = (data) => {
+      console.log("🎨 [WS EVENT] ui:header_theme_updated recibido:", data);
+      queryClient.invalidateQueries({ queryKey: ["headerTheme"] });
+    };
+
     socket.on("quote:created", handleQuoteCreated);
     socket.on("quote:updated", handleQuoteUpdated);
     socket.on("quote:deleted", handleQuoteDeleted);
@@ -442,6 +447,7 @@ export function useQuoteSocket() {
     socket.on("auth:force_logout", handleForceLogout);
     socket.on("promotions:updated", handlePromotionsUpdated);
     socket.on("promotions:changed", handlePromotionsUpdated);
+    socket.on("ui:header_theme_updated", handleHeaderThemeUpdated);
 
     return () => {
       window.removeEventListener("click", handleNativePermission);
@@ -457,6 +463,7 @@ export function useQuoteSocket() {
       socket.off("auth:force_logout", handleForceLogout);
       socket.off("promotions:updated", handlePromotionsUpdated);
       socket.off("promotions:changed", handlePromotionsUpdated);
+      socket.off("ui:header_theme_updated", handleHeaderThemeUpdated);
     };
   }, [queryClient, toast]);
 }

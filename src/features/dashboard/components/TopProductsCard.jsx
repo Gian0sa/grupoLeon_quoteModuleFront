@@ -23,6 +23,7 @@ import { useNavigate } from "react-router-dom";
 import { useTopSelledProducts } from "../hooks/queries/dashboardQueries";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { useIsAdmin } from "../../../shared/utils/permissions";
+import { useHeaderTheme } from "../../../hooks/useHeaderTheme";
 
 const MONTH_NAMES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -33,6 +34,13 @@ export function TopProductsCard({ year, month, sellerCode, sellerName, canFilter
   const navigate = useNavigate();
   const toast = useToast();
   const [copiedCode, setCopiedCode] = useState(null);
+
+  const { theme } = useHeaderTheme();
+  const isGreen = !theme?.key || theme.key === "green";
+  const accentScheme = isGreen ? "green" : (theme?.accentColorScheme || "green");
+  const iconBg = isGreen ? "green.50" : (theme?.accentLightBg || "green.50");
+  const iconColor = isGreen ? "green.600" : (theme?.accentTextColor || "green.600");
+  const hoverBorderColor = isGreen ? "green.300" : (theme?.accentBorderColor || "green.300");
 
   // Autodetectar usuario logueado, código de vendedor SAP y rol
   const username = useAuthStore((state) => state.username);
@@ -160,41 +168,43 @@ export function TopProductsCard({ year, month, sellerCode, sellerName, canFilter
   const getRankBadge = (idx) => {
     if (isSeller) {
       const ranks = [
-        { label: "🥇 #1 MÁS VENDIDO MES", bg: "linear-gradient(135deg, #d97706 0%, #b45309 100%)", color: "white" },
-        { label: "🥈 #2 MÁS VENDIDO MES", bg: "linear-gradient(135deg, #64748b 0%, #475569 100%)", color: "white" },
-        { label: "🥉 #3 MÁS VENDIDO MES", bg: "linear-gradient(135deg, #b45309 0%, #78350f 100%)", color: "white" },
+        { labelDesktop: "🥇 #1 MÁS VENDIDO MES", labelMobile: "🥇 #1 MES", bg: "linear-gradient(135deg, #d97706 0%, #b45309 100%)", color: "white" },
+        { labelDesktop: "🥈 #2 MÁS VENDIDO MES", labelMobile: "🥈 #2 MES", bg: "linear-gradient(135deg, #64748b 0%, #475569 100%)", color: "white" },
+        { labelDesktop: "🥉 #3 MÁS VENDIDO MES", labelMobile: "🥉 #3 MES", bg: "linear-gradient(135deg, #b45309 0%, #78350f 100%)", color: "white" },
       ];
-      const rank = ranks[idx] || { label: `#${idx + 1} MÁS VENDIDO`, bg: "gray.500", color: "white" };
+      const rank = ranks[idx] || { labelDesktop: `#${idx + 1} MÁS VENDIDO`, labelMobile: `#${idx + 1}`, bg: "gray.500", color: "white" };
       return (
         <Badge
           style={{ background: rank.bg, color: rank.color }}
           borderRadius="full"
-          px={2.5}
+          px={{ base: 2, md: 2.5 }}
           py={0.5}
-          fontSize="9.5px"
+          fontSize={{ base: "8.5px", md: "9.5px" }}
           fontWeight="800"
         >
-          {rank.label}
+          <Text as="span" display={{ base: "none", md: "inline" }}>{rank.labelDesktop}</Text>
+          <Text as="span" display={{ base: "inline", md: "none" }}>{rank.labelMobile}</Text>
         </Badge>
       );
     }
 
     const adminRanks = [
-      { label: "🥇 #1 MÁS VENDIDO EMPRESA", bg: "linear-gradient(135deg, #059669 0%, #047857 100%)", color: "white" },
-      { label: "🥈 #2 MÁS VENDIDO EMPRESA", bg: "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)", color: "white" },
-      { label: "🥉 #3 MÁS VENDIDO EMPRESA", bg: "linear-gradient(135deg, #64748b 0%, #475569 100%)", color: "white" },
+      { labelDesktop: "🥇 #1 MÁS VENDIDO EMPRESA", labelMobile: "🥇 #1 GLOBAL", bg: "linear-gradient(135deg, #059669 0%, #047857 100%)", color: "white" },
+      { labelDesktop: "🥈 #2 MÁS VENDIDO EMPRESA", labelMobile: "🥈 #2 GLOBAL", bg: "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)", color: "white" },
+      { labelDesktop: "🥉 #3 MÁS VENDIDO EMPRESA", labelMobile: "🥉 #3 GLOBAL", bg: "linear-gradient(135deg, #64748b 0%, #475569 100%)", color: "white" },
     ];
-    const rank = adminRanks[idx] || { label: `#${idx + 1} MÁS VENDIDO EMPRESA`, bg: "gray.500", color: "white" };
+    const rank = adminRanks[idx] || { labelDesktop: `#${idx + 1} MÁS VENDIDO EMPRESA`, labelMobile: `#${idx + 1}`, bg: "gray.500", color: "white" };
     return (
       <Badge
         style={{ background: rank.bg, color: rank.color }}
         borderRadius="full"
-        px={2.5}
+        px={{ base: 2, md: 2.5 }}
         py={0.5}
-        fontSize="9.5px"
+        fontSize={{ base: "8.5px", md: "9.5px" }}
         fontWeight="800"
       >
-        {rank.label}
+        <Text as="span" display={{ base: "none", md: "inline" }}>{rank.labelDesktop}</Text>
+        <Text as="span" display={{ base: "inline", md: "none" }}>{rank.labelMobile}</Text>
       </Badge>
     );
   };
@@ -204,8 +214,8 @@ export function TopProductsCard({ year, month, sellerCode, sellerName, canFilter
       w="full"
       h="100%"
       bg="white"
-      borderRadius="3xl"
-      p={{ base: 3, sm: 3.5, lg: 4 }}
+      borderRadius={{ base: "xl", md: "3xl" }}
+      p={{ base: 2.5, sm: 3.5, lg: 4 }}
       boxShadow="0 10px 30px rgba(0,0,0,0.04)"
       transition="transform 0.2s, box-shadow 0.2s"
       _hover={{ boxShadow: "0 12px 35px rgba(0,0,0,0.07)" }}
@@ -217,24 +227,24 @@ export function TopProductsCard({ year, month, sellerCode, sellerName, canFilter
     >
       <Box flex={1} display="flex" flexDirection="column" justify="space-between">
         {/* Header de la Tarjeta (Automático por Rol y Periodo Mensual) */}
-        <Flex align="center" justify="space-between" mb={2.5} gap={2}>
-          <HStack spacing={{ base: 2, sm: 2.5 }} minW={0} flex={1}>
+        <Flex align="center" justify="space-between" mb={{ base: 1.5, md: 2.5 }} gap={2}>
+          <HStack spacing={{ base: 1.5, sm: 2.5 }} minW={0} flex={1}>
             <Flex
-              w={{ base: "34px", sm: "38px" }}
-              h={{ base: "34px", sm: "38px" }}
-              borderRadius="xl"
-              bg="green.50"
+              w={{ base: "26px", sm: "38px" }}
+              h={{ base: "26px", sm: "38px" }}
+              borderRadius="md"
+              bg={iconBg}
               align="center"
               justify="center"
-              color="green.600"
+              color={iconColor}
               flexShrink={0}
             >
-              <Icon as={FiTrendingUp} boxSize={4} />
+              <Icon as={FiTrendingUp} boxSize={{ base: 3, md: 4 }} />
             </Flex>
             <Box minW={0}>
               <HStack spacing={1.5} flexWrap="nowrap" align="center">
                 <Text
-                  fontSize={{ base: "xs", sm: "sm" }}
+                  fontSize={{ base: "12px", sm: "sm" }}
                   fontWeight="800"
                   color="gray.800"
                   letterSpacing="tight"
@@ -244,18 +254,24 @@ export function TopProductsCard({ year, month, sellerCode, sellerName, canFilter
                   Top Productos
                 </Text>
                 <Badge
-                  colorScheme={isAllSellers ? "blue" : "green"}
+                  colorScheme={isAllSellers ? "blue" : accentScheme}
                   borderRadius="full"
-                  px={2}
-                  py={0.2}
-                  fontSize="9px"
+                  px={1.5}
+                  py={0.1}
+                  fontSize="8.5px"
                   fontWeight="800"
                   flexShrink={0}
                 >
                   {badgeText}
                 </Badge>
               </HStack>
-              <Text fontSize="11px" color="gray.500" display={{ base: "none", xl: "block" }} noOfLines={1}>
+              <Text
+                fontSize="11px"
+                color="gray.500"
+                display={{ base: "none", lg: "block" }}
+                sx={{ "@media (max-width: 991px)": { display: "none !important" } }}
+                noOfLines={1}
+              >
                 {subtitleText}
               </Text>
             </Box>
@@ -264,12 +280,13 @@ export function TopProductsCard({ year, month, sellerCode, sellerName, canFilter
           <Button
             variant="ghost"
             size="xs"
-            colorScheme="green"
+            colorScheme={accentScheme}
             rightIcon={<FiArrowRight />}
             onClick={() => navigate("/productsPriceList")}
             flexShrink={0}
             px={1}
-            fontSize="11px"
+            h={{ base: "20px", md: "24px" }}
+            fontSize={{ base: "10.5px", md: "11px" }}
           >
             Ver Lista
           </Button>
@@ -293,7 +310,7 @@ export function TopProductsCard({ year, month, sellerCode, sellerName, canFilter
             ))}
           </VStack>
         ) : displayProducts.length > 0 ? (
-          <VStack spacing={2} align="stretch" w="100%">
+          <VStack spacing={{ base: 1, md: 2 }} align="stretch" w="100%">
             {displayProducts.map((prod, idx) => {
               const itemCode = prod.ITEM_CODE || `ITEM-${idx + 1}`;
               const sigla = prod.SIGLA || itemCode;
@@ -308,31 +325,42 @@ export function TopProductsCard({ year, month, sellerCode, sellerName, canFilter
               return (
                 <Box
                   key={`${itemCode}-${idx}`}
-                  py={1.5}
-                  px={2.5}
-                  borderRadius="xl"
+                  py={{ base: 1, md: 1.5 }}
+                  px={{ base: 2, md: 2.5 }}
+                  borderRadius={{ base: "lg", md: "xl" }}
                   bg="gray.50"
                   border="1px solid"
                   borderColor="gray.100"
                   transition="all 0.2s"
-                  _hover={{ bg: "white", boxShadow: "0 4px 14px rgba(0,0,0,0.05)", borderColor: "green.300" }}
+                  _hover={{ bg: "white", boxShadow: "0 4px 14px rgba(0,0,0,0.05)", borderColor: hoverBorderColor }}
                 >
-                  <Flex direction="column" gap={1.5} w="100%">
-                    {/* Fila 1: Badge Automático de Ranking (Medalla) + Marca Real SAP */}
-                    <Flex align="center" justify="space-between" flexWrap="wrap" gap={1}>
-                      {getRankBadge(idx)}
+                  <Flex direction="column" gap={{ base: 0.5, md: 1.5 }} w="100%">
+                    {/* Fila 1: Medalla + Marca + Precio a la derecha */}
+                    <Flex align="center" justify="space-between" gap={1.5} w="100%">
+                      <HStack spacing={1.5} minW={0} flexWrap="nowrap">
+                        {getRankBadge(idx)}
+                        {marca && (
+                          <Badge colorScheme="blue" variant="subtle" borderRadius="md" px={1.5} py={0.1} fontSize="8.5px" flexShrink={0}>
+                            {marca}
+                          </Badge>
+                        )}
+                      </HStack>
 
-                      {marca && (
-                        <Badge colorScheme="blue" variant="subtle" borderRadius="md" px={1.5} fontSize="9px">
-                          {marca}
-                        </Badge>
-                      )}
+                      {/* Precio destacado en dólares */}
+                      <Text
+                        color="gray.850"
+                        fontWeight="900"
+                        fontSize={{ base: "12.5px", md: "sm" }}
+                        flexShrink={0}
+                      >
+                        $ {priceVal.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </Text>
                     </Flex>
 
-                    {/* Fila 2: Nombre Completo del Producto (NUNCA el código numérico) */}
+                    {/* Fila 2: Nombre Completo con 100% de ancho (sin truncamiento prematuro) */}
                     <Text
-                      fontWeight="850"
-                      fontSize="xs"
+                      fontWeight="800"
+                      fontSize={{ base: "10.5px", md: "xs" }}
                       color="gray.850"
                       lineHeight="shorter"
                       noOfLines={1}
@@ -341,48 +369,47 @@ export function TopProductsCard({ year, month, sellerCode, sellerName, canFilter
                       {fullName}
                     </Text>
 
-                    {/* Fila 3: Stock Disponible + Precio en Dólares ($) */}
-                    <HStack spacing={3} fontSize="xs" justify="space-between" pt={0.5}>
-                      <HStack spacing={1.5}>
-                        <Text color="gray.500" fontWeight="medium">
+                    {/* Fila 3: Stock Disponible (izq) + Chip Copiar Código (der) */}
+                    <Flex align="center" justify="space-between" gap={1.5} w="100%">
+                      <HStack spacing={1} flexShrink={0}>
+                        <Text color="gray.500" fontWeight="medium" fontSize={{ base: "9px", md: "xs" }}>
                           Stock:
                         </Text>
                         <Badge
                           colorScheme={stockQty > 20 ? "green" : stockQty > 0 ? "orange" : "red"}
                           variant="solid"
                           borderRadius="full"
-                          px={2}
-                          fontSize="10px"
+                          px={1.5}
+                          py={0.1}
+                          fontSize={{ base: "8.5px", md: "9.5px" }}
                           fontWeight="700"
                         >
                           {stockQty.toLocaleString("es-PE")} unid.
                         </Badge>
                       </HStack>
 
-                      <Text color="gray.800" fontWeight="800" fontSize="sm">
-                        $ {priceVal.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </Text>
-                    </HStack>
-
-                    {/* Fila 4: Código o Sigla de Búsqueda para copiar en 1-clic */}
-                    <Flex align="center" justify="flex-start" gap={2} pt={1}>
                       <Button
                         size="xs"
                         variant="subtle"
                         colorScheme={isCopied ? "green" : "gray"}
                         bg={isCopied ? "green.100" : "white"}
                         border="1px solid"
-                        borderColor={isCopied ? "green.300" : "gray.300"}
+                        borderColor={isCopied ? "green.300" : "gray.200"}
                         color={isCopied ? "green.800" : "gray.700"}
-                        borderRadius="lg"
+                        borderRadius="md"
                         fontWeight="700"
-                        fontSize="10px"
-                        leftIcon={<Icon as={isCopied ? FiCheck : FiCopy} color={isCopied ? "green.600" : "gray.500"} boxSize={3} />}
+                        fontSize="9px"
+                        px={1.5}
+                        py={0}
+                        minH="0"
+                        h={{ base: "18px", md: "20px" }}
+                        leftIcon={<Icon as={isCopied ? FiCheck : FiCopy} color={isCopied ? "green.600" : "gray.500"} boxSize={2.5} />}
                         onClick={(e) => handleCopyCode(searchCode, e)}
                         _hover={{ bg: isCopied ? "green.200" : "gray.100" }}
-                        h="24px"
+                        flexShrink={0}
                       >
-                        Código: {searchCode}
+                        <Text as="span" display={{ base: "none", md: "inline" }}>Código: </Text>
+                        {searchCode}
                       </Button>
                     </Flex>
                   </Flex>
@@ -412,14 +439,16 @@ export function TopProductsCard({ year, month, sellerCode, sellerName, canFilter
       </Box>
 
       {/* Footer de la Tarjeta */}
-      <Box pt={3} mt="auto" borderTop="1px solid" borderColor="gray.100">
+      <Box pt={{ base: 1.5, md: 3 }} mt="auto" borderTop="1px solid" borderColor="gray.100">
         <Button
           size="xs"
           variant="ghost"
-          colorScheme="green"
+          colorScheme={accentScheme}
           rightIcon={<FiArrowRight />}
           onClick={() => navigate("/productsPriceList")}
           w="100%"
+          h={{ base: "22px", md: "28px" }}
+          fontSize={{ base: "10px", md: "xs" }}
           fontWeight="700"
         >
           Ver catálogo completo de productos

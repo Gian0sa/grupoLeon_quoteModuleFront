@@ -74,14 +74,14 @@ export function useAuthMutations() {
         isClosable: true,
         position: "top",
       });
-      navigate("/dashboard");
     },
     onError: (error) => {
+      const status = error?.response?.status;
       const message =
         error?.response?.data?.message || "Error al registrar usuario";
       const lower = message.toLowerCase();
 
-      if (lower.includes("correo") || lower.includes("email")) {
+      if (status === 400 && (lower.includes("correo") || lower.includes("email") || lower.includes("registrado"))) {
         toast({
           title: "Correo no disponible",
           description: message,
@@ -90,7 +90,7 @@ export function useAuthMutations() {
           isClosable: true,
           position: "top",
         });
-      } else if (lower.includes("asesor") || lower.includes("vendedor")) {
+      } else if (status === 400 && (lower.includes("asesor") || lower.includes("vendedor"))) {
         toast({
           title: "Vendedor ya asignado",
           description: message,
@@ -99,7 +99,7 @@ export function useAuthMutations() {
           isClosable: true,
           position: "top",
         });
-      } else if (lower.includes("nombre") || lower.includes("username")) {
+      } else if (status === 400 && (lower.includes("nombre") || lower.includes("username"))) {
         toast({
           title: "Nombre en uso",
           description: message,
@@ -110,7 +110,7 @@ export function useAuthMutations() {
         });
       } else {
         toast({
-          title: "Error al registrar",
+          title: "Error al registrar usuario",
           description: message,
           status: "error",
           duration: 5000,
