@@ -335,83 +335,82 @@ export function QuickActions() {
   if (count === 0) return null;
 
   return (
-    <Box w="full" maxW="1200px" mx="auto" pt={{ base: 0.5, md: 2 }} pb={{ base: 0.5, md: 3 }} px={{ base: 0.5, sm: 2, md: 4 }}>
-      {/* VISTA MÓVIL (base a sm): Fila única horizontal ultra-compacta y simétrica */}
-      <Flex
-        display={{ base: "flex", md: "none" }}
+    <Box w="full" maxW="1200px" mx="auto" pt={{ base: 1.5, md: 2 }} pb={{ base: 1, md: 3 }} px={{ base: 0.5, sm: 2, md: 4 }}>
+      {/* VISTA MÓVIL (base a sm): Grid 2 columnas amplio, legible y cómodo al tacto */}
+      <Grid
+        display={{ base: "grid", md: "none" }}
+        templateColumns={count === 1 ? "1fr" : "repeat(2, minmax(0, 1fr))"}
+        gap={{ base: 2, sm: 2.5 }}
         w="full"
-        justifyContent="center"
-        alignItems="center"
-        gap={count >= 4 ? { base: 1, sm: 1.5 } : { base: 1.5, sm: 2 }}
         py={0.5}
-        px={0.5}
       >
-        {actions.map((action) => {
+        {actions.map((action, index) => {
           const IconComp = action.icon;
-          const displayLabel = count >= 4 ? (action.labelCompact || action.labelMobile) : action.labelMobile;
+          const isOddLast = count > 1 && count % 2 !== 0 && index === count - 1;
           return (
-            <MotionBox
-              key={action.path}
-              flexShrink={1}
-              minW={0}
-              whileTap={{ scale: 0.96 }}
-              onClick={() => navigate(action.path)}
-              bg={pillBg}
-              border="1.5px solid"
-              borderColor={pillBorder}
-              color={pillTextColor}
-              py={1}
-              px={count >= 4 ? { base: 1.5, sm: 2.5 } : { base: 2.5, sm: 3 }}
-              h={count >= 4 ? { base: "28px", sm: "32px" } : { base: "32px", sm: "36px" }}
-              borderRadius="full"
-              cursor="pointer"
-              boxShadow={pillShadow}
-              _hover={{
-                bg: pillHoverBg,
-                borderColor: pillHoverBorder,
-                boxShadow: pillHoverShadow,
-              }}
-              transition={{ duration: 0.15 }}
-              display="flex"
-              alignItems="center"
-              justifyContent="center"
-              role="button"
-              aria-label={action.labelDesktop}
-            >
-              <HStack spacing={count >= 4 ? 1 : 1.5} align="center" justify="center">
-                <Flex
-                  w={count >= 4 ? { base: "16px", sm: "18px" } : "20px"}
-                  h={count >= 4 ? { base: "16px", sm: "18px" } : "20px"}
-                  borderRadius="full"
-                  bg={action.iconBgGlow}
-                  border="1px solid"
-                  borderColor={action.iconBorderColor || "transparent"}
-                  align="center"
-                  justify="center"
-                  flexShrink={0}
-                >
-                  <IconComp
-                    size={count >= 4 ? 10 : 12}
-                    color={action.iconColor}
-                    strokeWidth={2.4}
-                  />
-                </Flex>
-                <Text
-                  fontWeight="800"
-                  fontSize={count >= 4 ? { base: "9.5px", sm: "10.5px" } : "11px"}
-                  whiteSpace="nowrap"
-                  lineHeight="1.2"
-                  letterSpacing="tight"
-                  color={pillTextColor}
-                  isTruncated
-                >
-                  {displayLabel}
-                </Text>
-              </HStack>
-            </MotionBox>
+            <GridItem key={action.path} colSpan={isOddLast ? 2 : 1} minW={0}>
+              <MotionBox
+                w="full"
+                minW={0}
+                whileTap={{ scale: 0.96 }}
+                onClick={() => navigate(action.path)}
+                bg={pillBg}
+                border="1.5px solid"
+                borderColor={pillBorder}
+                color={pillTextColor}
+                py={2}
+                px={{ base: 3, sm: 3.5 }}
+                h={{ base: "42px", sm: "44px" }}
+                borderRadius="full"
+                cursor="pointer"
+                boxShadow={pillShadow}
+                _hover={{
+                  bg: pillHoverBg,
+                  borderColor: pillHoverBorder,
+                  boxShadow: pillHoverShadow,
+                }}
+                transition={{ duration: 0.15 }}
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+                role="button"
+                aria-label={action.labelDesktop}
+              >
+                <HStack spacing={2} align="center" justify="center" minW={0}>
+                  <Flex
+                    w={{ base: "26px", sm: "28px" }}
+                    h={{ base: "26px", sm: "28px" }}
+                    borderRadius="full"
+                    bg={action.iconBgGlow}
+                    border="1px solid"
+                    borderColor={action.iconBorderColor || "transparent"}
+                    align="center"
+                    justify="center"
+                    flexShrink={0}
+                  >
+                    <IconComp
+                      size={15}
+                      color={action.iconColor}
+                      strokeWidth={2.4}
+                    />
+                  </Flex>
+                  <Text
+                    fontWeight="800"
+                    fontSize={{ base: "12.5px", sm: "13px" }}
+                    whiteSpace="nowrap"
+                    lineHeight="1.2"
+                    letterSpacing="tight"
+                    color={pillTextColor}
+                    isTruncated
+                  >
+                    {action.labelMobile}
+                  </Text>
+                </HStack>
+              </MotionBox>
+            </GridItem>
           );
         })}
-      </Flex>
+      </Grid>
 
       {/* VISTA DESKTOP / TABLET (md y superior): Grid balanceado */}
       <Grid

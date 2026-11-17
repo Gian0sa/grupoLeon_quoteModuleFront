@@ -99,15 +99,15 @@ export function RefreshButton({
         icon={
           isRefreshing 
             ? <Spinner size="sm" color={resolvedIconColor} thickness="2px" /> 
-            : <RepeatIcon boxSize={{ base: 4, sm: 5, md: 6 }} color={resolvedIconColor} />
+            : <RepeatIcon boxSize={{ base: 5, sm: 5.5, md: 6 }} color={resolvedIconColor} />
         }
         bg={variant === "ghost" ? "transparent" : "green.700"}
         onClick={handleClick}
         variant={variant}
         size={size}
-        w={{ base: "30px", sm: "38px", md: "48px" }}
-        h={{ base: "30px", sm: "38px", md: "48px" }}
-        minW={{ base: "30px", sm: "38px", md: "48px" }}
+        w={{ base: "38px", sm: "42px", md: "48px" }}
+        h={{ base: "38px", sm: "42px", md: "48px" }}
+        minW={{ base: "38px", sm: "42px", md: "48px" }}
         borderRadius="full"
         isDisabled={isRefreshing}
         colorScheme="whiteAlpha"

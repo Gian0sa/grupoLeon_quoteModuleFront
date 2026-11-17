@@ -61,9 +61,9 @@ export function TopHeaderBanner({
   showExchangeRate = false,
   refreshQueries,
   children,
-  minH = { base: "144px", sm: "156px", md: "235px" },
-  pb = { base: 2.5, sm: 3, md: 4.5 },
-  pt = { base: 2.5, sm: 3, md: 4.5 },
+  minH = { base: "172px", sm: "190px", md: "235px" },
+  pb = { base: 3.5, sm: 4, md: 4.5 },
+  pt = { base: 3.5, sm: 4, md: 4.5 },
   mb = { base: 2.5, md: 6 }
 }) {
   const { salesEmployeeCode, username, userId, role } = useAuthStore();
@@ -252,8 +252,8 @@ export function TopHeaderBanner({
       >
         <Box w="full">
           {/* BARRA SUPERIOR DE UTILIDAD: Botón Volver + USD Rate (solo si showExchangeRate) y Refrescar + Campana + Menú Lateral (der) */}
-          <Flex justify="space-between" align="center" gap={2} mb={{ base: 1.5, md: 2.5 }}>
-          <HStack spacing={{ base: 1.5, sm: 2, md: 3 }} minW={0} flexShrink={1}>
+          <Flex justify="space-between" align="center" gap={2} mb={{ base: 2.5, md: 2.5 }}>
+          <HStack spacing={{ base: 2, sm: 2.5, md: 3 }} minW={0} flexShrink={1}>
             {showBack && (
               <BackButton
                 color={activeTheme.textColor}
@@ -275,9 +275,9 @@ export function TopHeaderBanner({
                 border="1px solid"
                 borderColor={activeTheme.glassBorder}
                 borderRadius="full"
-                px={{ base: 2, sm: 3, md: 4 }}
-                py={{ base: 0.5, md: 1.5 }}
-                minH={{ base: "26px", md: "36px" }}
+                px={{ base: 3, sm: 3.5, md: 4 }}
+                py={{ base: 1, md: 1.5 }}
+                minH={{ base: "34px", md: "36px" }}
                 boxShadow={activeTheme.useDarkText ? "0 4px 12px rgba(0,0,0,0.06)" : "0 4px 15px rgba(0,0,0,0.12)"}
                 display="flex"
                 alignItems="center"
@@ -288,7 +288,7 @@ export function TopHeaderBanner({
                 // nunca compita por ancho con las acciones de la derecha.
                 sx={{
                   "@media (max-width: 359px)": {
-                    paddingInline: "0.5rem",
+                    paddingInline: "0.625rem",
                     gap: "0.25rem",
                   },
                 }}
@@ -307,11 +307,11 @@ export function TopHeaderBanner({
                 ) : (
                   <Text
                     color={activeTheme.textColor}
-                    fontSize={{ base: "11px", sm: "13px", md: "sm" }}
+                    fontSize={{ base: "12.5px", sm: "13px", md: "sm" }}
                     fontWeight="bold"
                     letterSpacing="wide"
                     whiteSpace="nowrap"
-                    sx={{ "@media (max-width: 359px)": { fontSize: "10.5px", letterSpacing: "normal" } }}
+                    sx={{ "@media (max-width: 359px)": { fontSize: "11.5px", letterSpacing: "normal" } }}
                   >
                     USD: {(() => {
                       const rate = exchangeRate?.collectionRate || exchangeRate?.officialRate;
@@ -332,9 +332,9 @@ export function TopHeaderBanner({
             border="1px solid"
             borderColor={activeTheme.glassBorder}
             borderRadius="full"
-            py={{ base: 0.5, sm: 1.5, md: 2 }}
-            px={{ base: 1, sm: 2, md: 4 }}
-            spacing={{ base: 0.5, sm: 1, md: 3 }}
+            py={{ base: 1, sm: 1.5, md: 2 }}
+            px={{ base: 2, sm: 2.5, md: 4 }}
+            spacing={{ base: 1, sm: 1.5, md: 3 }}
             flexShrink={0}
             boxShadow={activeTheme.useDarkText ? "0 4px 12px rgba(0,0,0,0.06)" : "0 4px 15px rgba(0,0,0,0.12)"}
           >
@@ -351,14 +351,14 @@ export function TopHeaderBanner({
             <Box position="relative">
               <IconButton
                 ref={notifBtnRef}
-                icon={<BellIcon boxSize={{ base: 4, sm: 5, md: 6 }} />}
+                icon={<BellIcon boxSize={{ base: 5, sm: 5.5, md: 6 }} />}
                 variant="ghost"
                 aria-label="Notificaciones"
                 color={activeTheme.textColor}
                 borderRadius="full"
-                w={{ base: "30px", sm: "38px", md: "48px" }}
-                h={{ base: "30px", sm: "38px", md: "48px" }}
-                minW={{ base: "30px", sm: "38px", md: "48px" }}
+                w={{ base: "38px", sm: "42px", md: "48px" }}
+                h={{ base: "38px", sm: "42px", md: "48px" }}
+                minW={{ base: "38px", sm: "42px", md: "48px" }}
                 _hover={{ bg: activeTheme.glassHoverBg }}
                 _active={{ bg: activeTheme.glassHoverBg }}
                 onClick={(e) => {
@@ -429,12 +429,12 @@ export function TopHeaderBanner({
 
         {/* TÍTULO GIGANTE 4XL E IDENTICO AL DASHBOARD */}
         {(title || subtitle) && (
-          <Box w="full" maxW="100%" mb={children ? { base: 0.5, sm: 1.5, md: 3.5 } : 0}>
-            <VStack align="start" spacing={0} maxW="100%">
+          <Box w="full" maxW="100%" mb={children ? { base: 2.5, sm: 3, md: 3.5 } : 0}>
+            <VStack align="start" spacing={{ base: 0.5, md: 0 }} maxW="100%">
               {title && (
-                <Flex align="center" gap={{ base: 1.5, md: 3 }} wrap="wrap">
+                <Flex align="center" gap={{ base: 2, md: 3 }} wrap="wrap">
                   <Text
-                    fontSize={{ base: "15px", sm: "18px", md: "3xl", lg: "32px" }}
+                    fontSize={{ base: "20px", sm: "22px", md: "3xl", lg: "32px" }}
                     fontWeight="800"
                     color={activeTheme.textColor}
                     letterSpacing="tight"
@@ -449,11 +449,11 @@ export function TopHeaderBanner({
               )}
               {subtitle && (
                 <Text
-                  fontSize={{ base: "10px", sm: "11px", md: "sm" }}
+                  fontSize={{ base: "12px", sm: "13px", md: "sm" }}
                   color={activeTheme.subtextColor}
                   fontWeight="500"
                   letterSpacing="wide"
-                  lineHeight="1.3"
+                  lineHeight="1.35"
                   maxW="100%"
                   overflowWrap="anywhere"
                 >

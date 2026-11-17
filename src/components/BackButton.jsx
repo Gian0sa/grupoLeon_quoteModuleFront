@@ -16,14 +16,14 @@ export function BackButton({ color = "white", to, onClick, ...props }) {
 
     return (
         <IconButton
-            icon={<ArrowBackIcon boxSize={{ base: 4, sm: 5, md: 7 }} />}
+            icon={<ArrowBackIcon boxSize={{ base: 5, sm: 6, md: 7 }} />}
             aria-label="Volver al inicio"
             variant="ghost"
             color={color}
             borderRadius="full"
-            w={{ base: "34px", sm: "38px", md: "52px" }}
-            h={{ base: "34px", sm: "38px", md: "52px" }}
-            minW={{ base: "34px", sm: "38px", md: "52px" }}
+            w={{ base: "40px", sm: "44px", md: "52px" }}
+            h={{ base: "40px", sm: "44px", md: "52px" }}
+            minW={{ base: "40px", sm: "44px", md: "52px" }}
             minH="0"
             p={0}
             bg="whiteAlpha.200"

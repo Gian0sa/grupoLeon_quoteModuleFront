@@ -275,12 +275,12 @@ export function LateralMenu({ iconColor = "white", hoverBg }) {
     <>
       <IconButton
         ref={btnRef}
-        icon={<HamburgerIcon boxSize={{ base: 4, sm: 5, md: 6 }} color={iconColor} />}
+        icon={<HamburgerIcon boxSize={{ base: 5, sm: 5.5, md: 6 }} color={iconColor} />}
         variant="ghost"
         borderRadius="full"
-        w={{ base: "30px", sm: "38px", md: "48px" }}
-        h={{ base: "30px", sm: "38px", md: "48px" }}
-        minW={{ base: "30px", sm: "38px", md: "48px" }}
+        w={{ base: "38px", sm: "42px", md: "48px" }}
+        h={{ base: "38px", sm: "42px", md: "48px" }}
+        minW={{ base: "38px", sm: "42px", md: "48px" }}
         _hover={{ bg: hoverBg || "whiteAlpha.300" }}
         _active={{ bg: hoverBg || "whiteAlpha.400" }}
         onClick={(e) => {
