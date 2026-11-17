@@ -1,4 +1,4 @@
-const CACHE_NAME = 'autopartes-pwa-v13';
+const CACHE_NAME = 'autopartes-pwa-v14';
 const MAX_STATIC_CACHE_ENTRIES = 30;
 
 async function trimCache(cacheName, maxItems) {
@@ -79,7 +79,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 3. Archivos estáticos inmutables (/assets/* con hash, fuentes, iconos): Cache-First con límite estricto
+  // 3. Archivos estáticos inmutables (/assets/* con hash, fuentes, iconos): Cache-First con validación MIME
   if (
     url.pathname.startsWith('/assets/') ||
     url.pathname.endsWith('.woff2') ||
@@ -90,8 +90,27 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       caches.match(request)
         .then((cachedResponse) => {
-          if (cachedResponse) return cachedResponse;
+          if (cachedResponse) {
+            const cachedType = (cachedResponse.headers.get('content-type') || '').toLowerCase();
+            if (!cachedType.includes('text/html') || url.pathname.endsWith('.html')) {
+              return cachedResponse;
+            }
+            caches.open(CACHE_NAME).then((cache) => cache.delete(request));
+          }
           return fetch(request).then((networkResponse) => {
+            const contentType = (networkResponse?.headers?.get('content-type') || '').toLowerCase();
+            const isAssetScriptOrStyle =
+              url.pathname.startsWith('/assets/') ||
+              url.pathname.endsWith('.js') ||
+              url.pathname.endsWith('.mjs') ||
+              url.pathname.endsWith('.css');
+
+            // Si Nginx SPA fallback devolvió index.html (text/html) para un chunk obsoleto/eliminado,
+            // nunca cachearlo ni entregarlo como JS/CSS.
+            if (isAssetScriptOrStyle && contentType.includes('text/html')) {
+              return new Response(null, { status: 404, statusText: 'Asset Not Found' });
+            }
+
             if (networkResponse && networkResponse.status === 200) {
               const responseToCache = networkResponse.clone();
               caches.open(CACHE_NAME).then(async (cache) => {
@@ -113,12 +132,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 4. Navegación principal (HTML): Network-First con fallback a caché
+  // 4. Navegación principal (HTML): Network-First sin HTTP cache para evitar index.html obsoleto
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request)
+      fetch(request, { cache: 'no-store' })
         .then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
+          const contentType = (networkResponse?.headers?.get('content-type') || '').toLowerCase();
+          if (networkResponse && networkResponse.status === 200 && contentType.includes('text/html')) {
             const responseToCache = networkResponse.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put(request, responseToCache));
           }
