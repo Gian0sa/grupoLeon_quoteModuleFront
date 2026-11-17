@@ -224,17 +224,17 @@ export function NewClientsPage() {
         title="Clientes Nuevos Registrados"
         subtitle="Monitoreo y actualización de datos de nuevos clientes"
         showBack={true}
-        mb={6}
+        mb={{ base: 2.5, md: 6 }}
       />
 
-      <Box maxW="1200px" mx="auto" px={{ base: 3, md: 6 }}>
-        <VStack spacing={6} align="stretch">
+      <Box maxW="1200px" mx="auto" px={{ base: 2.5, md: 6 }}>
+        <VStack spacing={{ base: 3, md: 6 }} align="stretch">
 
         {/* SEARCH BAR & BOTÓN NUEVO SOCIO SAP */}
-        <Card border="1px solid" borderColor="gray.100" boxShadow="sm">
-          <CardBody p={4}>
-            <Flex direction={{ base: "column", sm: "row" }} gap={3} align="center">
-              <InputGroup size="md" flex="1">
+        <Card border="1px solid" borderColor="gray.100" boxShadow="sm" borderRadius={{ base: "xl", md: "md" }}>
+          <CardBody p={{ base: 2.5, md: 4 }}>
+            <Flex direction={{ base: "column", sm: "row" }} gap={{ base: 2, md: 3 }} align={{ base: "stretch", sm: "center" }}>
+              <InputGroup size={{ base: "sm", md: "md" }} flex="1">
                 <InputLeftElement pointerEvents="none">
                   <FiSearch color="gray.400" />
                 </InputLeftElement>
@@ -244,10 +244,12 @@ export function NewClientsPage() {
                   onChange={(e) => setSearchTerm(e.target.value)}
                   borderRadius="md"
                   bg="white"
+                  fontSize={{ base: "12px", md: "sm" }}
                 />
               </InputGroup>
               <Button
-                size="md"
+                size={{ base: "sm", md: "md" }}
+                w={{ base: "full", sm: "auto" }}
                 bg="#166534"
                 color="white"
                 _hover={{ bg: "#0f5132" }}

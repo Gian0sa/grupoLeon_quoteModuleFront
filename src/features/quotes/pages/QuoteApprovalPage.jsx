@@ -2446,24 +2446,42 @@ export function QuoteApprovalPage() {
             </Badge>
           );
         }
+        case "FACTURADO":
+        case "COMPLETADO":
+          return (
+            <Badge
+              bg="#eff6ff"
+              color="#1d4ed8"
+              border="1.5px solid #93c5fd"
+              px={2.5}
+              py={0.5}
+              borderRadius="full"
+              fontSize="11px"
+              fontWeight="800"
+              textTransform="none"
+              letterSpacing="normal"
+              fontFamily="Arial, sans-serif"
+              whiteSpace="nowrap"
+            >
+              🧾 3. Facturado en SAP ✓
+            </Badge>
+          );
         case "APROBADO_COMERCIAL":
         case "EMITIDO":
         case "EMITIDO_SAP":
         case "PEDIDO_EMITIDO":
         case "ORDEN_EMITIDA":
-        case "FACTURADO":
-        case "COMPLETADO":
         case "APROBADO": {
           const hasSap = Boolean(q?.isSapDirect || q?.totals?.isSapDirect || q?.sapDocNum || q?.totals?.sapDocNum || status === "EMITIDO" || status === "EMITIDO_SAP" || status === "PEDIDO_EMITIDO" || status === "ORDEN_EMITIDA");
           if (hasSap) {
             return (
-              <Badge bg="#dcfce7" color="#166534" border="1.5px solid #bbf7d0" px={2.5} py={0.5} borderRadius="full" fontSize="11px" fontWeight="800" textTransform="none" letterSpacing="normal" fontFamily="Arial, sans-serif" whiteSpace="nowrap">
+              <Badge bg="#dcfce7" color="#166534" border="1.5px solid #bbf7d0" px={2.5} py={0.5} borderRadius="full" fontSize={{ base: "10px", sm: "11px" }} fontWeight="800" textTransform="none" letterSpacing="normal" fontFamily="Arial, sans-serif" whiteSpace={{ base: "normal", sm: "nowrap" }} maxW="100%" textAlign="center">
                 🔒 2. Orden de Venta Emitida SAP ✓
               </Badge>
             );
           }
           return (
-            <Badge bg="#dcfce7" color="#15803d" border="1.5px solid #86efac" px={2.5} py={0.5} borderRadius="full" fontSize="11px" fontWeight="800" textTransform="none" letterSpacing="normal" fontFamily="Arial, sans-serif" whiteSpace="nowrap">
+            <Badge bg="#dcfce7" color="#15803d" border="1.5px solid #86efac" px={2.5} py={0.5} borderRadius="full" fontSize={{ base: "10px", sm: "11px" }} fontWeight="800" textTransform="none" letterSpacing="normal" fontFamily="Arial, sans-serif" whiteSpace={{ base: "normal", sm: "nowrap" }} maxW="100%" textAlign="center">
               ✅ 2. Orden Aprobada
             </Badge>
           );
@@ -2612,7 +2630,7 @@ export function QuoteApprovalPage() {
             textTransform="none"
             whiteSpace="normal"
           >
-            Aprobó y envió a SAP: {approvedBy}
+            Aprobado por: {approvedBy}
           </Badge>
           {(emittedSapUser || timeLabel) && (
             <Text fontSize="10px" color="gray.500" fontWeight="600">
@@ -3347,61 +3365,74 @@ export function QuoteApprovalPage() {
   };
 
   return (
-    <Box w="full" py={2}>
-      <VStack align="stretch" spacing={5}>
-        {/* KPI CARDS: BOTONES GRANDES DE FILTRADO TÁCTIL */}
-        <Box bg="#f8fafc" p={4} borderRadius="2xl" border="1px solid" borderColor="#e2e8f0" boxShadow="xs">
-          <Text fontSize="xs" fontWeight="900" color="#475569" mb={3} textTransform="uppercase" letterSpacing="wider">
-            Filtrar Cotizaciones por Fase Comercial (Toca para seleccionar):
+    <Box w="full" maxW="100%" minW={0} overflowX="clip" py={{ base: 0, md: 2 }}>
+      <VStack align="stretch" spacing={{ base: 2.5, md: 5 }} w="full" minW={0}>
+        {/* KPI CARDS: PÍLDORAS COMPACTAS EN MÓVIL / TARJETAS AMPLIAS EN ESCRITORIO */}
+        <Box bg={{ base: "white", md: "#f8fafc" }} p={{ base: 2.5, md: 4 }} borderRadius={{ base: "xl", md: "2xl" }} border="1px solid" borderColor="#e2e8f0" boxShadow="xs" w="full" minW={0}>
+          <Text fontSize={{ base: "10px", md: "xs" }} fontWeight="900" color="#475569" mb={{ base: 2, md: 3 }} textTransform="uppercase" letterSpacing="wider">
+            Filtrar por fase comercial:
           </Text>
           {(() => {
             const filterCards = [
               { id: "ALL", label: "Todas", count: counts.ALL, color: "#475569", bgSelected: "#475569", bgGlow: "#f1f5f9" },
-              { id: "ENVIADO", label: "1. Pend. Aprobación", count: counts.ENVIADO, color: "#0284c7", bgSelected: "#0284c7", bgGlow: "#e0f2fe" },
-              { id: "APROBADO", label: "2. Pedidos Aprobados", count: counts.APROBADO, color: "#16a34a", bgSelected: "#16a34a", bgGlow: "#dcfce7" },
+              { id: "ENVIADO", label: "1. Pend. Aprob.", count: counts.ENVIADO, color: "#0284c7", bgSelected: "#0284c7", bgGlow: "#e0f2fe" },
+              { id: "APROBADO", label: "2. Aprobados", count: counts.APROBADO, color: "#16a34a", bgSelected: "#16a34a", bgGlow: "#dcfce7" },
               ...(canViewDrafts ? [
                 { id: "GENERADO", label: "Borradores", isTrash: true, count: counts.GENERADO, color: "#dc2626", bgSelected: "#dc2626", bgGlow: "#fef2f2" }
               ] : []),
               // 🛡️ Solo visibles para Administrador y Facturación
               ...(isAdminUser ? [
-                { id: "ANULADO", label: "Anuladas / Canceladas", count: counts.ANULADO, color: "#dc2626", bgSelected: "#dc2626", bgGlow: "#fee2e2" }
+                { id: "ANULADO", label: "Anuladas", count: counts.ANULADO, color: "#dc2626", bgSelected: "#dc2626", bgGlow: "#fee2e2" }
               ] : [])
             ];
             const numCols = filterCards.length;
 
             return (
-              <Grid templateColumns={{ base: "repeat(2, 1fr)", md: `repeat(${Math.min(3, numCols)}, 1fr)`, lg: `repeat(${numCols}, 1fr)` }} gap={3}>
+              <Grid templateColumns={{ base: "repeat(2, minmax(0, 1fr))", md: `repeat(${Math.min(3, numCols)}, minmax(0, 1fr))`, lg: `repeat(${numCols}, minmax(0, 1fr))` }} gap={{ base: 2, md: 3 }} w="full" minW={0}>
                 {filterCards.map((card) => {
                   const isSelected = selectedTab === card.id;
                   return (
-                    <Box
+                    <Flex
                       key={card.id}
                       onClick={() => setSelectedTab(card.id)}
                       cursor="pointer"
+                      direction="column"
+                      align="center"
+                      justify="center"
+                      gap={1}
                       bg={isSelected ? card.bgSelected : "white"}
                       color={isSelected ? "white" : card.color}
-                      p={3.5}
+                      py={{ base: 2.5, md: 3.5 }}
+                      px={{ base: 2, md: 3.5 }}
                       borderRadius="xl"
-                      border="2.5px solid"
+                      border={{ base: "2px solid", md: "2.5px solid" }}
                       borderColor={isSelected ? card.bgSelected : "#cbd5e1"}
-                      boxShadow={isSelected ? "md" : "sm"}
+                      boxShadow={isSelected ? "md" : "xs"}
                       transition="all 0.15s ease-in-out"
                       textAlign="center"
                       userSelect="none"
-                      _hover={{ transform: "translateY(-2px)", borderColor: card.color }}
+                      minW={0}
+                      _hover={{ transform: "translateY(-1px)", borderColor: card.color }}
                       _active={{ transform: "scale(0.97)" }}
                     >
                       {card.isTrash ? (
-                        <Flex align="center" justify="center" h="32px">
-                          <Trash2 className="w-7 h-7 stroke-[2.5]" />
+                        <Flex align="center" justify="center" h={{ base: "22px", md: "32px" }}>
+                          <Trash2 className="w-5 h-5 md:w-7 md:h-7 stroke-[2.5]" />
                         </Flex>
                       ) : (
-                        <Text fontSize="2xl" fontWeight="900" lineHeight="1">{card.count}</Text>
+                        <Text
+                          color={isSelected ? "white" : card.color}
+                          fontSize={{ base: "lg", md: "2xl" }}
+                          fontWeight="900"
+                          lineHeight="1"
+                        >
+                          {card.count}
+                        </Text>
                       )}
-                      <Text fontSize="11px" fontWeight="800" mt={1.5} textTransform="uppercase" letterSpacing="tight">
+                      <Text fontSize={{ base: "10px", md: "11px" }} fontWeight="800" textTransform="uppercase" letterSpacing="tight" noOfLines={1}>
                         {card.label} {card.isTrash && `(${card.count})`}
                       </Text>
-                    </Box>
+                    </Flex>
                   );
                 })}
               </Grid>
@@ -3410,24 +3441,24 @@ export function QuoteApprovalPage() {
         </Box>
 
         {/* BUSCADOR DE COTIZACIONES RÁPIDO */}
-        <Flex direction={{ base: "column", md: "row" }} justify="space-between" align={{ base: "stretch", md: "center" }} gap={3} bg="white" p={4} borderRadius="2xl" border="1px solid" borderColor="#e2e8f0">
-          <Box>
-            <Heading size="xs" color="emerald.900" fontWeight="950" textTransform="uppercase" letterSpacing="wide">
+        <Flex direction={{ base: "column", md: "row" }} justify="space-between" align={{ base: "stretch", md: "center" }} gap={{ base: 2, md: 3 }} bg="white" p={{ base: 2.5, md: 4 }} borderRadius={{ base: "xl", md: "2xl" }} border="1px solid" borderColor="#e2e8f0" boxShadow="xs" w="full" minW={0}>
+          <Box minW={0}>
+            <Heading fontSize={{ base: "11px", md: "xs" }} color="emerald.900" fontWeight="950" textTransform="uppercase" letterSpacing="wide">
               Listado del Seguimiento Comercial
             </Heading>
-            <Text fontSize="11px" color="gray.600" fontWeight="600">
+            <Text display={{ base: "none", sm: "block" }} fontSize="11px" color="gray.600" fontWeight="600">
               Usa la barra de búsqueda para encontrar clientes por nombre o RUC
             </Text>
           </Box>
-          <HStack spacing={3}>
-            <InputGroup size="md" maxW={{ base: "full", md: "380px" }}>
+          <HStack spacing={2} w={{ base: "full", md: "auto" }} minW={0}>
+            <InputGroup size={{ base: "sm", md: "md" }} flex="1" minW={0} maxW={{ base: "full", md: "380px" }}>
               <InputLeftElement pointerEvents="none">
-                <Search className="w-4 h-4 text-gray-500" />
+                <Search className="w-3.5 h-3.5 md:w-4 md:h-4 text-gray-500" />
               </InputLeftElement>
               <Input
-                placeholder="Buscar cliente, RUC, N° cotización o SAP (#...)"
+                placeholder="Buscar cliente, RUC o N°..."
                 borderRadius="xl"
-                fontSize="sm"
+                fontSize={{ base: "xs", md: "sm" }}
                 fontWeight="700"
                 borderColor="#cbd5e1"
                 _placeholder={{ color: 'gray.400' }}
@@ -3455,8 +3486,8 @@ export function QuoteApprovalPage() {
             </InputGroup>
             <Tooltip label="Actualizar cotizaciones del servidor">
               <IconButton
-                icon={<RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin text-emerald-600" : ""}`} />}
-                size="md"
+                icon={<RefreshCw className={`w-3.5 h-3.5 md:w-4 md:h-4 ${isRefreshing ? "animate-spin text-emerald-600" : ""}`} />}
+                size={{ base: "sm", md: "md" }}
                 variant="outline"
                 borderRadius="xl"
                 isLoading={isRefreshing || (isServerLoading && quotes.length === 0)}
@@ -3710,7 +3741,7 @@ export function QuoteApprovalPage() {
         </Box>
 
         {/* VISTA DE TARJETAS (solo móvil / tablet <lg) */}
-        <VStack display={{ base: "flex", lg: "none" }} align="stretch" spacing={3}>
+        <VStack display={{ base: "flex", lg: "none" }} align="stretch" spacing={3} w="full" minW={0}>
           {((isServerLoading || isRefreshing) && quotes.length === 0) ? (
             <>
               <Box bg="emerald.50" borderRadius="2xl" border="1px solid" borderColor="emerald.200" p={3.5} textAlign="center">
@@ -3769,10 +3800,13 @@ export function QuoteApprovalPage() {
                   border="1.5px solid"
                   borderColor={isHighlighted ? "#16a34a" : "#cbd5e1"}
                   boxShadow={isHighlighted ? "0 0 12px rgba(22, 163, 74, 0.25)" : "sm"}
-                  p={4}
+                  p={{ base: 3, sm: 4 }}
+                  w="full"
+                  minW={0}
+                  overflow="hidden"
                   transition="all 0.3s ease"
                 >
-                  <VStack align="stretch" spacing={3}>
+                  <VStack align="stretch" spacing={3} w="full" minW={0}>
                     <Flex justify="space-between" align="flex-start" gap={2} wrap="wrap">
                       <HStack spacing={1.5} align="center" wrap="wrap">
                         {Boolean(sapDocNum || (status === "EMITIDO" && q.docNumber && !String(q.docNumber).includes("WEB") && !String(q.docNumber).includes("PENDIENTE"))) ? (
@@ -3806,7 +3840,7 @@ export function QuoteApprovalPage() {
                       </HStack>
                       {renderStatusBadge(status, q)}
                     </Flex>
-                    <Text fontWeight="900" color="#0f172a" fontSize="md">{clientName}</Text>
+                    <Text fontWeight="900" color="#0f172a" fontSize={{ base: "sm", sm: "md" }} wordBreak="break-word" overflowWrap="anywhere" w="full">{clientName}</Text>
                     <HStack spacing={2} wrap="wrap">
                       <Badge bg="#f1f5f9" color="#475569" fontSize="10px" px={2} py={0.5} borderRadius="md" fontWeight="700" textTransform="none">
                         Vend: {sellerName}
@@ -3872,7 +3906,7 @@ export function QuoteApprovalPage() {
                     </Flex>
                     {canViewApprovalAudit && Boolean(status) && !isDraftState(status) ? (
                       <>
-                        <Flex gap={2} align="stretch" w="full">
+                        <Flex direction={{ base: "column", sm: "row" }} gap={2} align="stretch" w="full" minW={0}>
                           <Box flex="1" minW={0} bg="#f0fdfa" borderRadius="lg" px={3} py={2} border="1px solid" borderColor="#ccfbf1">
                             <Text fontSize="10px" fontWeight="800" color="teal.700" textTransform="uppercase" mb={1}>
                               Aprobación / Envío SAP
@@ -3929,15 +3963,15 @@ export function QuoteApprovalPage() {
             w="full"
           >
             {/* Información del rango mostrado */}
-            <HStack spacing={2} align="center" wrap="wrap">
-              <Text fontSize="xs" fontWeight="700" color="gray.600">
+            <HStack spacing={2} align="center" wrap="wrap" justify={{ base: "center", md: "flex-start" }} w={{ base: "full", md: "auto" }}>
+              <Text fontSize="xs" fontWeight="700" color="gray.600" textAlign={{ base: "center", md: "left" }}>
                 Mostrando <Text as="span" fontWeight="900" color="gray.900">{(validCurrentPage - 1) * effectivePageSize + 1}</Text> -{" "}
                 <Text as="span" fontWeight="900" color="gray.900">{Math.min(validCurrentPage * effectivePageSize, totalItems)}</Text> de{" "}
                 <Text as="span" fontWeight="900" color="#0e572b">{totalItems}</Text> cotizaciones
               </Text>
 
               {/* Selector de tamaño de página */}
-              <HStack spacing={1} ml={{ base: 0, md: 3 }}>
+              <HStack spacing={1} ml={{ base: 0, md: 3 }} wrap="wrap" justify="center">
                 <Text fontSize="11px" fontWeight="800" color="gray.500" textTransform="uppercase">
                   Por pág:
                 </Text>
@@ -3964,7 +3998,7 @@ export function QuoteApprovalPage() {
             </HStack>
 
             {/* Botones de navegación de página */}
-            <HStack spacing={1.5} align="center">
+            <HStack spacing={1} align="center" wrap="wrap" justify="center" w={{ base: "full", md: "auto" }}>
               <IconButton
                 icon={<ChevronsLeft className="w-4 h-4" />}
                 size="sm"

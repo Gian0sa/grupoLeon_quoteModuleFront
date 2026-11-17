@@ -13,6 +13,7 @@ import ProductCardSkeleton from "../components/skeletons/ProductCardSkeleton";
 import ProductDetailEquivalentsSection from "../components/ProductDetailEquivalentsSection";
 import Pagination from "../../../components/Pagination";
 import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
+import { useHeaderTheme } from "../../../hooks/useHeaderTheme";
 import { Package, Plus } from "lucide-react";
 
 // Adaptador para transformar el nuevo modelo de base de datos al formato esperado por los componentes UI
@@ -79,6 +80,7 @@ export default function CatalogPage() {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const navigate = useNavigate();
+  const { theme: headerTheme } = useHeaderTheme();
 
   const { data: response, isLoading, error } = useProducts(page, limit, filters);
 
@@ -163,15 +165,19 @@ export default function CatalogPage() {
             <Link to="/catalog/create">
               <Button
                 leftIcon={<Plus size={16} />}
-                bg="whiteAlpha.200"
-                color="white"
-                _hover={{ bg: "whiteAlpha.300", transform: "translateY(-1px)" }}
+                bg={headerTheme.useDarkText ? "rgba(255, 255, 255, 0.55)" : headerTheme.glassBg}
+                color={headerTheme.textColor}
+                _hover={{
+                  bg: headerTheme.useDarkText ? "rgba(255, 255, 255, 0.80)" : headerTheme.glassHoverBg,
+                  transform: "translateY(-1px)",
+                }}
                 borderRadius="full"
                 size="sm"
                 px={4}
                 fontWeight="700"
                 backdropFilter="blur(8px)"
-                border="1px solid rgba(255,255,255,0.2)"
+                border="1px solid"
+                borderColor={headerTheme.glassBorder}
                 boxShadow="sm"
               >
                 + Nuevo producto

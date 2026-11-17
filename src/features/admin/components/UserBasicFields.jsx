@@ -81,7 +81,7 @@ export default function UserBasicFields({
     } else {
       onChange({ target: { name: "role", value: newRoleKey } });
       if (isMasterAdmin && onToggleMasterAdmin) {
-        onToggleMasterAdmin(false);
+        onToggleMasterAdmin(false, newRoleKey);
       }
     }
   };

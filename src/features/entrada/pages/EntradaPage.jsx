@@ -9,7 +9,7 @@ export const EntradaPage = () => {
         title="Control de Asistencia"
         subtitle="Registro de marcado de ingreso y geolocalización"
         showBack={true}
-        mb={6}
+        mb={{ base: 2.5, md: 6 }}
       />
       <Box maxW="1200px" mx="auto" px={4}>
         <Center minH="60vh">

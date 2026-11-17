@@ -12,11 +12,15 @@ export function RefreshButton({
   onRefreshEnd,
   mode = "invalidateAndRefetch",
   fullReload = false,
-  tooltipLabel
+  tooltipLabel,
+  iconColor,
+  color,
+  hoverBg
 }) {
   const { refetch, invalidate, invalidateAndRefetch, refetchAll } = useRefetchQueries();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const toast = useToast();
+  const resolvedIconColor = iconColor || color || "white";
 
   const handleClick = async () => {
     if (isRefreshing) return;
@@ -91,21 +95,23 @@ export function RefreshButton({
   return (
     <Tooltip hasArrow label={isRefreshing ? "Recargando..." : (tooltipLabel || defaultLabel)}>
       <IconButton
+        aria-label={tooltipLabel || defaultLabel || "Actualizar"}
         icon={
           isRefreshing 
-            ? <Spinner size="sm" color="white" thickness="2px" /> 
-            : <RepeatIcon boxSize={{ base: 5, md: 6 }} color="white" />
+            ? <Spinner size="sm" color={resolvedIconColor} thickness="2px" /> 
+            : <RepeatIcon boxSize={{ base: 4, sm: 5, md: 6 }} color={resolvedIconColor} />
         }
         bg={variant === "ghost" ? "transparent" : "green.700"}
         onClick={handleClick}
         variant={variant}
         size={size}
-        w={{ base: "42px", md: "48px" }}
-        h={{ base: "42px", md: "48px" }}
+        w={{ base: "30px", sm: "38px", md: "48px" }}
+        h={{ base: "30px", sm: "38px", md: "48px" }}
+        minW={{ base: "30px", sm: "38px", md: "48px" }}
         borderRadius="full"
         isDisabled={isRefreshing}
         colorScheme="whiteAlpha"
-        _hover={{ bg: "whiteAlpha.300" }}
+        _hover={{ bg: hoverBg || "whiteAlpha.300" }}
         sx={
           isRefreshing
             ? {

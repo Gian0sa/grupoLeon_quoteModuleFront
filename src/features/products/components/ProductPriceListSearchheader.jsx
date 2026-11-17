@@ -32,12 +32,12 @@ export function ProductPriceListSearchheader({
       showBack={true}
     >
       {/* Panel de búsqueda simplificado sin filtros pesados */}
-      <Box p={{ base: 2, md: 2.5 }} {...HEADER_GLASS_PANEL_PROPS} position="relative" zIndex={2}>
+      <Box {...HEADER_GLASS_PANEL_PROPS} p={{ base: 1, md: 2.5 }} borderRadius={{ base: "xl", md: "2xl" }} position="relative" zIndex={2}>
         <HStack spacing={2} w="full" align="center">
           {/* Input de Búsqueda */}
-          <InputGroup size="sm" flex="1">
-            <InputLeftElement pointerEvents="none">
-              <Icon as={FiSearch} color="gray.400" boxSize="15px" />
+          <InputGroup size={{ base: "xs", md: "sm" }} flex="1">
+            <InputLeftElement pointerEvents="none" h={{ base: "30px", md: "40px" }}>
+              <Icon as={FiSearch} color="gray.400" boxSize="14px" />
             </InputLeftElement>
             <Input
               placeholder="Buscar por Código, Sigla o Descripción (ej: TACP125, AS820)..."
@@ -47,8 +47,8 @@ export function ProductPriceListSearchheader({
               bg="white"
               borderRadius="xl"
               color="gray.800"
-              h="40px"
-              fontSize={{ base: "13px", md: "14px" }}
+              h={{ base: "30px", md: "40px" }}
+              fontSize={{ base: "12px", md: "14px" }}
               fontWeight="500"
               border="1.5px solid"
               borderColor="gray.200"
@@ -61,7 +61,7 @@ export function ProductPriceListSearchheader({
               }}
             />
             {cardName && (
-              <InputRightElement h="40px">
+              <InputRightElement h={{ base: "30px", md: "40px" }}>
                 <IconButton
                   icon={<Icon as={FiX} />}
                   size="xs"
@@ -80,7 +80,7 @@ export function ProductPriceListSearchheader({
           {/* Botón Buscar */}
           <Button
             size="sm"
-            h="40px"
+            h={{ base: "30px", md: "40px" }}
             px={{ base: 4, md: 6 }}
             bg="white"
             color="#0d522c"

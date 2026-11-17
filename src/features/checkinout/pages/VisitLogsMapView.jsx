@@ -561,9 +561,9 @@ export default function VisitLogsMapView() {
                 title="Mapa y Rutas de Visitas"
                 subtitle="Monitoreo geolocalizado y seguimiento de la fuerza de ventas en tiempo real"
                 showBack={true}
-                minH={{ base: "135px", sm: "145px", md: "155px" }}
-                pt={{ base: 3, md: 4 }}
-                pb={{ base: 3, md: 4 }}
+                minH={{ base: "144px", sm: "156px", md: "155px" }}
+                pt={{ base: 2.5, sm: 3, md: 4 }}
+                pb={{ base: 2.5, sm: 3, md: 4 }}
                 mb={0}
             />
 

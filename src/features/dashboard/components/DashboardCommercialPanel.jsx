@@ -16,10 +16,10 @@ export function DashboardCommercialPanel({
     : null;
 
   return (
-    <Box pt={6} pb={8} w="full">
+    <Box pt={{ base: 1.5, md: 6 }} pb={{ base: 2, md: 8 }} w="full">
       <Grid
         templateColumns={{ base: "1fr", lg: "1.3fr 1fr" }}
-        gap={6}
+        gap={{ base: 2, lg: 6 }}
         w="full"
         alignItems="stretch"
       >

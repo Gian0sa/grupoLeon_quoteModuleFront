@@ -60,6 +60,7 @@ import {
   RefreshCw,
   Unlock,
   Lock,
+  Palette,
 } from "lucide-react";
 import { useGetAllUsersAdmin } from "../hooks/queries/authAdminQueries";
 import { useAuthAdminMutations } from "../hooks/mutations/authAdminMutations";
@@ -69,6 +70,8 @@ import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
 import { checkIsAdmin, useIsAdmin, useHasAccess } from "../../../shared/utils/permissions";
 import PermissionsTreeView from "../components/PermissionsTreeView";
 import UserBasicFields from "../components/UserBasicFields";
+import { HeaderThemeManagerModal } from "../components/HeaderThemeManagerModal";
+import { useHeaderTheme } from "../../../hooks/useHeaderTheme";
 import { getPresetServiceIds } from "../utils/permissionTreeHelper";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -403,6 +406,12 @@ export function ProfileAdmin() {
   const { data: services, isLoading: isLoadingServices } = useGetServices();
   const { updateProfileAdmin, unlockUser } = useAuthAdminMutations();
   const { isOpen, onOpen, onClose } = useDisclosure();
+  const {
+    isOpen: isThemeModalOpen,
+    onOpen: onOpenThemeModal,
+    onClose: onCloseThemeModal,
+  } = useDisclosure();
+  const { canManageTheme } = useHeaderTheme();
 
   const toast = useToast();
   const today = format(new Date(), "EEEE, d 'de' MMMM 'del' yyyy", { locale: es });
@@ -877,46 +886,80 @@ export function ProfileAdmin() {
           <Box bg="white" p={{ base: 3.5, md: 6 }} borderRadius="2xl" border="1px solid" borderColor="gray.200" boxShadow="sm">
             {/* Barra de Filtros */}
             <Flex
-              direction={{ base: "column", md: "row" }}
+              direction={{ base: "column", xl: "row" }}
               justify="space-between"
-              align={{ base: "stretch", md: "center" }}
+              align={{ base: "stretch", xl: "center" }}
               gap={3}
               mb={4}
             >
-              {/* Buscador */}
-              <InputGroup size="md" maxW={{ base: "100%", md: "400px" }}>
-                <InputLeftElement pointerEvents="none">
-                  <Search className="w-4 h-4 text-gray-400" />
-                </InputLeftElement>
-                <Input
-                  placeholder="Buscar por usuario, email o cód. SAP..."
-                  value={searchTerm}
-                  onChange={handleSearchChange}
-                  bg="white"
-                  borderRadius="xl"
-                  borderColor="gray.300"
-                  _focus={{ borderColor: "green.500", boxShadow: "0 0 0 1px #16a34a" }}
-                  fontSize="sm"
-                />
-                {searchTerm && (
-                  <InputRightElement>
-                    <IconButton
-                      size="xs"
-                      variant="ghost"
-                      icon={<X className="w-3.5 h-3.5 text-gray-400" />}
-                      onClick={() => setSearchTerm("")}
-                      aria-label="Limpiar"
-                    />
-                  </InputRightElement>
-                )}
-              </InputGroup>
+              {/* Buscador e Iconito Paleta en BLANCO */}
+              <HStack spacing={2} flex={{ base: "1", xl: "initial" }} maxW={{ base: "100%", xl: "380px" }} w="full">
+                <InputGroup size="sm" flex="1">
+                  <InputLeftElement pointerEvents="none">
+                    <Search className="w-4 h-4 text-gray-400" />
+                  </InputLeftElement>
+                  <Input
+                    placeholder="Buscar por usuario, email o cód. SAP..."
+                    value={searchTerm}
+                    onChange={handleSearchChange}
+                    bg="white"
+                    borderRadius="lg"
+                    borderColor="gray.300"
+                    _focus={{ borderColor: "green.500", boxShadow: "0 0 0 1px #16a34a" }}
+                    fontSize="xs"
+                    h="36px"
+                  />
+                  {searchTerm && (
+                    <InputRightElement>
+                      <IconButton
+                        size="xs"
+                        variant="ghost"
+                        icon={<X className="w-3.5 h-3.5 text-gray-400" />}
+                        onClick={() => setSearchTerm("")}
+                        aria-label="Limpiar"
+                      />
+                    </InputRightElement>
+                  )}
+                </InputGroup>
 
-              {/* Filtros Dropdowns y Contador */}
-              <HStack spacing={2.5} wrap="wrap">
+                {/* Iconito Paleta en BLANCO (Exclusivo Misael) */}
+                {canManageTheme && (
+                  <Tooltip label="Personalizar Cabeceras y Accesos" placement="top" hasArrow>
+                    <IconButton
+                      icon={<Palette size={16} />}
+                      aria-label="Personalizar Cabeceras"
+                      size="sm"
+                      h="36px"
+                      w="36px"
+                      minW="36px"
+                      borderRadius="lg"
+                      bg="white"
+                      border="1px solid"
+                      borderColor="gray.300"
+                      color="gray.700"
+                      boxShadow="xs"
+                      flexShrink={0}
+                      _hover={{
+                        bg: "gray.50",
+                        borderColor: "gray.400",
+                        color: "green.700",
+                        transform: "translateY(-1px)",
+                        boxShadow: "sm",
+                      }}
+                      _active={{ transform: "scale(0.96)", bg: "gray.100" }}
+                      onClick={onOpenThemeModal}
+                    />
+                  </Tooltip>
+                )}
+              </HStack>
+
+              {/* Filtros Dropdowns, Contador y Nuevo Usuario (Todo en una sola fila) */}
+              <HStack spacing={2} align="center" flexWrap={{ base: "wrap", md: "nowrap" }} overflowX={{ base: "auto", md: "visible" }}>
                 <Select
                   size="sm"
                   borderRadius="lg"
-                  w="160px"
+                  w={{ base: "full", sm: "145px" }}
+                  h="36px"
                   bg="white"
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
@@ -930,7 +973,8 @@ export function ProfileAdmin() {
                 <Select
                   size="sm"
                   borderRadius="lg"
-                  w="180px"
+                  w={{ base: "full", sm: "155px" }}
+                  h="36px"
                   bg="white"
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
@@ -947,12 +991,13 @@ export function ProfileAdmin() {
                   bg="#eff6ff"
                   color="#1d4ed8"
                   border="1px solid #bfdbfe"
-                  px={3}
+                  px={2.5}
                   py={1.5}
                   borderRadius="full"
                   fontSize="11px"
                   fontWeight="900"
                   letterSpacing="wider"
+                  flexShrink={0}
                 >
                   {filteredUsers.length} USUARIOS
                 </Badge>
@@ -963,9 +1008,11 @@ export function ProfileAdmin() {
                   bg="#126C36"
                   _hover={{ bg: "#0e572b" }}
                   size="sm"
+                  h="36px"
                   borderRadius="xl"
                   fontWeight="800"
                   boxShadow="xs"
+                  flexShrink={0}
                   onClick={() => navigate("/register")}
                 >
                   Nuevo Usuario
@@ -1324,7 +1371,7 @@ export function ProfileAdmin() {
                       });
                     }
                   }}
-                  onToggleMasterAdmin={(enable) => {
+                  onToggleMasterAdmin={(enable, targetRole = null) => {
                     setFormData((prev) => {
                       const current = new Set((prev.permittedServices || []).map((id) => Number(id)));
                       const ADMIN_SERVICES = [3, 4, 5, 6, 7, 16, 21, 22];
@@ -1336,7 +1383,7 @@ export function ProfileAdmin() {
                       return { 
                         ...prev, 
                         permittedServices: Array.from(current),
-                        role: enable ? "ADMINISTRADOR" : (prev.role === "ADMINISTRADOR" ? "ASESOR_VENTAS" : prev.role)
+                        role: enable ? "ADMINISTRADOR" : (targetRole || (prev.role === "ADMINISTRADOR" ? "ASESOR_VENTAS" : prev.role))
                       };
                     });
                   }}
@@ -1382,6 +1429,13 @@ export function ProfileAdmin() {
           </ModalFooter>
         </ModalContent>
       </Modal>
+
+      {canManageTheme && isThemeModalOpen && (
+        <HeaderThemeManagerModal
+          isOpen={isThemeModalOpen}
+          onClose={onCloseThemeModal}
+        />
+      )}
     </Box>
   );
 }

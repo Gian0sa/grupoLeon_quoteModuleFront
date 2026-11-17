@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Box } from "@chakra-ui/react";
 import { generateAccountStatementPDF } from "../utils/receivablePDF";
 import { WhatsAppStatementModal } from "./WhatsAppStatementModal";
 import {
@@ -276,7 +277,29 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
   const agingBadge = getAgingBadge();
 
   return (
-    <div
+    <Box
+      sx={{
+        "@media (max-width: 767px)": {
+          borderRadius: "14px !important",
+          marginBottom: "10px !important",
+          "& .debt-card-body": { padding: "12px 14px !important" },
+          "& .debt-card-header": { gap: "10px !important", marginBottom: "10px !important" },
+          "& .debt-card-avatar": { width: "34px !important", height: "34px !important", borderRadius: "10px !important" },
+          "& .debt-card-avatar svg": { width: "17px !important", height: "17px !important" },
+          "& .debt-card-title": { fontSize: "13.5px !important", marginBottom: "4px !important" },
+          "& .debt-card-meta": { gap: "6px !important", fontSize: "10.5px !important" },
+          "& .debt-card-chip": { padding: "2px 7px !important" },
+          "& .debt-card-stats": { padding: "8px 10px !important", gap: "8px !important", borderRadius: "10px !important", marginBottom: "8px !important" },
+          "& .debt-card-stat-label": { fontSize: "10px !important", marginBottom: "2px !important" },
+          "& .debt-card-stat-val": { fontSize: "14.5px !important" },
+          "& .debt-card-stat-sub": { fontSize: "10px !important", marginTop: "2px !important" },
+          "& .debt-card-stat-right": { paddingLeft: "10px !important" },
+          "& .debt-card-badge-wrap": { marginBottom: "8px !important" },
+          "& .debt-card-badge": { padding: "3px 9px !important", fontSize: "10.5px !important" },
+          "& .debt-card-actions": { paddingTop: "8px !important", gap: "8px !important" },
+          "& .debt-card-btn": { padding: "6px 10px !important", fontSize: "11.5px !important" },
+        },
+      }}
       style={{
         position: "relative",
         background: "#ffffff",
@@ -311,9 +334,10 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
         }}
       />
 
-      <div style={{ padding: "20px 22px" }}>
+      <div className="debt-card-body" style={{ padding: "20px 22px" }}>
         {/* Cabecera del Cliente */}
         <div
+          className="debt-card-header"
           style={{
             display: "flex",
             alignItems: "flex-start",
@@ -323,6 +347,7 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
         >
           {/* Avatar / Inicial de Empresa */}
           <div
+            className="debt-card-avatar"
             style={{
               width: "44px",
               height: "44px",
@@ -343,6 +368,7 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
           <div style={{ flex: 1, minWidth: 0 }}>
             {/* Nombre del Cliente */}
             <h3
+              className="debt-card-title"
               style={{
                 margin: 0,
                 fontSize: "16px",
@@ -361,6 +387,7 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
 
             {/* RUC y Vendedor */}
             <div
+              className="debt-card-meta"
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -372,6 +399,7 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
               }}
             >
               <span
+                className="debt-card-chip"
                 style={{
                   background: "#f8fafc",
                   padding: "3px 9px",
@@ -385,6 +413,7 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
               </span>
 
               <span
+                className="debt-card-chip"
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
@@ -404,6 +433,7 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
 
         {/* Rejilla Estadística Financiera (Monto Pendiente vs Vencido) */}
         <div
+          className="debt-card-stats"
           style={{
             display: "grid",
             gridTemplateColumns: "1fr 1fr",
@@ -418,6 +448,7 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
           {/* Columna 1: Saldo Final Consolidado en USD */}
           <div>
             <div
+              className="debt-card-stat-label"
               style={{
                 fontSize: "11.5px",
                 fontWeight: "700",
@@ -440,6 +471,7 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
 
             <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
               <span
+                className="debt-card-stat-val"
                 style={{
                   fontSize: "18px",
                   fontWeight: "900",
@@ -454,6 +486,7 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
             </div>
 
             <div
+              className="debt-card-stat-sub"
               style={{
                 fontSize: "11px",
                 fontWeight: "600",
@@ -467,12 +500,14 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
 
           {/* Columna 2: Vencido Real o Preventivo Vence Hoy */}
           <div
+            className="debt-card-stat-right"
             style={{
               borderLeft: "1px solid #cbd5e1",
               paddingLeft: "14px",
             }}
           >
             <div
+              className="debt-card-stat-label"
               style={{
                 fontSize: "11.5px",
                 fontWeight: "700",
@@ -505,7 +540,7 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
 
             <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
               {statusType === "overdue" && (
-                <span style={{ fontSize: "16px", fontWeight: "800", color: "#dc2626" }}>
+                <span className="debt-card-stat-val" style={{ fontSize: "16px", fontWeight: "800", color: "#dc2626" }}>
                   $ {Math.abs(Number(calcVencidosUSD || 0)).toLocaleString("es-PE", {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
@@ -513,7 +548,7 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
                 </span>
               )}
               {statusType === "dueToday" && (
-                <span style={{ fontSize: "16px", fontWeight: "800", color: "#b45309" }}>
+                <span className="debt-card-stat-val" style={{ fontSize: "16px", fontWeight: "800", color: "#b45309" }}>
                   $ {Math.abs(Number(venceHoyUSD || 0)).toLocaleString("es-PE", {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
@@ -521,13 +556,14 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
                 </span>
               )}
               {statusType !== "overdue" && statusType !== "dueToday" && (
-                <span style={{ fontSize: "15px", fontWeight: "800", color: statusType === "credit" ? "#1d4ed8" : "#059669" }}>
+                <span className="debt-card-stat-val" style={{ fontSize: "15px", fontWeight: "800", color: statusType === "credit" ? "#1d4ed8" : "#059669" }}>
                   $ 0.00 USD
                 </span>
               )}
             </div>
 
             <div
+              className="debt-card-stat-sub"
               style={{
                 fontSize: "11px",
                 fontWeight: "600",
@@ -549,8 +585,9 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
         </div>
 
         {/* Insignia Dinámica de Mora y Antigüedad (RN-FECHAS) */}
-        <div style={{ marginBottom: "16px" }}>
+        <div className="debt-card-badge-wrap" style={{ marginBottom: "16px" }}>
           <div
+            className="debt-card-badge"
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -574,6 +611,7 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
 
         {/* Acciones del Pie de Tarjeta */}
         <div
+          className="debt-card-actions"
           style={{
             display: "flex",
             alignItems: "center",
@@ -586,6 +624,7 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
           {/* Botón Ver Facturas */}
           <button
             type="button"
+            className="debt-card-btn"
             style={{
               flex: 1,
               padding: "9px 14px",
@@ -618,6 +657,7 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
           {/* Botón Ver Detalles / PDF */}
           <button
             type="button"
+            className="debt-card-btn"
             style={{
               flex: 1,
               padding: "9px 14px",
@@ -659,6 +699,6 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
         onClose={() => setIsWhatsAppModalOpen(false)}
         debt={debt}
       />
-    </div>
+    </Box>
   );
 }

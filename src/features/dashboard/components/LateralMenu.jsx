@@ -43,7 +43,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../auth/stores/useAuthStore';
 import { useHasAccess } from '../../../shared/utils/permissions';
 import { useAuthMutations } from '../../auth/hooks/mutations/authMutations';
-import { HEADER_MAIN_BG } from '../../../components/TopHeaderBanner';
+import { useHeaderTheme } from '../../../hooks/useHeaderTheme';
+import { HeaderBrandWatermark } from '../../../components/HeaderBrandWatermark';
 
 // Opciones estáticas fuera del componente para evitar recreación de memoria en cada render
 const APPLICATION_OPTIONS = [
@@ -81,6 +82,14 @@ const MenuItemRow = React.memo(function MenuItemRow({
   icon: IconComponent,
   isActive,
   accentColor = "green",
+  customIconBg,
+  customIconColor,
+  activeBg,
+  activeColor = "white",
+  activeShadow = "0 4px 14px rgba(18, 108, 54, 0.25)",
+  activeHoverBg = "#0e572b",
+  activeIconBg = "whiteAlpha.300",
+  activeChevronColor = "whiteAlpha.800",
   onClick
 }) {
   return (
@@ -93,18 +102,18 @@ const MenuItemRow = React.memo(function MenuItemRow({
       h="44px"
       px={2.5}
       borderRadius="xl"
-      bg={isActive ? HEADER_MAIN_BG : "transparent"}
-      color={isActive ? "white" : "gray.700"}
-      boxShadow={isActive ? "0 4px 14px rgba(18, 108, 54, 0.25)" : "none"}
+      bg={isActive ? activeBg : "transparent"}
+      color={isActive ? activeColor : "gray.700"}
+      boxShadow={isActive ? activeShadow : "none"}
       cursor="pointer"
       transition="background 0.12s ease, transform 0.08s ease"
       _hover={{
-        bg: isActive ? HEADER_MAIN_BG : "gray.100",
-        color: isActive ? "white" : "gray.900"
+        bg: isActive ? activeBg : "gray.100",
+        color: isActive ? activeColor : "gray.900"
       }}
       _active={{
         transform: "scale(0.98)",
-        bg: isActive ? "#0e572b" : "gray.200"
+        bg: isActive ? activeHoverBg : "gray.200"
       }}
       outline="none"
       onClick={onClick}
@@ -121,8 +130,8 @@ const MenuItemRow = React.memo(function MenuItemRow({
           align="center"
           justify="center"
           borderRadius="lg"
-          bg={isActive ? "whiteAlpha.300" : `${accentColor}.50`}
-          color={isActive ? "white" : `${accentColor}.600`}
+          bg={isActive ? activeIconBg : (customIconBg || `${accentColor}.50`)}
+          color={isActive ? activeColor : (customIconColor || `${accentColor}.600`)}
           flexShrink={0}
         >
           <Icon as={IconComponent} boxSize={4} />
@@ -138,7 +147,7 @@ const MenuItemRow = React.memo(function MenuItemRow({
       </HStack>
       <Icon
         as={MdChevronRight}
-        color={isActive ? "whiteAlpha.800" : "gray.400"}
+        color={isActive ? activeChevronColor : "gray.400"}
         boxSize={4}
         flexShrink={0}
       />
@@ -147,15 +156,16 @@ const MenuItemRow = React.memo(function MenuItemRow({
 });
 
 const SectionLabel = React.memo(function SectionLabel({ children, icon, color = "gray" }) {
+  const resolvedColor = color && (color.startsWith("#") || color.startsWith("rgb")) ? color : `${color}.400`;
   return (
     <HStack spacing={2} px={2} mb={2} mt={1}>
       {icon && (
-        <Box w="18px" h="3px" borderRadius="full" bg={`${color}.400`} />
+        <Box w="18px" h="3px" borderRadius="full" bg={resolvedColor} />
       )}
       <Text
         fontSize="10px"
         fontWeight="800"
-        color={`${color}.400`}
+        color={resolvedColor}
         letterSpacing="widest"
         textTransform="uppercase"
       >
@@ -166,13 +176,19 @@ const SectionLabel = React.memo(function SectionLabel({ children, icon, color = 
   );
 });
 
-export function LateralMenu() {
+export function LateralMenu({ iconColor = "white", hoverBg }) {
   const { isOpen, onOpen, onClose } = useDisclosure();
   const btnRef = useRef();
   const navigate = useNavigate();
   const location = useLocation();
   const { username, role } = useAuthStore();
   const { logout } = useAuthMutations();
+  const { theme } = useHeaderTheme();
+
+  const isGreen = !theme?.key || theme.key === "green";
+  const appAccentColor = isGreen ? "green" : (theme?.accentColorScheme || "green");
+  const appIconBg = isGreen ? undefined : theme?.accentLightBg;
+  const appIconColor = isGreen ? undefined : theme?.accentTextColor;
 
   // Cerrar menú automáticamente al cambiar de página
   React.useEffect(() => {
@@ -243,17 +259,30 @@ export function LateralMenu() {
     }
   }, [navigate, onClose]);
 
+  const activeRowThemeProps = useMemo(
+    () => ({
+      activeBg: theme.activeMenuBg || theme.mainBg,
+      activeColor: theme.textColor,
+      activeShadow: theme.menuActiveShadow,
+      activeHoverBg: theme.activeMenuHoverBg,
+      activeIconBg: theme.useDarkText ? "rgba(92, 22, 56, 0.14)" : "whiteAlpha.300",
+      activeChevronColor: theme.useDarkText ? theme.subtextColor : "whiteAlpha.800",
+    }),
+    [theme]
+  );
+
   return (
     <>
       <IconButton
         ref={btnRef}
-        icon={<HamburgerIcon boxSize={{ base: 5, md: 6 }} color="white" />}
+        icon={<HamburgerIcon boxSize={{ base: 4, sm: 5, md: 6 }} color={iconColor} />}
         variant="ghost"
         borderRadius="full"
-        w={{ base: "42px", md: "48px" }}
-        h={{ base: "42px", md: "48px" }}
-        _hover={{ bg: "whiteAlpha.300" }}
-        _active={{ bg: "whiteAlpha.400" }}
+        w={{ base: "30px", sm: "38px", md: "48px" }}
+        h={{ base: "30px", sm: "38px", md: "48px" }}
+        minW={{ base: "30px", sm: "38px", md: "48px" }}
+        _hover={{ bg: hoverBg || "whiteAlpha.300" }}
+        _active={{ bg: hoverBg || "whiteAlpha.400" }}
         onClick={(e) => {
           e.currentTarget?.blur();
           onOpen();
@@ -297,8 +326,9 @@ export function LateralMenu() {
           {/* Header con perfil integrado optimizado para GPU */}
           <DrawerHeader p={0} flexShrink={0}>
             <Box
-              bg="#126C36"
-              boxShadow="0 6px 20px rgba(18, 108, 54, 0.3)"
+              bg={theme.baseBg}
+              bgImage={theme.mainBg}
+              boxShadow={theme.drawerBoxShadow || theme.boxShadow}
               px={5}
               pt={5}
               pb={6}
@@ -311,48 +341,17 @@ export function LateralMenu() {
                 transform: "translateZ(0)"
               }}
             >
-              {/* Capa de Imagen de Fondo de Marca */}
-              <Box
-                position="absolute"
-                top={0}
-                left={0}
-                right={0}
-                bottom={0}
-                bgImage="url('/assets/header-brand-bg.webp')"
-                bgPosition="center center"
-                bgSize="cover"
-                bgRepeat="no-repeat"
+              {/* Capa de Marca de Agua + Esferas decorativas */}
+              <HeaderBrandWatermark
+                theme={theme}
+                variant="drawer"
                 opacity={0.35}
-                pointerEvents="none"
-              />
-
-              {/* Decoraciones en verde #278847 */}
-              <Box
-                position="absolute"
-                top="-30px"
-                right="-30px"
-                w="130px"
-                h="130px"
-                borderRadius="full"
-                bg="#278847"
-                opacity={0.7}
-                pointerEvents="none"
-              />
-              <Box
-                position="absolute"
-                bottom="-15px"
-                left="-15px"
-                w="70px"
-                h="70px"
-                borderRadius="full"
-                bg="#278847"
-                opacity={0.4}
-                pointerEvents="none"
+                showCircles={true}
               />
 
               {/* Botón Cerrar */}
               <IconButton
-                icon={<CloseIcon boxSize={3} color="white" />}
+                icon={<CloseIcon boxSize={3} color={theme.textColor} />}
                 variant="ghost"
                 size="sm"
                 borderRadius="full"
@@ -360,7 +359,7 @@ export function LateralMenu() {
                 top={3}
                 right={3}
                 zIndex={2}
-                _hover={{ bg: "whiteAlpha.300" }}
+                _hover={{ bg: theme.glassHoverBg || "whiteAlpha.300" }}
                 onClick={onClose}
                 aria-label="Cerrar menú"
                 sx={{
@@ -384,17 +383,17 @@ export function LateralMenu() {
                     w="100%"
                     h="100%"
                     borderRadius="full"
-                    bg="green.100"
+                    bg={theme.avatarBg}
                     align="center"
                     justify="center"
                     overflow="hidden"
                   >
-                    <Icon as={MdPerson} color="green.700" boxSize={8} />
+                    <Icon as={MdPerson} color={theme.avatarIconColor} boxSize={8} />
                   </Flex>
                 </Box>
                 <VStack align="start" spacing={0.5} overflow="hidden">
                   <Text
-                    color="white"
+                    color={theme.textColor}
                     fontWeight="800"
                     fontSize="16px"
                     noOfLines={1}
@@ -403,8 +402,8 @@ export function LateralMenu() {
                     {username || 'Usuario'}
                   </Text>
                   <Badge
-                    bg="whiteAlpha.300"
-                    color="white"
+                    bg={theme.badgeBg || theme.glassBg}
+                    color={theme.textColor}
                     fontSize="10px"
                     px={2}
                     py={0.5}
@@ -437,7 +436,7 @@ export function LateralMenu() {
             <VStack spacing={4} align="stretch" pb={2}>
               {/* SECCIÓN 1: Aplicación */}
               <Box>
-                <SectionLabel icon color="green">Aplicación</SectionLabel>
+                <SectionLabel icon color={appAccentColor}>Aplicación</SectionLabel>
                 <VStack spacing={1} align="stretch">
                   {filteredAppOptions.map((opt) => (
                     <MenuItemRow
@@ -447,7 +446,10 @@ export function LateralMenu() {
                       path={opt.path}
                       external={opt.external}
                       isActive={!opt.external && location.pathname === opt.path}
-                      accentColor="green"
+                      accentColor={appAccentColor}
+                      customIconBg={appIconBg}
+                      customIconColor={appIconColor}
+                      {...activeRowThemeProps}
                       onClick={() => handleItemClick(opt.path, opt.external)}
                     />
                   ))}
@@ -467,6 +469,7 @@ export function LateralMenu() {
                       external={opt.external}
                       isActive={!opt.external && location.pathname === opt.path}
                       accentColor="blue"
+                      {...activeRowThemeProps}
                       onClick={() => handleItemClick(opt.path, opt.external)}
                     />
                   ))}
@@ -487,6 +490,7 @@ export function LateralMenu() {
                         external={opt.external}
                         isActive={!opt.external && location.pathname === opt.path}
                         accentColor="purple"
+                        {...activeRowThemeProps}
                         onClick={() => handleItemClick(opt.path, opt.external)}
                       />
                     ))}

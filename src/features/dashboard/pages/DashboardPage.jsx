@@ -26,6 +26,7 @@ import { es } from "date-fns/locale";
 import { Calendar, RotateCcw, UserCheck } from "lucide-react";
 
 import { useAuthStore } from "../../../features/auth/stores/useAuthStore";
+import { useHeaderTheme } from "../../../hooks/useHeaderTheme";
 import { useHasAccess, useIsAdmin } from "../../../shared/utils/permissions";
 import { useIsFetching } from "@tanstack/react-query";
 import {
@@ -70,6 +71,8 @@ export function DashboardPage() {
   const navigate = useNavigate();
 
   const { salesEmployeeCode, username } = useAuthStore();
+  const { theme } = useHeaderTheme();
+  const isGreen = !theme?.key || theme.key === "green";
   const carouselRef = useRef(null);
   const [activeCardIndex, setActiveCardIndex] = useState(0);
 
@@ -280,7 +283,7 @@ export function DashboardPage() {
         <Progress
           size="xs"
           isIndeterminate
-          colorScheme="green"
+          colorScheme={isGreen ? "green" : (theme?.accentColorScheme || "green")}
           position="fixed"
           top={0}
           left={0}
@@ -303,17 +306,17 @@ export function DashboardPage() {
       </TopHeaderBanner>
 
       {/* Sección Principales Métricas */}
-      <Box maxW="1200px" mx="auto" px={{ base: 2.5, sm: 3.5, md: 4 }} py={{ base: 4, md: 6 }}>
+      <Box maxW="1200px" mx="auto" px={{ base: 2, sm: 3.5, md: 4 }} py={{ base: 1.5, md: 6 }}>
         {/* Barra Superior de Filtros y Selección de Período Comercial (Concedido por Permisos o Admin) */}
         {canViewCommercialPeriod && (
           <Box
             bg="white"
-            p={{ base: 3, sm: 3.5, md: 4 }}
-            borderRadius="2xl"
+            p={{ base: 2, sm: 3, md: 4 }}
+            borderRadius={{ base: "xl", md: "2xl" }}
             boxShadow="sm"
             border="1px solid"
             borderColor="gray.100"
-            mb={6}
+            mb={{ base: 2.5, md: 6 }}
             w="full"
           >
             {/* VISTA DESKTOP (lg y superior: todo en 1 fila elegante) */}
@@ -325,7 +328,12 @@ export function DashboardPage() {
               w="full"
             >
               <HStack spacing={3}>
-                <Box p={2.5} borderRadius="xl" bg="green.50" color="green.700">
+                <Box
+                  p={2.5}
+                  borderRadius="xl"
+                  bg={isCurrentMonthView ? (isGreen ? "green.50" : (theme?.accentLightBg || "green.50")) : "gray.100"}
+                  color={isCurrentMonthView ? (isGreen ? "green.700" : (theme?.accentTextColor || "green.700")) : "gray.600"}
+                >
                   <Calendar size={20} />
                 </Box>
                 <VStack align="start" spacing={0}>
@@ -333,7 +341,13 @@ export function DashboardPage() {
                     <Text fontWeight="800" fontSize="sm" color="gray.800">
                       Período Comercial
                     </Text>
-                    <Badge colorScheme={isCurrentMonthView ? "green" : "blue"} borderRadius="full" px={2.5} py={0.5} fontSize="xs">
+                    <Badge
+                      colorScheme={isCurrentMonthView ? (isGreen ? "green" : (theme?.accentColorScheme || "green")) : "blue"}
+                      borderRadius="full"
+                      px={2.5}
+                      py={0.5}
+                      fontSize="xs"
+                    >
                       {isCurrentMonthView ? "Mes Actual" : `${MONTH_NAMES[selectedMonth - 1]} ${selectedYear}`}
                     </Badge>
                   </HStack>
@@ -352,7 +366,9 @@ export function DashboardPage() {
                     fontSize="xs"
                     fontWeight="700"
                     variant={isCurrentMonthView ? "solid" : "outline"}
-                    colorScheme="green"
+                    colorScheme={isGreen ? "green" : (theme?.accentColorScheme || "green")}
+                    bg={isCurrentMonthView ? (isGreen ? undefined : (theme?.accentColor || undefined)) : undefined}
+                    _hover={isCurrentMonthView && !isGreen ? { bg: theme?.accentHoverColor || theme?.accentColor } : undefined}
                     borderRadius="xl"
                     onClick={handleSelectCurrentMonth}
                   >
@@ -427,51 +443,65 @@ export function DashboardPage() {
               </HStack>
             </Flex>
 
-            {/* VISTA MÓVIL Y TABLET (base a md: orden vertical sin desbordamiento) */}
+            {/* VISTA MÓVIL Y TABLET (base a md: orden vertical compacto y estilizado) */}
             <VStack
               display={{ base: "flex", lg: "none" }}
-              spacing={2.5}
+              spacing={1.5}
               align="stretch"
               w="full"
             >
               {/* Encabezado: Título + Badge */}
               <Flex justify="space-between" align="center" gap={2}>
-                <HStack spacing={2}>
-                  <Box p={1.5} borderRadius="lg" bg="green.50" color="green.700">
-                    <Calendar size={16} />
+                <HStack spacing={1.5}>
+                  <Box
+                    p={1}
+                    borderRadius="md"
+                    bg={isCurrentMonthView ? (isGreen ? "green.50" : (theme?.accentLightBg || "green.50")) : "gray.100"}
+                    color={isCurrentMonthView ? (isGreen ? "green.700" : (theme?.accentTextColor || "green.700")) : "gray.600"}
+                  >
+                    <Calendar size={13} />
                   </Box>
-                  <Text fontWeight="800" fontSize="xs" color="gray.800">
+                  <Text fontWeight="800" fontSize="11px" color="gray.800">
                     Período Comercial
                   </Text>
                 </HStack>
-                <Badge colorScheme={isCurrentMonthView ? "green" : "blue"} borderRadius="full" px={2} py={0.5} fontSize="10px" fontWeight="800">
+                <Badge
+                  colorScheme={isCurrentMonthView ? (isGreen ? "green" : (theme?.accentColorScheme || "green")) : "blue"}
+                  borderRadius="full"
+                  px={2}
+                  py={0.2}
+                  fontSize="9.5px"
+                  fontWeight="800"
+                >
                   {isCurrentMonthView ? "Mes Actual" : `${MONTH_NAMES[selectedMonth - 1]} ${selectedYear}`}
                 </Badge>
               </Flex>
 
               {/* Fila 1: Botones Mes Actual / Mes Anterior (50% cada uno) */}
-              <Grid templateColumns="repeat(2, 1fr)" gap={2} w="full">
+              <Grid templateColumns="repeat(2, 1fr)" gap={1.5} w="full">
                 <Button
                   size="xs"
-                  h="34px"
-                  fontSize="11px"
+                  h="28px"
+                  fontSize="10.5px"
                   fontWeight="700"
                   variant={isCurrentMonthView ? "solid" : "outline"}
-                  colorScheme="green"
-                  borderRadius="lg"
+                  colorScheme={isGreen ? "green" : (theme?.accentColorScheme || "green")}
+                  bg={isCurrentMonthView ? (isGreen ? undefined : (theme?.accentColor || undefined)) : undefined}
+                  _hover={isCurrentMonthView && !isGreen ? { bg: theme?.accentHoverColor || theme?.accentColor } : undefined}
+                  borderRadius="md"
                   onClick={handleSelectCurrentMonth}
                 >
                   Mes Actual
                 </Button>
                 <Button
                   size="xs"
-                  h="34px"
-                  fontSize="11px"
+                  h="28px"
+                  fontSize="10.5px"
                   fontWeight="700"
                   variant={!isCurrentMonthView ? "solid" : "outline"}
                   colorScheme="blue"
-                  borderRadius="lg"
-                  leftIcon={<RotateCcw size={12} />}
+                  borderRadius="md"
+                  leftIcon={<RotateCcw size={11} />}
                   onClick={handleSelectPrevMonth}
                 >
                   Mes Anterior
@@ -479,14 +509,14 @@ export function DashboardPage() {
               </Grid>
 
               {/* Fila 2: Selectores de Mes y Año en móvil */}
-              <Grid templateColumns="1.3fr 1fr" gap={2} w="full">
+              <Grid templateColumns="1.3fr 1fr" gap={1.5} w="full">
                 <Select
-                  size="sm"
-                  h="34px"
-                  borderRadius="lg"
+                  size="xs"
+                  h="28px"
+                  borderRadius="md"
                   bg="gray.50"
                   borderColor="gray.200"
-                  fontSize="11px"
+                  fontSize="10.5px"
                   fontWeight="600"
                   value={adminMonth}
                   onChange={(e) => setAdminMonth(Number(e.target.value))}
@@ -496,12 +526,12 @@ export function DashboardPage() {
                   ))}
                 </Select>
                 <Select
-                  size="sm"
-                  h="34px"
-                  borderRadius="lg"
+                  size="xs"
+                  h="28px"
+                  borderRadius="md"
                   bg="gray.50"
                   borderColor="gray.200"
-                  fontSize="11px"
+                  fontSize="10.5px"
                   fontWeight="600"
                   value={adminYear}
                   onChange={(e) => handleAdminYearChange(Number(e.target.value))}
@@ -514,7 +544,7 @@ export function DashboardPage() {
 
               {/* Fila 3: Selector de Vendedor (100% de ancho en móvil) */}
               {canFilterSellers && (
-                <Box w="full">
+                <Box w="full" mt={0.5}>
                   <SellerSelect
                     selectedSeller={selectedSellerOption}
                     setSelectedSeller={(sel) => {
@@ -600,8 +630,8 @@ export function DashboardPage() {
                 onScroll={handleScroll}
                 overflowX="auto"
                 scrollSnapType="x mandatory"
-                gap={3.5}
-                py={2}
+                gap={{ base: 1.5, sm: 3.5 }}
+                py={{ base: 0.5, md: 2 }}
                 px={1}
                 sx={{
                   "&::-webkit-scrollbar": { display: "none" },
@@ -620,8 +650,9 @@ export function DashboardPage() {
                 </Box>
               </Flex>
 
-              {/* Flecha circular flotante izquierda */}
+              {/* Flechas circulares flotantes (solo visibles en pantallas táctiles más anchas / PC) */}
               <IconButton
+                display={{ base: "none", sm: "flex" }}
                 aria-label="Anterior"
                 icon={<ChevronLeftIcon w={6} h={6} />}
                 position="absolute"
@@ -640,8 +671,8 @@ export function DashboardPage() {
                 opacity={activeCardIndex === 0 ? 0.3 : 1}
               />
 
-              {/* Flecha circular flotante derecha */}
               <IconButton
+                display={{ base: "none", sm: "flex" }}
                 aria-label="Siguiente"
                 icon={<ChevronRightIcon w={6} h={6} />}
                 position="absolute"
@@ -661,14 +692,14 @@ export function DashboardPage() {
               />
 
               {/* Dots indicadores de tarjeta activa */}
-              <HStack justify="center" spacing={2} mt={3}>
+              <HStack justify="center" spacing={1.5} mt={{ base: 0.5, md: 3 }}>
                 {[0, 1, 2].map((idx) => (
                   <Box
                     key={idx}
-                    w={activeCardIndex === idx ? "20px" : "8px"}
-                    h="8px"
+                    w={activeCardIndex === idx ? "16px" : "6px"}
+                    h="6px"
                     borderRadius="full"
-                    bg={activeCardIndex === idx ? "green.600" : "gray.300"}
+                    bg={activeCardIndex === idx ? (isGreen ? "green.600" : (theme?.accentColor || "green.600")) : "gray.300"}
                     transition="all 0.3s"
                     cursor="pointer"
                     onClick={() => scrollToCard(idx)}

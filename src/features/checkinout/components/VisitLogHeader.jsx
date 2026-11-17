@@ -35,7 +35,7 @@ export function VisitLogHeader() {
             title="Registro de Visita"
             subtitle="Control de entradas, salidas y ubicación del vendedor"
             showBack={true}
-            mb={6}
+            mb={{ base: 2.5, md: 6 }}
         />
     );
 }

@@ -9,10 +9,14 @@ import {
 } from "@chakra-ui/react";
 import { TrendingUp, Target, Award, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
+import { useHeaderTheme } from "../../../hooks/useHeaderTheme";
 
 const MotionBox = motion(Box);
 
 export function SalesSummary({ data }) {
+  const { theme } = useHeaderTheme();
+  const isGreen = !theme?.key || theme.key === "green";
+
   if (!data) return null;
 
   const formatCurrency = (value) =>
@@ -128,11 +132,11 @@ export function SalesSummary({ data }) {
       whileHover={{ y: -3 }}
       transition={{ duration: 0.2 }}
       bg="white"
-      borderRadius="3xl"
-      p={{ base: 4, md: 6 }}
+      borderRadius={{ base: "xl", md: "3xl" }}
+      p={{ base: 3.5, sm: 4, md: 6 }}
       w="full"
-      h={{ base: "225px", md: "245px" }}
-      minH={{ base: "220px", md: "245px" }}
+      h={{ base: "192px", sm: "205px", md: "245px" }}
+      minH={{ base: "188px", sm: "200px", md: "245px" }}
       display="flex"
       flexDirection="column"
       justifyContent="space-between"
@@ -150,8 +154,8 @@ export function SalesSummary({ data }) {
         position="absolute"
         top="-20px"
         right="-20px"
-        w="105px"
-        h="105px"
+        w={{ base: "75px", md: "105px" }}
+        h={{ base: "75px", md: "105px" }}
         borderRadius="full"
         bg="#fffbf0"
         opacity={0.85}
@@ -161,8 +165,13 @@ export function SalesSummary({ data }) {
       {/* Header */}
       <Flex justify="space-between" align="center">
         <HStack spacing={2}>
-          <Box p={2} borderRadius="xl" bg="emerald.50" color="emerald.600">
-            <Icon as={TrendingUp} boxSize={5} />
+          <Box
+            p={{ base: 1.5, md: 2 }}
+            borderRadius="xl"
+            bg={isGreen ? "emerald.50" : (theme?.accentLightBg || "emerald.50")}
+            color={isGreen ? "emerald.600" : (theme?.accentTextColor || "emerald.600")}
+          >
+            <Icon as={TrendingUp} boxSize={{ base: 4, md: 5 }} />
           </Box>
           <Text fontSize="xs" color="gray.500" fontWeight="bold" textTransform="uppercase" letterSpacing="wider">
             Avance de Ventas
@@ -177,12 +186,12 @@ export function SalesSummary({ data }) {
       </Flex>
 
       {/* Valor principal */}
-      <VStack align="start" spacing={0} my={1}>
-        <Text fontSize={{ base: "xl", sm: "2xl", md: "3xl" }} fontWeight="900" color="gray.800" lineHeight="1" letterSpacing="tight">
+      <VStack align="start" spacing={0} my={{ base: 0.5, md: 1 }}>
+        <Text fontSize={{ base: "2xl", sm: "2xl", md: "3xl" }} fontWeight="900" color="gray.800" lineHeight="1" letterSpacing="tight">
           ${pedidos}
         </Text>
-        <Text fontSize={{ base: "11px", sm: "xs" }} color="gray.400" mt={1} fontWeight="medium">
-          Venta de hoy: <Text as="span" color="emerald.600" fontWeight="bold">${ventasHoy}</Text>
+        <Text fontSize={{ base: "xs", sm: "xs" }} color="gray.400" mt={1} fontWeight="medium">
+          Venta de hoy: <Text as="span" color={isGreen ? "emerald.600" : (theme?.accentTextColor || "emerald.600")} fontWeight="bold">${ventasHoy}</Text>
         </Text>
       </VStack>
 
@@ -191,7 +200,7 @@ export function SalesSummary({ data }) {
         <Flex justify="space-between" align="center" mb={1.5}>
           <HStack spacing={1}>
             <Icon as={Target} boxSize={3.5} color="gray.400" />
-            <Text fontSize={{ base: "10.5px", sm: "xs" }} color="gray.500" fontWeight="semibold">
+            <Text fontSize={{ base: "11px", sm: "xs" }} color="gray.500" fontWeight="semibold">
               {Number(data.CUOTA_MES_USD || 0) > 0 ? `Meta: $${cuota}` : "Meta SAP: Sin asignar ($0.00)"}
             </Text>
           </HStack>
@@ -214,11 +223,11 @@ export function SalesSummary({ data }) {
       </Box>
 
       {/* Estado motivacional */}
-      <Flex justify="space-between" align="center" pt={1}>
+      <Flex justify="space-between" align="center" pt={0.5}>
         <Badge
           borderRadius="full"
           px={{ base: 2, sm: 3 }}
-          py={1}
+          py={{ base: 0.5, md: 1 }}
           fontSize={{ base: "10px", sm: "11px", md: "xs" }}
           fontWeight="bold"
           bg={badgeStyle.bg}

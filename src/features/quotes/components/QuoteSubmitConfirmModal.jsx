@@ -63,7 +63,7 @@ export default function QuoteSubmitConfirmModal({
       scrollBehavior="inside"
       motionPreset="slideInBottom"
     >
-      <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(3px)" />
+      <ModalOverlay bg="blackAlpha.600" />
       <ModalContent
         borderRadius={{ base: "xl", sm: "2xl" }}
         border={isAdminApproval ? "2px solid #0f5132" : "2px solid #16a34a"}
@@ -230,7 +230,7 @@ export default function QuoteSubmitConfirmModal({
           gap={2.5}
           p={{ base: 3, sm: 4 }}
           pb={{ base: "calc(env(safe-area-inset-bottom, 0px) + 12px)", sm: 4 }}
-          direction={{ base: "column-reverse", sm: "row" }}
+          flexDirection={{ base: "column-reverse", sm: "row" }}
         >
           <Button
             variant="outline"

@@ -162,17 +162,19 @@ export function HistoryQuotesPage() {
   };
 
   return (
-    <Box w="full" minH="100vh" bg="gray.50" pb="100px">
+    <Box w="full" maxW="100%" overflowX="clip" minH="100vh" bg="gray.50" pb="100px">
       <TopHeaderBanner
         title="Gestión de Cotizaciones"
         titleExtra={<SapEnvironmentBadge />}
         subtitle={`Centro Unificado de Creación, Historial y Aprobaciones • ${today.charAt(0).toUpperCase() + today.slice(1)}`}
         showBack={true}
         showExchangeRate={false}
+        minH={{ base: "112px", sm: "136px", md: "200px" }}
+        mb={{ base: 2, md: 5 }}
       />
 
-      <Box maxW="1200px" mx="auto" px={{ base: 3, md: 6 }}>
-        <VStack align="stretch" spacing={6}>
+      <Box maxW="1200px" w="full" minW={0} mx="auto" px={{ base: 2.5, sm: 3, md: 6 }}>
+        <VStack align="stretch" spacing={{ base: 2.5, md: 5 }} w="full" minW={0}>
 
 
 
@@ -182,23 +184,34 @@ export function HistoryQuotesPage() {
             direction={{ base: "column", lg: "row" }}
             justify="space-between"
             bg="white"
-            p={{ base: 4, md: 5 }}
-            borderRadius="2xl"
+            p={{ base: 2.5, sm: 3.5, md: 5 }}
+            borderRadius={{ base: "xl", md: "2xl" }}
             border="1px solid"
             borderColor="gray.200"
             boxShadow="sm"
-            gap={4}
+            gap={{ base: 2.5, md: 4 }}
+            w="full"
+            minW={0}
           >
-            <HStack spacing={3} minW={0}>
-              <Flex w="42px" h="42px" minW="42px" borderRadius="xl" bg="emerald.50" align="center" justify="center" color="emerald.700">
-                <FileText className="w-6 h-6" />
+            <HStack spacing={{ base: 2.5, md: 3 }} minW={0} w="full">
+              <Flex
+                w={{ base: "32px", md: "42px" }}
+                h={{ base: "32px", md: "42px" }}
+                minW={{ base: "32px", md: "42px" }}
+                borderRadius={{ base: "lg", md: "xl" }}
+                bg="emerald.50"
+                align="center"
+                justify="center"
+                color="emerald.700"
+              >
+                <FileText className="w-4 h-4 md:w-6 md:h-6" />
               </Flex>
-              <Box minW={0}>
-                <Heading size={{ base: "sm", md: "md" }} color="emerald.900" fontWeight="900">
+              <Box minW={0} flex="1">
+                <Heading fontSize={{ base: "13px", sm: "md", md: "lg" }} color="emerald.900" fontWeight="900" lineHeight="1.2">
                   Módulo Integrado de Cotizaciones
                 </Heading>
-                <Text fontSize={{ base: "11px", md: "xs" }} color="gray.500">
-                  Creación inmediata, historial de borradores y seguimiento por Stepper comercial
+                <Text fontSize={{ base: "10px", md: "xs" }} color="gray.500" lineHeight="1.2" noOfLines={{ base: 1, md: 2 }}>
+                  Creación inmediata, historial de borradores y seguimiento comercial
                 </Text>
               </Box>
             </HStack>
@@ -206,9 +219,10 @@ export function HistoryQuotesPage() {
             <Flex
               direction={{ base: "column", sm: "row" }}
               align="center"
-              gap={3}
+              gap={{ base: 2, md: 3 }}
               w={{ base: "full", lg: "auto" }}
-              flexShrink={0}
+              flexShrink={{ base: 1, lg: 0 }}
+              minW={0}
             >
               {canManagePromotions && (
                 <Button
@@ -218,9 +232,11 @@ export function HistoryQuotesPage() {
                   borderColor="#f59e0b"
                   _hover={{ bg: "#fde68a", transform: "translateY(-1px)", boxShadow: "0 4px 14px rgba(245, 158, 11, 0.25)" }}
                   _active={{ bg: "#fcd34d" }}
-                  size="md"
+                  size={{ base: "xs", sm: "md" }}
+                  h={{ base: "34px", sm: "40px" }}
+                  fontSize={{ base: "11px", sm: "sm" }}
                   w={{ base: "full", sm: "auto" }}
-                  leftIcon={<Tag className="w-4 h-4 text-amber-700" />}
+                  leftIcon={<Tag className="w-3.5 h-3.5 md:w-4 md:h-4 text-amber-700" />}
                   onClick={() => setIsPromoModalOpen(true)}
                   boxShadow="xs"
                   fontWeight="800"
@@ -238,6 +254,8 @@ export function HistoryQuotesPage() {
                   _hover={{ bg: "#0e572b", transform: "translateY(-1px)", boxShadow: "0 6px 18px rgba(18, 108, 54, 0.35)" }}
                   _active={{ bg: "#0a3f1f" }}
                   size="md"
+                  h={{ base: "46px", md: "44px" }}
+                  fontSize={{ base: "15px", md: "sm" }}
                   w={{ base: "full", sm: "auto" }}
                   whiteSpace="nowrap"
                   leftIcon={<Plus className="w-4 h-4 stroke-[3]" />}
@@ -246,7 +264,7 @@ export function HistoryQuotesPage() {
                     navigate("/newquotes");
                   }}
                   boxShadow="0 4px 14px rgba(18, 108, 54, 0.3)"
-                  fontWeight="800"
+                  fontWeight="900"
                   borderRadius="xl"
                 >
                   Crear Nueva Cotización
@@ -256,7 +274,17 @@ export function HistoryQuotesPage() {
           </Flex>
 
           {/* VISTA UNIFICADA DE SEGUIMIENTO Y BORRADORES */}
-          <Box bg="white" p={{ base: 2, md: 4 }} borderRadius="2xl" border="1px solid" borderColor="gray.200" boxShadow="sm">
+          <Box
+            bg={{ base: "transparent", md: "white" }}
+            p={{ base: 0, md: 4 }}
+            borderRadius={{ base: "none", md: "2xl" }}
+            borderWidth={{ base: 0, md: "1px" }}
+            borderColor="gray.200"
+            boxShadow={{ base: "none", md: "sm" }}
+            w="full"
+            minW={0}
+            overflowX="clip"
+          >
             <QuoteApprovalPage />
           </Box>
         </VStack>

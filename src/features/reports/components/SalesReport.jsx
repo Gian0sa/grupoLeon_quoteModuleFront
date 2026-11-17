@@ -27,7 +27,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Filter, RefreshCw, Search, X } from "lucide-react";
 
 import FiltersWithSummary from "./FilterWithSummary";
-import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
+import { TopHeaderBanner, HEADER_GLASS_PANEL_PROPS } from "../../../components/TopHeaderBanner";
 import OrdenesLista from "./OrdersList";
 import Pagination from "../../../components/Pagination";
 import ModalSeguimiento from "./ModalSeguimiento";
@@ -176,17 +176,83 @@ export default function SalespersonReports({ salespersonId }) {
         showBack={true}
         refreshQueries={refreshQueries}
       >
-        {/* Fila inferior: Selector de Asesor (si tiene acceso) */}
-        {hasAccess("GET:/sellers") && (
-          <Box w="full" maxW={{ base: "100%", md: "360px" }} pt={1}>
-            <SellerSelectReport
-              selectedSeller={selectedSeller}
-              setSelectedSeller={setSelectedSeller}
-              setValue={() => {}}
-              error={null}
-            />
+        <Flex direction={{ base: "column", md: "row" }} gap={{ base: 1.5, md: 3 }} align={{ base: "stretch", md: "center" }} w="full">
+          {/* Selector de Asesor (si tiene acceso) */}
+          {hasAccess("GET:/sellers") && (
+            <Box w="full" maxW={{ base: "100%", md: "320px" }}>
+              <SellerSelectReport
+                selectedSeller={selectedSeller}
+                setSelectedSeller={setSelectedSeller}
+                setValue={() => {}}
+                error={null}
+              />
+            </Box>
+          )}
+
+          {/* Panel de vidrio: Buscador Rápido + Botón Filtros integrado al header */}
+          <Box
+            {...HEADER_GLASS_PANEL_PROPS}
+            p={{ base: 1, md: 2 }}
+            borderRadius={{ base: "xl", md: "2xl" }}
+            flex={1}
+          >
+            <Flex gap={{ base: 1.5, md: 2 }} align="center" w="full">
+              <InputGroup size={{ base: "xs", md: "sm" }} flex={1}>
+                <InputLeftElement pointerEvents="none" h={{ base: "30px", md: "38px" }}>
+                  <Search size={14} color="#16a34a" />
+                </InputLeftElement>
+                <Input
+                  value={searchTerm}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  placeholder="Buscar por cliente, RUC, DNI o N° orden..."
+                  bg="white"
+                  color="gray.800"
+                  borderRadius="full"
+                  h={{ base: "30px", md: "38px" }}
+                  fontSize={{ base: "12px", md: "13px" }}
+                  fontWeight="600"
+                  _placeholder={{ color: "gray.400" }}
+                  _focus={{
+                    borderColor: "emerald.500",
+                    boxShadow: "0 0 0 2px rgba(16, 185, 129, 0.2)",
+                  }}
+                />
+                {searchTerm && (
+                  <InputRightElement h={{ base: "30px", md: "38px" }}>
+                    <IconButton
+                      size="xs"
+                      variant="ghost"
+                      borderRadius="full"
+                      icon={<X size={13} />}
+                      aria-label="Limpiar búsqueda"
+                      onClick={() => handleSearchChange("")}
+                      _hover={{ bg: "gray.100" }}
+                    />
+                  </InputRightElement>
+                )}
+              </InputGroup>
+
+              <Button
+                ref={btnRef}
+                leftIcon={<Filter size={14} />}
+                size="sm"
+                h={{ base: "30px", md: "38px" }}
+                bg="white"
+                color="#0d522c"
+                borderRadius="full"
+                fontWeight="800"
+                fontSize={{ base: "11px", md: "12px" }}
+                onClick={openDrawer}
+                boxShadow="0 2px 8px rgba(0,0,0,0.12)"
+                px={{ base: 2.5, md: 4 }}
+                flexShrink={0}
+                _hover={{ bg: "gray.100" }}
+              >
+                Filtros
+              </Button>
+            </Flex>
           </Box>
-        )}
+        </Flex>
       </TopHeaderBanner>
 
       {/* CUERPO: FILTROS + BUSCADOR + GRILLA DE ÓRDENES */}
@@ -215,14 +281,13 @@ export default function SalespersonReports({ salespersonId }) {
           }}
         />
 
-        {/* BARRA SUPERIOR: Contador + Buscador Rápido + Botón Filtros */}
+        {/* BARRA SUPERIOR: Contador */}
         <Flex
-          direction={{ base: "column", md: "row" }}
           justify="space-between"
-          align={{ base: "stretch", md: "center" }}
-          py={3}
-          mb={3}
-          gap={3}
+          align="center"
+          py={{ base: 2, md: 3 }}
+          mb={{ base: 2, md: 3 }}
+          gap={2}
         >
           <HStack spacing={2} minW="fit-content">
             <Text textStyle="cardTitle" color="gray.800" fontWeight="800">
@@ -261,63 +326,6 @@ export default function SalespersonReports({ salespersonId }) {
               </Badge>
             )}
           </HStack>
-
-          {/* Buscador Rápido Multi-criterio */}
-          <Flex gap={2.5} align="center" flex={{ md: 1 }} justify={{ md: "flex-end" }} maxW={{ md: "520px" }}>
-            <InputGroup size="sm" flex={1}>
-              <InputLeftElement pointerEvents="none">
-                <Search size={15} color="#16a34a" />
-              </InputLeftElement>
-              <Input
-                value={searchTerm}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                placeholder="Buscar por cliente, RUC, DNI o N° orden (#19852)..."
-                bg="white"
-                borderRadius="full"
-                borderColor="gray.200"
-                fontSize="13px"
-                fontWeight="600"
-                boxShadow="xs"
-                _focus={{
-                  borderColor: "emerald.500",
-                  boxShadow: "0 0 0 2px rgba(16, 185, 129, 0.2)",
-                }}
-                _hover={{ borderColor: "gray.300" }}
-              />
-              {searchTerm && (
-                <InputRightElement>
-                  <IconButton
-                    size="xs"
-                    variant="ghost"
-                    borderRadius="full"
-                    icon={<X size={13} />}
-                    aria-label="Limpiar búsqueda"
-                    onClick={() => handleSearchChange("")}
-                    _hover={{ bg: "gray.100" }}
-                  />
-                </InputRightElement>
-              )}
-            </InputGroup>
-
-            <Button
-              ref={btnRef}
-              leftIcon={<Filter size={15} />}
-              variant="outline"
-              size="sm"
-              colorScheme="green"
-              borderRadius="full"
-              fontWeight="800"
-              fontSize="12px"
-              onClick={openDrawer}
-              boxShadow="xs"
-              bg="white"
-              px={3.5}
-              flexShrink={0}
-              _hover={{ bg: "emerald.50", borderColor: "emerald.400" }}
-            >
-              Filtros
-            </Button>
-          </Flex>
         </Flex>
 
         {/* DRAWER DE FILTROS */}

@@ -84,7 +84,7 @@ export function Profile() {
         title="Mi Perfil"
         subtitle="Gestión de usuario y cambio de contraseña"
         showBack={true}
-        mb={{ base: 4, md: 8 }}
+        mb={{ base: 2.5, md: 8 }}
       />
 
       <Box maxW="1100px" mx="auto" px={{ base: 4, md: 6 }}>
