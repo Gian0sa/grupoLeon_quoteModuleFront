@@ -113,7 +113,7 @@ export function TopProductsCard({ year, month, sellerCode, sellerName, canFilter
     return "GENÉRICO";
   };
 
-  const itemCount = useBreakpointValue({ base: 3, lg: 3 }) || 3;
+  const itemCount = useBreakpointValue({ base: 3, md: 4, lg: 4 }) || 3;
 
   // 2. Construir lista final con Nombres y Métricas Reales directo de SAP
   const displayProducts = useMemo(() => {
@@ -168,11 +168,12 @@ export function TopProductsCard({ year, month, sellerCode, sellerName, canFilter
   const getRankBadge = (idx) => {
     if (isSeller) {
       const ranks = [
-        { labelDesktop: "🥇 #1 MÁS VENDIDO MES", labelMobile: "🥇 #1 MES", bg: "linear-gradient(135deg, #d97706 0%, #b45309 100%)", color: "white" },
-        { labelDesktop: "🥈 #2 MÁS VENDIDO MES", labelMobile: "🥈 #2 MES", bg: "linear-gradient(135deg, #64748b 0%, #475569 100%)", color: "white" },
-        { labelDesktop: "🥉 #3 MÁS VENDIDO MES", labelMobile: "🥉 #3 MES", bg: "linear-gradient(135deg, #b45309 0%, #78350f 100%)", color: "white" },
+        { labelDesktop: "⭐ #1 MÁS VENDIDO MES", labelMobile: "⭐ #1 MES", bg: "linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)", color: "white" },
+        { labelDesktop: "🥇 #2 MÁS VENDIDO MES", labelMobile: "🥇 #2 MES", bg: "linear-gradient(135deg, #d97706 0%, #b45309 100%)", color: "white" },
+        { labelDesktop: "🥈 #3 MÁS VENDIDO MES", labelMobile: "🥈 #3 MES", bg: "linear-gradient(135deg, #64748b 0%, #475569 100%)", color: "white" },
+        { labelDesktop: "🥉 #4 MÁS VENDIDO MES", labelMobile: "🥉 #4 MES", bg: "linear-gradient(135deg, #b45309 0%, #78350f 100%)", color: "white" },
       ];
-      const rank = ranks[idx] || { labelDesktop: `#${idx + 1} MÁS VENDIDO`, labelMobile: `#${idx + 1}`, bg: "gray.500", color: "white" };
+      const rank = ranks[idx] || { labelDesktop: `#${idx + 1} MÁS VENDIDO`, labelMobile: `#${idx + 1}`, bg: "#475569", color: "white" };
       return (
         <Badge
           style={{ background: rank.bg, color: rank.color }}
@@ -189,11 +190,12 @@ export function TopProductsCard({ year, month, sellerCode, sellerName, canFilter
     }
 
     const adminRanks = [
-      { labelDesktop: "🥇 #1 MÁS VENDIDO EMPRESA", labelMobile: "🥇 #1 GLOBAL", bg: "linear-gradient(135deg, #059669 0%, #047857 100%)", color: "white" },
-      { labelDesktop: "🥈 #2 MÁS VENDIDO EMPRESA", labelMobile: "🥈 #2 GLOBAL", bg: "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)", color: "white" },
-      { labelDesktop: "🥉 #3 MÁS VENDIDO EMPRESA", labelMobile: "🥉 #3 GLOBAL", bg: "linear-gradient(135deg, #64748b 0%, #475569 100%)", color: "white" },
+      { labelDesktop: "⭐ #1 MÁS VENDIDO EMPRESA", labelMobile: "⭐ #1 GLOBAL", bg: "linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)", color: "white" },
+      { labelDesktop: "🥇 #2 MÁS VENDIDO EMPRESA", labelMobile: "🥇 #2 GLOBAL", bg: "linear-gradient(135deg, #059669 0%, #047857 100%)", color: "white" },
+      { labelDesktop: "🥈 #3 MÁS VENDIDO EMPRESA", labelMobile: "🥈 #3 GLOBAL", bg: "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)", color: "white" },
+      { labelDesktop: "🥉 #4 MÁS VENDIDO EMPRESA", labelMobile: "🥉 #4 GLOBAL", bg: "linear-gradient(135deg, #64748b 0%, #475569 100%)", color: "white" },
     ];
-    const rank = adminRanks[idx] || { labelDesktop: `#${idx + 1} MÁS VENDIDO EMPRESA`, labelMobile: `#${idx + 1}`, bg: "gray.500", color: "white" };
+    const rank = adminRanks[idx] || { labelDesktop: `#${idx + 1} MÁS VENDIDO EMPRESA`, labelMobile: `#${idx + 1}`, bg: "#475569", color: "white" };
     return (
       <Badge
         style={{ background: rank.bg, color: rank.color }}
@@ -295,7 +297,7 @@ export function TopProductsCard({ year, month, sellerCode, sellerName, canFilter
         {/* Lista de Productos Automatizada */}
         {isLoading ? (
           <VStack spacing={2} align="stretch" w="100%">
-            {[...Array(3)].map((_, i) => (
+            {[...Array(itemCount)].map((_, i) => (
               <Box
                 key={i}
                 p={2}
