@@ -232,7 +232,10 @@ export function ProductPromotionsModal({ isOpen, onClose }) {
                   />
                 </InputGroup>
 
-                <HStack spacing={2} justify="flex-end">
+                <HStack spacing={2} justify="flex-end" wrap="wrap">
+                  <Badge bg="#eff6ff" color="#1d4ed8" border="1px solid #bfdbfe" px={3} py={1.5} borderRadius="lg" fontSize="xs" fontWeight="800">
+                    Sync automática SAP (2 min)
+                  </Badge>
                   <Badge bg="#ecfdf5" color="#047857" border="1px solid #a7f3d0" px={3} py={1.5} borderRadius="lg" fontSize="xs" fontWeight="800">
                     Ahorro promedio: {avgDiscount}%
                   </Badge>
@@ -251,8 +254,9 @@ export function ProductPromotionsModal({ isOpen, onClose }) {
                     onClick={handleRefreshFromSap}
                     isLoading={isRefreshing || isFetching}
                     loadingText="Sincronizando..."
+                    title="Forzar actualización inmediata sin esperar el ciclo automático"
                   >
-                    Sincronizar SAP
+                    Actualizar ahora
                   </Button>
                 </HStack>
               </Flex>

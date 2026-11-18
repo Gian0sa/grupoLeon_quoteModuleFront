@@ -135,9 +135,11 @@ export const useGetPromotions = () => {
         queryFn: () => fetchActivePromotions(false),
         initialData: getCachedPromotions,
         initialDataUpdatedAt: 0,
-        staleTime: 15 * 60 * 1000,
-        gcTime: 60 * 60 * 1000,
-        refetchOnWindowFocus: false,
+        staleTime: 2 * 60 * 1000,
+        gcTime: 15 * 60 * 1000,
+        refetchInterval: 2 * 60 * 1000,
+        refetchOnWindowFocus: true,
+        refetchOnReconnect: true,
     });
 
     const list = data?.list || [];

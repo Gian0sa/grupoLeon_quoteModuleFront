@@ -40,38 +40,8 @@ export function HistoryQuotesPage() {
 
   const { setQuoteData, setClient, setProducts, setComment, setWhsCode, setContactPerson, setRefNumber } = useQuoteStore();
   const { username, role: authRole } = useAuthStore();
-  const endpoints = useAuthStore((state) => state.endpoints);
-  const [localEndpoints, setLocalEndpoints] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem("endpoints") || "[]");
-    } catch {
-      return [];
-    }
-  });
-
-  const localUser = (localStorage.getItem("username") || localStorage.getItem("userId") || "").toLowerCase();
-  const localRole = (localStorage.getItem("role") || "").toUpperCase();
   const hasAccess = useHasAccess();
   const isAdmin = useIsAdmin();
-
-  // 🛡️ Las promociones y ofertas del mes se muestran ÚNICAMENTE si el usuario
-  // tiene activado explícitamente el permiso "Cotizaciones - Gestionar Ofertas del Mes y Promociones" (POST /promotions).
-  // Si está inactivo o desmarcado en el perfil, el botón se oculta estrictamente sin excepción.
-  const canManagePromotions = useMemo(() => {
-    const list = Array.isArray(endpoints) && endpoints.length > 0 ? endpoints : localEndpoints;
-    return list.some((e) => {
-      if (!e) return false;
-      const str = String(e).trim().toUpperCase();
-      return (
-        str === "POST:/PROMOTIONS" ||
-        str === "POST /PROMOTIONS" ||
-        str === "/PROMOTIONS" ||
-        str === "POST:/QUOTEMODULE/PROMOTIONS" ||
-        str === "POST /QUOTEMODULE/PROMOTIONS" ||
-        str.endsWith("/PROMOTIONS")
-      );
-    });
-  }, [endpoints, localEndpoints]);
 
   const canCreateQuote = isAdmin || hasAccess("POST /quotes") || hasAccess("POST:/quotes");
 
@@ -99,26 +69,14 @@ export function HistoryQuotesPage() {
     }
   };
 
-  const reloadPermissions = () => {
-    try {
-      const stored = JSON.parse(localStorage.getItem("endpoints") || "[]");
-      setLocalEndpoints(stored);
-    } catch (err) {
-      console.error("Error leyendo permisos locales:", err);
-    }
-  };
-
   useEffect(() => {
     reloadLocal();
     reloadNotifications();
-    reloadPermissions();
     window.addEventListener("localQuotesUpdated", reloadLocal);
     window.addEventListener("localNotificationsUpdated", reloadNotifications);
-    window.addEventListener("permissionsUpdated", reloadPermissions);
     return () => {
       window.removeEventListener("localQuotesUpdated", reloadLocal);
       window.removeEventListener("localNotificationsUpdated", reloadNotifications);
-      window.removeEventListener("permissionsUpdated", reloadPermissions);
     };
   }, []);
 
@@ -224,8 +182,7 @@ export function HistoryQuotesPage() {
               flexShrink={{ base: 1, lg: 0 }}
               minW={0}
             >
-              {canManagePromotions && (
-                <Button
+              <Button
                   bg="#fef3c7"
                   color="#92400e"
                   border="1.5px solid"
@@ -245,7 +202,6 @@ export function HistoryQuotesPage() {
                 >
                   Ofertas del Mes{activeCount > 0 ? ` (${activeCount})` : ""}
                 </Button>
-              )}
 
               {canCreateQuote && (
                 <Button
@@ -298,13 +254,11 @@ export function HistoryQuotesPage() {
         onLoadToForm={handleLoadQuote}
       />
 
-      {/* MODAL DE GESTIÓN DE OFERTAS DEL MES */}
-      {canManagePromotions && (
-        <ProductPromotionsModal
-          isOpen={isPromoModalOpen}
-          onClose={() => setIsPromoModalOpen(false)}
-        />
-      )}
+      {/* MODAL DE VISUALIZACIÓN DE OFERTAS DEL MES */}
+      <ProductPromotionsModal
+        isOpen={isPromoModalOpen}
+        onClose={() => setIsPromoModalOpen(false)}
+      />
     </Box>
   );
 }

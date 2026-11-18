@@ -70,12 +70,10 @@ export function useHasAccess() {
     if (!endpoint) return true;
 
     // 🛡️ Únicamente el Administrador Maestro posee pase general a nivel de interfaz,
-    // EXCEPTO para permisos granulares explícitos como "Gestionar Ofertas del Mes y Promociones" (/promotions),
-    // "Ver Borradores de Cotizaciones" (/quotes/drafts),
+    // EXCEPTO para permisos granulares explícitos como "Ver Borradores de Cotizaciones" (/quotes/drafts),
     // y "Ver Aprobadores y Emisores SAP en Seguimiento" (/quotes/approval-audit),
     // que deben respetar fielmente su activación o desactivación en el perfil del usuario.
     const isGranularPermission =
-      endpoint.includes("/promotions") ||
       endpoint.includes("/quotes/drafts") ||
       endpoint.includes("/quotes/draft") ||
       endpoint.includes("/quotes/approval-audit");

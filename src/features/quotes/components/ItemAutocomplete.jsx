@@ -297,7 +297,23 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
     const stockVal = hasValidStock ? Number(rawStock) : null;
     const isAgotado = hasValidStock && stockVal === 0;
 
-    const promo = promotionsMap ? (promotionsMap[r.ITEM_CODE] || promotionsMap[r.itemCode]) : null;
+    const promoFromMap = promotionsMap ? (promotionsMap[r.ITEM_CODE] || promotionsMap[r.itemCode]) : null;
+    const rawPromoConIgv = Number(r.U_US_PROMO || 0);
+    const listConIgv = Number(r.PRECIO_LISTA_CON_IGV || r.U_TQC_PRVT || (Number(r.PRECIO_LISTA || 0) * 1.18) || 0);
+    const baseDiscPct = Number(r.DESCUENTO_PCT || 0);
+    const promo = promoFromMap || (rawPromoConIgv > 0 ? (() => {
+      const totalDisc = listConIgv > 0 ? Number((((listConIgv - rawPromoConIgv) / listConIgv) * 100).toFixed(2)) : 0;
+      const extraDisc = totalDisc > baseDiscPct ? Number((totalDisc - baseDiscPct).toFixed(2)) : 0;
+      return {
+        promoPriceConIGV: rawPromoConIgv,
+        U_US_PROMO: rawPromoConIgv,
+        promoPrice: Number((rawPromoConIgv / 1.18).toFixed(6)),
+        promoPriceNeto: Number((rawPromoConIgv / 1.18).toFixed(6)),
+        discountPct: extraDisc,
+        totalDiscountPct: totalDisc,
+        campaignName: "Oferta del Mes",
+      };
+    })() : null);
     const promoDiscount = promo ? Number(promo.discountPct || 0) : 0;
     const promoPrice = promo ? Number(promo.promoPrice || promo.promoPriceNeto || 0) : null;
     const promoPriceConIGV = promo ? Number(promo.promoPriceConIGV || promo.U_US_PROMO || 0) : null;
@@ -494,7 +510,14 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
               const stockVal = hasValidStock ? Number(rawStock) : null;
               const isAgotado = hasValidStock && stockVal === 0;
 
-              const promo = promotionsMap ? (promotionsMap[r.ITEM_CODE] || promotionsMap[r.itemCode]) : null;
+              const promoFromMap = promotionsMap ? (promotionsMap[r.ITEM_CODE] || promotionsMap[r.itemCode]) : null;
+              const rawPromoConIgv = Number(r.U_US_PROMO || 0);
+              const listConIgv = Number(r.PRECIO_LISTA_CON_IGV || r.U_TQC_PRVT || (Number(r.PRECIO_LISTA || 0) * 1.18) || 0);
+              const promo = promoFromMap || (rawPromoConIgv > 0 ? {
+                promoPriceConIGV: rawPromoConIgv,
+                totalDiscountPct: listConIgv > 0 ? Number((((listConIgv - rawPromoConIgv) / listConIgv) * 100).toFixed(1)) : 0,
+                discountPct: 0,
+              } : null);
               const sp =
                 r._spData ||
                 (specialPricesMap
@@ -562,7 +585,7 @@ export default function ItemAutocomplete({ onSelect, isDisabled = false, placeho
                           borderRadius="md"
                           fontWeight="900"
                         >
-                          🏷️ OFERTA: -{promo.discountPct}%
+                          🏷️ OFERTA: ${Number(promo.promoPriceConIGV || promo.U_US_PROMO || 0).toFixed(2)} ({Number(promo.totalDiscountPct || promo.discountPct || 0).toFixed(1)}% DTO)
                         </Badge>
                       ) : null}
                     </HStack>
