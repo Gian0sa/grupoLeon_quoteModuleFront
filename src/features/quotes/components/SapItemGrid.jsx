@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Box, Table, Thead, Tbody, Tr, Th, Td, TableContainer,
   IconButton, Input, Text, Button, Select,
@@ -57,6 +57,53 @@ export default function SapItemGrid({
     specialPricesMap = {},
     specialPricesCount = 0,
   } = useClientSpecialPrices(clientCardCode);
+
+  // Si el mapa de Convenios llega después de haber agregado artículos (o al cargar borrador),
+  // aplicar automáticamente el convenio correspondiente a ítems sin ajuste manual.
+  useEffect(() => {
+    if (isReadOnly || !products || products.length === 0 || !specialPricesMap) return;
+    if (Object.keys(specialPricesMap).length === 0 || typeof onUpdateProduct !== "function") return;
+
+    products.forEach((p) => {
+      if (!p || p.isSpecialPrice || p.campaignName === "Convenio Cliente" || p.customPriceConIGV || Number(p.lineDiscount || 0) !== 0) {
+        return;
+      }
+      const code = String(p.code || p.productCode || p.itemCode || p.id || "").trim();
+      if (!code) return;
+      const sp = specialPricesMap[code] || specialPricesMap[code.toUpperCase()];
+      if (!sp) return;
+
+      const spDisc = Number(sp.discountPercent || 0);
+      const spPrice = Number(sp.specialPrice || 0);
+      const spPriceConIGV = Number(sp.specialPriceConIGV || 0);
+      const listPrice = Number(sp.listPrice || p.price || p.unitPrice || 0);
+      const rawBaseList = sp.baseListDiscount ?? p.baseListDiscount ?? p.discount ?? null;
+      const parsedBaseList =
+        rawBaseList !== undefined && rawBaseList !== null && rawBaseList !== "" && !isNaN(Number(rawBaseList))
+          ? Number(rawBaseList)
+          : null;
+
+      onUpdateProduct(p.id, {
+        isSpecialPrice: true,
+        campaignName: "Convenio Cliente",
+        price: listPrice > 0 ? listPrice : p.price,
+        unitPrice: listPrice > 0 ? listPrice : p.unitPrice,
+        discount: spDisc,
+        specialDiscount: spDisc,
+        specialPrice: spPrice,
+        specialPriceNeto: spPrice,
+        specialPriceConIGV: spPriceConIGV,
+        baseListDiscount: parsedBaseList,
+        totalDiscountPct: spDisc,
+        promoDiscount: 0,
+        promoPrice: null,
+        promoPriceNeto: null,
+        promoPriceConIGV: null,
+        U_US_PROMO: null,
+        importe: spPrice > 0 ? spPrice : p.importe,
+      });
+    });
+  }, [specialPricesMap, products, isReadOnly, onUpdateProduct]);
 
   const inStockProducts = products.filter((p) => !isItemOutOfStock(p));
   const outOfStockProducts = products.filter(isItemOutOfStock);

@@ -838,12 +838,18 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
             const codeKey = String(r.ITEM_CODE || r.itemCode || "").trim().toUpperCase();
             const rawStk = r.STOCK_DISPONIBLE ?? r.Stock ?? r.OnHand;
             if (codeKey && rawStk !== undefined && rawStk !== null) {
+              const livePriceNet = Number(r.PRECIO_LISTA ?? r.PRECIO_VENTA ?? 0);
+              const liveDiscPct = Number(r.DESCUENTO_PCT ?? 0);
+              const liveImporteNet = Number(r.PRECIO_DESCUENTO ?? (liveDiscPct > 0 ? livePriceNet * (1 - liveDiscPct / 100) : livePriceNet));
               stockMap.set(codeKey, {
                 stock: Number(rawStk),
                 isAgotado: Number(rawStk) === 0,
                 stockChecked: true,
                 marca: r.MARCA || undefined,
                 sigla: r.SIGLA || undefined,
+                livePriceNet: livePriceNet > 0 ? livePriceNet : null,
+                liveDiscPct: !isNaN(liveDiscPct) && liveDiscPct >= 0 ? liveDiscPct : null,
+                liveImporteNet: liveImporteNet > 0 ? liveImporteNet : null,
               });
             }
           });
@@ -856,6 +862,15 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                   const pKey = String(p.code || p.productCode || p.itemCode || p.id || "").trim().toUpperCase();
                   if (stockMap.has(pKey)) {
                     const info = stockMap.get(pKey);
+                    const canRefreshRegularPrice =
+                      !isSellerFieldsLocked &&
+                      !p.isSpecialPrice &&
+                      p.campaignName !== "Convenio Cliente" &&
+                      !p.customPriceConIGV &&
+                      Number(p.lineDiscount || 0) === 0 &&
+                      !(Number(p.promoDiscount || 0) > 0) &&
+                      info.livePriceNet > 0;
+
                     return {
                       ...p,
                       stock: info.stock,
@@ -863,6 +878,16 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                       stockChecked: true,
                       marca: p.marca || info.marca || "",
                       sigla: p.sigla || info.sigla || "",
+                      ...(canRefreshRegularPrice
+                        ? {
+                            price: info.livePriceNet,
+                            unitPrice: info.livePriceNet,
+                            discount: info.liveDiscPct !== null ? info.liveDiscPct : (p.discount || 0),
+                            baseListDiscount: info.liveDiscPct !== null ? info.liveDiscPct : p.baseListDiscount,
+                            importe: info.liveImporteNet || info.livePriceNet,
+                            isPriceFromSap: true,
+                          }
+                        : {}),
                     };
                   }
                   return { ...p, stockChecked: true };
@@ -1230,7 +1255,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       if (!updatedHistory.some(h => h.status === "ENVIADO")) {
         updatedHistory.push({ status: "ENVIADO", timestamp: nowIso, user: activeSeller, note: "Cotización enviada a validación" });
       }
-    } else if (targetStatus === "BORRADOR" && !options?.silent && prevHistory.length === 0) {
+    } else if (targetStatus === "BORRADOR" && !silent && prevHistory.length === 0) {
       // Solo registrar entrada explícita si el vendedor pulsa manualmente "Guardar como Borrador" (nunca por autoguardado silencioso)
       updatedHistory.push({ status: "BORRADOR", timestamp: nowIso, user: activeSeller, note: "Borrador guardado" });
     }
