@@ -24,8 +24,11 @@ export function getCachedPromotions() {
  */
 export function saveCachedPromotions(data) {
   try {
-    if (typeof window !== "undefined" && data && (data.list?.length || Object.keys(data.map || {}).length)) {
+    if (typeof window === "undefined" || !data) return;
+    if (data.list?.length || Object.keys(data.map || {}).length) {
       localStorage.setItem(PROMOTIONS_CACHE_KEY, JSON.stringify(data));
+    } else if (Array.isArray(data.list)) {
+      localStorage.removeItem(PROMOTIONS_CACHE_KEY);
     }
   } catch (e) {
     console.warn("Error persistiendo promociones en localStorage:", e);
@@ -41,8 +44,10 @@ export async function fetchActivePromotions(forceRefresh = false) {
       params: forceRefresh ? { refresh: "true" } : {},
     });
     const data = res.data || { list: [], map: {} };
-    if (data && (data.list?.length || Object.keys(data.map || {}).length)) {
+    if (data && (data.list?.length || Object.keys(data.map || {}).length || Array.isArray(data.list))) {
       saveCachedPromotions(data);
+    } else if (typeof window !== "undefined") {
+      localStorage.removeItem(PROMOTIONS_CACHE_KEY);
     }
     return data;
   } catch (error) {
