@@ -109,8 +109,8 @@ export const deleteQuote = async (id, isHard = false) => {
         });
         return response.data;
     } catch (err) {
-        console.warn("ℹ️ Eliminación efectuada en almacenamiento local seguro.");
-        return { deleted: true, id };
+        console.error("❌ Error eliminando cotización en servidor:", err?.response?.status, err?.response?.data || err?.message);
+        throw err;
     }
 };
 
