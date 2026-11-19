@@ -258,8 +258,114 @@ const initialQuoteState = {
 
 const DRAFT_STORAGE_KEY = "grupoLeon_active_draft";
 
+const getCurrentSessionIdentity = () => {
+  try {
+    const uid = localStorage.getItem("userId");
+    const uname = localStorage.getItem("username");
+    return {
+      userId: uid && uid !== "null" && uid !== "undefined" ? String(uid).trim() : null,
+      username: uname && uname !== "null" && uname !== "undefined" ? String(uname).trim() : null,
+    };
+  } catch {
+    return { userId: null, username: null };
+  }
+};
+
+const isDraftCompatibleWithSession = (draftObj) => {
+  if (!draftObj || typeof draftObj !== "object") return false;
+  const { userId: sessUserId, username: sessUsername } = getCurrentSessionIdentity();
+  const draftUserId = draftObj.createdByUserId ?? draftObj.userId ?? null;
+  const draftUsername = draftObj.createdByUsername ?? null;
+
+  const hasDraftUserId =
+    draftUserId !== null &&
+    draftUserId !== undefined &&
+    String(draftUserId).trim() !== "" &&
+    !Number.isNaN(Number(draftUserId)) &&
+    Number(draftUserId) > 0;
+  const hasSessUserId =
+    sessUserId !== null &&
+    sessUserId !== undefined &&
+    String(sessUserId).trim() !== "" &&
+    !Number.isNaN(Number(sessUserId)) &&
+    Number(sessUserId) > 0;
+
+  if (hasDraftUserId && hasSessUserId) {
+    if (Number(draftUserId) === Number(sessUserId)) return true;
+    if (draftUsername && sessUsername && String(draftUsername).toLowerCase().trim() === String(sessUsername).toLowerCase().trim()) {
+      return true;
+    }
+    return false;
+  }
+
+  if (draftUsername && String(draftUsername).trim() !== "") {
+    if (sessUsername) {
+      return String(draftUsername).toLowerCase().trim() === String(sessUsername).toLowerCase().trim();
+    }
+    return false;
+  }
+
+  return true;
+};
+
+const extractNumericQuoteId = (val) => {
+  if (val === undefined || val === null || val === "") return null;
+  const s = String(val).trim();
+  if (/^\d+$/.test(s)) return Number(s);
+  const m = s.match(/^COT-(?:WEB-)?0*(\d+)$/i) || s.match(/(\d+)$/);
+  return m ? Number(m[1]) : null;
+};
+
+const extractClientFingerprint = (obj) => {
+  if (!obj || typeof obj !== "object") return { name: "", doc: "" };
+  const clientObj = typeof obj.client === "object" && obj.client !== null ? obj.client : {};
+  const name = String(
+    obj.clientName ||
+    clientObj.CardName ||
+    clientObj.cardName ||
+    clientObj.clientName ||
+    clientObj.name ||
+    ""
+  ).trim().toUpperCase();
+  const doc = cleanDocumentNumber(
+    obj.clientDocument ||
+    obj.clientRuc ||
+    obj.CardCode ||
+    obj.cardCode ||
+    clientObj.LicTradNum ||
+    clientObj.clientRuc ||
+    clientObj.clientDocument ||
+    clientObj.CardCode ||
+    clientObj.cardCode ||
+    ""
+  );
+  return { name, doc };
+};
+
+const isQuoteDeletedInSessionStorage = (val) => {
+  if (val === undefined || val === null || val === "") return false;
+  try {
+    const raw = sessionStorage.getItem("grupoLeon_deleted_quote_ids");
+    if (!raw) return false;
+    const list = JSON.parse(raw);
+    if (!Array.isArray(list) || list.length === 0) return false;
+    const set = new Set(list.map((x) => String(x).toUpperCase().trim()));
+    const s = String(val).toUpperCase().trim();
+    if (set.has(s)) return true;
+    const num = extractNumericQuoteId(s);
+    if (num && (set.has(String(num)) || set.has(`COT-WEB-${String(num).padStart(6, "0")}`))) {
+      return true;
+    }
+  } catch (e) {}
+  return false;
+};
+
 const saveDraftToStorage = (state) => {
   try {
+    if (state?.quoteId && isQuoteDeletedInSessionStorage(state.quoteId)) {
+      localStorage.removeItem(DRAFT_STORAGE_KEY);
+      return;
+    }
     const hasMeaningfulData = Boolean(
       state.client ||
       (Array.isArray(state.products) && state.products.length > 0) ||
@@ -276,6 +382,7 @@ const saveDraftToStorage = (state) => {
     );
 
     if (hasMeaningfulData) {
+      const { userId: sessUserId, username: sessUsername } = getCurrentSessionIdentity();
       const dataToSave = {
         quoteId: state.quoteId,
         client: state.client,
@@ -300,8 +407,8 @@ const saveDraftToStorage = (state) => {
         bankAccount: state.bankAccount,
         sunatOpType: state.sunatOpType,
         sellerName: state.sellerName,
-        createdByUsername: state.createdByUsername,
-        createdByUserId: state.createdByUserId,
+        createdByUsername: state.createdByUsername || sessUsername || null,
+        createdByUserId: state.createdByUserId || (sessUserId ? Number(sessUserId) : null),
         SlpCode: state.SlpCode,
         salesPersonCode: state.salesPersonCode,
         salesEmployeeCode: state.salesEmployeeCode,
@@ -320,6 +427,10 @@ const getInitialStateWithDraft = () => {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === "object") {
+        if (!isDraftCompatibleWithSession(parsed) || (parsed.quoteId && isQuoteDeletedInSessionStorage(parsed.quoteId))) {
+          localStorage.removeItem(DRAFT_STORAGE_KEY);
+          return initialQuoteState;
+        }
         return {
           ...initialQuoteState,
           ...parsed,
@@ -697,6 +808,83 @@ export const useQuoteStore = create((set, get) => {
         localStorage.removeItem(DRAFT_STORAGE_KEY);
       } catch (e) {}
       set({ ...initialQuoteState });
+    },
+
+    clearIfMatchesDeletedQuote: (target) => {
+      if (!target) return false;
+      const state = get();
+      let storedDraft = null;
+      try {
+        const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+        if (raw) storedDraft = JSON.parse(raw);
+      } catch (e) {}
+
+      const targetCandidates = new Set();
+      const targetNums = new Set();
+      const addTargetId = (v) => {
+        if (v === undefined || v === null || v === "") return;
+        const s = String(v).trim().toUpperCase();
+        if (!s) return;
+        targetCandidates.add(s);
+        const num = extractNumericQuoteId(s);
+        if (num && num > 0) {
+          targetNums.add(num);
+          targetCandidates.add(String(num));
+          targetCandidates.add(`COT-WEB-${String(num).padStart(6, "0")}`);
+        }
+      };
+
+      if (typeof target === "object") {
+        addTargetId(target.id);
+        addTargetId(target.docNumber);
+        addTargetId(target.quoteId);
+      } else {
+        addTargetId(target);
+      }
+
+      const matchesById = (qId) => {
+        if (qId === undefined || qId === null || qId === "") return false;
+        const s = String(qId).trim().toUpperCase();
+        if (targetCandidates.has(s)) return true;
+        const num = extractNumericQuoteId(s);
+        return Boolean(num && targetNums.has(num));
+      };
+
+      const targetFp = typeof target === "object" ? extractClientFingerprint(target) : { name: "", doc: "" };
+      const matchesByUnassignedDraftClient = (draftLike) => {
+        if (!draftLike || typeof draftLike !== "object") return false;
+        const dId = draftLike.quoteId ?? draftLike.id ?? draftLike.docNumber ?? null;
+        const isUnassignedId =
+          !dId ||
+          ["COT-PENDIENTE", "COT-NUEVA", "COT-000000", "BORRADOR", "DRAFT"].includes(String(dId).trim().toUpperCase());
+        const dStatus = String(draftLike.approvalStatus || draftLike.state || draftLike.status || "BORRADOR").trim().toUpperCase();
+        const isDraftSt = !dStatus || ["BORRADOR", "DRAFT", "GENERADO"].includes(dStatus);
+        if (!isDraftSt) return false;
+
+        if (targetFp.doc || targetFp.name) {
+          const dFp = extractClientFingerprint(draftLike);
+          if (targetFp.doc && dFp.doc && targetFp.doc === dFp.doc) return true;
+          if (targetFp.name && dFp.name && (targetFp.name === dFp.name || targetFp.name.includes(dFp.name) || dFp.name.includes(targetFp.name))) {
+            return true;
+          }
+        }
+        return isUnassignedId && !targetFp.doc && !targetFp.name;
+      };
+
+      const shouldClearStore =
+        matchesById(state.quoteId) ||
+        matchesById(storedDraft?.quoteId) ||
+        matchesByUnassignedDraftClient(state) ||
+        matchesByUnassignedDraftClient(storedDraft);
+
+      if (shouldClearStore) {
+        try {
+          localStorage.removeItem(DRAFT_STORAGE_KEY);
+        } catch (e) {}
+        set({ ...initialQuoteState });
+        return true;
+      }
+      return false;
     },
   };
 });

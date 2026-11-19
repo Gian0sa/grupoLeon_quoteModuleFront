@@ -242,7 +242,57 @@ export const formatDeliveryPoint = (point, clientAddress) => {
   return str;
 };
 
+export const FREE_TRANSFER_PAYMENT_TYPE = {
+  GroupNum: 96,
+  GroupNumber: 96,
+  PymntGroup: "10) TRANSFERENCIA GRATUITA",
+  PaymentTermsGroupName: "10) TRANSFERENCIA GRATUITA",
+  value: "96",
+  label: "10) TRANSFERENCIA GRATUITA",
+};
+
+export const DEFAULT_FREE_TRANSFER_DELIVERY_FORM = {
+  TrnspCode: 1,
+  Code: "1",
+  TrnspName: "04. Recojo Tienda - Almacen",
+  Name: "04. Recojo Tienda - Almacen",
+  value: "1",
+  label: "04. Recojo Tienda - Almacen",
+};
+
+export const isFreeTransferPaymentType = (paymentType) => {
+  if (paymentType === null || paymentType === undefined || paymentType === "") return false;
+  let parsed = paymentType;
+  if (typeof paymentType === "string") {
+    const trimmed = paymentType.trim();
+    if (!trimmed) return false;
+    if (trimmed.startsWith("{")) {
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch (e) {}
+    } else {
+      if (trimmed === "96") return true;
+      return trimmed.toLowerCase().includes("transferencia gratuita");
+    }
+  }
+  if (typeof paymentType === "number") {
+    return paymentType === 96;
+  }
+  if (typeof parsed === "object" && parsed !== null) {
+    const code = Number(parsed.GroupNum ?? parsed.GroupNumber ?? parsed.value);
+    if (code === 96) return true;
+    const label = String(
+      parsed.PymntGroup || parsed.PaymentTermsGroupName || parsed.label || parsed.name || ""
+    ).toLowerCase();
+    return label.includes("transferencia gratuita");
+  }
+  return false;
+};
+
 export const formatPaymentTerms = (paymentType, saleCondition) => {
+  if (isFreeTransferPaymentType(paymentType)) {
+    return "10) TRANSFERENCIA GRATUITA";
+  }
   const extractString = (val) => {
     if (val === null || val === undefined) return "";
     if (typeof val === "number") {
@@ -251,6 +301,7 @@ export const formatPaymentTerms = (paymentType, saleCondition) => {
       if (val === 2) return "Crédito 30 Días";
       if (val === 3) return "Crédito 45 Días";
       if (val === 4) return "Crédito 60 Días";
+      if (val === 96) return "10) TRANSFERENCIA GRATUITA";
       return `Término de Pago (${val})`;
     }
     if (typeof val === "string") {
@@ -270,6 +321,7 @@ export const formatPaymentTerms = (paymentType, saleCondition) => {
         if (num === 2) return "Crédito 30 Días";
         if (num === 3) return "Crédito 45 Días";
         if (num === 4) return "Crédito 60 Días";
+        if (num === 96) return "10) TRANSFERENCIA GRATUITA";
       }
       return trimmed;
     }

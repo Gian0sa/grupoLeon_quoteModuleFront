@@ -26,6 +26,7 @@ export function getStageIndex(status) {
       return 1;
     case "PENDIENTE_FACTURACION":
     case "EN_FACTURACION":
+    case "PENDIENTE_GERENCIA":
       return 2;
     case "APROBADO":
     case "FACTURADO":

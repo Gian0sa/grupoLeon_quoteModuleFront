@@ -84,6 +84,17 @@ export const useAuthStore = create((set) => ({
 
     // Guardar en localStorage solo lo público
     try {
+      const previousUserId = localStorage.getItem("userId");
+      const previousUsername = (localStorage.getItem("username") || "").trim().toLowerCase();
+      const nextUsername = String(safeValues.username || "").trim().toLowerCase();
+      const isDifferentUser =
+        (previousUserId && String(previousUserId) !== String(safeValues.userId)) ||
+        (previousUsername && nextUsername && previousUsername !== nextUsername);
+      if (isDifferentUser) {
+        localStorage.removeItem("grupoLeon_active_draft");
+        localStorage.removeItem("grupoLeon_local_quotes");
+        clearSessionCaches();
+      }
       Object.entries(safeValues).forEach(([key, value]) => {
         if (value !== null && value !== undefined) {
           if (key === "endpoints") {
@@ -163,7 +174,7 @@ export const useAuthStore = create((set) => ({
     }
 
     try {
-      ['userId', 'username', 'salesEmployeeCode', 'endpoints', 'lastRoute', 'sessionLoginTime', 'lastUserActivityTime'].forEach((key) =>
+      ['userId', 'username', 'salesEmployeeCode', 'endpoints', 'lastRoute', 'sessionLoginTime', 'lastUserActivityTime', 'grupoLeon_active_draft', 'grupoLeon_local_quotes'].forEach((key) =>
         localStorage.removeItem(key)
       );
       clearHeaderThemeStorage();

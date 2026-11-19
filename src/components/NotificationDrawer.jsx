@@ -27,7 +27,7 @@ import { markNotificationAsRead, deleteNotification, clearNotifications, updateQ
 import { checkQuoteLock, forceUnlockQuote } from "../features/quotes/services/quoteLockService";
 import { Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, ModalCloseButton, Alert, AlertIcon } from "@chakra-ui/react";
 import { Lock, Eye } from "lucide-react";
-import { useIsAdmin } from "../shared/utils/permissions";
+import { useIsAdmin, useCanEmitTaxOnlyToSap } from "../shared/utils/permissions";
 
 export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
   const toast = useToast();
@@ -90,6 +90,7 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
   }, []);
 
   const isAdminHook = useIsAdmin();
+  const canApproveGerencia = useCanEmitTaxOnlyToSap();
   const sessionRoleUpper = String(role || localStorage.getItem("role") || "").trim().toUpperCase();
   const isVerifierOrAdminRole =
     isAdminHook ||
@@ -107,7 +108,7 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
 
   const isAdmin = Boolean(isVerifierOrAdminRole);
   const { data: serverNotifs } = useNotifications(
-    isAdmin ? "FACTURACION" : "VENDEDOR",
+    canApproveGerencia ? "ADMIN" : isAdmin ? "FACTURACION" : "VENDEDOR",
     username
   );
 
@@ -136,6 +137,11 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
       const targetUser = (n.targetUsername || "").trim().toLowerCase();
 
       if (isAdminOrMaster) {
+        const statusUpper = String(n.status || "").trim().toUpperCase();
+        // 👑 Alertas de Transferencia Gratuita en PENDIENTE_GERENCIA son exclusivas de Gerencia/Admin (Juan)
+        if (targetRoleUpper === "GERENCIA" || statusUpper === "PENDIENTE_GERENCIA") {
+          return Boolean(canApproveGerencia);
+        }
         // Facturación / Admin / Digitador ONLY ve cotizaciones que requieren revisión/aprobación comercial
         if (
           targetRoleUpper !== "FACTURACION" &&
@@ -148,7 +154,6 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
           return false;
         }
         // Facturación NO ve alertas que son exclusivas del vendedor (órdenes SAP emitidas, anuladas, observadas)
-        const statusUpper = String(n.status || "").trim().toUpperCase();
         if (statusUpper === "EMITIDO" || statusUpper === "ANULADO" || statusUpper === "CANCELADO") {
           return false;
         }

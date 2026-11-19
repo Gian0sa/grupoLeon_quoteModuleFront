@@ -2,7 +2,8 @@ import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { socket } from "../../../shared/lib/socket";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
-import { checkIsAdmin } from "../../../shared/utils/permissions";
+import { useQuoteStore } from "../stores/quoteStore";
+import { checkIsAdmin, canEmitTaxOnlyToSap, isDraftOwnedByUser, isDraftMasterAdmin } from "../../../shared/utils/permissions";
 import { useToast } from "@chakra-ui/react";
 import { showLocalNativeNotification, subscribeToPush } from "../../../shared/services/pushNotificationService";
 
@@ -83,29 +84,96 @@ export function useQuoteSocket() {
     // 1. Escuchar cotizaciones creadas en vivo
     const handleQuoteCreated = (quote) => {
       const docId = quote?.docNumber || quote?.id;
+      const rawSt = String(quote?.approvalStatus || quote?.state || quote?.status || "").toUpperCase().trim();
+      const isDraft = ["BORRADOR", "DRAFT", "GENERADO"].includes(rawSt) && !quote?.sapDocNum && !quote?.DocNum;
+      if (isDraft) {
+        const authState = useAuthStore.getState();
+        const myId = authState.userId ?? localStorage.getItem("userId");
+        const myUser = authState.username || localStorage.getItem("username") || "";
+        const isMaster = isDraftMasterAdmin({ userId: myId, username: myUser });
+        const isMine = isDraftOwnedByUser(quote, { userId: myId, username: myUser });
+        if (!isMaster && !isMine) {
+          return;
+        }
+      }
       console.log("⚡ [WS EVENT] quote:created recibido:", docId);
-      scheduleRefresh({ quotes: true, notifications: true, quoteDetails: true, highlightDocId: docId });
+      scheduleRefresh({ quotes: true, notifications: !isDraft, quoteDetails: true, highlightDocId: docId });
     };
 
-    // 2. Escuchar cotizaciones actualizadas (aprobadas, rechazadas, etc.)
+    // 2. Escuchar cotizaciones actualizadas (aprobadas, emitidas a SAP, observadas, rechazadas, anuladas, etc.)
     const handleQuoteUpdated = (quote) => {
       const docId = quote?.docNumber || quote?.id;
+      const st = String(quote?.approvalStatus || quote?.state || quote?.status || "").toUpperCase().trim();
+      const isDraft = ["BORRADOR", "DRAFT", "GENERADO"].includes(st) && !quote?.sapDocNum && !quote?.DocNum;
+      if (isDraft) {
+        const authState = useAuthStore.getState();
+        const myId = authState.userId ?? localStorage.getItem("userId");
+        const myUser = authState.username || localStorage.getItem("username") || "";
+        const isMaster = isDraftMasterAdmin({ userId: myId, username: myUser });
+        const isMine = isDraftOwnedByUser(quote, { userId: myId, username: myUser });
+        if (!isMaster && !isMine) {
+          return;
+        }
+      }
       console.log("⚡ [WS EVENT] quote:updated recibido:", docId);
-      if (quote && (quote.state === "ANULADO" || quote.approvalStatus === "ANULADO")) {
-        const targetId = quote.docNumber || quote.id || quote.quoteId;
-        const targetStr = String(targetId || "").trim().toUpperCase();
-        if (targetStr) {
+      const isResolvedForQueue =
+        Boolean(quote?.sapDocNum || quote?.DocNum) ||
+        [
+          "EMITIDO",
+          "EMITIDO_SAP",
+          "PEDIDO_EMITIDO",
+          "ORDEN_EMITIDA",
+          "FACTURADO",
+          "COMPLETADO",
+          "APROBADO",
+          "APROBADO_COMERCIAL",
+          "APROBADO_CREDITOS",
+          "ANULADO",
+          "CANCELADO",
+          "RECHAZADO",
+          "OBSERVADO",
+          "EN_EDICION",
+        ].includes(st);
+
+      if (quote && isResolvedForQueue) {
+        const candidates = new Set();
+        const addCandidate = (val) => {
+          if (val === undefined || val === null) return;
+          const s = String(val).trim().toUpperCase();
+          if (!s) return;
+          candidates.add(s);
+          const m = s.match(/(\d+)$/);
+          if (m) {
+            const num = Number(m[1]);
+            if (num > 0) {
+              candidates.add(String(num));
+              candidates.add(`COT-WEB-${String(num).padStart(6, "0")}`);
+            }
+          }
+        };
+        addCandidate(quote.id);
+        addCandidate(quote.docNumber);
+        addCandidate(quote.quoteId);
+
+        if (candidates.size > 0) {
           try {
             const raw = localStorage.getItem("grupoLeon_notifications");
             const all = raw ? JSON.parse(raw) : [];
-            const remaining = all.filter(n => {
-              const notifQuoteId = String(n.quoteId || "").trim().toUpperCase();
-              const notifId = String(n.id || "").trim().toUpperCase();
-              return notifQuoteId !== targetStr && notifId !== targetStr;
+            const remaining = all.filter((n) => {
+              const notifQuoteId = String(n?.quoteId || "").trim().toUpperCase();
+              const notifId = String(n?.id || "").trim().toUpperCase();
+              const notifTitle = String(n?.title || "").trim().toUpperCase();
+              for (const c of candidates) {
+                if (notifQuoteId === c || notifId === c) return false;
+                if (c.startsWith("COT-") && notifTitle.includes(c)) return false;
+              }
+              return true;
             });
-            localStorage.setItem("grupoLeon_notifications", JSON.stringify(remaining));
+            if (remaining.length !== all.length) {
+              localStorage.setItem("grupoLeon_notifications", JSON.stringify(remaining));
+            }
           } catch (err) {
-            console.error("Error limpiando notificaciones anuladas:", err);
+            console.error("Error limpiando notificaciones resueltas:", err);
           }
         }
       }
@@ -116,22 +184,125 @@ export function useQuoteSocket() {
     // 3. Escuchar cotizaciones eliminadas
     const handleQuoteDeleted = (data) => {
       console.log("⚡ [WS EVENT] quote:deleted recibido:", data);
-      const targetId = typeof data === "object" ? (data.quoteId || data.docNumber || data.id) : data;
-      const targetStr = String(targetId || "").trim().toUpperCase();
+      const candidates = new Set();
+      const addCandidate = (val) => {
+        if (val === undefined || val === null) return;
+        const s = String(val).trim().toUpperCase();
+        if (!s) return;
+        candidates.add(s);
+        const m = s.match(/(\d+)$/);
+        if (m) {
+          const num = Number(m[1]);
+          if (num > 0) {
+            candidates.add(String(num));
+            candidates.add(`COT-WEB-${String(num).padStart(6, "0")}`);
+          }
+        }
+      };
 
-      if (targetStr) {
+      if (typeof data === "object" && data !== null) {
+        addCandidate(data.quoteId);
+        addCandidate(data.docNumber);
+        addCandidate(data.id);
+      } else {
+        addCandidate(data);
+      }
+
+      if (candidates.size > 0) {
+        try {
+          const rawDel = sessionStorage.getItem("grupoLeon_deleted_quote_ids");
+          const prevDel = rawDel ? JSON.parse(rawDel) : [];
+          const nextDel = Array.from(new Set([...(Array.isArray(prevDel) ? prevDel : []), ...Array.from(candidates)])).slice(-300);
+          sessionStorage.setItem("grupoLeon_deleted_quote_ids", JSON.stringify(nextDel));
+        } catch (_) {}
+
         try {
           const raw = localStorage.getItem("grupoLeon_notifications");
           const all = raw ? JSON.parse(raw) : [];
-          const remaining = all.filter(n => {
-            const notifQuoteId = String(n.quoteId || "").trim().toUpperCase();
-            const notifId = String(n.id || "").trim().toUpperCase();
-            return notifQuoteId !== targetStr && notifId !== targetStr;
+          const remaining = all.filter((n) => {
+            const notifQuoteId = String(n?.quoteId || "").trim().toUpperCase();
+            const notifId = String(n?.id || "").trim().toUpperCase();
+            const notifTitle = String(n?.title || "").trim().toUpperCase();
+            for (const c of candidates) {
+              if (notifQuoteId === c || notifId === c) return false;
+              if (c.startsWith("COT-") && notifTitle.includes(c)) return false;
+            }
+            return true;
           });
-          localStorage.setItem("grupoLeon_notifications", JSON.stringify(remaining));
+          if (remaining.length !== all.length) {
+            localStorage.setItem("grupoLeon_notifications", JSON.stringify(remaining));
+            window.dispatchEvent(new Event("localNotificationsUpdated"));
+          }
         } catch (err) {
           console.error("Error limpiando notificaciones eliminadas:", err);
         }
+
+        try {
+          const storeState = useQuoteStore.getState();
+          if (typeof storeState?.clearIfMatchesDeletedQuote === "function") {
+            storeState.clearIfMatchesDeletedQuote(data);
+            for (const c of candidates) {
+              storeState.clearIfMatchesDeletedQuote(c);
+            }
+          } else {
+            const activeQuoteId = String(storeState?.quoteId || "").trim().toUpperCase();
+            if (activeQuoteId && candidates.has(activeQuoteId)) {
+              storeState.clear();
+            }
+          }
+        } catch (_) {}
+
+        try {
+          const rawQuotes = localStorage.getItem("grupoLeon_local_quotes");
+          const allQuotes = rawQuotes ? JSON.parse(rawQuotes) : [];
+          if (Array.isArray(allQuotes) && allQuotes.length > 0) {
+            const remainingQuotes = allQuotes.filter((q) => {
+              const qId = String(q?.id || "").trim().toUpperCase();
+              const qDoc = String(q?.docNumber || "").trim().toUpperCase();
+              for (const c of candidates) {
+                if ((qId && qId === c) || (qDoc && qDoc === c)) return false;
+              }
+              return true;
+            });
+            if (remainingQuotes.length !== allQuotes.length) {
+              localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(remainingQuotes));
+              window.dispatchEvent(new Event("localQuotesUpdated"));
+            }
+          }
+        } catch (err) {
+          console.error("Error limpiando cotizaciones locales eliminadas:", err);
+        }
+
+        // Actualización instantánea en memoria (0ms) sobre todas las queries ["quotes", ...] sin esperar GET /quotes
+        queryClient.setQueriesData({ queryKey: ["quotes"] }, (old) => {
+          if (!old) return old;
+          const filterOutDeleted = (list) =>
+            list.filter((q) => {
+              const qId = String(q?.id || "").trim().toUpperCase();
+              const qDoc = String(q?.docNumber || "").trim().toUpperCase();
+              for (const c of candidates) {
+                if ((qId && qId === c) || (qDoc && qDoc === c)) return false;
+              }
+              return true;
+            });
+          if (Array.isArray(old)) return filterOutDeleted(old);
+          if (Array.isArray(old.quotes)) {
+            return { ...old, quotes: filterOutDeleted(old.quotes) };
+          }
+          return old;
+        });
+
+        queryClient.setQueriesData({ queryKey: ["notifications"] }, (old) => {
+          if (!Array.isArray(old)) return old;
+          return old.filter((n) => {
+            const notifQuoteId = String(n?.quoteId || "").trim().toUpperCase();
+            const notifId = String(n?.id || "").trim().toUpperCase();
+            for (const c of candidates) {
+              if (notifQuoteId === c || notifId === c) return false;
+            }
+            return true;
+          });
+        });
       }
 
       scheduleRefresh({ quotes: true, notifications: true, quoteDetails: true });
@@ -163,10 +334,20 @@ export function useQuoteSocket() {
 
       const targetRoleUpper = String(notif.targetRole || "").trim().toUpperCase();
       const targetUser = String(notif.targetUsername || "").trim().toLowerCase();
+      const statusUpper = String(notif.status || "").trim().toUpperCase();
+      const canApproveGerencia = canEmitTaxOnlyToSap({
+        userId: authState.userId ?? localStorage.getItem("userId"),
+        role: authState.role || localStorage.getItem("role"),
+        username: authState.username || localStorage.getItem("username"),
+        endpoints: currentEndpoints,
+      });
 
       let isForMe = false;
 
-      if (isAdminActive) {
+      if (targetRoleUpper === "GERENCIA" || statusUpper === "PENDIENTE_GERENCIA") {
+        // 👑 Notificación exclusiva para Gerencia / Admin (Juan)
+        isForMe = Boolean(canApproveGerencia);
+      } else if (isAdminActive) {
         // Facturación / Admin / Digitador ONLY recibe cotizaciones pendientes de revisión/aprobación
         if (
           targetRoleUpper === "FACTURACION" ||
@@ -176,7 +357,6 @@ export function useQuoteSocket() {
           targetRoleUpper.includes("DIGIT") ||
           targetRoleUpper.includes("SUPERVIS")
         ) {
-          const statusUpper = String(notif.status || "").trim().toUpperCase();
           const titleLower = String(notif.title || "").toLowerCase();
           if (
             statusUpper !== "EMITIDO" &&

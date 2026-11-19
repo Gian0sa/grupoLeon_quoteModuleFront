@@ -22,11 +22,12 @@ export const useSapStatus = (options = {}) => {
 };
 
 export const useGetQuotes = (filters = {}) => {
+    const { viewerUserId, viewerUsername, ...apiFilters } = filters || {};
     const query = useQuery({
-        queryKey: ["quotes", filters],
-        queryFn: () => getQuotes(filters),
-        staleTime: 30000, // 1 minuto de caché; Socket.io actualiza en tiempo real
-        refetchOnWindowFocus: false,
+        queryKey: ["quotes", apiFilters, viewerUserId || null, viewerUsername || null],
+        queryFn: () => getQuotes(apiFilters),
+        staleTime: 10000, // 10s de caché; Socket.io actualiza en tiempo real y refresca al volver a la pestaña
+        refetchOnWindowFocus: true,
         placeholderData: (previousData) => previousData,
     })
     const safeData = Array.isArray(query.data) ? query.data : (query.data?.quotes || []);
