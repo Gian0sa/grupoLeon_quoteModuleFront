@@ -90,7 +90,11 @@ export function useQuoteSocket() {
         const authState = useAuthStore.getState();
         const myId = authState.userId ?? localStorage.getItem("userId");
         const myUser = authState.username || localStorage.getItem("username") || "";
-        const isMaster = isDraftMasterAdmin({ userId: myId, username: myUser });
+        const isMaster = isDraftMasterAdmin({
+          userId: myId,
+          username: myUser,
+          role: authState.role || localStorage.getItem("role"),
+        });
         const isMine = isDraftOwnedByUser(quote, { userId: myId, username: myUser });
         if (!isMaster && !isMine) {
           return;
@@ -109,7 +113,11 @@ export function useQuoteSocket() {
         const authState = useAuthStore.getState();
         const myId = authState.userId ?? localStorage.getItem("userId");
         const myUser = authState.username || localStorage.getItem("username") || "";
-        const isMaster = isDraftMasterAdmin({ userId: myId, username: myUser });
+        const isMaster = isDraftMasterAdmin({
+          userId: myId,
+          username: myUser,
+          role: authState.role || localStorage.getItem("role"),
+        });
         const isMine = isDraftOwnedByUser(quote, { userId: myId, username: myUser });
         if (!isMaster && !isMine) {
           return;

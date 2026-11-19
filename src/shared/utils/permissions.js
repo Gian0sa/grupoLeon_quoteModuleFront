@@ -5,23 +5,35 @@ export const MASTER_ADMIN_IDS = [2, 10, 12, 15, 16, 17, 35, 42];
 // Únicos Administradores Maestros con visibilidad/auditoría global de borradores: Enrique (10) y Misael (12)
 export const DRAFT_MASTER_ADMIN_IDS = [10, 12];
 
-export function isDraftMasterAdmin({ userId, username } = {}) {
+export function isDraftMasterAdmin({ userId, username, role } = {}) {
+  const roleUpper = String(role || "").toUpperCase().trim();
+  if (
+    roleUpper.includes("FACTUR") ||
+    roleUpper.includes("VENDEDOR") ||
+    roleUpper.includes("ASESOR") ||
+    roleUpper.includes("DIGIT")
+  ) {
+    return false;
+  }
+
   const numericId = Number(userId);
-  if (!Number.isNaN(numericId) && numericId > 0) {
-    return DRAFT_MASTER_ADMIN_IDS.includes(numericId);
+  if (!Number.isNaN(numericId) && numericId > 0 && DRAFT_MASTER_ADMIN_IDS.includes(numericId)) {
+    return true;
   }
   const normUser = String(username || "").toLowerCase().trim();
   if (!normUser) return false;
-  return normUser.includes("misael") || normUser.includes("cumapa") || normUser === "enrique" || normUser.startsWith("enrique ");
+  return normUser.includes("misael") || normUser.includes("cumapa") || normUser.includes("enrique");
 }
 
 export function useIsDraftMasterAdmin() {
   const userId = useAuthStore((state) => state.userId);
   const username = useAuthStore((state) => state.username);
+  const role = useAuthStore((state) => state.role);
 
   return isDraftMasterAdmin({
     userId: userId ?? localStorage.getItem("userId"),
     username: username || localStorage.getItem("username"),
+    role: role || localStorage.getItem("role"),
   });
 }
 
