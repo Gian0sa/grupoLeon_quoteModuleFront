@@ -31,6 +31,7 @@ import {
   formatDeliveryPoint,
   isPickupInStoreForm,
 } from "../../../shared/utils/quoteLogisticsFormatters";
+import { isItemTaxOnly } from "../../../shared/utils/quoteCalculator";
 
 /**
  * Línea de Tiempo en Tiempo Real de la Solicitud de Pedido (Diseño Imagen 1)
@@ -46,7 +47,8 @@ export function OrderTimelineBar({
 }) {
   const isDraft = !status || ["GENERADO", "BORRADOR", "DRAFT", "draft"].includes(status);
   const isSolSent = !isDraft && status !== "EN_EDICION";
-  const isInReview = status === "ENVIADO" || status === "EN_PROCESO" || status === "PENDIENTE_FACTURACION";
+  const isPendingGerencia = status === "PENDIENTE_GERENCIA";
+  const isInReview = status === "ENVIADO" || status === "EN_PROCESO" || status === "PENDIENTE_FACTURACION" || isPendingGerencia;
   const isObserved = status === "OBSERVADO";
   const isFinalApproved = ["APROBADO", "APROBADO_COMERCIAL", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO"].includes(status);
   const isFinalRejected = status === "RECHAZADO" || status === "ANULADO" || status === "CANCELADO";
@@ -72,7 +74,7 @@ export function OrderTimelineBar({
 
   const time1 = formatTime(createdIso || getLogTime(["GENERADO", "BORRADOR", "DRAFT"]));
   const time2 = isSolSent ? formatTime(submittedIso || getLogTime(["ENVIADO", "EN_PROCESO"])) : "—";
-  const time3 = (isInReview || isFinalDone) ? formatTime(reviewedIso || getLogTime(["PENDIENTE_FACTURACION", "VISTO", "APROBADO_COMERCIAL", "APROBADO", "RECHAZADO", "OBSERVADO"])) : "—";
+  const time3 = (isInReview || isFinalDone) ? formatTime(reviewedIso || getLogTime(["PENDIENTE_GERENCIA", "PENDIENTE_FACTURACION", "VISTO", "APROBADO_COMERCIAL", "APROBADO", "RECHAZADO", "OBSERVADO"])) : "—";
   const time4 = isFinalDone ? formatTime(completedIso || getLogTime(["APROBADO", "RECHAZADO", "OBSERVADO", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO"])) : "—";
 
   // Porcentaje de ciclo
@@ -332,7 +334,8 @@ export function OrderChecklist({
 
   const hasClient = Boolean(client && (client.CardCode || client.CardName || client.name));
   const hasProducts = Boolean(Array.isArray(products) && products.length > 0);
-  const hasConditions = Boolean(saleCondition && (creditTerm || saleCondition === "CONTADO"));
+  const isAllTaxOnly = hasProducts && products.every((p) => isItemTaxOnly(p));
+  const hasConditions = Boolean(isAllTaxOnly || (saleCondition && (creditTerm || saleCondition === "CONTADO")));
 
   const effectiveDeliveryForm = selectedDeliveryForm || deliveryForm;
   const effectiveTransport = selectedTransport || transport;
@@ -389,7 +392,9 @@ export function OrderChecklist({
       id: 3,
       label: "Valoración competitiva y descuentos autorizados",
       isDone: hasConditions,
-      detail: hasConditions ? `Condición: ${saleCondition} ${creditTerm ? `(${creditTerm})` : ""}` : "Definir condiciones"
+      detail: isAllTaxOnly
+        ? "Condición: 10) TRANSFERENCIA GRATUITA (Solo IGV)"
+        : (hasConditions ? `Condición: ${saleCondition} ${creditTerm ? `(${creditTerm})` : ""}` : "Definir condiciones")
     },
     {
       id: 4,

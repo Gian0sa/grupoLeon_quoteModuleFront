@@ -74,7 +74,8 @@ import {
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuoteStore } from "../stores/quoteStore";
-import { useHasAccess, useIsAdmin } from "../../../shared/utils/permissions";
+import { useHasAccess, useIsAdmin, useCanEmitTaxOnlyToSap, isDraftOwnedByUser, useIsDraftMasterAdmin } from "../../../shared/utils/permissions";
+import { isItemTaxOnly } from "../../../shared/utils/quoteCalculator";
 import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
 import { QuoteStepper, getStageIndex } from "../components/QuoteStepper";
 import { QuoteDetailDrawer } from "../components/QuoteDetailDrawer";
@@ -86,7 +87,7 @@ import { calculateQuoteTotals, getQuoteTotalUSD, formatThousands } from "../../.
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { useGetQuotes } from "../hooks/queries/quotesQueries";
-import { updateQuote, deleteQuote, createQuote, getQuotes } from "../services/quoteService";
+import { updateQuote, deleteQuote, getQuotes } from "../services/quoteService";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { cleanSellerName, cleanClientName, formatQuoteSellerName, SALES_PERSONS_MAP } from "../../../shared/utils/quoteLogisticsFormatters";
@@ -121,12 +122,26 @@ export const isCancelledState = (status) => {
   );
 };
 
+export const checkHasTaxOnly = (q) => {
+  if (!q) return false;
+  const quoteProducts = q.products || q.items || q.totals?.products || q.totals?.normalizedProducts || [];
+  if (quoteProducts.length > 0 && quoteProducts.some((it) => isItemTaxOnly(it))) {
+    return true;
+  }
+  return Boolean(
+    q.hasTaxOnlyItems ||
+    q.totals?.hasTaxOnlyItems ||
+    Number(q.taxOnlyCount || q.totals?.taxOnlyCount || 0) > 0
+  );
+};
+
 export const checkHasAdditionalDiscount = (q) => {
   if (!q) return false;
   const quoteProducts = q.products || q.items || q.totals?.products || q.totals?.normalizedProducts || [];
 
   if (quoteProducts.length > 0) {
     const hasExplicitLineAdic = quoteProducts.some((it) => {
+      if (isItemTaxOnly(it)) return false;
       const isSpecial = isSpecialAgreementItem(it);
       const adic = Number(
         it.lineDiscount ??
@@ -146,6 +161,7 @@ export const checkHasAdditionalDiscount = (q) => {
     }
 
     const hasLineApprovalNeeded = quoteProducts.some((it) => {
+      if (isItemTaxOnly(it)) return false;
       const sapDisc = Number(it.sapDiscount ?? it.discount ?? 0);
       const totalDisc = Number(it.discountPercent ?? sapDisc);
       const adic = Number(it.lineDiscount ?? it.LineDiscount ?? it.additionalDiscount ?? 0);
@@ -172,7 +188,16 @@ export const checkHasAdditionalDiscount = (q) => {
   if (Number(q.headerDiscount || q.DiscountPercent || q.totals?.headerDiscount || 0) > 0) {
     return true;
   }
-  return Boolean(q.hasAdditionalDiscount || q.totals?.hasAdditionalDiscount || q.totals?.requiresDiscountApproval);
+  const hasTaxOnlyFlag = Boolean(
+    q.hasTaxOnlyItems ||
+    q.totals?.hasTaxOnlyItems ||
+    Number(q.taxOnlyCount || q.totals?.taxOnlyCount || 0) > 0
+  );
+  return Boolean(
+    q.hasAdditionalDiscount ||
+    q.totals?.hasAdditionalDiscount ||
+    (q.totals?.requiresDiscountApproval && !hasTaxOnlyFlag)
+  );
 };
 
 const cleanDeliveryForm = (df) => {
@@ -247,7 +272,7 @@ const isDraftOwnedByCurrentUser = (q, currentUsername, currentUserId, currentSal
 export const isQuoteFromSap = (q) => {
   if (!q) return false;
   const status = String(q.approvalStatus || q.state || q.status || "").toUpperCase().trim();
-  if (["ENVIADO", "PENDIENTE_APROBACION", "EN_PROCESO", "PENDIENTE_FACTURACION", "BORRADOR", "GENERADO", "DRAFT", "draft", "OBSERVADO", "EN_EDICION", "RECHAZADO"].includes(status)) {
+  if (["ENVIADO", "PENDIENTE_APROBACION", "EN_PROCESO", "PENDIENTE_FACTURACION", "PENDIENTE_GERENCIA", "BORRADOR", "GENERADO", "DRAFT", "draft", "OBSERVADO", "EN_EDICION", "RECHAZADO"].includes(status)) {
     return false;
   }
   const sapDocNum = q.sapDocNum || q.DocNum || q.totals?.DocNum || q.totals?.sapDocNum;
@@ -268,7 +293,7 @@ export const isQuoteFromSap = (q) => {
 export const isQuoteEmittedToSap = (q) => {
   if (!q) return false;
   const status = String(q.approvalStatus || q.state || q.status || "").toUpperCase().trim();
-  if (["PENDIENTE", "ENVIADO", "PENDIENTE_APROBACION", "EN_PROCESO", "PENDIENTE_FACTURACION", "BORRADOR", "GENERADO", "DRAFT", "draft", "OBSERVADO", "EN_EDICION"].includes(status)) {
+  if (["PENDIENTE", "ENVIADO", "PENDIENTE_APROBACION", "EN_PROCESO", "PENDIENTE_FACTURACION", "PENDIENTE_GERENCIA", "BORRADOR", "GENERADO", "DRAFT", "draft", "OBSERVADO", "EN_EDICION"].includes(status)) {
     return false;
   }
   const rawSap = q.sapDocNum || q.totals?.sapDocNum || (q.DocNum && !String(q.DocNum).startsWith("COT-") ? q.DocNum : null);
@@ -287,7 +312,7 @@ export const isQuotePendingApproval = (q) => {
   if (isCancelledState(status)) return false;
   if (isDraftState(status)) return false;
   if (isQuoteEmittedToSap(q) || Boolean(q.sapDocNum || q.totals?.sapDocNum || q.isSapDirect || q.totals?.isSapDirect || status === "EMITIDO" || status === "EMITIDO_SAP" || status === "PEDIDO_EMITIDO")) return false;
-  if (["PENDIENTE", "PENDIENTE_APROBACION", "ENVIADO", "EN_PROCESO", "PENDIENTE_FACTURACION", "EN_FACTURACION", "OBSERVADO", "EN_EDICION"].includes(status)) {
+  if (["PENDIENTE", "PENDIENTE_APROBACION", "ENVIADO", "EN_PROCESO", "PENDIENTE_FACTURACION", "EN_FACTURACION", "PENDIENTE_GERENCIA", "OBSERVADO", "EN_EDICION"].includes(status)) {
     return true;
   }
   return !["APROBADO", "APROBADO_COMERCIAL", "APROBADO_CREDITOS", "EMITIDO", "EMITIDO_SAP"].includes(status);
@@ -639,6 +664,70 @@ export const isMatchingDoc = (a, b) => {
   return false;
 };
 
+const DELETED_QUOTES_STORAGE_KEY = "grupoLeon_deleted_quote_ids";
+const deletedQuoteIdsMemory = new Set();
+
+const loadDeletedQuoteIdsSet = () => {
+  try {
+    const raw = sessionStorage.getItem(DELETED_QUOTES_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        parsed.forEach((id) => deletedQuoteIdsMemory.add(String(id).toUpperCase()));
+      }
+    }
+  } catch {}
+  return deletedQuoteIdsMemory;
+};
+
+export const markQuoteAsDeleted = (target) => {
+  if (!target) return;
+  const set = loadDeletedQuoteIdsSet();
+  const addVal = (val) => {
+    if (val === undefined || val === null) return;
+    const s = String(val).trim().toUpperCase();
+    if (!s) return;
+    set.add(s);
+    const m = s.match(/(\d+)$/);
+    if (m) {
+      const num = Number(m[1]);
+      if (num > 0) {
+        set.add(String(num));
+        set.add(`COT-WEB-${String(num).padStart(6, "0")}`);
+      }
+    }
+  };
+  if (typeof target === "object") {
+    addVal(target.id);
+    addVal(target.docNumber);
+    addVal(target.quoteId);
+  } else {
+    addVal(target);
+  }
+  try {
+    sessionStorage.setItem(DELETED_QUOTES_STORAGE_KEY, JSON.stringify(Array.from(set).slice(-300)));
+  } catch {}
+};
+
+export const isQuoteMarkedDeleted = (q) => {
+  if (!q) return false;
+  const set = loadDeletedQuoteIdsSet();
+  if (set.size === 0) return false;
+  const checkVal = (val) => {
+    if (val === undefined || val === null) return false;
+    const s = String(val).trim().toUpperCase();
+    if (!s) return false;
+    if (set.has(s)) return true;
+    const m = s.match(/^COT-WEB-0*(\d+)$/i);
+    if (m && set.has(String(Number(m[1])))) return true;
+    return false;
+  };
+  if (typeof q === "object") {
+    return checkVal(q.id) || checkVal(q.docNumber) || checkVal(q.quoteId);
+  }
+  return checkVal(q);
+};
+
 export const safeSetLocalQuotes = (quotesList) => {
   try {
     if (!quotesList) {
@@ -651,9 +740,10 @@ export const safeSetLocalQuotes = (quotesList) => {
       return;
     }
 
-    // Deduplicar antes de persistir para asegurar que NUNCA queden dos borradores idénticos
+    // Deduplicar y excluir cualquier cotización marcada como eliminada para que JAMÁS reviva desde localStorage
     const deduped = [];
     for (const q of rawList) {
+      if (isQuoteMarkedDeleted(q)) continue;
       if (!deduped.some(existing => isMatchingDoc(existing, q))) {
         deduped.push(q);
       }
@@ -696,13 +786,17 @@ export function QuoteApprovalPage() {
     hasAccess("POST:/quotes/approval") ||
     hasAccess("POST:/quotes/sap/order");
 
-  const isMasterAdminId = [2, 10, 12, 15, 16, 17, 35].includes(Number(authUserId || localStorage.getItem("userId")));
+  const isMasterAdminId = [2, 10, 12, 15, 16, 17, 35, 42].includes(Number(authUserId || localStorage.getItem("userId")));
   const isRoleAdmin = isVerifierOrAdminRole || isAdmin;
   const isAdminUser = Boolean(isRoleAdmin || hasApprovalPrivileges || isMasterAdminId);
+  const canApproveTaxOnlySap = useCanEmitTaxOnlyToSap();
+  // Únicos Administradores Maestros para ver/gestionar borradores globales: Misael (12) y Enrique (10)
+  const isMasterAdminUser = useIsDraftMasterAdmin();
   const isSellerUser = !isAdminUser;
 
   // 🛡️ Permiso granular para ver / gestionar la bandeja de borradores
   const canViewDrafts = Boolean(
+    isMasterAdminUser ||
     isMasterAdminId ||
     hasAccess("GET /quotes/drafts") ||
     hasAccess("GET:/quotes/drafts") ||
@@ -722,7 +816,9 @@ export function QuoteApprovalPage() {
   const activeCurrentUserId = authUserId || localStorage.getItem("userId");
 
   const { data: serverQuotes, isLoading: isServerLoading, refetch: refetchServerQuotes } = useGetQuotes({
-    limit: 50
+    limit: 50,
+    viewerUserId: activeCurrentUserId || undefined,
+    viewerUsername: activeCurrentUsername || undefined,
   });
 
   const handleLoadQuote = (q) => {
@@ -744,8 +840,15 @@ export function QuoteApprovalPage() {
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          if (isAdminUser) return parsed;
-          return parsed.filter(q => isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId, authSalesCode));
+          return parsed.filter((q) => {
+            if (isQuoteMarkedDeleted(q)) return false;
+            const qSt = q?.approvalStatus || q?.state || q?.status || "GENERADO";
+            if (isDraftState(qSt)) {
+              return isMasterAdminUser || isDraftOwnedByUser(q, { userId: activeCurrentUserId, username: activeCurrentUsername });
+            }
+            if (isAdminUser) return true;
+            return isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId, authSalesCode);
+          });
         }
       }
     } catch {}
@@ -874,9 +977,17 @@ export function QuoteApprovalPage() {
         if (isCurrent) setIsDeepSearching(true);
         const results = await getQuotes({ search: queryTerm });
         if (isCurrent && Array.isArray(results) && results.length > 0) {
+          const filteredResults = results.filter((r) => {
+            if (isQuoteMarkedDeleted(r)) return false;
+            const rSt = r?.approvalStatus || r?.state || r?.status || "GENERADO";
+            if (isDraftState(rSt)) {
+              return isMasterAdminUser || isDraftOwnedByUser(r, { userId: activeCurrentUserId, username: activeCurrentUsername });
+            }
+            return true;
+          });
           if (searchParamValue) {
             const term = String(searchParamValue).trim();
-            const match = results.find(r =>
+            const match = filteredResults.find(r =>
               isMatchingDoc(r, term) ||
               String(r.docNumber || "").toLowerCase().includes(term.toLowerCase()) ||
               String(r.id || "") === term
@@ -890,7 +1001,7 @@ export function QuoteApprovalPage() {
           setQuotes(prev => {
             const seen = new Set(prev.map(q => String(q.docNumber || q.id)));
             const added = [];
-            for (const r of results) {
+            for (const r of filteredResults) {
               const k = String(r.docNumber || r.id);
               if (!seen.has(k)) {
                 added.push(r);
@@ -912,7 +1023,7 @@ export function QuoteApprovalPage() {
       isCurrent = false;
       clearTimeout(timer);
     };
-  }, [searchQuery]);
+  }, [searchQuery, isMasterAdminUser, activeCurrentUserId, activeCurrentUsername]);
 
   const handleRefresh = async (showToast = false) => {
     setIsRefreshing(true);
@@ -945,7 +1056,7 @@ export function QuoteApprovalPage() {
   // Jerarquía de estados: el mayor índice tiene mayor prioridad (más avanzado en el flujo)
   const STATUS_PRIORITY = [
     "BORRADOR", "GENERADO", "ENVIADO", "EN_PROCESO", "EN_EDICION",
-    "OBSERVADO", "RECHAZADO", "APROBADO_COMERCIAL", "EN_FACTURACION", "ANULADO", "FACTURADO", "APROBADO", "EMITIDO", "EMITIDO_SAP", "PEDIDO_EMITIDO"
+    "OBSERVADO", "RECHAZADO", "PENDIENTE_GERENCIA", "APROBADO_COMERCIAL", "EN_FACTURACION", "ANULADO", "FACTURADO", "APROBADO", "EMITIDO", "EMITIDO_SAP", "PEDIDO_EMITIDO"
   ];
   const getStatusPriority = (s) => STATUS_PRIORITY.indexOf(String(s || "BORRADOR").toUpperCase());
 
@@ -959,6 +1070,10 @@ export function QuoteApprovalPage() {
       // Limpiar documentos fantasma vacíos y cotizaciones ya emitidas a SAP de la memoria local
       let hadChanges = false;
       const cleanLocal = local.filter(q => {
+        if (isQuoteMarkedDeleted(q)) {
+          hadChanges = true;
+          return false;
+        }
         const isPhantom = String(q.docNumber || "").trim() === "COT-000000" && (!q.products || q.products.length === 0) && Number(q.totals?.grandTotalUSD || 0) === 0;
         if (isPhantom) return false;
         const qStatus = String(q.approvalStatus || q.state || q.status || "").toUpperCase().trim();
@@ -1008,12 +1123,21 @@ export function QuoteApprovalPage() {
 
       if (serverQuotes && Array.isArray(serverQuotes)) {
         const validServerQuotes = serverQuotes.filter(q => {
+          if (isQuoteMarkedDeleted(q)) return false;
           const isPhantom = String(q.docNumber || "").trim() === "COT-000000" && (!q.products || q.products.length === 0) && Number(q.totals?.grandTotalUSD || 0) === 0;
-          return !isPhantom;
+          if (isPhantom) return false;
+          const qSt = q?.approvalStatus || q?.state || q?.status || "GENERADO";
+          if (isDraftState(qSt) && !isMasterAdminUser && !isDraftOwnedByUser(q, { userId: activeCurrentUserId, username: activeCurrentUsername })) {
+            return false;
+          }
+          return true;
         });
 
-        // Solo preservar borradores locales legítimos QUE PERTENEZCAN AL USUARIO ACTUAL
+        // Solo preservar borradores locales que AÚN NO han sido sincronizados/eliminados en el servidor:
+        // Si un borrador ya tiene correlativo oficial COT-WEB-XXXXXX (o id numérico de BD) y NO viene en serverQuotes,
+        // significa que ya fue ELIMINADO en MySQL (a menos que acabe de crearse hace < 12s y siga en vuelo).
         const localDraftsOnly = dedupedLocal.filter(q => {
+          if (isQuoteMarkedDeleted(q)) return false;
           const isDraft = isDraftState(q.approvalStatus || q.state || q.status);
           if (!isDraft) return false;
           const notInServer = !validServerQuotes.some(sq => {
@@ -1028,7 +1152,20 @@ export function QuoteApprovalPage() {
             }
             return false;
           });
-          return notInServer && !String(q.docNumber || "").startsWith("TEST-") && isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId);
+          if (!notInServer) return false;
+
+          const docStr = String(q.docNumber || "").toUpperCase().trim();
+          const hasServerWebCorrelative = /^COT-WEB-\d+$/i.test(docStr) || (q.id && !isNaN(Number(q.id)) && Number(q.id) > 0);
+          if (hasServerWebCorrelative) {
+            const lastTs = new Date(q.updatedAt || q.createdAt || 0).getTime();
+            const isJustCreatedInFlight = !isNaN(lastTs) && (Date.now() - lastTs < 12000);
+            if (!isJustCreatedInFlight) {
+              // Fue eliminado en BD: no revivirlo desde localStorage
+              return false;
+            }
+          }
+
+          return !docStr.startsWith("TEST-") && isDraftOwnedByUser(q, { userId: activeCurrentUserId, username: activeCurrentUsername });
         });
 
         // Enriquecer cotizaciones del servidor con datos locales
@@ -1050,7 +1187,7 @@ export function QuoteApprovalPage() {
             // 1. Si el servidor indica CANCELADO, ANULADO o COMPLETADO, SIEMPRE prevalece el servidor (estado oficial en SAP/BD).
             // 2. Si el usuario realizó una acción administrativa reciente (OBSERVADO, RECHAZADO, APROBADO) en los últimos 30s, el local prevalece firmemente sobre cualquier caché antiguo del servidor.
             // 3. Una cotización observada solo se considera "corregida" si el servidor tiene un timestamp POSTERIOR al momento en que se observó.
-            const isCancelledOrClosedInServer = sqStatus === "CANCELADO" || sqStatus === "COMPLETADO" || sqStatus === "ANULADO" || sq.isCancelled;
+            const isCancelledOrClosedInServer = sqStatus === "CANCELADO" || sqStatus === "COMPLETADO" || sqStatus === "FACTURADO" || sqStatus === "ANULADO" || sq.isCancelled;
             const isObservationCorrected = lqStatus === "OBSERVADO" &&
               (sqStatus === "ENVIADO" || sqStatus === "APROBADO_COMERCIAL" || sqStatus === "APROBADO") &&
               sqUpdatedAt > (lqUpdatedAt + 2000);
@@ -1070,13 +1207,13 @@ export function QuoteApprovalPage() {
               state: finalStatus,
               approvalStatus: finalStatus,
               isCancelled: sq.isCancelled || finalStatus === "CANCELADO" || finalStatus === "ANULADO",
-              isSapDirect: (finalStatus === "ENVIADO" || finalStatus === "PENDIENTE_APROBACION" || finalStatus === "BORRADOR" || finalStatus === "OBSERVADO" || finalStatus === "RECHAZADO")
+              isSapDirect: (finalStatus === "ENVIADO" || finalStatus === "PENDIENTE_APROBACION" || finalStatus === "PENDIENTE_GERENCIA" || finalStatus === "BORRADOR" || finalStatus === "OBSERVADO" || finalStatus === "RECHAZADO")
                 ? false
                 : Boolean(sq.isSapDirect || sq.totals?.isSapDirect || matchedLocal.isSapDirect || matchedLocal.totals?.isSapDirect || sq.sapDocNum || matchedLocal.sapDocNum || finalStatus === "EMITIDO" || finalStatus === "EMITIDO_SAP"),
-              sapDocNum: (finalStatus === "ENVIADO" || finalStatus === "PENDIENTE_APROBACION" || finalStatus === "BORRADOR" || finalStatus === "OBSERVADO" || finalStatus === "RECHAZADO")
+              sapDocNum: (finalStatus === "ENVIADO" || finalStatus === "PENDIENTE_APROBACION" || finalStatus === "PENDIENTE_GERENCIA" || finalStatus === "BORRADOR" || finalStatus === "OBSERVADO" || finalStatus === "RECHAZADO")
                 ? null
                 : (sq.sapDocNum || sq.totals?.sapDocNum || matchedLocal.sapDocNum || matchedLocal.totals?.sapDocNum || (sq.isSapDirect ? (sq.DocNum || sq.totals?.DocNum) : null)),
-              DocNum: (finalStatus === "ENVIADO" || finalStatus === "PENDIENTE_APROBACION" || finalStatus === "BORRADOR" || finalStatus === "OBSERVADO" || finalStatus === "RECHAZADO")
+              DocNum: (finalStatus === "ENVIADO" || finalStatus === "PENDIENTE_APROBACION" || finalStatus === "PENDIENTE_GERENCIA" || finalStatus === "BORRADOR" || finalStatus === "OBSERVADO" || finalStatus === "RECHAZADO")
                 ? null
                 : ((sq.isSapDirect || sq.totals?.isSapDirect || matchedLocal.isSapDirect) ? (sq.DocNum || sq.totals?.DocNum || sq.sapDocNum || matchedLocal.DocNum || matchedLocal.sapDocNum) : (sq.DocNum || matchedLocal.DocNum || null)),
               // Campos de observación: si ya fue levantada (ENVIADO), limpiar la razón de observación antigua
@@ -1146,9 +1283,12 @@ export function QuoteApprovalPage() {
 
         const merged = [];
         for (const item of [...enrichedServerQuotes, ...localDraftsOnly]) {
-          // Admins can see ALL server quotes (including drafts of other users).
-          // Non-admins can only see quotes they own.
-          if (!isAdminUser && !isDraftOwnedByCurrentUser(item, activeCurrentUsername, activeCurrentUserId, authSalesCode, mySapSellerPrefix)) {
+          const itemSt = item?.approvalStatus || item?.state || item?.status || "GENERADO";
+          if (isDraftState(itemSt) && !isMasterAdminUser) {
+            if (!isDraftOwnedByUser(item, { userId: activeCurrentUserId, username: activeCurrentUsername })) {
+              continue;
+            }
+          } else if (!isAdminUser && !isDraftOwnedByCurrentUser(item, activeCurrentUsername, activeCurrentUserId, authSalesCode, mySapSellerPrefix)) {
             continue;
           }
           const hasDuplicate = merged.some(m => isMatchingDoc(m, item));
@@ -1161,8 +1301,12 @@ export function QuoteApprovalPage() {
       } else if (dedupedLocal.length > 0) {
         const validLocal = dedupedLocal.filter(q => {
           const notTest = !String(q.docNumber || "").startsWith("TEST-");
-          // Admins see all local quotes too; non-admins only see their own quotes
-          return notTest && (isAdminUser || isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId, authSalesCode, mySapSellerPrefix));
+          if (!notTest) return false;
+          const qSt = q?.approvalStatus || q?.state || q?.status || "GENERADO";
+          if (isDraftState(qSt)) {
+            return isMasterAdminUser || isDraftOwnedByUser(q, { userId: activeCurrentUserId, username: activeCurrentUsername });
+          }
+          return isAdminUser || isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId, authSalesCode, mySapSellerPrefix);
         });
         setQuotes(validLocal);
         safeSetLocalQuotes(validLocal);
@@ -1178,7 +1322,7 @@ export function QuoteApprovalPage() {
 
   useEffect(() => {
     syncQuotes();
-  }, [serverQuotes, mySapSellerPrefix]);
+  }, [serverQuotes, mySapSellerPrefix, isMasterAdminUser, activeCurrentUserId, activeCurrentUsername, isAdminUser]);
 
   // Escuchar eventos en vivo de actualización local (CERO necesidad de recargar / F5)
   useEffect(() => {
@@ -1188,12 +1332,21 @@ export function QuoteApprovalPage() {
         const rawLocal = stored ? JSON.parse(stored) : [];
         const local = [];
         for (const q of (Array.isArray(rawLocal) ? rawLocal : [])) {
+          if (isQuoteMarkedDeleted(q)) continue;
           if (!local.some(existing => isMatchingDoc(existing, q))) {
             local.push(q);
           }
         }
 
         if (serverQuotes && Array.isArray(serverQuotes)) {
+          const activeServerQuotes = serverQuotes.filter(sq => {
+            if (isQuoteMarkedDeleted(sq)) return false;
+            const sqSt = sq?.approvalStatus || sq?.state || sq?.status || "GENERADO";
+            if (isDraftState(sqSt) && !isMasterAdminUser && !isDraftOwnedByUser(sq, { userId: activeCurrentUserId, username: activeCurrentUsername })) {
+              return false;
+            }
+            return true;
+          });
           // CORRECCIÓN CRÍTICA: Cuando el localStorage se actualiza optimistamente,
           // el estado local DEBE prevalecer sobre el caché viejo del servidor.
           // Construir un mapa de datos locales para hacer el merge.
@@ -1204,7 +1357,7 @@ export function QuoteApprovalPage() {
           });
 
           // Combinar: para cada cotización del servidor, si existe localmente, usar estado local (actualizado)
-          const mergedWithLocal = serverQuotes.map(sq => {
+          const mergedWithLocal = activeServerQuotes.map(sq => {
             const localMatch = localMap.get(String(sq.docNumber || "")) || localMap.get(String(sq.id ?? ""));
             if (localMatch) {
               const isCancelledInServer = sq.approvalStatus === "CANCELADO" || sq.state === "CANCELADO" || sq.status === "CANCELADO" || sq.isCancelled;
@@ -1217,13 +1370,13 @@ export function QuoteApprovalPage() {
                 state: finalStatus,
                 approvalStatus: finalStatus,
                 isCancelled: isCancelledInServer || Boolean(localMatch.isCancelled),
-                isSapDirect: (finalStatus === "ENVIADO" || finalStatus === "PENDIENTE_APROBACION" || finalStatus === "BORRADOR" || finalStatus === "OBSERVADO" || finalStatus === "RECHAZADO")
+                isSapDirect: (finalStatus === "ENVIADO" || finalStatus === "PENDIENTE_APROBACION" || finalStatus === "PENDIENTE_GERENCIA" || finalStatus === "BORRADOR" || finalStatus === "OBSERVADO" || finalStatus === "RECHAZADO")
                   ? false
                   : Boolean(sq.isSapDirect || sq.totals?.isSapDirect),
-                sapDocNum: (finalStatus === "ENVIADO" || finalStatus === "PENDIENTE_APROBACION" || finalStatus === "BORRADOR" || finalStatus === "OBSERVADO" || finalStatus === "RECHAZADO")
+                sapDocNum: (finalStatus === "ENVIADO" || finalStatus === "PENDIENTE_APROBACION" || finalStatus === "PENDIENTE_GERENCIA" || finalStatus === "BORRADOR" || finalStatus === "OBSERVADO" || finalStatus === "RECHAZADO")
                   ? null
                   : (sq.sapDocNum || sq.totals?.sapDocNum || (sq.isSapDirect ? (sq.DocNum || sq.totals?.DocNum) : null)),
-                DocNum: (finalStatus === "ENVIADO" || finalStatus === "PENDIENTE_APROBACION" || finalStatus === "BORRADOR" || finalStatus === "OBSERVADO" || finalStatus === "RECHAZADO")
+                DocNum: (finalStatus === "ENVIADO" || finalStatus === "PENDIENTE_APROBACION" || finalStatus === "PENDIENTE_GERENCIA" || finalStatus === "BORRADOR" || finalStatus === "OBSERVADO" || finalStatus === "RECHAZADO")
                   ? null
                   : ((sq.isSapDirect || sq.totals?.isSapDirect) ? (sq.DocNum || sq.totals?.DocNum || sq.sapDocNum || sq.totals?.sapDocNum) : null),
                 // Mantener datos ricos del servidor que no estén en local y preservar la hora VISTO más reciente
@@ -1278,15 +1431,33 @@ export function QuoteApprovalPage() {
             };
           });
 
-          // Agregar docs locales que no estén en servidor (borradores nuevos)
+          // Agregar docs locales que no estén en servidor (solo borradores nuevos en vuelo propios, nunca borradores ya eliminados de BD ni de otros usuarios)
           const unsyncedLocal = local.filter(q => {
-            const notInServer = !serverQuotes.some(sq => isMatchingDoc(sq, q));
-            return notInServer && (isAdminUser || isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId, authSalesCode, mySapSellerPrefix));
+            if (isQuoteMarkedDeleted(q)) return false;
+            const notInServer = !activeServerQuotes.some(sq => isMatchingDoc(sq, q));
+            if (!notInServer) return false;
+            const docStr = String(q.docNumber || "").toUpperCase().trim();
+            const hasServerWebCorrelative = /^COT-WEB-\d+$/i.test(docStr) || (q.id && !isNaN(Number(q.id)) && Number(q.id) > 0);
+            if (hasServerWebCorrelative) {
+              const lastTs = new Date(q.updatedAt || q.createdAt || 0).getTime();
+              const isJustCreatedInFlight = !isNaN(lastTs) && (Date.now() - lastTs < 12000);
+              if (!isJustCreatedInFlight) return false;
+            }
+            const qSt = q?.approvalStatus || q?.state || q?.status || "GENERADO";
+            if (isDraftState(qSt)) {
+              return isDraftOwnedByUser(q, { userId: activeCurrentUserId, username: activeCurrentUsername });
+            }
+            return isAdminUser || isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId, authSalesCode, mySapSellerPrefix);
           });
 
           const merged = [];
           for (const item of [...mergedWithLocal, ...unsyncedLocal]) {
-            if (!isAdminUser && !isDraftOwnedByCurrentUser(item, activeCurrentUsername, activeCurrentUserId, authSalesCode, mySapSellerPrefix)) {
+            const itemSt = item?.approvalStatus || item?.state || item?.status || "GENERADO";
+            if (isDraftState(itemSt) && !isMasterAdminUser) {
+              if (!isDraftOwnedByUser(item, { userId: activeCurrentUserId, username: activeCurrentUsername })) {
+                continue;
+              }
+            } else if (!isAdminUser && !isDraftOwnedByCurrentUser(item, activeCurrentUsername, activeCurrentUserId, authSalesCode, mySapSellerPrefix)) {
               continue;
             }
             const hasDuplicate = merged.some(m => isMatchingDoc(m, item));
@@ -1296,7 +1467,13 @@ export function QuoteApprovalPage() {
           }
           setQuotes(merged);
         } else {
-          const validLocal = local.filter(q => isAdminUser || isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId, authSalesCode, mySapSellerPrefix));
+          const validLocal = local.filter(q => {
+            const qSt = q?.approvalStatus || q?.state || q?.status || "GENERADO";
+            if (isDraftState(qSt)) {
+              return isMasterAdminUser || isDraftOwnedByUser(q, { userId: activeCurrentUserId, username: activeCurrentUsername });
+            }
+            return isAdminUser || isDraftOwnedByCurrentUser(q, activeCurrentUsername, activeCurrentUserId, authSalesCode, mySapSellerPrefix);
+          });
           setQuotes(validLocal);
         }
       } catch (err) {
@@ -1306,7 +1483,7 @@ export function QuoteApprovalPage() {
 
     window.addEventListener("localQuotesUpdated", handleLocalUpdate);
     return () => window.removeEventListener("localQuotesUpdated", handleLocalUpdate);
-  }, [serverQuotes, activeCurrentUsername, activeCurrentUserId, authSalesCode, mySapSellerPrefix, isAdminUser]);
+  }, [serverQuotes, activeCurrentUsername, activeCurrentUserId, authSalesCode, mySapSellerPrefix, isAdminUser, isMasterAdminUser]);
 
   const DRAFT_STATUSES = ["BORRADOR", "GENERADO"];
 
@@ -1343,6 +1520,22 @@ export function QuoteApprovalPage() {
       return;
     }
 
+    if (
+      targetQuote &&
+      isDraftState(stUpper) &&
+      !isMasterAdminUser &&
+      !isDraftOwnedByUser(targetQuote, { userId: activeCurrentUserId, username: activeCurrentUsername })
+    ) {
+      toast({
+        title: "🔒 Borrador protegido",
+        description: "Solo el usuario que creó este borrador puede eliminarlo.",
+        status: "warning",
+        duration: 4500,
+        isClosable: true,
+      });
+      return;
+    }
+
     if (stUpper === "EMITIDO") {
       // ✅ Si la cotización fue EMITIDA a SAP, solo removerla de la vista de aprobaciones pendientes
       // SIN borrarla de la base de datos ni eliminar sus notificaciones
@@ -1363,21 +1556,43 @@ export function QuoteApprovalPage() {
     // Se borra físicamente si: era borrador, ya estaba anulada/rechazada, o está aprobada pero no emitida a SAP
     const isHardDelete = isDraft || isAlreadyAnulado || isApprovedButNotInSap;
 
-    // Activar modal de carga miniatura
-    setProcessModal({
-      isOpen: true,
-      title: isHardDelete ? "Eliminando Cotización..." : "Anulando Cotización...",
-      sub: `Documento ${id}`,
-      step: isHardDelete ? "Eliminando registro permanentemente..." : "Cambiando a ANULADO en aplicativo...",
-      icon: Trash2,
-    });
+    // Activar modal de carga únicamente si es anulación formal (en eliminación de borrador desaparece en 0ms)
+    if (!isHardDelete) {
+      setProcessModal({
+        isOpen: true,
+        title: "Anulando Cotización...",
+        sub: `Documento ${id}`,
+        step: "Cambiando a ANULADO en aplicativo...",
+        icon: Trash2,
+      });
+    }
 
-    // 1. ACTUALIZACIÓN OPTIMISTA INMEDIATA EN PANTALLA (CERO F5)
+    // 1. ACTUALIZACIÓN OPTIMISTA INMEDIATA EN PANTALLA Y CACHÉ REACT QUERY (CERO F5)
     if (isHardDelete) {
-      setQuotes((prev) => prev.filter((q) => !isMatchingItem(q)));
-      queryClient.setQueryData(["quotes"], (old) => {
-        if (!Array.isArray(old)) return [];
-        return old.filter((q) => !isMatchingItem(q));
+      markQuoteAsDeleted(id);
+      if (targetQuote) markQuoteAsDeleted(targetQuote);
+      // 🛡️ Limpiar también si era un borrador activo sin quoteId o con el mismo cliente (evita que al eliminar el borrador quede en grupoLeon_active_draft)
+      try {
+        const storeState = useQuoteStore.getState();
+        if (typeof storeState?.clearIfMatchesDeletedQuote === "function") {
+          storeState.clearIfMatchesDeletedQuote(targetQuote || id);
+          storeState.clearIfMatchesDeletedQuote(id);
+        } else {
+          const activeQId = storeState?.quoteId;
+          const isDeletingDraft = isDraft || (targetQuote && isDraftState(targetQuote.approvalStatus || targetQuote.state || targetQuote.status));
+          if (activeQId && (String(activeQId) === idStr || isMatchingDoc({ id: activeQId, docNumber: activeQId }, idStr) || (targetQuote && isMatchingDoc({ id: activeQId, docNumber: activeQId }, targetQuote)))) {
+            storeState.clear();
+          } else if (isDeletingDraft && !activeQId && storeState?.products?.length > 0) {
+            storeState.clear();
+          }
+        }
+      } catch (_) {}
+      setQuotes((prev) => prev.filter((q) => !isMatchingItem(q) && !isQuoteMarkedDeleted(q)));
+      queryClient.setQueriesData({ queryKey: ["quotes"] }, (old) => {
+        if (!old) return old;
+        if (Array.isArray(old)) return old.filter((q) => !isMatchingItem(q) && !isQuoteMarkedDeleted(q));
+        if (Array.isArray(old.quotes)) return { ...old, quotes: old.quotes.filter((q) => !isMatchingItem(q) && !isQuoteMarkedDeleted(q)) };
+        return old;
       });
     } else {
       const nowIso = new Date().toISOString();
@@ -1405,9 +1620,8 @@ export function QuoteApprovalPage() {
     // 2. Persistir en localStorage
     const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
     if (isHardDelete) {
-      const updated = saved.filter((q) => !isMatchingItem(q));
+      const updated = saved.filter((q) => !isMatchingItem(q) && !isQuoteMarkedDeleted(q));
       localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(updated));
-      window.dispatchEvent(new Event("localQuotesUpdated"));
       toast({
         title: "🗑️ Cotización Eliminada",
         description: `La cotización ${id} fue eliminada permanentemente del sistema al instante.`,
@@ -1489,7 +1703,7 @@ export function QuoteApprovalPage() {
       console.error("Error actualizando notificaciones locales:", notifErr);
     }
 
-    // 3. Sincronizar en Backend
+    // 3. Sincronizar en Backend (cierre inmediato del modal, sin pausa artificial)
     try {
       await deleteQuote(id, isHardDelete);
       queryClient.invalidateQueries({ queryKey: ["quotes"] });
@@ -1497,7 +1711,9 @@ export function QuoteApprovalPage() {
     } catch (e) {
       console.error("Error eliminando cotización en el servidor:", e);
     } finally {
-      setTimeout(() => setProcessModal(prev => ({ ...prev, isOpen: false })), 450);
+      if (!isHardDelete) {
+        setProcessModal(prev => ({ ...prev, isOpen: false }));
+      }
     }
   };
 
@@ -2180,10 +2396,23 @@ export function QuoteApprovalPage() {
     }
   }, [isAdminUser, selectedTab]);
 
+  const isMyDraft = (q) =>
+    isDraftOwnedByUser(q, {
+      userId: activeCurrentUserId,
+      username: activeCurrentUsername,
+    });
+
   // Filtrado de la lista por Pestañas, Buscador y Filtros Avanzados de Histórico
   const filteredQuotes = useMemo(() => {
     // 1. Filtrar por rol y acceso
     const visibleQuotes = quotes.filter((q) => {
+      const qStatus = q?.approvalStatus || q?.state || q?.status || "GENERADO";
+      // 🛡️ Aislamiento estricto de BORRADORES por usuario creador para Facturación y Vendedores:
+      // Únicamente los Administradores Maestros (Enrique id: 10 y Misael id: 12) ven todos los borradores para auditoría;
+      // Facturación (Angela, Celia) y Vendedores solo ven SUS propios borradores.
+      if (isDraftState(qStatus) && !isMasterAdminUser) {
+        return isMyDraft(q);
+      }
       if (!isAdminUser && !isQuoteOwnedByCurrentUser(q)) {
         return false;
       }
@@ -2294,7 +2523,7 @@ export function QuoteApprovalPage() {
       } else if (selectedTab === "GENERADO") {
         if (!canViewDrafts || !isDraft) return false;
       } else if (selectedTab === "ENVIADO") {
-        if (!["ENVIADO", "EN_PROCESO", "PENDIENTE_APROBACION", "OBSERVADO", "EN_EDICION", "PENDIENTE_FACTURACION", "EN_FACTURACION"].includes(currentStatus)) return false;
+        if (!["ENVIADO", "EN_PROCESO", "PENDIENTE_APROBACION", "OBSERVADO", "EN_EDICION", "PENDIENTE_FACTURACION", "EN_FACTURACION", "PENDIENTE_GERENCIA"].includes(currentStatus)) return false;
       } else if (selectedTab === "APROBADO" || selectedTab === "APROBADO_COMERCIAL") {
         if (!["APROBADO", "APROBADO_COMERCIAL", "APROBADO_CREDITOS", "EMITIDO", "EMITIDO_SAP", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO"].includes(currentStatus) || isCancelled) return false;
       } else if (selectedTab === "ANULADO" || selectedTab === "RECHAZADO") {
@@ -2311,6 +2540,7 @@ export function QuoteApprovalPage() {
     selectedTab,
     searchQuery,
     isAdminUser,
+    isMasterAdminUser,
     canViewDrafts,
     activeCurrentUsername,
     activeCurrentUserId,
@@ -2378,7 +2608,7 @@ export function QuoteApprovalPage() {
       }
 
       if (isDraft) {
-        if (canViewDrafts) {
+        if (canViewDrafts && (isMasterAdminUser || isMyDraft(q))) {
           res.GENERADO++;
         }
       } else if (isCancelled) {
@@ -2386,12 +2616,12 @@ export function QuoteApprovalPage() {
         res.RECHAZADO++;
       } else {
         res.ALL++;
-        if (["ENVIADO", "EN_PROCESO", "PENDIENTE_APROBACION", "OBSERVADO", "EN_EDICION", "PENDIENTE_FACTURACION", "EN_FACTURACION"].includes(st)) res.ENVIADO++;
+        if (["ENVIADO", "EN_PROCESO", "PENDIENTE_APROBACION", "OBSERVADO", "EN_EDICION", "PENDIENTE_FACTURACION", "EN_FACTURACION", "PENDIENTE_GERENCIA"].includes(st)) res.ENVIADO++;
         else if (["APROBADO", "APROBADO_COMERCIAL", "APROBADO_CREDITOS", "EMITIDO", "EMITIDO_SAP", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO"].includes(st)) res.APROBADO++;
       }
     });
     return res;
-  }, [quotes, isAdminUser, canViewDrafts, activeCurrentUsername, activeCurrentUserId, currentPeruDate]);
+  }, [quotes, isAdminUser, isMasterAdminUser, canViewDrafts, activeCurrentUsername, activeCurrentUserId, currentPeruDate]);
 
   const renderStatusBadge = (status, q = null) => {
     const getMainBadge = () => {
@@ -2406,6 +2636,28 @@ export function QuoteApprovalPage() {
               1. Borrador 📝
             </Badge>
           );
+        case "PENDIENTE_GERENCIA": {
+          const preApprover = q?.totals?.preApprovedByFacturacion || q?.preApprovedByFacturacion;
+          return (
+            <Badge
+              bg="#f3e8ff"
+              color="#6b21a8"
+              border="1.5px solid #c084fc"
+              px={2.5}
+              py={0.5}
+              borderRadius="full"
+              fontSize="11px"
+              fontWeight="800"
+              textTransform="none"
+              letterSpacing="normal"
+              fontFamily="Arial, sans-serif"
+              whiteSpace="nowrap"
+              title={preApprover ? `Validado por Facturación (${preApprover}). Esperando aprobación final de Gerencia (Juan) para SAP.` : "Transferencia Gratuita validada por Facturación. Esperando aprobación final de Gerencia (Juan) para SAP."}
+            >
+              👑 Pend. Gerencia (Juan)
+            </Badge>
+          );
+        }
         case "PENDIENTE_APROBACION":
         case "ENVIADO":
         case "EN_PROCESO":
@@ -2699,8 +2951,10 @@ export function QuoteApprovalPage() {
   };
 
   const renderMobilePrimaryAction = (q, docId, status, { inlineAudit = false } = {}) => {
+    const isPendingGerenciaRow = status === "PENDIENTE_GERENCIA";
     const isPendingApproval = ["ENVIADO", "EN_PROCESO", "PENDIENTE_APROBACION", "PENDIENTE", "OBSERVADO", "EN_EDICION"].includes(status);
     const isPendingBilling = status === "PENDIENTE_FACTURACION" || status === "EN_FACTURACION";
+    const canVerifyRow = isPendingGerenciaRow ? canApproveTaxOnlySap : (isAdminUser && (isPendingApproval || isPendingBilling));
     const lockCheck = checkQuoteLock(docId, authUserId, authUsername) || (q?.id ? checkQuoteLock(q.id, authUserId, authUsername) : { isLocked: false, isOwnLock: false, hasActiveLock: false });
     const isLockedByOther = Boolean(lockCheck.isLocked);
     const isLockedBySelf = Boolean(lockCheck.isOwnLock);
@@ -2709,7 +2963,7 @@ export function QuoteApprovalPage() {
       ? { minH: "40px", h: "auto", px: 4, borderRadius: "lg", whiteSpace: "nowrap", flexShrink: 0 }
       : { h: "40px", borderRadius: "xl" };
 
-    if (isLockedByOther && (isPendingApproval || isPendingBilling)) {
+    if (isLockedByOther && (isPendingApproval || isPendingBilling || isPendingGerenciaRow)) {
       return (
         <Button
           size="sm"
@@ -2729,7 +2983,7 @@ export function QuoteApprovalPage() {
       );
     }
 
-    if (isLockedBySelf && (isPendingApproval || isPendingBilling)) {
+    if (isLockedBySelf && (isPendingApproval || isPendingBilling || isPendingGerenciaRow)) {
       return (
         <Button
           size="sm"
@@ -2757,9 +3011,9 @@ export function QuoteApprovalPage() {
     return (
       <Button
         size="sm"
-        bg={isAdminUser && (isPendingApproval || isPendingBilling) ? "#0f766e" : "white"}
-        color={isAdminUser && (isPendingApproval || isPendingBilling) ? "white" : "#334155"}
-        variant={isAdminUser && (isPendingApproval || isPendingBilling) ? "solid" : "outline"}
+        bg={canVerifyRow ? (isPendingGerenciaRow ? "#7e22ce" : "#0f766e") : "white"}
+        color={canVerifyRow ? "white" : "#334155"}
+        variant={canVerifyRow ? "solid" : "outline"}
         borderColor="#cbd5e1"
         leftIcon={<Eye className="w-4 h-4" />}
         onClick={() => {
@@ -2772,7 +3026,7 @@ export function QuoteApprovalPage() {
         boxShadow="xs"
         {...sharedInlineProps}
       >
-        {isAdminUser && (isPendingApproval || isPendingBilling) ? "Verificar" : "Vista"}
+        {canVerifyRow ? (isPendingGerenciaRow ? "Aprobar (Juan)" : "Verificar") : "Vista"}
       </Button>
     );
   };
@@ -2780,8 +3034,10 @@ export function QuoteApprovalPage() {
   // Botones de acción por fila, con diseño ultra elegante y optimizado para móvil y escritorio
   const renderRowActions = (q, docId, status, { stack = false, hidePrimary = false } = {}) => {
     const isDraft = !status || isDraftState(status);
+    const isPendingGerenciaRow = status === "PENDIENTE_GERENCIA";
     const isPendingApproval = ["ENVIADO", "EN_PROCESO", "PENDIENTE_APROBACION", "PENDIENTE", "OBSERVADO", "EN_EDICION"].includes(status);
     const isPendingBilling = status === "PENDIENTE_FACTURACION" || status === "EN_FACTURACION";
+    const canVerifyRow = isPendingGerenciaRow ? canApproveTaxOnlySap : (isAdminUser && (isPendingApproval || isPendingBilling));
     const isSap = isQuoteFromSap(q);
     const isAlreadyAnulado = isCancelledState(status);
     const isApprovedOrder = status === "APROBADO" || status === "APROBADO_COMERCIAL" || status === "FACTURADO" || status === "PEDIDO_EMITIDO" || status === "EMITIDO" || status === "EMITIDO_SAP" || status === "COMPLETADO" || Boolean(q.sapDocNum);
@@ -2791,9 +3047,10 @@ export function QuoteApprovalPage() {
       status === "PENDIENTE_APROBACION" ||
       status === "EN_PROCESO" ||
       status === "PENDIENTE_FACTURACION" ||
-      status === "EN_FACTURACION"
+      status === "EN_FACTURACION" ||
+      (isPendingGerenciaRow && canApproveTaxOnlySap)
     );
-    const canViewPdfOrShare = !isAdminUser && Boolean(isApprovedOrder || isPendingApproval || isPendingBilling || status === "PENDIENTE" || status === "EN_VALIDACION" || status === "APROBADO_CREDITOS");
+    const canViewPdfOrShare = !isAdminUser && Boolean(isApprovedOrder || isPendingApproval || isPendingBilling || isPendingGerenciaRow || status === "PENDIENTE" || status === "EN_VALIDACION" || status === "APROBADO_CREDITOS");
     const canShowTrashIcon = false; // 🚫 SOLO BORRADORES PUEDEN ELIMINARSE (manejado arriba en isDraft)
 
     const lockCheck = checkQuoteLock(docId, authUserId, authUsername) || (q?.id ? checkQuoteLock(q.id, authUserId, authUsername) : { isLocked: false, isOwnLock: false, hasActiveLock: false });
@@ -2818,7 +3075,7 @@ export function QuoteApprovalPage() {
     // ─────────────────────────────────────────────────────────────
     if (!stack) {
       return (
-        <Flex gap={2} justify="flex-end" align="center" wrap="nowrap">
+        <Flex gap={1} justify="flex-end" align="center" wrap="nowrap" sx={{ "& > *": { flexShrink: 0 } }}>
           {/* Si es Borrador: Editar, Compartir y Borrar */}
           {isDraft ? (
             <>
@@ -2895,7 +3152,16 @@ export function QuoteApprovalPage() {
                 color="#dc2626"
                 _hover={{ bg: "#fee2e2" }}
                 icon={<Trash2 className="w-3.5 h-3.5" />}
-                onClick={() => setDeleteConfirmDoc({ docId, status, isDraft: true, isAlreadyAnulado: false })}
+                onClick={() =>
+                  setDeleteConfirmDoc({
+                    docId,
+                    status,
+                    isDraft: true,
+                    isAlreadyAnulado: false,
+                    creatorName: q.createdByUsername || null,
+                    isOwnDraft: isMyDraft(q),
+                  })
+                }
                 aria-label="Borrar borrador"
                 title="Eliminar borrador"
                 borderRadius="lg"
@@ -2910,7 +3176,7 @@ export function QuoteApprovalPage() {
                 const isLockedBySelf = Boolean(lockCheck.isOwnLock);
 
                 // 🛡️ Si la cotización está siendo revisada por Facturación / Administración por otra persona:
-                if (isLockedByOther && (isPendingApproval || isPendingBilling)) {
+                if (isLockedByOther && (isPendingApproval || isPendingBilling || isPendingGerenciaRow)) {
                   return (
                     <Button
                       size="xs"
@@ -2933,7 +3199,7 @@ export function QuoteApprovalPage() {
                 }
 
                 // 🛡️ Si la cotización está siendo revisada por el usuario actual:
-                if (isLockedBySelf && (isPendingApproval || isPendingBilling)) {
+                if (isLockedBySelf && (isPendingApproval || isPendingBilling || isPendingGerenciaRow)) {
                   return (
                     <Button
                       size="xs"
@@ -2965,16 +3231,16 @@ export function QuoteApprovalPage() {
                     <Button
                       size="xs"
                       h="30px"
-                      bg={isAdminUser && (isPendingApproval || isPendingBilling) ? "#0f766e" : "white"}
-                      color={isAdminUser && (isPendingApproval || isPendingBilling) ? "white" : "#334155"}
-                      variant={isAdminUser && (isPendingApproval || isPendingBilling) ? "solid" : "outline"}
+                      bg={canVerifyRow ? (isPendingGerenciaRow ? "#7e22ce" : "#0f766e") : "white"}
+                      color={canVerifyRow ? "white" : "#334155"}
+                      variant={canVerifyRow ? "solid" : "outline"}
                       borderColor="#cbd5e1"
                       _hover={
-                        isAdminUser && (isPendingApproval || isPendingBilling)
-                          ? { bg: "#115e59", transform: "translateY(-1px)", boxShadow: "0 4px 12px rgba(15,118,110,0.3)" }
+                        canVerifyRow
+                          ? { bg: isPendingGerenciaRow ? "#6b21a8" : "#115e59", transform: "translateY(-1px)", boxShadow: isPendingGerenciaRow ? "0 4px 12px rgba(126,34,206,0.3)" : "0 4px 12px rgba(15,118,110,0.3)" }
                           : { bg: "#f8fafc", borderColor: "#94a3b8", transform: "translateY(-1px)" }
                       }
-                      _active={{ bg: isAdminUser ? "#134e4a" : "#f1f5f9" }}
+                      _active={{ bg: canVerifyRow ? (isPendingGerenciaRow ? "#581c87" : "#134e4a") : "#f1f5f9" }}
                       leftIcon={<Eye className="w-3.5 h-3.5" />}
                       onClick={() => {
                         markAsViewedByAdmin(q);
@@ -2987,7 +3253,7 @@ export function QuoteApprovalPage() {
                       px={2.5}
                       boxShadow="xs"
                     >
-                      {isAdminUser && (isPendingApproval || isPendingBilling) ? "Verificar" : "Vista"}
+                      {canVerifyRow ? (isPendingGerenciaRow ? "Aprobar (Juan)" : "Verificar") : "Vista"}
                     </Button>
                     {canShowQuickObserve && (
                       <Button
@@ -3014,25 +3280,29 @@ export function QuoteApprovalPage() {
 
               {/* Botón Compartir (PDF y WhatsApp unificados en menú desplegable) */}
               {canViewPdfOrShare && (
-                <Menu isLazy placement="bottom-end">
-                  <MenuButton
-                    as={Button}
-                    size="xs"
-                    h="30px"
-                    variant="outline"
-                    borderColor="#bbf7d0"
-                    color="#15803d"
-                    bg="#f0fdf4"
-                    _hover={{ bg: "#dcfce7", borderColor: "#86efac", transform: "translateY(-1px)" }}
-                    leftIcon={<Share2 className="w-3.5 h-3.5 text-emerald-600" />}
-                    rightIcon={<ChevronDown className="w-3 h-3 text-emerald-600" />}
-                    fontWeight="700"
-                    borderRadius="lg"
-                    px={2}
-                  >
-                    Compartir
-                  </MenuButton>
-                  <MenuList minW="190px" py={1.5} borderRadius="xl" boxShadow="xl" borderColor="gray.200" zIndex={30}>
+                <Box flexShrink={0}>
+                  <Menu isLazy placement="bottom-end">
+                    <MenuButton
+                      as={Button}
+                      size="xs"
+                      h="30px"
+                      display="inline-flex"
+                      alignItems="center"
+                      whiteSpace="nowrap"
+                      variant="outline"
+                      borderColor="#bbf7d0"
+                      color="#15803d"
+                      bg="#f0fdf4"
+                      _hover={{ bg: "#dcfce7", borderColor: "#86efac", transform: "translateY(-1px)" }}
+                      leftIcon={<Share2 className="w-3.5 h-3.5 text-emerald-600" />}
+                      rightIcon={<ChevronDown className="w-3 h-3 text-emerald-600" />}
+                      fontWeight="700"
+                      borderRadius="lg"
+                      px={2.5}
+                    >
+                      Compartir
+                    </MenuButton>
+                    <MenuList minW="190px" py={1.5} borderRadius="xl" boxShadow="xl" borderColor="gray.200" zIndex={30}>
                     <MenuItem
                       icon={<FileText className="w-4 h-4 text-teal-600" />}
                       onClick={() => {
@@ -3059,6 +3329,7 @@ export function QuoteApprovalPage() {
                     </MenuItem>
                   </MenuList>
                 </Menu>
+                </Box>
               )}
 
               {/* Botón Corregir para cotizaciones observadas (SOLO PARA VENDEDOR) */}
@@ -3138,39 +3409,51 @@ export function QuoteApprovalPage() {
     return (
       <VStack spacing={2} align="stretch" w="full">
         {isDraft ? (
-          <Grid templateColumns="1fr 1fr auto" gap={2} w="full">
+          <Grid templateColumns="1fr 1fr auto" gap={1.5} w="full">
             <Button
               size="sm"
-              h="40px"
+              h="38px"
+              px={2.5}
+              fontSize="xs"
+              minW={0}
               bg="#2563eb"
               color="white"
               _hover={{ bg: "#1d4ed8" }}
-              leftIcon={<Edit3 className="w-4 h-4" />}
+              leftIcon={<Edit3 className="w-3.5 h-3.5" />}
               onClick={() => handleLoadQuote(q)}
-              fontWeight="900"
+              fontWeight="800"
               borderRadius="xl"
             >
-              Editar Borrador
+              <Text as="span" display={{ base: "inline", sm: "none" }}>Editar</Text>
+              <Text as="span" display={{ base: "none", sm: "inline" }}>Editar Borrador</Text>
             </Button>
 
             {/* Botón Compartir para Borrador Mobile (Talonario PDF y WhatsApp) */}
-            <Menu isLazy placement="bottom-end">
-              <MenuButton
-                as={Button}
-                size="sm"
-                h="40px"
-                variant="outline"
-                borderColor="#bbf7d0"
-                color="#15803d"
-                bg="#f0fdf4"
-                _hover={{ bg: "#dcfce7", borderColor: "#86efac" }}
-                leftIcon={<Share2 className="w-4 h-4 text-emerald-600" />}
-                rightIcon={<ChevronDown className="w-3.5 h-3.5 text-emerald-600" />}
-                fontWeight="800"
-                borderRadius="xl"
-              >
-                Compartir
-              </MenuButton>
+            <Box minW={0}>
+              <Menu isLazy placement="bottom-end">
+                <MenuButton
+                  as={Button}
+                  size="sm"
+                  h="38px"
+                  w="full"
+                  px={2.5}
+                  fontSize="xs"
+                  display="inline-flex"
+                  alignItems="center"
+                  justifyContent="center"
+                  whiteSpace="nowrap"
+                  variant="outline"
+                  borderColor="#bbf7d0"
+                  color="#15803d"
+                  bg="#f0fdf4"
+                  _hover={{ bg: "#dcfce7", borderColor: "#86efac" }}
+                  leftIcon={<Share2 className="w-3.5 h-3.5 text-emerald-600" />}
+                  rightIcon={<ChevronDown className="w-3 h-3 text-emerald-600" />}
+                  fontWeight="800"
+                  borderRadius="xl"
+                >
+                  Compartir
+                </MenuButton>
               <MenuList minW="200px" py={1.5} borderRadius="xl" boxShadow="xl" borderColor="gray.200" zIndex={30}>
                 <MenuItem
                   icon={<FileText className="w-4 h-4 text-teal-600" />}
@@ -3196,19 +3479,20 @@ export function QuoteApprovalPage() {
                 >
                   Enviar por WhatsApp
                 </MenuItem>
-              </MenuList>
-            </Menu>
+                </MenuList>
+              </Menu>
+            </Box>
 
             <IconButton
               size="sm"
-              h="40px"
-              w="40px"
+              h="38px"
+              w="38px"
               variant="outline"
               borderColor="#fca5a5"
               color="#dc2626"
               bg="#fef2f2"
               icon={<Trash2 className="w-4 h-4" />}
-              onClick={() => setDeleteConfirmDoc({ docId, status, isDraft: true, isAlreadyAnulado: false })}
+              onClick={() => setDeleteConfirmDoc({ docId, status, isDraft: true, isAlreadyAnulado: false, creatorName: q.createdByUsername || null, isOwnDraft: isMyDraft(q) })}
               aria-label="Borrar borrador"
               borderRadius="xl"
             />
@@ -3506,19 +3790,19 @@ export function QuoteApprovalPage() {
           </Box>
         )}
 
-        {/* TABLA PRINCIPAL OPTIMIZADA CON ALTO CONTRASTE (solo escritorio, sin scroll horizontal) */}
-        <Box display={{ base: "none", lg: "block" }} bg="white" borderRadius="2xl" border="1.5px solid" borderColor="#cbd5e1" boxShadow="sm" overflow="hidden" width="100%">
+        {/* TABLA PRINCIPAL OPTIMIZADA CON ALTO CONTRASTE (solo escritorio) */}
+        <Box display={{ base: "none", lg: "block" }} bg="white" borderRadius="2xl" border="1.5px solid" borderColor="#cbd5e1" boxShadow="sm" overflowX="auto" overflowY="hidden" width="100%">
           <Table variant="simple" size="sm" w="full" style={{ width: "100%", tableLayout: "auto" }}>
             <Thead bg="#0e572b">
               <Tr>
-                <Th py={3.5} px={4} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider">DOCUMENTO Y CLIENTE</Th>
-                <Th py={3.5} px={3} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider" w="95px" whiteSpace="nowrap">FECHA</Th>
-                <Th py={3.5} px={3} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider" textAlign="right" w="110px" whiteSpace="nowrap">TOTAL (USD)</Th>
-                <Th py={3.5} px={3} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider" textAlign="center" w="190px" whiteSpace="nowrap">ESTADO DE APROBACIÓN</Th>
+                <Th py={3} px={3} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider" minW="190px">DOCUMENTO Y CLIENTE</Th>
+                <Th py={3} px={2} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider" textAlign="center" w="88px" whiteSpace="nowrap">FECHA</Th>
+                <Th py={3} px={2} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider" textAlign="right" w="85px" whiteSpace="nowrap">TOTAL (USD)</Th>
+                <Th py={3} px={2} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider" textAlign="center" whiteSpace="nowrap">ESTADO DE APROBACIÓN</Th>
                 {canViewApprovalAudit && (
-                  <Th py={3.5} px={3} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider" w="210px">APROBACIÓN / ENVÍO SAP</Th>
+                  <Th py={3} px={2} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider" whiteSpace="nowrap">APROBACIÓN / ENVÍO SAP</Th>
                 )}
-                <Th py={3.5} px={4} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider" textAlign="right" w={canViewApprovalAudit ? "130px" : "150px"} whiteSpace="nowrap">ACCIONES</Th>
+                <Th py={3} px={3} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider" textAlign="center" whiteSpace="nowrap">ACCIONES</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -3581,6 +3865,7 @@ export function QuoteApprovalPage() {
                   const grandTotalUSD = getQuoteTotalUSD(q);
 
                   const hasAdditionalDiscount = checkHasAdditionalDiscount(q);
+                  const hasTaxOnly = checkHasTaxOnly(q);
                   const sapDocNum = q.sapDocNum || q.totals?.sapDocNum || (q.isSapDirect ? (q.DocNum || q.totals?.DocNum) : null);
                   const isHighlighted = highlightedDocId && (String(docId) === highlightedDocId || String(q.id) === highlightedDocId);
 
@@ -3602,9 +3887,9 @@ export function QuoteApprovalPage() {
                       borderColor="#e2e8f0"
                     >
                       {/* Documento, Cliente y Vendedor consolidado */}
-                      <Td py={3} px={4} maxW="0">
-                        <VStack align="flex-start" spacing={1} maxW="full" w="full">
-                          <HStack spacing={2} align="center" wrap="wrap">
+                      <Td py={2.5} px={3}>
+                        <VStack align="flex-start" spacing={1} w="full">
+                          <Flex gap={1.5} align="center" wrap="wrap" w="full">
                             {Boolean(sapDocNum || (status === "EMITIDO" && q.docNumber && !String(q.docNumber).includes("WEB") && !String(q.docNumber).includes("PENDIENTE"))) ? (
                               <Text fontSize="sm" fontWeight="950" color="#0e572b" fontFamily="mono">
                                 {q.docNumber && String(q.docNumber).startsWith("COT-") && !String(q.docNumber).includes("WEB") ? q.docNumber : `COT-${String(sapDocNum).padStart(6, '0')}`}
@@ -3631,6 +3916,24 @@ export function QuoteApprovalPage() {
                             {!isDraftState(status) && sapDocNum && (
                               <Badge colorScheme="green" variant="solid" bg="#15803d" color="white" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="900" boxShadow="xs">
                                 🏛️ Orden SAP: #{sapDocNum}
+                              </Badge>
+                            )}
+
+                            {hasTaxOnly && (
+                              <Badge
+                                colorScheme="pink"
+                                variant="solid"
+                                bg="#be185d"
+                                color="white"
+                                fontSize="9px"
+                                px={2}
+                                py={0.5}
+                                borderRadius="md"
+                                fontWeight="900"
+                                boxShadow="xs"
+                                title="Cotización con artículos en Transferencia Gratuita (Solo IGV 18%)"
+                              >
+                                🎁 TRANSFERENCIA GRATUITA (SOLO IGV)
                               </Badge>
                             )}
 
@@ -3678,7 +3981,7 @@ export function QuoteApprovalPage() {
                                 💳 SOBREGIRO CRÉDITO {Number(q.creditOverflowAmount || q.totals?.creditOverflow || 0) > 0 ? `(+$${formatThousands(q.creditOverflowAmount || q.totals?.creditOverflow)} USD)` : ""}
                               </Badge>
                             )}
-                          </HStack>
+                          </Flex>
                           <Text
                             fontWeight="900"
                             color="#0f172a"
@@ -3695,6 +3998,23 @@ export function QuoteApprovalPage() {
                             <Badge bg="#f1f5f9" color="#475569" fontSize="10px" px={2} py={0.5} borderRadius="md" fontWeight="700" textTransform="none">
                               Vend: {sellerName}
                             </Badge>
+                            {isDraftState(status) && (q.createdByUsername || isMyDraft(q)) && (
+                              <Badge
+                                bg={isMyDraft(q) ? "#eef2ff" : "#fef3c7"}
+                                color={isMyDraft(q) ? "#3730a3" : "#92400e"}
+                                border="1px solid"
+                                borderColor={isMyDraft(q) ? "#c7d2fe" : "#fcd34d"}
+                                fontSize="10px"
+                                px={2}
+                                py={0.5}
+                                borderRadius="md"
+                                fontWeight="800"
+                                textTransform="none"
+                                title="Usuario real que creó este borrador"
+                              >
+                                👤 Creado por: {q.createdByUsername || authUsername || "Tú"}{isMyDraft(q) ? " (Tú)" : ""}
+                              </Badge>
+                            )}
                             {q.items?.some(i => i.stock === 0) && (
                               <Badge colorScheme="red" variant="solid" fontSize="9px" px={1.5} py={0.5} borderRadius="md" fontWeight="900">
                                 ⚠️ AGOTADOS
@@ -3705,17 +4025,17 @@ export function QuoteApprovalPage() {
                       </Td>
 
                       {/* Fecha */}
-                      <Td fontSize="xs" color="gray.850" fontWeight="800" py={3} px={3} whiteSpace="nowrap">
+                      <Td fontSize="xs" color="gray.850" fontWeight="800" py={2.5} px={2} whiteSpace="nowrap">
                         {q.docDate ? String(q.docDate).split("T")[0] : (q.createdAt ? String(q.createdAt).split("T")[0] : "—")}
                       </Td>
 
                       {/* Total */}
-                      <Td textAlign="right" fontWeight="900" color="#0f172a" fontFamily="mono" fontSize="xs" py={3} px={3} whiteSpace="nowrap">
+                      <Td textAlign="right" fontWeight="900" color="#0f172a" fontFamily="mono" fontSize="xs" py={2.5} px={2} whiteSpace="nowrap">
                         ${formatThousands(grandTotalUSD)}
                       </Td>
 
                       {/* Píldora de Estado */}
-                      <Td textAlign="center" py={3} px={3}>
+                      <Td textAlign="center" py={2.5} px={2}>
                         <Flex justify="center" align="center" maxW="full">
                           {renderStatusBadge(status, q)}
                         </Flex>
@@ -3723,13 +4043,13 @@ export function QuoteApprovalPage() {
 
                       {/* Auditoría de Aprobación / Envío SAP (solo si tiene el permiso granular) */}
                       {canViewApprovalAudit && (
-                        <Td py={3} px={3} verticalAlign="middle">
+                        <Td py={2.5} px={2} verticalAlign="middle">
                           {renderApprovalAuditCell(q)}
                         </Td>
                       )}
 
                       {/* Acciones */}
-                      <Td textAlign="right" py={3} px={4} whiteSpace="nowrap">
+                      <Td textAlign="right" py={2.5} px={3} whiteSpace="nowrap">
                         {renderRowActions(q, docId, status)}
                       </Td>
                     </Tr>
@@ -3782,6 +4102,7 @@ export function QuoteApprovalPage() {
               const grandTotalUSD = getQuoteTotalUSD(q);
 
               const hasAdditionalDiscount = checkHasAdditionalDiscount(q);
+              const hasTaxOnly = checkHasTaxOnly(q);
               const sapDocNum = q.sapDocNum || q.totals?.sapDocNum || (q.isSapDirect ? (q.DocNum || q.totals?.DocNum) : null);
               const isHighlighted = highlightedDocId && (String(docId) === highlightedDocId || String(q.id) === highlightedDocId);
 
@@ -3845,9 +4166,46 @@ export function QuoteApprovalPage() {
                       <Badge bg="#f1f5f9" color="#475569" fontSize="10px" px={2} py={0.5} borderRadius="md" fontWeight="700" textTransform="none">
                         Vend: {sellerName}
                       </Badge>
+                      {isDraftState(status) && (q.createdByUsername || isMyDraft(q)) && (
+                        <Badge
+                          bg={isMyDraft(q) ? "#eef2ff" : "#fef3c7"}
+                          color={isMyDraft(q) ? "#3730a3" : "#92400e"}
+                          border="1px solid"
+                          borderColor={isMyDraft(q) ? "#c7d2fe" : "#fcd34d"}
+                          fontSize="10px"
+                          px={2}
+                          py={0.5}
+                          borderRadius="md"
+                          fontWeight="800"
+                          textTransform="none"
+                        >
+                          👤 Creado por: {q.createdByUsername || authUsername || "Tú"}{isMyDraft(q) ? " (Tú)" : ""}
+                        </Badge>
+                      )}
+
+                      {hasTaxOnly && (
+                        <Badge
+                          colorScheme="pink"
+                          variant="solid"
+                          bg="#be185d"
+                          color="white"
+                          fontSize="9px"
+                          px={2}
+                          py={0.5}
+                          borderRadius="md"
+                          fontWeight="900"
+                          boxShadow="xs"
+                          maxW="full"
+                          whiteSpace="normal"
+                          wordBreak="break-word"
+                          title="Cotización con artículos en Transferencia Gratuita (Solo IGV 18%)"
+                        >
+                          🎁 TRANSFERENCIA GRATUITA (SOLO IGV)
+                        </Badge>
+                      )}
 
                       {hasAdditionalDiscount && (
-                        <Badge colorScheme="purple" variant="solid" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="900" boxShadow="xs">
+                        <Badge colorScheme="purple" variant="solid" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="900" boxShadow="xs" maxW="full" whiteSpace="normal">
                           ⚡ DESCUENTO ADICIONAL
                         </Badge>
                       )}
@@ -3883,6 +4241,9 @@ export function QuoteApprovalPage() {
                           borderRadius="md"
                           fontWeight="900"
                           boxShadow="xs"
+                          maxW="full"
+                          whiteSpace="normal"
+                          wordBreak="break-word"
                           title={`Límite de crédito SAP excedido por +$${formatThousands(q.creditOverflowAmount || q.totals?.creditOverflow || 0)} USD`}
                         >
                           💳 SOBREGIRO CRÉDITO {Number(q.creditOverflowAmount || q.totals?.creditOverflow || 0) > 0 ? `(+$${formatThousands(q.creditOverflowAmount || q.totals?.creditOverflow)} USD)` : ""}
@@ -4209,6 +4570,11 @@ export function QuoteApprovalPage() {
               <>
                 ¿Estás seguro de que deseas eliminar permanentemente el borrador{" "}
                 <Text as="span" fontWeight="900" color="gray.800">{deleteConfirmDoc?.docId}</Text>? Esta acción no se puede deshacer.
+                {deleteConfirmDoc?.creatorName && !deleteConfirmDoc?.isOwnDraft && (
+                  <Box mt={2} p={2} bg="amber.50" border="1px solid" borderColor="amber.300" borderRadius="md" color="amber.900" fontWeight="800">
+                    ⚠️ Atención: Este borrador fue creado por {deleteConfirmDoc.creatorName}.
+                  </Box>
+                )}
               </>
             ) : deleteConfirmDoc?.isAlreadyAnulado ? (
               <>

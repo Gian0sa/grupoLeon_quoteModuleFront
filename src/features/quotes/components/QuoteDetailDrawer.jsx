@@ -23,6 +23,7 @@ import {
   TableContainer,
   Divider,
   Button,
+  Switch,
   Grid,
   GridItem,
   Icon as ChakraIcon,
@@ -98,13 +99,14 @@ import { reconcileLineTotalsWithSap } from "../utils/sapLineReconciliation";
 import QuotePdfModal from "./QuotePdfModal";
 import WhatsAppQuoteModal from "./WhatsAppQuoteModal";
 import { SapPayloadJsonModal } from "./SapPayloadJsonModal";
+import { TaxOnlyConfirmModal } from "./TaxOnlyConfirmModal";
 import { resolveUserProfileTitle, acquireQuoteLock, releaseQuoteLock, checkQuoteLock, forceUnlockQuote } from "../services/quoteLockService";
-import { calculateQuoteTotals, formatThousands } from "../../../shared/utils/quoteCalculator";
+import { calculateQuoteTotals, formatThousands, isItemTaxOnly } from "../../../shared/utils/quoteCalculator";
 import { useAuthStore } from "../../../features/auth/stores/useAuthStore";
 import { useGetQuoteById } from "../hooks/queries/quotesQueries";
 import { useQueryClient } from "@tanstack/react-query";
 import { axiosInstance } from "../../../shared/lib/axiosInstance";
-import { useIsAdmin, useHasAccess, checkIsAdmin } from "../../../shared/utils/permissions";
+import { useIsAdmin, useHasAccess, checkIsAdmin, useCanEmitTaxOnlyToSap } from "../../../shared/utils/permissions";
 import {
   formatDeliveryForm,
   formatTransportName,
@@ -114,7 +116,8 @@ import {
   formatSunatOp,
   cleanSellerName,
   formatQuoteSellerName,
-  cleanClientName
+  cleanClientName,
+  isFreeTransferPaymentType
 } from "../../../shared/utils/quoteLogisticsFormatters";
 import { useSellersData } from "../../auth/hooks/queries/authQueries";
 import { updateQuote } from "../services/quoteService";
@@ -182,8 +185,14 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
       hasAccess("POST /quotations/approve")
     ));
   const isRealAdmin = Boolean(isRoleAdmin || (!isSellerUser && roleUpper.startsWith("ADMIN")));
+  const canApproveTaxOnlySap = useCanEmitTaxOnlyToSap() || isRealAdmin;
   const activeRole = isAdminUser ? "ADMIN" : "SELLER";
   const adminUsername = authUsername || "Administrador";
+  const [isUpdatingTaxOnly, setIsUpdatingTaxOnly] = useState(false);
+  const [isEscalatingGerencia, setIsEscalatingGerencia] = useState(false);
+  const [localQuoteOverride, setLocalQuoteOverride] = useState(null);
+  const [showTaxOnlyControls, setShowTaxOnlyControls] = useState(false);
+  const [isTaxOnlyConfirmOpen, setIsTaxOnlyConfirmOpen] = useState(false);
 
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [isObserveModalOpen, setIsObserveModalOpen] = useState(false);
@@ -213,12 +222,15 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
     setSapSyncResult(null);
   }, [quoteId]);
 
+  const [isRouteExpandedMobile, setIsRouteExpandedMobile] = React.useState(false);
+
   // Lista de estados no aprobados / pendientes: NUNCA deben asociarse ni mostrar insignias de SAP
   const UNAPPROVED_STATUSES = React.useMemo(() => [
     "ENVIADO",
     "PENDIENTE_APROBACION",
     "EN_PROCESO",
     "PENDIENTE_FACTURACION",
+    "PENDIENTE_GERENCIA",
     "BORRADOR",
     "GENERADO",
     "DRAFT",
@@ -510,8 +522,143 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
     }
 
     full.products = extractItems(full);
+    if (localQuoteOverride && String(localQuoteOverride.id || "") === String(quoteId || "")) {
+      const ov = localQuoteOverride.doc;
+      if (ov?.products) full.products = ov.products;
+      if (ov?.totals) full.totals = { ...(full.totals || {}), ...ov.totals };
+      if (ov?.paymentType) full.paymentType = ov.paymentType;
+      if (ov?.selectedPaymentType) full.selectedPaymentType = ov.selectedPaymentType;
+      full.hasTaxOnlyItems = Boolean(ov?.hasTaxOnlyItems);
+      full.taxOnlyCount = Number(ov?.taxOnlyCount || 0);
+    }
     return full;
-  }, [quote, serverQuote, quoteId, queryClient, sapSyncResult, UNAPPROVED_STATUSES]);
+  }, [quote, serverQuote, quoteId, queryClient, sapSyncResult, UNAPPROVED_STATUSES, localQuoteOverride]);
+
+  React.useEffect(() => {
+    setLocalQuoteOverride(null);
+    setShowTaxOnlyControls(false);
+  }, [quoteId, isOpen]);
+
+  const upperQuoteStatus = String(
+    effectiveQuote?.state || effectiveQuote?.status || effectiveQuote?.approvalStatus || ""
+  ).toUpperCase();
+  const isQuoteAlreadyEmitted = Boolean(
+    effectiveQuote?.sapDocNum ||
+    effectiveQuote?.DocNum ||
+    ["EMITIDO", "FACTURADO", "COMPLETADO", "ANULADO", "RECHAZADO", "CANCELADO"].includes(upperQuoteStatus)
+  );
+  const canToggleTaxOnly =
+    (isRoleAdmin || (!isSellerUser && roleUpper === "FACTURACION")) && !isQuoteAlreadyEmitted;
+
+  const handleToggleItemTaxOnly = async (targetItemOrIndex, nextVal) => {
+    const targetDoc = effectiveQuote || quote;
+    if (!targetDoc || isUpdatingTaxOnly) return;
+    const baseProducts = targetDoc?.products || targetDoc?.items || targetDoc?.totals?.products || targetDoc?.totals?.normalizedProducts || [];
+    if (!Array.isArray(baseProducts) || baseProducts.length === 0) return;
+
+    let targetBaseIndex = -1;
+    if (typeof targetItemOrIndex === "number") {
+      targetBaseIndex = targetItemOrIndex;
+    } else if (targetItemOrIndex && typeof targetItemOrIndex === "object") {
+      targetBaseIndex = baseProducts.indexOf(targetItemOrIndex);
+      if (targetBaseIndex === -1) {
+        const targetCode = String(targetItemOrIndex.productCode || targetItemOrIndex.itemCode || targetItemOrIndex.ItemCode || targetItemOrIndex.code || targetItemOrIndex.id || "").trim();
+        targetBaseIndex = baseProducts.findIndex((p) => {
+          const pCode = String(p?.productCode || p?.itemCode || p?.ItemCode || p?.code || p?.id || "").trim();
+          return targetCode && pCode === targetCode && Number(p?.quantity || 1) === Number(targetItemOrIndex.quantity || 1);
+        });
+      }
+    }
+    if (targetBaseIndex < 0 || !baseProducts[targetBaseIndex]) return;
+
+    const updatedProducts = baseProducts.map((prod, idx) =>
+      idx === targetBaseIndex
+        ? {
+            ...prod,
+            isTaxOnly: nextVal,
+            taxOnly: nextVal,
+            TaxOnly: nextVal ? "tYES" : "tNO",
+            taxCode: "I18",
+          }
+        : prod
+    );
+    const tcVal = Number(targetDoc?.docRate || targetDoc?.DocRate || targetDoc?.totals?.tc || targetDoc?.totals?.exchangeRate || targetDoc?.exchangeRate) || 3.45;
+    const docCurrency = targetDoc?.currency || targetDoc?.DocCurrency || targetDoc?.totals?.currency || targetDoc?.totals?.DocCurrency || "USD";
+    const isSapDirect = Boolean(targetDoc?.isSapDirect);
+    const calcRes = calculateQuoteTotals(updatedProducts, tcVal, { isSapDirect, currency: docCurrency });
+    const inStockUpdated = (calcRes.inStockProducts && calcRes.inStockProducts.length > 0)
+      ? calcRes.inStockProducts
+      : updatedProducts;
+    const allInStockTaxOnly = inStockUpdated.length > 0 && inStockUpdated.every((it) => isItemTaxOnly(it));
+
+    const currentPayType = targetDoc?.paymentType || targetDoc?.selectedPaymentType || targetDoc?.totals?.paymentType || null;
+    const currentPayCode = Number(currentPayType?.GroupNum ?? currentPayType?.GroupNumber ?? currentPayType?.value ?? currentPayType);
+    const freeTransferPayType = {
+      GroupNum: 96,
+      GroupNumber: 96,
+      PymntGroup: "10) TRANSFERENCIA GRATUITA",
+      PaymentTermsGroupName: "10) TRANSFERENCIA GRATUITA",
+      value: "96",
+      label: "10) TRANSFERENCIA GRATUITA",
+    };
+    const nextTotals = {
+      ...(targetDoc?.totals || {}),
+      ...calcRes,
+      products: updatedProducts,
+      normalizedProducts: updatedProducts,
+    };
+    let nextPaymentType = currentPayType;
+    if (allInStockTaxOnly) {
+      if (currentPayCode !== 96 && currentPayType && !nextTotals.previousPaymentType) {
+        nextTotals.previousPaymentType = currentPayType;
+      }
+      nextPaymentType = freeTransferPayType;
+      nextTotals.paymentType = freeTransferPayType;
+      nextTotals.selectedPaymentType = freeTransferPayType;
+    } else if (currentPayCode === 96 && nextTotals.previousPaymentType) {
+      nextPaymentType = nextTotals.previousPaymentType;
+      nextTotals.paymentType = nextTotals.previousPaymentType;
+      nextTotals.selectedPaymentType = nextTotals.previousPaymentType;
+      delete nextTotals.previousPaymentType;
+    }
+
+    const updatedDoc = {
+      ...targetDoc,
+      ...(nextPaymentType ? { paymentType: nextPaymentType, selectedPaymentType: nextPaymentType } : {}),
+      ...(allInStockTaxOnly ? { paymentMethod: null } : {}),
+      products: updatedProducts,
+      ...(Array.isArray(targetDoc.items) ? { items: updatedProducts } : {}),
+      totals: nextTotals,
+      hasTaxOnlyItems: calcRes.hasTaxOnlyItems,
+      taxOnlyCount: calcRes.taxOnlyCount,
+    };
+
+    const prevOverride = localQuoteOverride;
+    setLocalQuoteOverride({ id: quoteId, doc: updatedDoc });
+    setIsUpdatingTaxOnly(true);
+    try {
+      await updateQuote(updatedDoc);
+      queryClient.invalidateQueries({ queryKey: ["quotes"] });
+      if (quoteId) queryClient.invalidateQueries({ queryKey: ["quote", quoteId] });
+      toast({
+        title: nextVal ? "Marcado como Gratuita / Solo IGV" : "Desmarcado Gratuita / Solo IGV",
+        status: "success",
+        duration: 2000,
+        isClosable: true,
+      });
+    } catch (err) {
+      setLocalQuoteOverride(prevOverride);
+      toast({
+        title: "Error al actualizar Transferencia Gratuita",
+        description: err?.message || "No se pudo guardar el cambio en la cotización.",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setIsUpdatingTaxOnly(false);
+    }
+  };
 
   const stockCodesKey = React.useMemo(() => {
     const rawItems = effectiveQuote?.products || effectiveQuote?.items || [];
@@ -587,7 +734,12 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
   // Concurrencia de Digitación: Adquirir candado de revisión activa SOLO si quien lo abre es evaluador administrativo
   React.useEffect(() => {
-    const isPendingDoc = status === "ENVIADO" || status === "EN_PROCESO" || status === "PENDIENTE_APROBACION" || status === "PENDIENTE_FACTURACION";
+    const isPendingDoc =
+      status === "ENVIADO" ||
+      status === "EN_PROCESO" ||
+      status === "PENDIENTE_APROBACION" ||
+      status === "PENDIENTE_FACTURACION" ||
+      (status === "PENDIENTE_GERENCIA" && canApproveTaxOnlySap);
     const secId = quote?.id && String(quote.id) !== String(quoteId) ? quote.id : null;
 
     if (isOpen && quoteId && isAdminUser && isPendingDoc) {
@@ -724,7 +876,8 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
   const clientAddress = effectiveQuote.clientAddress || client.Address || client.address || "—";
   const sellerName = formatQuoteSellerName(effectiveQuote, sellersList);
   const isApprovedQuote = ["APROBADO", "APROBADO_COMERCIAL", "EMITIDO", "EMITIDO_SAP", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO"].includes(String(status).toUpperCase());
-  const isPendingQuote = ["ENVIADO", "PENDIENTE_APROBACION", "EN_PROCESO", "PENDIENTE_FACTURACION"].includes(String(status).toUpperCase());
+  const isPendingGerencia = String(status).toUpperCase() === "PENDIENTE_GERENCIA";
+  const isPendingQuote = ["ENVIADO", "PENDIENTE_APROBACION", "EN_PROCESO", "PENDIENTE_FACTURACION", "PENDIENTE_GERENCIA"].includes(String(status).toUpperCase());
   const isDrawerLockedByOther = Boolean(drawerLockCheck.isLocked);
 
   const getItemStockInfo = (item) => {
@@ -834,7 +987,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
     // 🛡️ REGLA: Si la cotización ya fue enviada formalmente a validación o SAP,
     // no mostramos registros internos de borrador previo para mantener limpia y oficial la línea de tiempo
-    const isSubmittedOrBeyond = ["ENVIADO", "PENDIENTE_APROBACION", "EN_PROCESO", "PENDIENTE_FACTURACION", "APROBADO", "APROBADO_COMERCIAL", "EMITIDO", "EMITIDO_SAP", "FACTURADO", "OBSERVADO", "RECHAZADO"].includes(
+    const isSubmittedOrBeyond = ["ENVIADO", "PENDIENTE_APROBACION", "EN_PROCESO", "PENDIENTE_FACTURACION", "PENDIENTE_GERENCIA", "APROBADO", "APROBADO_COMERCIAL", "EMITIDO", "EMITIDO_SAP", "FACTURADO", "OBSERVADO", "RECHAZADO"].includes(
       String(effectiveQuote.approvalStatus || effectiveQuote.status || effectiveQuote.state || "").toUpperCase().trim()
     );
 
@@ -938,9 +1091,21 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
             ? calcRes.grandTotalUSD
             : Number((fallbackUSD || 0).toFixed(2))));
 
-  const subtotalUSD = storedSubtotal > 0
+  const hasTaxOnly = Boolean(
+    effectiveQuote.totals?.hasTaxOnlyItems ||
+    effectiveQuote.hasTaxOnlyItems ||
+    calcRes.hasTaxOnlyItems ||
+    isFreeTransferPaymentType(effectiveQuote.paymentType || effectiveQuote.selectedPaymentType)
+  );
+  const requiresGerenciaForTaxOnly = Boolean(hasTaxOnly && !canApproveTaxOnlySap);
+  const preApprovedByFacturacion =
+    effectiveQuote.totals?.preApprovedByFacturacion ||
+    effectiveQuote.preApprovedByFacturacion ||
+    null;
+  const hasStoredSubtotal = effectiveQuote.totals?.subtotalUSD !== undefined || effectiveQuote.totals?.subTotalUSD !== undefined || effectiveQuote.subtotalUSD !== undefined;
+  const subtotalUSD = (storedSubtotal > 0 || (hasTaxOnly && hasStoredSubtotal))
     ? storedSubtotal
-    : (calcRes.subtotalUSD > 0
+    : ((calcRes.subtotalUSD > 0 || hasTaxOnly)
         ? calcRes.subtotalUSD
         : (grandTotalUSD > 0 ? Number((grandTotalUSD / 1.18).toFixed(2)) : 0));
 
@@ -985,18 +1150,18 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
   };
 
   const createdIso = effectiveQuote.createdAt || historyLog[0]?.timestamp || (effectiveQuote.docDate ? `${effectiveQuote.docDate}T12:00:00.000Z` : null);
-  const solicitudIso = findLogIso(["ENVIADO", "EN_PROCESO", "PENDIENTE_FACTURACION", "APROBADO", "APROBADO_COMERCIAL", "RECHAZADO", "OBSERVADO", "EN_EDICION", "EMITIDO", "EMITIDO_SAP", "COMPLETADO", "PEDIDO_EMITIDO"]) || (isDirectSap ? createdIso : null);
-  const revisionIso = findLogIso(["EN_PROCESO", "PENDIENTE_FACTURACION", "APROBADO", "APROBADO_COMERCIAL", "RECHAZADO", "OBSERVADO", "EN_EDICION", "VISTO", "EMITIDO", "EMITIDO_SAP", "COMPLETADO", "PEDIDO_EMITIDO"]) || (isDirectSap ? createdIso : null);
+  const solicitudIso = findLogIso(["ENVIADO", "EN_PROCESO", "PENDIENTE_FACTURACION", "PENDIENTE_GERENCIA", "APROBADO", "APROBADO_COMERCIAL", "RECHAZADO", "OBSERVADO", "EN_EDICION", "EMITIDO", "EMITIDO_SAP", "COMPLETADO", "PEDIDO_EMITIDO"]) || (isDirectSap ? createdIso : null);
+  const revisionIso = findLogIso(["EN_PROCESO", "PENDIENTE_FACTURACION", "PENDIENTE_GERENCIA", "APROBADO", "APROBADO_COMERCIAL", "RECHAZADO", "OBSERVADO", "EN_EDICION", "VISTO", "EMITIDO", "EMITIDO_SAP", "COMPLETADO", "PEDIDO_EMITIDO"]) || (isDirectSap ? createdIso : null);
   const finalIso = findLogIso(["APROBADO", "APROBADO_COMERCIAL", "RECHAZADO", "OBSERVADO", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO", "EMITIDO", "EMITIDO_SAP"]) || (isDirectSap ? createdIso : null);
   const observedIso = effectiveQuote.observedAt || findLogIso(["OBSERVADO", "EN_EDICION"]);
 
   // Estados de etapas del Stepper con colores vibrantes
-  const isSolSent = ["ENVIADO", "EN_PROCESO", "PENDIENTE_FACTURACION", "APROBADO", "APROBADO_COMERCIAL", "RECHAZADO", "OBSERVADO", "EN_EDICION", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO", "EMITIDO", "EMITIDO_SAP"].includes(status) || isApprovedQuote || isDirectSap;
+  const isSolSent = ["ENVIADO", "EN_PROCESO", "PENDIENTE_FACTURACION", "PENDIENTE_GERENCIA", "APROBADO", "APROBADO_COMERCIAL", "RECHAZADO", "OBSERVADO", "EN_EDICION", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO", "EMITIDO", "EMITIDO_SAP"].includes(status) || isApprovedQuote || isDirectSap;
   const isObserved = status === "OBSERVADO" || status === "EN_EDICION";
   const isFinalApproved = ["APROBADO", "APROBADO_COMERCIAL", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO", "EMITIDO", "EMITIDO_SAP"].includes(status);
   const isFinalRejected = ["RECHAZADO", "ANULADO", "CANCELADO"].includes(status);
   const isFinalDone = isFinalApproved || isFinalRejected || isObserved;
-  const isInReview = ["ENVIADO", "EN_PROCESO", "PENDIENTE_FACTURACION"].includes(status) && !isFinalDone;
+  const isInReview = ["ENVIADO", "EN_PROCESO", "PENDIENTE_FACTURACION", "PENDIENTE_GERENCIA"].includes(status) && !isFinalDone;
   const isQuoteApproved = Boolean(
     isApprovedQuote ||
     isFinalApproved ||
@@ -1084,6 +1249,24 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
           desc: "La cotización fue aprobada comercialmente y está lista para proceder al pago o facturación.",
           subdesc: "Esperando comprobante de pago o confirmación de crédito.",
           timeInStage: "Aprobado Comercial"
+        };
+      case "PENDIENTE_GERENCIA":
+        return {
+          bg: "purple.50",
+          border: "purple.300",
+          color: "purple.900",
+          titleColor: "purple.900",
+          iconColor: "purple.600",
+          icon: ShieldCheck,
+          title: "👑 Transferencia Gratuita — Pendiente Aprobación Gerencia (Juan)",
+          subtitle: "FASE 2 DE 2: VALIDADO POR FACTURACIÓN · ESPERANDO APROBACIÓN FINAL A SAP",
+          desc: preApprovedByFacturacion
+            ? `Validado por Facturación (${preApprovedByFacturacion}). Requiere aprobación final de Gerencia (Juan) para emitir la Orden de Venta a SAP B1.`
+            : "Validado por Facturación. Requiere aprobación final de Gerencia (Juan) para emitir la Orden de Venta a SAP B1.",
+          subdesc: canApproveTaxOnlySap
+            ? "Acción requerida (Gerencia): Revisa los detalles y presiona '⚡ Aprobar y Emitir a SAP'."
+            : "Esperando que Juan / Gerencia apruebe la emisión final en SAP B1.",
+          timeInStage: "Pend. Gerencia (Juan)"
         };
       case "PENDIENTE_FACTURACION":
         return {
@@ -1390,6 +1573,100 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
   // Sincronización directa con SAP Business One (Habilitada para pruebas y pase a SAP)
   const IS_SAP_DIRECT_SYNC_ENABLED = true;
 
+  // 👑 Transferencia Gratuita: Facturación valida/pre-aprueba y deriva a Gerencia (Juan) para emisión final a SAP
+  const handleEscalateTaxOnlyToGerencia = async () => {
+    if (!effectiveQuote) return;
+
+    const delivFormCheck = effectiveQuote.deliveryForm || effectiveQuote.selectedDeliveryForm;
+    if (!delivFormCheck) {
+      toast({
+        title: "⚠️ Logística incompleta",
+        description: "Esta cotización no tiene Forma de Entrega registrada. Ábrela en el formulario para completarla antes de derivarla a Gerencia (Juan).",
+        status: "warning",
+        duration: 7000,
+        isClosable: true,
+        position: "top-right",
+      });
+      return;
+    }
+
+    const targetId = effectiveQuote.id || effectiveQuote.docNumber || quoteId;
+    if (!targetId) return;
+
+    const nowIso = new Date().toISOString();
+    const actorName = adminUsername || authUsername || "Facturación";
+    const existingLog = Array.isArray(effectiveQuote.historyLog) ? effectiveQuote.historyLog : [];
+    const newEntry = {
+      status: "PENDIENTE_GERENCIA",
+      timestamp: nowIso,
+      user: actorName,
+      note: `👑 Pre-aprobada por Facturación (${actorName}) — Transferencia Gratuita derivada a Gerencia (Juan) para aprobación final a SAP.`,
+    };
+    const nextHistoryLog = [...existingLog, newEntry];
+    const nextTotals = {
+      ...(effectiveQuote.totals || {}),
+      hasTaxOnlyItems: true,
+      requiresGerenciaApproval: true,
+      preApprovedByFacturacion: actorName,
+      preApprovedAt: nowIso,
+    };
+
+    try {
+      setIsEscalatingGerencia(true);
+      await updateQuote(targetId, {
+        status: "PENDIENTE_GERENCIA",
+        approvalStatus: "PENDIENTE_GERENCIA",
+        state: "PENDIENTE_GERENCIA",
+        preApprovedByFacturacion: actorName,
+        preApprovedAt: nowIso,
+        totals: nextTotals,
+        historyLog: nextHistoryLog,
+      });
+
+      setLocalQuoteOverride((prev) => ({
+        ...(prev || effectiveQuote),
+        status: "PENDIENTE_GERENCIA",
+        approvalStatus: "PENDIENTE_GERENCIA",
+        state: "PENDIENTE_GERENCIA",
+        preApprovedByFacturacion: actorName,
+        preApprovedAt: nowIso,
+        totals: nextTotals,
+        historyLog: nextHistoryLog,
+      }));
+
+      if (onUpdateStatus) {
+        onUpdateStatus(targetId, "PENDIENTE_GERENCIA", newEntry.note);
+      }
+
+      if (quoteId) {
+        releaseQuoteLock(quoteId, effectiveQuote.id && String(effectiveQuote.id) !== String(quoteId) ? effectiveQuote.id : null);
+      }
+      queryClient.invalidateQueries({ queryKey: ["quotes"] });
+      queryClient.invalidateQueries({ queryKey: ["quote", quoteId] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+
+      toast({
+        title: "👑 Validada y Enviada a Gerencia (Juan)",
+        description: "Transferencia Gratuita pre-aprobada por Facturación. Se notificó a Juan / Gerencia para su aprobación y emisión final a SAP B1.",
+        status: "success",
+        duration: 6000,
+        isClosable: true,
+        position: "top-right",
+      });
+    } catch (err) {
+      toast({
+        title: "❌ Error al derivar a Gerencia",
+        description: err?.response?.data?.message || err?.message || "No se pudo derivar la cotización a Gerencia (Juan).",
+        status: "error",
+        duration: 6000,
+        isClosable: true,
+        position: "top-right",
+      });
+    } finally {
+      setIsEscalatingGerencia(false);
+    }
+  };
+
   // Función para Sincronizar / Enviar Cotización Directamente a SAP
   const handleSyncToSap = async () => {
     if (!IS_SAP_DIRECT_SYNC_ENABLED) {
@@ -1404,6 +1681,19 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
       return;
     }
     if (!effectiveQuote) return;
+
+    // 👑 Regla de negocio: Transferencias Gratuitas deben pasar por aprobación de Gerencia (Juan)
+    if (hasTaxOnly && !canApproveTaxOnlySap) {
+      toast({
+        title: "👑 Requiere Aprobación de Gerencia (Juan)",
+        description: "Las cotizaciones con Transferencia Gratuita no se emiten directamente por Facturación. Usa 'Validar y Enviar a Gerencia (Juan)' para que Juan las apruebe a SAP.",
+        status: "warning",
+        duration: 7000,
+        isClosable: true,
+        position: "top-right",
+      });
+      return;
+    }
 
     // ─── Validación anti-duplicado en cliente: si ya cuenta con sapDocNum, no re-emitir ───
     if (isAlreadySyncedToSap || syncedDocNum) {
@@ -1528,9 +1818,16 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
           discountPercent: totalDisc,
           DiscountPercent: totalDisc,
           isSpecialPrice: isSpecial,
-          customPriceConIGV: p.customPriceConIGV || p.unitPriceConIGV || null,
-          discountedUnitPrice: p.discountedUnitPrice || null,
+          customPriceConIGV: p.customPriceConIGV
+            ? Number((Number(p.customPriceConIGV) * rateMultiplier).toFixed(2))
+            : null,
+          discountedUnitPrice: p.discountedUnitPrice
+            ? Number((Number(p.discountedUnitPrice) * rateMultiplier).toFixed(6))
+            : null,
           baseListDiscount: descListaPct,
+          ...(p.isTaxOnly || p.taxOnly || p.TaxOnly === "tYES" || p.TaxOnly === "Y"
+            ? { isTaxOnly: true, taxOnly: true, TaxOnly: "tYES", taxCode: p.taxCode || "I18" }
+            : {}),
         };
 
         if (descListaPct !== null) {
@@ -1545,6 +1842,21 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
         return baseProduct;
       });
+
+      const inStockSanitized = sanitizedProducts.filter(p => {
+        const isAgotado = p.isAgotado === true || p.isAgotado === 1 || p.isAgotado === "true" || p.isAgotado === "Y";
+        const stk = p.stock !== undefined && p.stock !== null ? Number(p.stock) : (p.stockChecked ? 0 : 1);
+        return !isAgotado && stk > 0;
+      });
+      const allProductsTaxOnly = inStockSanitized.length > 0 && inStockSanitized.every((p) => isItemTaxOnly(p));
+      const freeTransferPaymentType = {
+        GroupNum: 96,
+        GroupNumber: 96,
+        PymntGroup: "10) TRANSFERENCIA GRATUITA",
+        PaymentTermsGroupName: "10) TRANSFERENCIA GRATUITA",
+        value: "96",
+        label: "10) TRANSFERENCIA GRATUITA",
+      };
 
       const quotePayload = {
         ...effectiveQuote,
@@ -1572,8 +1884,9 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         shipToCode: effectiveQuote.deliveryPoint?.AddressName || effectiveQuote.selectedPoint?.AddressName || effectiveQuote.shipToCode || effectiveQuote.ShipToCode || undefined,
         transport: effectiveQuote.transport || effectiveQuote.selectedTransport || effectiveQuote.U_TQC_TRANSPOR,
         deliveryDate: effectiveQuote.deliveryDate || effectiveQuote.docDueDate,
-        paymentType: effectiveQuote.paymentType || effectiveQuote.selectedPaymentType,
-        paymentMethod: effectiveQuote.paymentMethod || effectiveQuote.PaymentMethod || null,
+        paymentType: allProductsTaxOnly ? freeTransferPaymentType : (effectiveQuote.paymentType || effectiveQuote.selectedPaymentType),
+        ...(allProductsTaxOnly ? { paymentGroupCode: 96, PaymentGroupCode: 96 } : {}),
+        paymentMethod: allProductsTaxOnly ? null : (effectiveQuote.paymentMethod || effectiveQuote.PaymentMethod || null),
         bankAccount: effectiveQuote.bankAccount || effectiveQuote.U_VS_BANCO || null,
         sunatOpType: effectiveQuote.sunatOpType || effectiveQuote.U_VS_TIPO_FACT || "0101",
         U_VS_TIPOPER: effectiveQuote.U_VS_TIPOPER || "01",
@@ -1582,7 +1895,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         natNum: effectiveQuote.natNum || effectiveQuote.U_VS_NATNUM || "T",
         payToCode: effectiveQuote.payToCode || effectiveQuote.PayToCode || "FISCAL",
         PayToCode: effectiveQuote.payToCode || effectiveQuote.PayToCode || "FISCAL",
-        U_VS_AFEDET: effectiveQuote.U_VS_AFEDET || "N",
+        U_VS_AFEDET: allProductsTaxOnly ? "N" : (effectiveQuote.U_VS_AFEDET || "N"),
         U_VS_BANCO: effectiveQuote.bankAccount || effectiveQuote.U_VS_BANCO || null,
         saleCondition: effectiveQuote.saleCondition || effectiveQuote.totals?.saleCondition,
         documentType: effectiveQuote.documentType || effectiveQuote.totals?.documentType || (String(effectiveQuote.clientDocument || effectiveQuote.clientRuc || effectiveQuote.client?.LicTradNum || "").replace(/\D/g, "").length === 11 ? "FACTURA" : "BOLETA"),
@@ -1594,11 +1907,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         contactPerson: effectiveQuote.contactPerson || effectiveQuote.totals?.contactPerson || effectiveQuote.ContactPerson || null,
         whsCode: effectiveQuote.whsCode || effectiveQuote.totals?.whsCode || "014",
         observations: effectiveQuote.observations || effectiveQuote.totals?.observations || null,
-        products: sanitizedProducts.filter(p => {
-          const isAgotado = p.isAgotado === true || p.isAgotado === 1 || p.isAgotado === "true" || p.isAgotado === "Y";
-          const stk = p.stock !== undefined && p.stock !== null ? Number(p.stock) : (p.stockChecked ? 0 : 1);
-          return !isAgotado && stk > 0;
-        }),
+        products: inStockSanitized,
         backOrderProducts: sanitizedProducts.filter(p => {
           const isAgotado = p.isAgotado === true || p.isAgotado === 1 || p.isAgotado === "true" || p.isAgotado === "Y";
           const stk = p.stock !== undefined && p.stock !== null ? Number(p.stock) : (p.stockChecked ? 0 : 1);
@@ -1628,7 +1937,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
       // Imprimir la trama JSON técnica y la respuesta oficial de SAP de forma limpia y estilizada en la consola
       console.groupCollapsed(
         `%c⚡ [SAP SERVICE LAYER] Orden de Venta #${sapDocNum || "EMITIDA"} Registrada Oficialmente`,
-        "background: #059669; color: white; font-weight: bold; font-size: 13px; padding: 4px 10px; border-radius: 4px;"
+        "background: #059669; color: white; font-weight: bold; font-size: 13px; padding: 4px 11.5px; border-radius: 4px;"
       );
       console.log("%c📤 TRAMA ENVIADA (Payload Web -> Service Layer):", "color: #0284c7; font-weight: bold;", sentPayload);
       console.log("%c📥 RESPUESTA OFICIAL RECIBIDA DE SAP SERVICE LAYER:", "color: #10b981; font-weight: bold;", sapData);
@@ -1848,19 +2157,19 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         <DrawerContent
           borderLeftRadius={{ base: "none", md: "2xl" }}
           w="full"
-          maxW={{ base: "100vw", md: "960px", lg: "1160px", xl: "1240px" }}
+          maxW={{ base: "100vw", md: "980px", lg: "1180px", xl: "1280px" }}
           display="flex"
           flexDirection="column"
           h={{ base: "100%", md: "100vh" }}
           maxH={{ base: "100dvh", md: "100vh" }}
         >
-          <DrawerHeader bg="#126C36" color="white" py={3} px={{ base: 4, md: 6 }} flexShrink={0}>
+          <DrawerHeader bg="#126C36" color="white" py={{ base: 1.5, md: 1.5 }} px={{ base: 3, md: 4 }} flexShrink={0}>
             <Flex align="center" justify="space-between" gap={2}>
-              <HStack spacing={3} minW={0}>
-                <FileText className="w-5.5 h-5.5 text-emerald-300 flex-shrink-0" />
+              <HStack spacing={{ base: 2, md: 2.5 }} minW={0}>
+                <FileText className="w-4 h-4 text-emerald-300 flex-shrink-0" />
                 <Box minW={0}>
-                  <HStack spacing={2} align="center" wrap="wrap">
-                    <Heading size="sm" color="white" fontWeight="800" isTruncated>
+                  <HStack spacing={{ base: 1.5, md: 2 }} align="center" wrap="wrap">
+                    <Heading size={{ base: "xs", md: "sm" }} color="white" fontWeight="800" isTruncated lineHeight="1.15">
                       {Boolean(syncedDocNum || (effectiveQuote.sapDocNum && Number(effectiveQuote.sapDocNum) > 0) || (status === "EMITIDO" && effectiveQuote.docNumber && !String(effectiveQuote.docNumber).includes("WEB") && !String(effectiveQuote.docNumber).includes("PENDIENTE")))
                         ? (effectiveQuote.docNumber && String(effectiveQuote.docNumber).startsWith("COT-") && !String(effectiveQuote.docNumber).includes("WEB")
                             ? effectiveQuote.docNumber
@@ -1870,7 +2179,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                             : (effectiveQuote.id ? `COT-WEB-${String(effectiveQuote.id).padStart(6, "0")}` : "COT-PENDIENTE (Al emitir a SAP)"))}
                     </Heading>
                     {syncedDocNum && (
-                      <Badge bg="emerald.900" color="emerald.100" border="1px solid" borderColor="emerald.300" fontSize="10px" px={2} py={0.5} borderRadius="md" fontWeight="900">
+                      <Badge bg="emerald.900" color="emerald.100" border="1px solid" borderColor="emerald.300" fontSize="11.5px" px={1.5} py={0.5} borderRadius="md" fontWeight="900">
                         🏛️ SAP DocNum: #{syncedDocNum}
                       </Badge>
                     )}
@@ -1880,8 +2189,8 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                         color={drawerLockCheck.isOwnLock ? "#166534" : "#92400e"}
                         border="1.5px solid"
                         borderColor={drawerLockCheck.isOwnLock ? "#86efac" : "#fcd34d"}
-                        fontSize="10.5px"
-                        px={2.5}
+                        fontSize="11.5px"
+                        px={2}
                         py={0.5}
                         borderRadius="full"
                         fontWeight="900"
@@ -1899,14 +2208,16 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                       </Badge>
                     )}
                   </HStack>
-                  <Text fontSize={{ base: "11px", md: "xs" }} color="emerald.100" fontWeight="500">
+                  <Text display={{ base: "none", sm: "block" }} fontSize="11.5px" color="emerald.100" fontWeight="500" lineHeight="1.1">
                     Seguimiento Comercial y Control de Calidad
                   </Text>
                 </Box>
               </HStack>
-              <HStack spacing={2} flexShrink={0}>
+              <HStack spacing={{ base: 1.5, md: 2 }} flexShrink={0}>
                 <Button
                   size="xs"
+                  h={{ base: "26px", md: "24px" }}
+                  px={{ base: 2, md: 2.5 }}
                   colorScheme="whatsapp"
                   bg="#25d366"
                   _hover={{ bg: "#20bd5a" }}
@@ -1929,16 +2240,16 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                   color="white"
                   position="static"
                   flexShrink={0}
-                  w={{ base: "44px", md: "32px" }}
-                  h={{ base: "44px", md: "32px" }}
+                  w={{ base: "28px", md: "28px" }}
+                  h={{ base: "28px", md: "28px" }}
                 />
               </HStack>
             </Flex>
           </DrawerHeader>
 
           <DrawerBody
-            p={{ base: 3, md: 5 }}
-            pb={{ base: 24, md: 16 }}
+            p={{ base: 3, md: 4 }}
+            pb={{ base: 14, md: 4 }}
             bg="slate.50"
             flex="1 1 auto"
             minH="0"
@@ -1954,23 +2265,23 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
             }}
           >
             {/* 🔒 BANNER DE CONTROL DE CONCURRENCIA / LLAVECITA ACTIVA (SOLO LECTURA SI OTRO USUARIO LO TIENE BLOQUEADO) */}
-            {drawerLockCheck.hasActiveLock && !drawerLockCheck.isOwnLock && (status === "ENVIADO" || status === "EN_PROCESO" || status === "PENDIENTE_APROBACION" || status === "PENDIENTE_FACTURACION") && (
-              <Box bg="#fffbeb" p={3.5} borderRadius="xl" border="1.5px solid #fcd34d" boxShadow="xs" mb={4}>
+            {drawerLockCheck.hasActiveLock && !drawerLockCheck.isOwnLock && (status === "ENVIADO" || status === "EN_PROCESO" || status === "PENDIENTE_APROBACION" || status === "PENDIENTE_FACTURACION" || status === "PENDIENTE_GERENCIA") && (
+              <Box bg="#fffbeb" p={{ base: 2, md: 2 }} borderRadius="lg" border="1.5px solid #fcd34d" boxShadow="xs" mb={1.5}>
                 <Flex align="center" justify="space-between" wrap="wrap" gap={2}>
-                  <HStack spacing={3}>
-                    <Flex w="34px" h="34px" borderRadius="full" bg="#d97706" align="center" justify="center" color="white" flexShrink={0}>
-                      <Lock className="w-4 h-4" />
+                  <HStack spacing={2}>
+                    <Flex w="24px" h="24px" borderRadius="full" bg="#d97706" align="center" justify="center" color="white" flexShrink={0}>
+                      <Lock className="w-3.5 h-3.5" />
                     </Flex>
                     <Box>
-                      <HStack spacing={2} align="center">
-                        <Text fontSize="xs" fontWeight="900" color="#92400e" textTransform="uppercase" letterSpacing="wide">
+                      <HStack spacing={1.5} align="center">
+                        <Text fontSize="11px" fontWeight="900" color="#92400e" textTransform="uppercase" letterSpacing="wide">
                           🔒 Cotización en Revisión por {drawerLockCheck.lockInfo?.lockedByUsername || "Facturación"}
                         </Text>
-                        <Badge colorScheme="amber" variant="solid" fontSize="10px" borderRadius="full" px={2}>
+                        <Badge colorScheme="amber" variant="solid" fontSize="11px" borderRadius="full" px={1.5}>
                           Solo Lectura
                         </Badge>
                       </HStack>
-                      <Text fontSize="11px" color="#78350f" fontWeight="600" mt={0.5}>
+                      <Text fontSize="11.5px" color="#78350f" fontWeight="600" lineHeight="1.2">
                         Facturación está revisando esta cotización en este momento. Los botones de modificación están temporalmente deshabilitados.
                       </Text>
                     </Box>
@@ -2010,33 +2321,33 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
             {/* PANEL DE ACCIONES SEGÚN EL ROL AUTENTICADO Y ESTADO DE LA COTIZACIÓN */}
             {(status === "OBSERVADO" || status === "EN_EDICION") ? (
               /* ── Panel de Observación (Vendedor + Administrador + Observado) ── */
-              <Box bg="#fffbeb" p={4} borderRadius="xl" border="2px solid" borderColor="#f59e0b" boxShadow="sm" mb={5}>
-                <VStack align="stretch" spacing={3}>
-                  <Flex justify="space-between" align={{ base: "flex-start", sm: "center" }} wrap="wrap" gap={2}>
-                    <HStack spacing={2.5}>
-                      <Flex w="36px" h="36px" borderRadius="full" bg="#d97706" align="center" justify="center" color="white" flexShrink={0}>
-                        <MessageSquare className="w-5 h-5 stroke-[2.5]" />
+              <Box bg="#fffbeb" p={{ base: 2, md: 2 }} borderRadius="lg" border="1.5px solid" borderColor="#f59e0b" boxShadow="xs" mb={1.5}>
+                <VStack align="stretch" spacing={1.5}>
+                  <Flex justify="space-between" align={{ base: "flex-start", sm: "center" }} wrap="wrap" gap={1.5}>
+                    <HStack spacing={2}>
+                      <Flex w="26px" h="26px" borderRadius="full" bg="#d97706" align="center" justify="center" color="white" flexShrink={0}>
+                        <MessageSquare className="w-3.5 h-3.5 stroke-[2.5]" />
                       </Flex>
                       <Box minW={0}>
-                        <Text fontSize={{ base: "14px", md: "sm" }} fontWeight="900" color="#92400e" textTransform="uppercase" letterSpacing="wide">
+                        <Text fontSize="11px" fontWeight="900" color="#92400e" textTransform="uppercase" letterSpacing="wide" lineHeight="1.2">
                           💬 Cotización Devuelta con Observaciones
                         </Text>
-                        <Text fontSize={{ base: "12px", md: "xs" }} color="#b45309" fontWeight="600">
+                        <Text fontSize="11.5px" color="#b45309" fontWeight="600" lineHeight="1.2">
                           Evaluada por {effectiveQuote.observedBy || adminUsername || "Administrador"} • Requiere corrección y reenvío
                         </Text>
                       </Box>
                     </HStack>
-                    <Badge colorScheme="orange" variant="solid" px={3} py={1} borderRadius="full" fontSize="xs">
+                    <Badge colorScheme="orange" variant="solid" px={2} py={0.5} borderRadius="full" fontSize="11.5px">
                       OBSERVADO / EN CORRECCIÓN
                     </Badge>
                   </Flex>
 
                   {/* Motivo de la observación */}
-                  <Box bg="white" border="1px solid" borderColor="#fcd34d" p={3} borderRadius="lg">
-                    <Text fontSize="10px" fontWeight="800" color="#92400e" textTransform="uppercase" mb={1}>
+                  <Box bg="white" border="1px solid" borderColor="#fcd34d" p={2} borderRadius="md">
+                    <Text fontSize="11.5px" fontWeight="800" color="#92400e" textTransform="uppercase" mb={0.5}>
                       Indicación de Facturación / Administración:
                     </Text>
-                    <Text fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="#78350f" fontStyle="italic" overflowWrap="anywhere">
+                    <Text fontSize="11px" fontWeight="700" color="#78350f" fontStyle="italic" overflowWrap="anywhere" lineHeight="1.25">
                       "{effectiveQuote.observationReason || effectiveQuote.rejectionReason || "Por favor revisa y corrige los datos observados antes de reenviar."}"
                     </Text>
                   </Box>
@@ -2099,46 +2410,47 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
             ) : activeRole === "SELLER" ? (
               status === "RECHAZADO" ? (
                 /* ── Panel Unificado de Subsanación (Vendedor + Rechazo) ── */
-                <Box bg="red.50" p={4} borderRadius="xl" border="2px solid" borderColor="red.300" boxShadow="sm" mb={5}>
-                  <VStack align="stretch" spacing={3}>
-                    <Flex justify="space-between" align={{ base: "flex-start", sm: "center" }} wrap="wrap" gap={2}>
-                      <HStack spacing={2.5}>
-                        <Flex w="36px" h="36px" borderRadius="full" bg="red.500" align="center" justify="center" color="white" flexShrink={0}>
-                          <XCircle className="w-5 h-5 stroke-[2.5]" />
+                <Box bg="red.50" p={{ base: 2, md: 2 }} borderRadius="lg" border="1.5px solid" borderColor="red.300" boxShadow="xs" mb={1.5}>
+                  <VStack align="stretch" spacing={1.5}>
+                    <Flex justify="space-between" align={{ base: "flex-start", sm: "center" }} wrap="wrap" gap={1.5}>
+                      <HStack spacing={2}>
+                        <Flex w="26px" h="26px" borderRadius="full" bg="red.500" align="center" justify="center" color="white" flexShrink={0}>
+                          <XCircle className="w-3.5 h-3.5 stroke-[2.5]" />
                         </Flex>
                         <Box minW={0}>
-                          <Text fontSize={{ base: "14px", md: "sm" }} fontWeight="900" color="red.900" textTransform="uppercase" letterSpacing="wide">
+                          <Text fontSize="11px" fontWeight="900" color="red.900" textTransform="uppercase" letterSpacing="wide" lineHeight="1.2">
                             Cotización Rechazada por Facturación
                           </Text>
-                          <Text fontSize={{ base: "12px", md: "xs" }} color="red.800" fontWeight="600">
+                          <Text fontSize="11.5px" color="red.800" fontWeight="600" lineHeight="1.2">
                             Evaluada por {adminUsername || "Administrador"} • Acción requerida para subsanar
                           </Text>
                         </Box>
                       </HStack>
-                      <Badge colorScheme="red" variant="solid" px={3} py={1} borderRadius="full" fontSize="xs">
+                      <Badge colorScheme="red" variant="solid" px={2} py={0.5} borderRadius="full" fontSize="11.5px">
                         PENDIENTE DE SUBSANACIÓN
                       </Badge>
                     </Flex>
 
                     {/* Motivo del rechazo */}
-                    <Box bg="white" border="1px solid" borderColor="red.200" p={3} borderRadius="lg">
-                      <Text fontSize="10px" fontWeight="800" color="red.700" textTransform="uppercase" mb={1}>
+                    <Box bg="white" border="1px solid" borderColor="red.200" p={2} borderRadius="md">
+                      <Text fontSize="11.5px" fontWeight="800" color="red.700" textTransform="uppercase" mb={0.5}>
                         💬 Motivo del Rechazo:
                       </Text>
-                      <Text fontSize={{ base: "13px", md: "xs" }} fontWeight="700" color="red.900" fontStyle="italic" overflowWrap="anywhere">
+                      <Text fontSize="11px" fontWeight="700" color="red.900" fontStyle="italic" overflowWrap="anywhere" lineHeight="1.25">
                         "{effectiveQuote.rejectionReason || "No se especificó motivo de rechazo."}"
                       </Text>
                     </Box>
 
                     <Button
-                      size={{ base: "md", md: "sm" }}
+                      size="xs"
+                      h="28px"
                       w={{ base: "full", sm: "auto" }}
                       alignSelf={{ base: "stretch", sm: "flex-start" }}
                       colorScheme="orange"
-                      leftIcon={<RotateCcw className="w-4 h-4" />}
+                      leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
                       onClick={() => { setResubmitNote(""); setIsResubmitModalOpen(true); }}
                       fontWeight="800"
-                      boxShadow="sm"
+                      boxShadow="xs"
                     >
                       Subsanar y Reenviar a Validación
                     </Button>
@@ -2146,10 +2458,10 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                 </Box>
               ) : (
                 /* ── Panel estático para otros estados en modo SELLER ── */
-                <Box p={3.5} bg="blue.50" borderRadius="xl" border="1px solid" borderColor="blue.200" mb={5}>
-                  <HStack spacing={2.5}>
-                    <Lock className="w-4 h-4 text-blue-700 flex-shrink-0" />
-                    <Text fontSize="xs" color="blue.900" fontWeight="700">
+                <Box p={{ base: 2, md: 2 }} bg="blue.50" borderRadius="lg" border="1px solid" borderColor="blue.200" mb={1.5}>
+                  <HStack spacing={2}>
+                    <Lock className="w-3.5 h-3.5 text-blue-700 flex-shrink-0" />
+                    <Text fontSize="11.5px" color="blue.900" fontWeight="700" lineHeight="1.25">
                       🔒 Modo Vendedor ({sellerName || "Vendedor"}): Esta cotización está en proceso comercial. La evaluación está a cargo de Administración / Facturación.
                     </Text>
                   </HStack>
@@ -2159,17 +2471,17 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
               (() => {
                 const sapDoc = (isAlreadySyncedToSap && syncedDocNum) ? syncedDocNum : null;
                 return (
-                  <Box bg={sapDoc ? "teal.50" : "emerald.50"} p={4} borderRadius="xl" border="2px solid" borderColor={sapDoc ? "teal.500" : "emerald.500"} boxShadow="sm" mb={5}>
-                    <Flex align="center" justify="space-between" wrap="wrap" gap={3}>
-                      <HStack spacing={3}>
-                        <Flex w="36px" h="36px" borderRadius="full" bg={sapDoc ? "teal.500" : "emerald.500"} align="center" justify="center" color="white" flexShrink={0}>
-                          <CheckCircle2 className="w-5 h-5 stroke-[2.5]" />
+                  <Box bg={sapDoc ? "teal.50" : "emerald.50"} p={{ base: 2, md: 2 }} borderRadius="lg" border="1.5px solid" borderColor={sapDoc ? "teal.500" : "emerald.500"} boxShadow="xs" mb={1.5}>
+                    <Flex align="center" justify="space-between" wrap="wrap" gap={2}>
+                      <HStack spacing={2}>
+                        <Flex w="24px" h="24px" borderRadius="full" bg={sapDoc ? "teal.500" : "emerald.500"} align="center" justify="center" color="white" flexShrink={0}>
+                          <CheckCircle2 className="w-3.5 h-3.5 stroke-[2.5]" />
                         </Flex>
                         <Box>
-                          <Text fontSize="xs" fontWeight="900" color={sapDoc ? "teal.900" : "emerald.900"} textTransform="uppercase">
+                          <Text fontSize="11px" fontWeight="900" color={sapDoc ? "teal.900" : "emerald.900"} textTransform="uppercase" lineHeight="1.2">
                             {sapDoc ? `🔒 4. Orden de Venta SAP Registrada (DocNum: #${syncedDocNum || ""})` : "✅ 4. Orden Aprobada (Interna)"}
                           </Text>
-                          <Text fontSize="11px" color={sapDoc ? "teal.800" : "emerald.800"} fontWeight="600">
+                          <Text fontSize="11.5px" color={sapDoc ? "teal.800" : "emerald.800"} fontWeight="600" lineHeight="1.2">
                             {sapDoc
                               ? `Registrado y sincronizado oficialmente en SAP Service Layer.`
                               : `Aprobado internamente por ${adminUsername || "Administrador"}. Si fue un error o prueba, puedes anularlo o devolverlo a borrador.`}
@@ -2296,64 +2608,65 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                 );
               })()
             ) : status === "RECHAZADO" ? (
-              <Box bg="red.50" p={4} borderRadius="xl" border="2px solid" borderColor="red.500" boxShadow="sm" mb={5}>
-                <Flex align="center" justify="space-between" wrap="wrap" gap={3}>
-                  <HStack spacing={3}>
-                    <Flex w="36px" h="36px" borderRadius="full" bg="red.500" align="center" justify="center" color="white">
-                      <XCircle className="w-5 h-5 stroke-[2.5]" />
+              <Box bg="red.50" p={{ base: 2, md: 2 }} borderRadius="lg" border="1.5px solid" borderColor="red.500" boxShadow="xs" mb={1.5}>
+                <Flex align="center" justify="space-between" wrap="wrap" gap={2}>
+                  <HStack spacing={2}>
+                    <Flex w="24px" h="24px" borderRadius="full" bg="red.500" align="center" justify="center" color="white" flexShrink={0}>
+                      <XCircle className="w-3.5 h-3.5 stroke-[2.5]" />
                     </Flex>
                     <Box>
-                      <Text fontSize="xs" fontWeight="900" color="red.900" textTransform="uppercase">
+                      <Text fontSize="11px" fontWeight="900" color="red.900" textTransform="uppercase" lineHeight="1.2">
                         ❌ Cotización Rechazada
                       </Text>
-                      <Text fontSize="11px" color="red.800" fontWeight="600">
+                      <Text fontSize="11.5px" color="red.800" fontWeight="600" lineHeight="1.2">
                         Motivo: "{effectiveQuote.rejectionReason || "No cumple con las políticas comerciales."}"
                       </Text>
                     </Box>
                   </HStack>
-                  <Badge colorScheme="red" variant="solid" px={3} py={1} borderRadius="full" fontSize="xs">
+                  <Badge colorScheme="red" variant="solid" px={2} py={0.5} borderRadius="full" fontSize="11.5px">
                     CONCLUIDO (RECHAZADO)
                   </Badge>
                 </Flex>
               </Box>
             ) : status === "APROBADO_COMERCIAL" ? (
-              <Box bg="amber.50" p={4} borderRadius="xl" border="1.5px solid" borderColor="amber.300" mb={4}>
-                <HStack spacing={3}>
-                  <Flex w="36px" h="36px" borderRadius="full" bg="amber.500" align="center" justify="center" color="white" flexShrink={0}>
-                    <Clock className="w-5 h-5" />
+              <Box bg="amber.50" p={{ base: 2, md: 2 }} borderRadius="lg" border="1.5px solid" borderColor="amber.300" mb={1.5}>
+                <HStack spacing={2}>
+                  <Flex w="24px" h="24px" borderRadius="full" bg="amber.500" align="center" justify="center" color="white" flexShrink={0}>
+                    <Clock className="w-3.5 h-3.5" />
                   </Flex>
                   <Box>
-                    <Text fontSize="xs" fontWeight="900" color="amber.900" textTransform="uppercase">
+                    <Text fontSize="11px" fontWeight="900" color="amber.900" textTransform="uppercase" lineHeight="1.2">
                       📢 Aprobación Comercial Completada
                     </Text>
-                    <Text fontSize="11px" color="amber.800" fontWeight="600">
+                    <Text fontSize="11.5px" color="amber.800" fontWeight="600" lineHeight="1.2">
                       Esperando que el vendedor ({sellerName}) complete la información de pago (depósito) y despacho.
                     </Text>
                   </Box>
                 </HStack>
               </Box>
             ) : (!status || ["GENERADO", "BORRADOR", "DRAFT", "draft"].includes(status)) ? (
-              <Box bg="#eff6ff" p={{ base: 3.5, md: 4 }} borderRadius="xl" border="1.5px solid" borderColor="#bfdbfe" boxShadow="sm" mb={4}>
-                <Flex direction={{ base: "column", md: "row" }} align={{ base: "stretch", md: "center" }} justify="space-between" gap={3}>
-                  <HStack spacing={3} align="flex-start" flex="1" minW="0">
-                    <Flex w="36px" h="36px" borderRadius="full" bg="#2563eb" align="center" justify="center" color="white" flexShrink={0} mt={0.5}>
-                      <Edit3 className="w-5 h-5 stroke-[2.5]" />
+              <Box bg="#eff6ff" p={{ base: 2, md: 2 }} borderRadius="lg" border="1.5px solid" borderColor="#bfdbfe" boxShadow="xs" mb={1.5}>
+                <Flex direction={{ base: "column", md: "row" }} align={{ base: "stretch", md: "center" }} justify="space-between" gap={2}>
+                  <HStack spacing={2} align="center" flex="1" minW="0">
+                    <Flex w="24px" h="24px" borderRadius="full" bg="#2563eb" align="center" justify="center" color="white" flexShrink={0}>
+                      <Edit3 className="w-3.5 h-3.5 stroke-[2.5]" />
                     </Flex>
                     <Box flex="1" minW="0">
-                      <Text fontSize="xs" fontWeight="900" color="#1e3a8a" textTransform="uppercase" letterSpacing="wide">
+                      <Text fontSize="11px" fontWeight="900" color="#1e3a8a" textTransform="uppercase" letterSpacing="wide" lineHeight="1.2">
                         📝 Cotización en Modo Borrador
                       </Text>
-                      <Text fontSize="11px" color="#1e40af" fontWeight="600" mt={0.5}>
+                      <Text fontSize="11.5px" color="#1e40af" fontWeight="600" lineHeight="1.2">
                         Este documento es un borrador interno y aún no ha sido enviado a validación comercial.
                       </Text>
                     </Box>
                   </HStack>
                   <Button
-                    size="sm"
+                    size="xs"
+                    h="26px"
                     colorScheme="blue"
                     bg="#2563eb"
                     _hover={{ bg: "#1d4ed8" }}
-                    leftIcon={<Edit3 className="w-3.5 h-3.5" />}
+                    leftIcon={<Edit3 className="w-3 h-3" />}
                     flexShrink={0}
                     whiteSpace="nowrap"
                     alignSelf={{ base: "stretch", md: "center" }}
@@ -2369,80 +2682,159 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                       navigate("/newquotes");
                     }}
                     fontWeight="800"
-                    borderRadius="lg"
-                    px={3}
+                    borderRadius="md"
+                    px={2.5}
                   >
                     Abrir y Editar en Formulario
                   </Button>
                 </Flex>
               </Box>
-            ) : ((status === "ENVIADO" || status === "EN_PROCESO" || status === "PENDIENTE_APROBACION" || status === "PENDIENTE_FACTURACION") && isAdminUser) ? (
-              <Box bg="#f0fdf4" p={{ base: 3.5, md: 4 }} borderRadius="xl" border="1.5px solid" borderColor="#86efac" boxShadow="sm" mb={4}>
-                <Flex direction={{ base: "column", md: "row" }} align={{ base: "stretch", md: "center" }} justify="space-between" gap={3}>
-                  <HStack spacing={3} align="flex-start" flex="1" minW="0">
-                    <Flex w="36px" h="36px" borderRadius="full" bg="#16a34a" align="center" justify="center" color="white" flexShrink={0} mt={0.5}>
-                      <ShieldCheck className="w-5 h-5 stroke-[2.5]" />
+            ) : (status === "PENDIENTE_GERENCIA" && isAdminUser) ? (
+              <Box bg="#faf5ff" p={{ base: 2.5, md: 3 }} px={{ base: 3, md: 3.5 }} borderRadius="lg" border="1.5px solid" borderColor="#c084fc" boxShadow="xs" mb={2.5}>
+                <Flex direction={{ base: "column", md: "row" }} align={{ base: "stretch", md: "center" }} justify="space-between" gap={{ base: 2, md: 3 }}>
+                  <HStack spacing={2.5} align="center" flex="1" minW="0">
+                    <Flex w="30px" h="30px" borderRadius="full" bg="#7e22ce" align="center" justify="center" color="white" flexShrink={0}>
+                      <ShieldCheck className="w-4 h-4 stroke-[2.5]" />
                     </Flex>
                     <Box flex="1" minW="0">
-                      <Text fontSize="xs" fontWeight="900" color="#166534" textTransform="uppercase" letterSpacing="wide">
-                        🔍 Verificación Comercial y Control de Calidad
+                      <Text fontSize={{ base: "12px", md: "13px" }} fontWeight="900" color="#581c87" textTransform="uppercase" letterSpacing="wide" lineHeight="1.25">
+                        👑 Transferencia Gratuita — Pendiente Aprobación Gerencia (Juan)
                       </Text>
-                      <Text fontSize="11px" color="gray.700" fontWeight="600" mt={0.5}>
-                        {status === "PENDIENTE_FACTURACION"
-                          ? `Valida el voucher y depósito ingresados por ${sellerName} antes de emitir en SAP.`
-                          : `Cotización enviada por ${sellerName}. Abre el formulario para revisarla, aprobar y emitir a SAP o devolver con observaciones.`}
+                      <Text fontSize="11.5px" color="#6b21a8" fontWeight="600" lineHeight="1.3" mt={0.5}>
+                        {canApproveTaxOnlySap
+                          ? `Pre-aprobada por Facturación${preApprovedByFacturacion ? ` (${preApprovedByFacturacion})` : ""}. Lista para tu aprobación y emisión final a SAP B1.`
+                          : `Validada por Facturación${preApprovedByFacturacion ? ` (${preApprovedByFacturacion})` : ""}. Esperando que Juan / Gerencia apruebe y emita a SAP B1.`}
                       </Text>
-                      {drawerLockCheck.hasActiveLock && (
-                        <Badge
-                          bg={drawerLockCheck.isOwnLock ? "#dcfce7" : "#fef3c7"}
-                          color={drawerLockCheck.isOwnLock ? "#166534" : "#92400e"}
-                          border="1px solid"
-                          borderColor={drawerLockCheck.isOwnLock ? "#86efac" : "#fcd34d"}
-                          mt={1.5}
-                          fontSize="10px"
-                          px={2}
-                          py={0.5}
-                          borderRadius="md"
-                          fontWeight="800"
-                          display="inline-flex"
-                          alignItems="center"
-                          gap={1}
-                        >
-                          <Lock className="w-3 h-3 flex-shrink-0" />
-                          <Text as="span">
-                            {drawerLockCheck.isOwnLock
-                              ? "Tienes el candado activo de revisión de esta cotización"
-                              : `En revisión por ${drawerLockCheck.lockInfo?.lockedByUsername} (${drawerLockCheck.lockInfo?.lockedByProfile || "Facturación"})`}
-                          </Text>
-                        </Badge>
-                      )}
                     </Box>
                   </HStack>
-                  <HStack spacing={2} flexShrink={0} alignSelf={{ base: "stretch", md: "center" }} wrap="wrap">
+                  {canApproveTaxOnlySap && (
+                    <Grid templateColumns={{ base: "1fr 1fr", md: "auto auto" }} gap={2} flexShrink={0} alignSelf={{ base: "stretch", md: "center" }}>
+                      <Button
+                        size="sm"
+                        colorScheme="orange"
+                        bg="#ea580c"
+                        _hover={{ bg: "#c2410c" }}
+                        leftIcon={<MessageSquare className="w-3.5 h-3.5 md:w-4 md:h-4" />}
+                        whiteSpace="nowrap"
+                        isDisabled={isDrawerLockedByOther}
+                        onClick={() => setIsObserveModalOpen(true)}
+                        fontWeight="800"
+                        fontSize={{ base: "11px", md: "12.5px" }}
+                        borderRadius="lg"
+                        px={{ base: 2.5, md: 3.5 }}
+                        h={{ base: "32px", md: "36px" }}
+                        boxShadow="xs"
+                      >
+                        <Text as="span" display={{ base: "inline", sm: "none" }}>Devolver</Text>
+                        <Text as="span" display={{ base: "none", sm: "inline" }}>💬 Devolver con Observación</Text>
+                      </Button>
+                      <Button
+                        size="sm"
+                        colorScheme="purple"
+                        bg="#7e22ce"
+                        _hover={{ bg: "#6b21a8" }}
+                        leftIcon={<Edit3 className="w-3.5 h-3.5 md:w-4 md:h-4" />}
+                        whiteSpace="nowrap"
+                        isDisabled={isDrawerLockedByOther}
+                        onClick={() => {
+                          onClose();
+                          const quoteToLoad = effectiveQuote || quote;
+                          if (typeof useQuoteStore.getState().loadQuote === "function") {
+                            useQuoteStore.getState().loadQuote(quoteToLoad);
+                          } else if (typeof useQuoteStore.getState().setQuoteData === "function") {
+                            useQuoteStore.getState().setQuoteData(quoteToLoad);
+                          }
+                          sessionStorage.removeItem("admin_force_edit");
+                          navigate("/newquotes");
+                        }}
+                        fontWeight="900"
+                        fontSize={{ base: "11px", md: "12.5px" }}
+                        borderRadius="lg"
+                        px={{ base: 2.5, md: 4 }}
+                        h={{ base: "32px", md: "36px" }}
+                        boxShadow="xs"
+                      >
+                        <Text as="span" display={{ base: "inline", sm: "none" }}>Revisar Form.</Text>
+                        <Text as="span" display={{ base: "none", sm: "inline" }}>✏️ Revisar Formulario</Text>
+                      </Button>
+                    </Grid>
+                  )}
+                </Flex>
+              </Box>
+            ) : ((status === "ENVIADO" || status === "EN_PROCESO" || status === "PENDIENTE_APROBACION" || status === "PENDIENTE_FACTURACION") && isAdminUser) ? (
+              <Box bg="#f0fdf4" p={{ base: 2.5, md: 3 }} px={{ base: 3, md: 3.5 }} borderRadius="lg" border="1.5px solid" borderColor="#86efac" boxShadow="xs" mb={2.5}>
+                <Flex direction={{ base: "column", md: "row" }} align={{ base: "stretch", md: "center" }} justify="space-between" gap={{ base: 2, md: 3 }}>
+                  <HStack spacing={2.5} align="center" flex="1" minW="0">
+                    <Flex w="30px" h="30px" borderRadius="full" bg="#16a34a" align="center" justify="center" color="white" flexShrink={0}>
+                      <ShieldCheck className="w-4 h-4 stroke-[2.5]" />
+                    </Flex>
+                    <Box flex="1" minW="0">
+                      <Flex align="center" gap={2} wrap="wrap">
+                        <Text fontSize={{ base: "12px", md: "13px" }} fontWeight="900" color="#166534" textTransform="uppercase" letterSpacing="wide" lineHeight="1.25">
+                          🔍 Verificación Comercial y Control de Calidad
+                        </Text>
+                        {drawerLockCheck.hasActiveLock && (
+                          <Badge
+                            bg={drawerLockCheck.isOwnLock ? "#dcfce7" : "#fef3c7"}
+                            color={drawerLockCheck.isOwnLock ? "#166534" : "#92400e"}
+                            border="1px solid"
+                            borderColor={drawerLockCheck.isOwnLock ? "#86efac" : "#fcd34d"}
+                            fontSize="11.5px"
+                            px={2}
+                            py={0.5}
+                            borderRadius="md"
+                            fontWeight="800"
+                            display="inline-flex"
+                            alignItems="center"
+                            gap={1}
+                            maxW="full"
+                            whiteSpace="normal"
+                            wordBreak="break-word"
+                            lineHeight="1.2"
+                          >
+                            <Lock className="w-3 h-3 flex-shrink-0" />
+                            <Text as="span" whiteSpace="normal" wordBreak="break-word">
+                              {drawerLockCheck.isOwnLock
+                                ? "Candado activo de revisión"
+                                : `En revisión por ${drawerLockCheck.lockInfo?.lockedByUsername} (${drawerLockCheck.lockInfo?.lockedByProfile || "Facturación"})`}
+                            </Text>
+                          </Badge>
+                        )}
+                      </Flex>
+                      <Text fontSize="11.5px" color="gray.600" fontWeight="500" lineHeight="1.3" mt={0.5} noOfLines={1}>
+                        {status === "PENDIENTE_FACTURACION"
+                          ? `Valida el voucher y depósito de ${sellerName} antes de emitir en SAP.`
+                          : `Enviada por ${sellerName} · Revisa, aprueba o devuelve con observación.`}
+                      </Text>
+                    </Box>
+                  </HStack>
+                  <Grid templateColumns={{ base: "1fr 1fr", md: "auto auto" }} gap={2} flexShrink={0} alignSelf={{ base: "stretch", md: "center" }}>
                     <Button
                       size="sm"
                       colorScheme="orange"
                       bg="#ea580c"
                       _hover={{ bg: "#c2410c" }}
-                      leftIcon={<MessageSquare className="w-4 h-4" />}
+                      leftIcon={<MessageSquare className="w-3.5 h-3.5 md:w-4 md:h-4" />}
                       whiteSpace="nowrap"
                       isDisabled={isDrawerLockedByOther}
                       title={isDrawerLockedByOther ? `Bloqueado: En revisión activa por ${drawerLockCheck.lockInfo?.lockedByUsername}` : ""}
                       onClick={() => setIsObserveModalOpen(true)}
                       fontWeight="800"
+                      fontSize={{ base: "11px", md: "12.5px" }}
                       borderRadius="lg"
-                      px={3.5}
-                      h="38px"
+                      px={{ base: 2.5, md: 3.5 }}
+                      h={{ base: "32px", md: "36px" }}
                       boxShadow="xs"
                     >
-                      💬 Devolver con Observación
+                      <Text as="span" display={{ base: "inline", sm: "none" }}>Devolver</Text>
+                      <Text as="span" display={{ base: "none", sm: "inline" }}>💬 Devolver con Observación</Text>
                     </Button>
                     <Button
                       size="sm"
                       colorScheme="teal"
                       bg="#0f766e"
                       _hover={{ bg: "#115e59" }}
-                      leftIcon={<Edit3 className="w-4 h-4" />}
+                      leftIcon={<Edit3 className="w-3.5 h-3.5 md:w-4 md:h-4" />}
                       whiteSpace="nowrap"
                       isDisabled={isDrawerLockedByOther}
                       title={isDrawerLockedByOther ? `Bloqueado: En revisión activa por ${drawerLockCheck.lockInfo?.lockedByUsername}` : ""}
@@ -2458,33 +2850,35 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                         navigate("/newquotes");
                       }}
                       fontWeight="900"
+                      fontSize={{ base: "11px", md: "12.5px" }}
                       borderRadius="lg"
-                      px={4}
-                      h="38px"
+                      px={{ base: 2.5, md: 4 }}
+                      h={{ base: "32px", md: "36px" }}
                       boxShadow="xs"
                     >
-                      ✏️ Revisar Formulario
+                      <Text as="span" display={{ base: "inline", sm: "none" }}>Revisar Form.</Text>
+                      <Text as="span" display={{ base: "none", sm: "inline" }}>✏️ Revisar Formulario</Text>
                     </Button>
-                  </HStack>
+                  </Grid>
                 </Flex>
               </Box>
             ) : (status === "EMITIDO" || status === "EMITIDO_SAP" || isAlreadySyncedToSap) ? (
-              <Box bg="teal.50" p={4} borderRadius="xl" border="2px solid" borderColor="teal.500" boxShadow="sm" mb={5}>
-                <Flex align="center" justify="space-between" wrap="wrap" gap={3}>
-                  <HStack spacing={3} flex="1" minW="0">
-                    <Flex w="36px" h="36px" borderRadius="full" bg="teal.500" align="center" justify="center" color="white" flexShrink={0}>
-                      <CheckCircle2 className="w-5 h-5 stroke-[2.5]" />
+              <Box bg="teal.50" p={{ base: 1.5, md: 1.5 }} px={{ base: 2, md: 2.5 }} borderRadius="lg" border="1.5px solid" borderColor="teal.500" boxShadow="xs" mb={1.5}>
+                <Flex align="center" justify="space-between" wrap="wrap" gap={2}>
+                  <HStack spacing={2} flex="1" minW="0">
+                    <Flex w="24px" h="24px" borderRadius="full" bg="teal.500" align="center" justify="center" color="white" flexShrink={0}>
+                      <CheckCircle2 className="w-3.5 h-3.5 stroke-[2.5]" />
                     </Flex>
                     <Box minW="0">
-                      <Text fontSize="xs" fontWeight="900" color="teal.900" textTransform="uppercase">
+                      <Text fontSize="11.5px" fontWeight="900" color="teal.900" textTransform="uppercase" lineHeight="1.2">
                         🔒 4. Oferta / Pedido SAP Registrado{syncedDocNum ? ` (DocNum: #${syncedDocNum})` : ""}
                       </Text>
-                      <Text fontSize="11px" color="teal.800" fontWeight="600">
+                      <Text fontSize="11.5px" color="teal.800" fontWeight="600" lineHeight="1.2">
                         Registrado y sincronizado oficialmente en SAP Service Layer.
                       </Text>
                     </Box>
                   </HStack>
-                  <Badge colorScheme="teal" variant="solid" px={3} py={1} borderRadius="full" fontSize="xs">
+                  <Badge colorScheme="teal" variant="solid" px={2} py={0.5} borderRadius="full" fontSize="11.5px">
                     EMITIDO EN SAP
                   </Badge>
                 </Flex>
@@ -2494,84 +2888,104 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
             {/* FICHA TÉCNICA RÁPIDA (Optimizada para Celular y PC) */}
             <Grid
               templateColumns={{ base: "repeat(2, 1fr)", md: "repeat(4, 1fr)" }}
-              gap={{ base: 2.5, md: 3 }}
-              mb={4}
+              gap={{ base: 2, md: 3 }}
+              mb={2.5}
               bg="white"
-              p={{ base: 3, md: 4 }}
-              borderRadius="xl"
+              py={{ base: 2, md: 2.5 }}
+              px={{ base: 3, md: 4 }}
+              borderRadius="lg"
               border="1.5px solid"
               borderColor="gray.200"
               boxShadow="xs"
             >
               <GridItem colSpan={{ base: 2, md: 1 }} minW={0}>
-                <Text fontSize="10px" fontWeight="700" color="gray.500" textTransform="uppercase">Razón Social</Text>
-                <Text fontSize={{ base: "13px", md: "xs" }} fontWeight="900" color="gray.900" isTruncated title={clientName}>
+                <Text fontSize="11.5px" fontWeight="700" color="gray.500" textTransform="uppercase" lineHeight="1.2">Razón Social</Text>
+                <Text fontSize="13.5px" fontWeight="900" color="gray.900" isTruncated lineHeight="1.3" title={clientName}>
                   {clientName}
                 </Text>
               </GridItem>
               <GridItem minW={0}>
-                <Text fontSize="10px" fontWeight="700" color="gray.500" textTransform="uppercase">RUC / Documento</Text>
-                <Text fontSize={{ base: "12px", md: "xs" }} fontWeight="800" color="gray.800" fontFamily="mono" isTruncated>
+                <Text fontSize="11.5px" fontWeight="700" color="gray.500" textTransform="uppercase" lineHeight="1.2">RUC / Documento</Text>
+                <Text fontSize="13.5px" fontWeight="800" color="gray.800" fontFamily="mono" isTruncated lineHeight="1.3">
                   {clientRuc}
                 </Text>
               </GridItem>
               <GridItem minW={0}>
-                <Text fontSize="10px" fontWeight="700" color="gray.500" textTransform="uppercase">Vendedor Asignado</Text>
-                <Text fontSize={{ base: "12px", md: "xs" }} fontWeight="800" color="gray.800" isTruncated>
+                <Text fontSize="11.5px" fontWeight="700" color="gray.500" textTransform="uppercase" lineHeight="1.2">Vendedor Asignado</Text>
+                <Text fontSize="13.5px" fontWeight="800" color="gray.800" isTruncated lineHeight="1.3">
                   {sellerName}
                 </Text>
               </GridItem>
-              <GridItem minW={0}>
-                <Text fontSize="10px" fontWeight="700" color="gray.500" textTransform="uppercase">Fecha Registro</Text>
-                <Text fontSize={{ base: "12px", md: "xs" }} fontWeight="800" color="gray.800" isTruncated>
+              <GridItem colSpan={{ base: 2, md: 1 }} minW={0}>
+                <Text fontSize="11.5px" fontWeight="700" color="gray.500" textTransform="uppercase" lineHeight="1.2">Fecha Registro</Text>
+                <Text fontSize="13.5px" fontWeight="800" color="gray.800" isTruncated lineHeight="1.3">
                   {formatDateDisplay(effectiveQuote.docDate, effectiveQuote.createdAt || createdIso)}
                 </Text>
               </GridItem>
             </Grid>
 
             {/* SECCIÓN 📍 RUTA / SEGUIMIENTO DE LA COTIZACIÓN (CON COLORES VIBRANTES EN VIVO) */}
-            <Box bg="white" p={{ base: 3, md: 5 }} borderRadius="2xl" border="1.5px solid" borderColor="gray.200" boxShadow="sm" mb={5} overflow="hidden">
-              <Flex justify="space-between" align="center" mb={4} wrap="wrap" gap={2}>
+            <Box bg="white" p={{ base: 2, md: 2 }} borderRadius="lg" border="1.5px solid" borderColor="gray.200" boxShadow="xs" mb={1.5} overflow="hidden">
+              <Flex
+                justify="space-between"
+                align="center"
+                mb={{ base: isRouteExpandedMobile ? 1 : 0, md: 1 }}
+                wrap="wrap"
+                gap={1.5}
+              >
                 <HStack spacing={2} wrap="wrap">
-                  <Text fontSize={{ base: "13px", md: "xs" }} fontWeight="900" color="gray.900" textTransform="uppercase" letterSpacing="wider">
-                    📍 Ruta / Seguimiento de la Cotización
+                  <Text fontSize={{ base: "12px", md: "13px" }} fontWeight="900" color="gray.900" textTransform="uppercase" letterSpacing="wider">
+                    📍 Ruta / Seguimiento
                   </Text>
-                  <Badge colorScheme={status === "RECHAZADO" ? "red" : "green"} variant="solid" fontSize="9px" px={2} borderRadius="full">
+                  <Badge colorScheme={status === "RECHAZADO" ? "red" : "green"} variant="solid" fontSize="11.5px" px={2} py={0.5} borderRadius="full">
                     Tiempo Real
                   </Badge>
                 </HStack>
-                <HStack spacing={2} fontSize={{ base: "11px", md: "xs" }}>
-                  <Text color="gray.600" fontWeight="700">Ciclo Total:</Text>
-                  <Badge colorScheme={status === "RECHAZADO" ? "red" : "blue"} fontSize="xs" px={2.5} py={0.5} borderRadius="full" fontWeight="800">
+                <HStack spacing={2} fontSize={{ base: "11px", md: "12.5px" }}>
+                  <Text display={{ base: "none", sm: "inline" }} color="gray.600" fontWeight="700">Ciclo Total:</Text>
+                  <Badge colorScheme={status === "RECHAZADO" ? "red" : "blue"} fontSize={{ base: "11.5px", md: "11.5px" }} px={2.5} py={0.5} borderRadius="full" fontWeight="800">
                     {totalCiclo}
                   </Badge>
-                  <Badge bg={status === "RECHAZADO" ? "red.600" : isFinalApproved ? "emerald.700" : isInReview ? "blue.600" : "gray.600"} color="white" fontSize="xs" px={2.5} py={0.5} borderRadius="full" fontWeight="900">
+                  <Badge bg={status === "RECHAZADO" ? "red.600" : isFinalApproved ? "emerald.700" : isInReview ? "blue.600" : "gray.600"} color="white" fontSize={{ base: "11.5px", md: "11.5px" }} px={2.5} py={0.5} borderRadius="full" fontWeight="900">
                     {isFinalDone ? "100%" : isInReview ? "66%" : "33%"}
                   </Badge>
+                  <Button
+                    display={{ base: "inline-flex", md: "none" }}
+                    size="xs"
+                    variant="ghost"
+                    colorScheme="teal"
+                    h="24px"
+                    px={2}
+                    fontSize="11.5px"
+                    fontWeight="800"
+                    onClick={() => setIsRouteExpandedMobile((prev) => !prev)}
+                  >
+                    {isRouteExpandedMobile ? "Ocultar ▲" : "Ver pasos ▼"}
+                  </Button>
                 </HStack>
               </Flex>
 
-              {/* VISTA MÓVIL: LÍNEA DE TIEMPO VERTICAL ELEGANTE */}
-              <Box display={{ base: "block", md: "none" }} py={2} px={1}>
-                <VStack align="stretch" spacing={3} position="relative" pl={2}>
+              {/* VISTA MÓVIL: LÍNEA DE TIEMPO VERTICAL COMPACTA Y COLAPSABLE */}
+              <Box display={{ base: isRouteExpandedMobile ? "block" : "none", md: "none" }} py={1} px={0.5}>
+                <VStack align="stretch" spacing={2} position="relative" pl={1.5}>
                   <Box position="absolute" top="15px" bottom="25px" left="17px" w="3px" bg="gray.200" borderRadius="full" zIndex={0} />
 
                   {/* Paso 1: Cotizado */}
                   <Flex align="start" gap={3} zIndex={1} position="relative">
-                    <Flex w="30px" h="30px" borderRadius="full" bg="#059669" align="center" justify="center" color="white" boxShadow="0 2px 8px rgba(5,150,105,0.4)" flexShrink={0}>
+                    <Flex w="30px" h="30px" borderRadius="full" bg="#059669" align="center" justify="center" color="white" boxShadow="0 2px 11px rgba(5,150,105,0.4)" flexShrink={0}>
                       <Check className="w-4 h-4 stroke-[3]" />
                     </Flex>
                     <Box bg="emerald.50" p={2.5} borderRadius="xl" border="1.5px solid" borderColor="emerald.300" flex="1">
                       <Flex justify="space-between" align="center">
                         <Text fontSize="11px" fontWeight="900" color="emerald.900">1. COTIZADO</Text>
-                        <Badge colorScheme="green" variant="solid" fontSize="9px">{stepCotizado.time}</Badge>
+                        <Badge colorScheme="green" variant="solid" fontSize="11px">{stepCotizado.time}</Badge>
                       </Flex>
-                      <Text fontSize="10px" color="emerald.800" mt={0.5} fontWeight="600">Documento registrado por {sellerName}</Text>
+                      <Text fontSize="11.5px" color="emerald.800" mt={0.5} fontWeight="600">Documento registrado por {sellerName}</Text>
                     </Box>
                   </Flex>
 
                   {dur1To2 !== "—" && (
-                    <Text fontSize="9px" fontWeight="800" color="gray.500" pl={9} my={-1}>
+                    <Text fontSize="11px" fontWeight="800" color="gray.500" pl={9} my={-1}>
                       ⏱️ {dur1To2}
                     </Text>
                   )}
@@ -2586,7 +3000,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                       align="center"
                       justify="center"
                       color={isSolSent ? "white" : "#64748b"}
-                      boxShadow={isSolSent ? "0 2px 8px rgba(5,150,105,0.4)" : "none"}
+                      boxShadow={isSolSent ? "0 2px 11px rgba(5,150,105,0.4)" : "none"}
                       flexShrink={0}
                     >
                       {isSolSent ? <Check className="w-4 h-4 stroke-[3]" /> : <Circle className="w-3.5 h-3.5" />}
@@ -2594,14 +3008,14 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                     <Box bg={isSolSent ? "emerald.50" : "white"} p={2.5} borderRadius="xl" border="1.5px solid" borderColor={isSolSent ? "emerald.300" : "gray.200"} flex="1">
                       <Flex justify="space-between" align="center">
                         <Text fontSize="11px" fontWeight="900" color={isSolSent ? "emerald.900" : "gray.500"}>2. SOLICITUD ENVIADA</Text>
-                        <Badge colorScheme={isSolSent ? "green" : "gray"} variant="solid" fontSize="9px">{stepSolicitud.time}</Badge>
+                        <Badge colorScheme={isSolSent ? "green" : "gray"} variant="solid" fontSize="11px">{stepSolicitud.time}</Badge>
                       </Flex>
-                      <Text fontSize="10px" color="gray.600" mt={0.5}>Enviada a Facturación para control</Text>
+                      <Text fontSize="11.5px" color="gray.600" mt={0.5}>Enviada a Facturación para control</Text>
                     </Box>
                   </Flex>
 
                   {dur2To3 !== "—" && (
-                    <Text fontSize="9px" fontWeight="800" color="gray.500" pl={9} my={-1}>
+                    <Text fontSize="11px" fontWeight="800" color="gray.500" pl={9} my={-1}>
                       ⏱️ {dur2To3}
                     </Text>
                   )}
@@ -2616,7 +3030,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                       align="center"
                       justify="center"
                       color="white"
-                      boxShadow={isInReview ? "0 0 0 4px rgba(37,99,235,0.3)" : isObserved ? "0 2px 8px rgba(217,119,6,0.4)" : (isFinalDone ? "0 2px 8px rgba(5,150,105,0.4)" : "none")}
+                      boxShadow={isInReview ? "0 0 0 4px rgba(37,99,235,0.3)" : isObserved ? "0 2px 11px rgba(217,119,6,0.4)" : (isFinalDone ? "0 2px 11px rgba(5,150,105,0.4)" : "none")}
                       flexShrink={0}
                     >
                       {isFinalDone ? (
@@ -2639,18 +3053,18 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                         <Text fontSize="11px" fontWeight="900" color={isFinalDone ? (isFinalRejected ? "red.900" : isObserved ? "amber.900" : "emerald.900") : (isInReview ? "blue.900" : "gray.500")}>
                           3. {isObserved ? "OBSERVADO" : "EN REVISIÓN"}
                         </Text>
-                        <Badge colorScheme={isFinalDone ? (isFinalRejected ? "red" : isObserved ? "orange" : "green") : (isInReview ? "blue" : "gray")} variant="solid" fontSize="9px">
+                        <Badge colorScheme={isFinalDone ? (isFinalRejected ? "red" : isObserved ? "orange" : "green") : (isInReview ? "blue" : "gray")} variant="solid" fontSize="11px">
                           {stepRevision.time}
                         </Badge>
                       </Flex>
-                      <Text fontSize="10px" color="gray.600" mt={0.5}>
+                      <Text fontSize="11.5px" color="gray.600" mt={0.5}>
                         {isObserved ? "Devuelto con observaciones al vendedor" : "Evaluación por Asesora de Facturación"}
                       </Text>
                     </Box>
                   </Flex>
 
                   {dur3To4 !== "—" && (
-                    <Text fontSize="9px" fontWeight="800" color="gray.500" pl={9} my={-1}>
+                    <Text fontSize="11px" fontWeight="800" color="gray.500" pl={9} my={-1}>
                       ⏱️ {dur3To4}
                     </Text>
                   )}
@@ -2665,7 +3079,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                       align="center"
                       justify="center"
                       color="white"
-                      boxShadow={isFinalApproved ? "0 2px 8px rgba(5,150,105,0.4)" : isObserved ? "0 2px 8px rgba(217,119,6,0.4)" : (isFinalRejected ? "0 2px 8px rgba(220,38,38,0.4)" : "none")}
+                      boxShadow={isFinalApproved ? "0 2px 11px rgba(5,150,105,0.4)" : isObserved ? "0 2px 11px rgba(217,119,6,0.4)" : (isFinalRejected ? "0 2px 11px rgba(220,38,38,0.4)" : "none")}
                       flexShrink={0}
                     >
                       {isFinalApproved ? (
@@ -2690,11 +3104,11 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                         <Text fontSize="11px" fontWeight="900" color={isFinalApproved ? "emerald.900" : isObserved ? "amber.900" : isFinalRejected ? "red.900" : "gray.500"}>
                           4. RESULTADO: {isFinalApproved ? "APROBADO" : isObserved ? "OBSERVADO" : isFinalRejected ? "RECHAZADO" : "PENDIENTE"}
                         </Text>
-                        <Badge colorScheme={isFinalApproved ? "green" : isObserved ? "orange" : isFinalRejected ? "red" : "gray"} variant="solid" fontSize="9px">
+                        <Badge colorScheme={isFinalApproved ? "green" : isObserved ? "orange" : isFinalRejected ? "red" : "gray"} variant="solid" fontSize="11px">
                           {stepFinal.time}
                         </Badge>
                       </Flex>
-                      <Text fontSize="10px" color="gray.600" mt={0.5}>
+                      <Text fontSize="11.5px" color="gray.600" mt={0.5}>
                         {isFinalApproved ? "Cotización lista para emitir en SAP" : isObserved ? "Documento devuelto para corrección" : isFinalRejected ? "Documento rechazado" : "Esperando resolución final"}
                       </Text>
                     </Box>
@@ -2702,18 +3116,18 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                 </VStack>
               </Box>
 
-              {/* VISTA ESCRITORIO (PC): LÍNEA HORIZONTAL CON ALTO CONTRASTE */}
-              <Box display={{ base: "none", md: "block" }} w="full" maxW="100%" overflow="hidden" pb={1}>
-                <Box position="relative" py={4} px={8} bg="#f8fafc" borderRadius="xl" border="1px solid" borderColor="#e2e8f0" w="full">
-                  {/* Línea base gris de fondo */}
-                  <Box position="absolute" top="37px" left="65px" right="65px" h="4px" bg="#e2e8f0" borderRadius="full" zIndex={0} />
+              {/* VISTA ESCRITORIO (PC): LÍNEA HORIZONTAL CON ALTO CONTRASTE COMPACTA */}
+              <Box display={{ base: "none", md: "block" }} w="full" maxW="100%" overflow="hidden">
+                <Box position="relative" py={1} px={3} bg="#f8fafc" borderRadius="md" border="1px solid" borderColor="#e2e8f0" w="full">
+                  {/* Línea base gris de fondo: 4px(py) + 12px(label) + 2px(spacing) + 11px(half 22px) - 1px = 28px */}
+                  <Box position="absolute" top="28px" left="56px" right="56px" h="2px" bg="#e2e8f0" borderRadius="full" zIndex={0} />
                   
                   {/* Línea de progreso con color dinámico */}
                   <Box
                     position="absolute"
-                    top="37px"
-                    left="65px"
-                    h="4px"
+                    top="28px"
+                    left="56px"
+                    h="2px"
                     bg={isFinalRejected ? "#dc2626" : isObserved ? "#d97706" : isFinalApproved ? "#059669" : isInReview ? "#2563eb" : "#059669"}
                     borderRadius="full"
                     zIndex={0}
@@ -2725,114 +3139,114 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
                   <Flex justify="space-between" align="flex-start" position="relative" zIndex={1} w="full">
                     {/* Paso 1: COTIZADO */}
-                    <VStack spacing={1.5} align="center" minW="0" flex="1">
-                      <Text fontSize="11px" fontWeight="900" color="#065f46" isTruncated>COTIZADO</Text>
-                      <Flex w="38px" h="38px" borderRadius="full" bg="#059669" align="center" justify="center" color="white" boxShadow="0 2px 10px rgba(5,150,105,0.4)">
-                        <Check className="w-4 h-4 stroke-[3]" />
+                    <VStack spacing={0.5} align="center" minW="0" flex="1">
+                      <Text fontSize="11px" lineHeight="12px" fontWeight="900" color="#065f46" isTruncated>COTIZADO</Text>
+                      <Flex w="22px" h="22px" borderRadius="full" bg="#059669" align="center" justify="center" color="white" boxShadow="0 1px 4px rgba(5,150,105,0.35)">
+                        <Check className="w-3 h-3 stroke-[3]" />
                       </Flex>
-                      <Badge colorScheme="green" variant="solid" fontSize="10px" borderRadius="full" px={2}>
+                      <Badge colorScheme="green" variant="solid" fontSize="11px" lineHeight="12px" borderRadius="full" px={1.5} py={0}>
                         {stepCotizado.time}
                       </Badge>
                     </VStack>
 
                     {/* Tiempo 1 a 2 */}
-                    <Flex align="center" justify="center" h="76px">
-                      <Badge variant="solid" bg="white" color="#065f46" border="1.5px solid #a7f3d0" fontSize="10px" px={2.5} py={0.5} borderRadius="full" boxShadow="xs" fontWeight="800">
+                    <Flex align="center" justify="center" h="44px">
+                      <Badge variant="solid" bg="white" color="#065f46" border="1px solid #a7f3d0" fontSize="11px" px={1.5} py={0} borderRadius="full" boxShadow="xs" fontWeight="800">
                         {dur1To2 !== "—" ? `⏱️ ${dur1To2}` : "—"}
                       </Badge>
                     </Flex>
 
                     {/* Paso 2: SOLICITUD */}
-                    <VStack spacing={1.5} align="center" minW="0" flex="1">
-                      <Text fontSize="11px" fontWeight="900" color={isSolSent ? "#065f46" : "#64748b"} isTruncated>SOLICITUD</Text>
+                    <VStack spacing={0.5} align="center" minW="0" flex="1">
+                      <Text fontSize="11px" lineHeight="12px" fontWeight="900" color={isSolSent ? "#065f46" : "#64748b"} isTruncated>SOLICITUD</Text>
                       <Flex
-                        w="38px"
-                        h="38px"
+                        w="22px"
+                        h="22px"
                         borderRadius="full"
                         bg={isSolSent ? "#059669" : "#e2e8f0"}
                         align="center"
                         justify="center"
                         color={isSolSent ? "white" : "#64748b"}
-                        boxShadow={isSolSent ? "0 2px 10px rgba(5,150,105,0.4)" : "none"}
-                        border={isSolSent ? "none" : "2px solid #cbd5e1"}
+                        boxShadow={isSolSent ? "0 1px 4px rgba(5,150,105,0.35)" : "none"}
+                        border={isSolSent ? "none" : "1.5px solid #cbd5e1"}
                       >
-                        {isSolSent ? <Check className="w-4 h-4 stroke-[3]" /> : <Circle className="w-4 h-4" />}
+                        {isSolSent ? <Check className="w-3 h-3 stroke-[3]" /> : <Circle className="w-3 h-3" />}
                       </Flex>
-                      <Badge colorScheme={isSolSent ? "green" : "gray"} variant={isSolSent ? "solid" : "subtle"} fontSize="10px" borderRadius="full" px={2}>
+                      <Badge colorScheme={isSolSent ? "green" : "gray"} variant={isSolSent ? "solid" : "subtle"} fontSize="11px" lineHeight="12px" borderRadius="full" px={1.5} py={0}>
                         {stepSolicitud.time}
                       </Badge>
                     </VStack>
 
                     {/* Tiempo 2 a 3 */}
-                    <Flex align="center" justify="center" h="76px">
-                      <Badge variant="solid" bg="white" color={isObserved ? "#b45309" : isInReview ? "#1e40af" : "#065f46"} border={isObserved ? "1.5px solid #fcd34d" : isInReview ? "1.5px solid #93c5fd" : "1.5px solid #a7f3d0"} fontSize="10px" px={2.5} py={0.5} borderRadius="full" boxShadow="xs" fontWeight="800">
+                    <Flex align="center" justify="center" h="44px">
+                      <Badge variant="solid" bg="white" color={isObserved ? "#b45309" : isInReview ? "#1e40af" : "#065f46"} border={isObserved ? "1px solid #fcd34d" : isInReview ? "1px solid #93c5fd" : "1px solid #a7f3d0"} fontSize="11px" px={1.5} py={0} borderRadius="full" boxShadow="xs" fontWeight="800">
                         {dur2To3 !== "—" ? `⏱️ ${dur2To3}` : (isInReview ? "En Proceso" : isObserved ? "Observado" : "—")}
                       </Badge>
                     </Flex>
 
                     {/* Paso 3: REVISIÓN */}
-                    <VStack spacing={1.5} align="center" minW="0" flex="1">
-                      <Text fontSize="11px" fontWeight="900" color={isFinalDone ? (isFinalRejected ? "#991b1b" : isObserved ? "#b45309" : "#065f46") : (isInReview ? "#1e40af" : "#64748b")} isTruncated>
+                    <VStack spacing={0.5} align="center" minW="0" flex="1">
+                      <Text fontSize="11px" lineHeight="12px" fontWeight="900" color={isFinalDone ? (isFinalRejected ? "#991b1b" : isObserved ? "#b45309" : "#065f46") : (isInReview ? "#1e40af" : "#64748b")} isTruncated>
                         {isObserved ? "OBSERVADO" : "REVISIÓN"}
                       </Text>
                       <Flex
-                        w="38px"
-                        h="38px"
+                        w="22px"
+                        h="22px"
                         borderRadius="full"
                         bg={isFinalDone ? (isFinalRejected ? "#dc2626" : isObserved ? "#d97706" : "#059669") : (isInReview ? "#2563eb" : "#e2e8f0")}
                         align="center"
                         justify="center"
                         color="white"
-                        boxShadow={isInReview ? "0 0 0 5px rgba(37,99,235,0.25)" : isObserved ? "0 2px 10px rgba(217,119,6,0.4)" : (isFinalDone ? (isFinalRejected ? "0 2px 10px rgba(220,38,38,0.4)" : "0 2px 10px rgba(5,150,105,0.4)") : "none")}
-                        border={isFinalDone || isInReview ? "none" : "2px solid #cbd5e1"}
+                        boxShadow={isInReview ? "0 0 0 2.5px rgba(37,99,235,0.22)" : isObserved ? "0 1px 4px rgba(217,119,6,0.35)" : (isFinalDone ? (isFinalRejected ? "0 1px 4px rgba(220,38,38,0.35)" : "0 1px 4px rgba(5,150,105,0.35)") : "none")}
+                        border={isFinalDone || isInReview ? "none" : "1.5px solid #cbd5e1"}
                       >
                         {isFinalDone ? (
-                          isFinalRejected ? <XCircle className="w-4 h-4 stroke-[3]" /> : isObserved ? <MessageSquare className="w-4 h-4 stroke-[2.5]" /> : <Check className="w-4 h-4 stroke-[3]" />
+                          isFinalRejected ? <XCircle className="w-3 h-3 stroke-[3]" /> : isObserved ? <MessageSquare className="w-3 h-3 stroke-[2.5]" /> : <Check className="w-3 h-3 stroke-[3]" />
                         ) : isInReview ? (
-                          <Clock className="w-4 h-4 stroke-[2.5]" />
+                          <Clock className="w-3 h-3 stroke-[2.5]" />
                         ) : (
-                          <Circle className="w-4 h-4 text-gray-400" />
+                          <Circle className="w-3 h-3 text-gray-400" />
                         )}
                       </Flex>
-                      <Badge colorScheme={isFinalDone ? (isFinalRejected ? "red" : isObserved ? "orange" : "green") : (isInReview ? "blue" : "gray")} variant={isFinalDone || isInReview ? "solid" : "subtle"} fontSize="10px" borderRadius="full" px={2}>
+                      <Badge colorScheme={isFinalDone ? (isFinalRejected ? "red" : isObserved ? "orange" : "green") : (isInReview ? "blue" : "gray")} variant={isFinalDone || isInReview ? "solid" : "subtle"} fontSize="11px" lineHeight="12px" borderRadius="full" px={1.5} py={0}>
                         {stepRevision.time}
                       </Badge>
                     </VStack>
 
                     {/* Tiempo 3 a 4 */}
-                    <Flex align="center" justify="center" h="76px">
-                      <Badge variant="solid" bg="white" color={isFinalRejected ? "#991b1b" : isObserved ? "#b45309" : "#065f46"} border={isFinalRejected ? "1.5px solid #fca5a5" : isObserved ? "1.5px solid #fcd34d" : "1.5px solid #a7f3d0"} fontSize="10px" px={2.5} py={0.5} borderRadius="full" boxShadow="xs" fontWeight="800">
+                    <Flex align="center" justify="center" h="44px">
+                      <Badge variant="solid" bg="white" color={isFinalRejected ? "#991b1b" : isObserved ? "#b45309" : "#065f46"} border={isFinalRejected ? "1px solid #fca5a5" : isObserved ? "1px solid #fcd34d" : "1px solid #a7f3d0"} fontSize="11px" px={1.5} py={0} borderRadius="full" boxShadow="xs" fontWeight="800">
                         {dur3To4 !== "—" ? `⏱️ ${dur3To4}` : (isObserved ? "Devuelto" : isFinalDone ? "Finalizado" : "—")}
                       </Badge>
                     </Flex>
 
                     {/* Paso 4: FINAL */}
-                    <VStack spacing={1.5} align="center" minW="0" flex="1">
-                      <Text fontSize="11px" fontWeight="900" color={isFinalApproved ? "#065f46" : isObserved ? "#b45309" : isFinalRejected ? "#991b1b" : "#64748b"} isTruncated>
+                    <VStack spacing={0.5} align="center" minW="0" flex="1">
+                      <Text fontSize="11px" lineHeight="12px" fontWeight="900" color={isFinalApproved ? "#065f46" : isObserved ? "#b45309" : isFinalRejected ? "#991b1b" : "#64748b"} isTruncated>
                         {isFinalApproved ? "APROBADO" : isObserved ? "OBSERVADO" : isFinalRejected ? "RECHAZADO" : "FINAL"}
                       </Text>
                       <Flex
-                        w="38px"
-                        h="38px"
+                        w="22px"
+                        h="22px"
                         borderRadius="full"
                         bg={isFinalApproved ? "#059669" : isObserved ? "#d97706" : isFinalRejected ? "#dc2626" : "#e2e8f0"}
                         align="center"
                         justify="center"
                         color="white"
-                        boxShadow={isFinalApproved ? "0 2px 10px rgba(5,150,105,0.4)" : isObserved ? "0 2px 10px rgba(217,119,6,0.4)" : (isFinalRejected ? "0 2px 10px rgba(220,38,38,0.4)" : "none")}
-                        border={isFinalDone ? "none" : "2px dashed #94a3b8"}
+                        boxShadow={isFinalApproved ? "0 1px 4px rgba(5,150,105,0.35)" : isObserved ? "0 1px 4px rgba(217,119,6,0.35)" : (isFinalRejected ? "0 1px 4px rgba(220,38,38,0.35)" : "none")}
+                        border={isFinalDone ? "none" : "1.5px dashed #94a3b8"}
                       >
                         {isFinalApproved ? (
-                          <Check className="w-4 h-4 stroke-[3]" />
+                          <Check className="w-3 h-3 stroke-[3]" />
                         ) : isObserved ? (
-                          <MessageSquare className="w-4 h-4 stroke-[2.5]" />
+                          <MessageSquare className="w-3 h-3 stroke-[2.5]" />
                         ) : isFinalRejected ? (
-                          <XCircle className="w-4 h-4 stroke-[3]" />
+                          <XCircle className="w-3 h-3 stroke-[3]" />
                         ) : (
-                          <Circle className="w-4 h-4 text-gray-400" />
+                          <Circle className="w-3 h-3 text-gray-400" />
                         )}
                       </Flex>
-                      <Badge colorScheme={isFinalApproved ? "green" : isObserved ? "orange" : isFinalRejected ? "red" : "gray"} variant={isFinalDone ? "solid" : "subtle"} fontSize="10px" borderRadius="full" px={2}>
+                      <Badge colorScheme={isFinalApproved ? "green" : isObserved ? "orange" : isFinalRejected ? "red" : "gray"} variant={isFinalDone ? "solid" : "subtle"} fontSize="11px" lineHeight="12px" borderRadius="full" px={1.5} py={0}>
                         {stepFinal.time}
                       </Badge>
                     </VStack>
@@ -2842,33 +3256,25 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
               {/* DETALLE PANEL ALERTA DE ESTADO */}
               {status !== "RECHAZADO" && (
-                <Grid templateColumns={{ base: "1fr", md: "1fr 220px" }} gap={4} p={4} bg={alertDetails.bg} border="1.5px solid" borderColor={alertDetails.border} borderRadius="xl" mt={3.5}>
-                  <HStack spacing={3.5} align="flex-start">
-                    <Box mt={0.5}>
-                      <ChakraIcon as={alertDetails.icon} w={5} h={5} color={alertDetails.iconColor} />
+                <Grid templateColumns={{ base: "1fr", md: "1fr 250px" }} gap={2} p={{ base: 1.5, md: 1.5 }} bg={alertDetails.bg} border="1px solid" borderColor={alertDetails.border} borderRadius="md" mt={1}>
+                  <HStack spacing={2} align="flex-start" minW={0}>
+                    <Box mt={0.5} flexShrink={0}>
+                      <ChakraIcon as={alertDetails.icon} w={3.5} h={3.5} color={alertDetails.iconColor} />
                     </Box>
-                    <VStack align="stretch" spacing={1}>
-                      <Heading fontSize="xs" fontWeight="900" color={alertDetails.titleColor} textTransform="uppercase">
-                        {alertDetails.title} <Badge ml={2} colorScheme={status === "RECHAZADO" ? "red" : (alertDetails.badgeScheme || "emerald")} variant="solid" fontSize="8px">{alertDetails.subtitle}</Badge>
+                    <VStack align="stretch" spacing={0.5} minW={0} flex="1">
+                      <Heading fontSize="11.5px" fontWeight="900" color={alertDetails.titleColor} textTransform="uppercase" lineHeight="1.2">
+                        {alertDetails.title} <Badge ml={1} colorScheme={status === "RECHAZADO" ? "red" : (alertDetails.badgeScheme || "emerald")} variant="solid" fontSize="11px" px={1.5} py={0}>{alertDetails.subtitle}</Badge>
                       </Heading>
-                      <Text fontSize="xs" color="gray.700" fontWeight="600">
+                      <Text fontSize="11.5px" color="gray.600" fontWeight="500" lineHeight="1.25" noOfLines={1} title={alertDetails.desc}>
                         {alertDetails.desc}
                       </Text>
-                      <Flex align="center" gap={1.5} fontSize="xs" color="gray.600" fontStyle="italic" bg="white" p={2} borderRadius="md" border="1px solid" borderColor="gray.200" mt={1}>
-                        {alertDetails.subdescIcon ? (
-                          <ChakraIcon as={alertDetails.subdescIcon} w={3.5} h={3.5} color={alertDetails.iconColor} flexShrink={0} />
-                        ) : (
-                          <Text as="span">💡</Text>
-                        )}
-                        <Text as="span">{alertDetails.subdesc}</Text>
-                      </Flex>
                     </VStack>
                   </HStack>
 
-                  <VStack align="stretch" spacing={2} fontSize="xs" borderLeft={{ md: "1px solid" }} borderColor="gray.200" pl={{ md: 4 }} justify="center">
-                    <Box>
-                      <Text fontSize="9px" fontWeight="700" color="gray.500" textTransform="uppercase">Evaluado Por</Text>
-                      <Text fontWeight="900" color="gray.900">👑 {(() => {
+                  <VStack align="stretch" spacing={0.5} fontSize="11.5px" borderLeft={{ md: "1px solid" }} borderColor="gray.200" pl={{ md: 2.5 }} justify="center">
+                    <Flex justify="space-between" align="center" gap={2}>
+                      <Text fontSize="11px" fontWeight="700" color="gray.500" textTransform="uppercase" flexShrink={0}>Evaluado</Text>
+                      <Text fontWeight="900" color="gray.900" isTruncated textAlign="right">👑 {(() => {
                         const approvalLog = Array.isArray(historyLog)
                           ? historyLog.find(l => ["APROBADO", "APROBADO_COMERCIAL", "EMITIDO", "RECHAZADO", "OBSERVADO"].includes(l.status))
                           : null;
@@ -2876,9 +3282,9 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                         const profile = effectiveQuote.approvedByRole || effectiveQuote.evaluatedByRole || approvalLog?.role || approvalLog?.userProfile || resolveUserProfileTitle(authRole, useAuthStore.getState().endpoints, name);
                         return `${name} (${profile})`;
                       })()}</Text>
-                    </Box>
-                    <Box>
-                      <Text fontSize="9px" fontWeight="700" color="gray.500" textTransform="uppercase">Estado Comercial</Text>
+                    </Flex>
+                    <Flex justify="space-between" align="center" gap={2}>
+                      <Text fontSize="11px" fontWeight="700" color="gray.500" textTransform="uppercase" flexShrink={0}>Estado</Text>
                       <Badge
                         colorScheme={
                           status === "APROBADO"
@@ -2891,11 +3297,11 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                             ? "red"
                             : "blue"
                         }
-                        fontSize="xs"
+                        fontSize="11.5px"
                         fontWeight="900"
                         variant="solid"
-                        px={2}
-                        py={0.5}
+                        px={1.5}
+                        py={0.2}
                         borderRadius="md"
                         display="inline-flex"
                         alignItems="center"
@@ -2903,17 +3309,17 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                       >
                         {(status === "COMPLETADO" || status === "FACTURADO") ? (
                           <>
-                            <Receipt className="w-3.5 h-3.5" />
+                            <Receipt className="w-3 h-3" />
                             <Text as="span">FACTURADO EN SAP</Text>
                           </>
                         ) : (
                           status
                         )}
                       </Badge>
-                    </Box>
-                    <Box>
-                      <Text fontSize="9px" fontWeight="700" color="gray.500" textTransform="uppercase">Última Actualización</Text>
-                      <Text fontWeight="700" color="gray.700" fontSize="10px">
+                    </Flex>
+                    <Flex justify="space-between" align="center" gap={2}>
+                      <Text fontSize="11px" fontWeight="700" color="gray.500" textTransform="uppercase" flexShrink={0}>Actualiz.</Text>
+                      <Text fontWeight="700" color="gray.700" fontSize="11.5px" textAlign="right" isTruncated>
                         {(() => {
                           const lastLog = Array.isArray(historyLog) && historyLog.length > 0 ? historyLog[historyLog.length - 1] : null;
                           const rawIso = lastLog?.timestamp || effectiveQuote.updatedAt || effectiveQuote.createdAt || (effectiveQuote.docDate ? `${effectiveQuote.docDate}T12:00:00.000Z` : null);
@@ -2935,7 +3341,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                           }
                         })()}
                       </Text>
-                    </Box>
+                    </Flex>
                   </VStack>
                 </Grid>
               )}
@@ -2984,30 +3390,30 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
               return (
                 <>
-                  <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)" }} gap={3.5} mb={3.5}>
+                  <Grid templateColumns={{ base: "1fr", md: "1fr 2fr" }} gap={2.5} mb={2.5}>
                     {/* CUADRILLA 1: FINANZAS Y CONDICIONES */}
-                    <Box p={3.5} bg="white" borderRadius="2xl" border="1.5px solid" borderColor="#e2e8f0" boxShadow="xs">
-                      <Flex align="center" justify="space-between" mb={2}>
-                        <HStack spacing={2}>
-                          <Text fontSize="15px">💳</Text>
-                          <Text fontSize="11px" fontWeight="900" color="gray.800" textTransform="uppercase">
+                    <Box p={{ base: 2.5, md: 3 }} bg="white" borderRadius="lg" border="1.5px solid" borderColor="#e2e8f0" boxShadow="xs">
+                      <Flex align="center" justify="space-between" mb={1.5}>
+                        <HStack spacing={1.5}>
+                          <Text fontSize="14px">💳</Text>
+                          <Text fontSize="12px" fontWeight="900" color="gray.800" textTransform="uppercase">
                             Condición Financiera
                           </Text>
                         </HStack>
-                        <Badge colorScheme={isCredit ? "purple" : "green"} variant="solid" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="900">
+                        <Badge colorScheme={isCredit ? "purple" : "green"} variant="solid" fontSize="11.5px" px={2} py={0.5} borderRadius="md" fontWeight="900">
                           {isCredit ? "CRÉDITO" : "CONTADO"}
                         </Badge>
                       </Flex>
-                      <VStack align="stretch" spacing={1.5} fontSize="xs">
-                        <Flex justify="space-between">
-                          <Text color="gray.500" fontWeight="700">Término:</Text>
-                          <Text fontWeight="800" color="gray.800" textAlign="right" isTruncated maxW="190px" title={paymentLabel}>{paymentLabel}</Text>
+                      <VStack align="stretch" spacing={1} fontSize="12.5px">
+                        <Flex justify="space-between" gap={2}>
+                          <Text color="gray.500" fontWeight="700" flexShrink={0}>Término:</Text>
+                          <Text fontWeight="800" color="gray.800" textAlign="right" isTruncated maxW={{ base: "190px", md: "260px" }} title={paymentLabel}>{paymentLabel}</Text>
                         </Flex>
 
                         {Boolean(opNumber) && (
-                          <Flex justify="space-between">
-                            <Text color="gray.500" fontWeight="700">Operación:</Text>
-                            <Text fontWeight="800" color="purple.600" fontFamily="mono" textAlign="right" isTruncated maxW="190px">
+                          <Flex justify="space-between" gap={2}>
+                            <Text color="gray.500" fontWeight="700" flexShrink={0}>Operación:</Text>
+                            <Text fontWeight="800" color="purple.600" fontFamily="mono" textAlign="right" isTruncated maxW={{ base: "190px", md: "260px" }}>
                               {opNumber}
                             </Text>
                           </Flex>
@@ -3016,55 +3422,57 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                     </Box>
 
                   {/* CUADRILLA 2: LOGÍSTICA Y DESPACHO */}
-                  <Box p={3.5} bg={!delivForm || delivForm === "—" ? "orange.50" : "white"} borderRadius="2xl" border="1.5px solid" borderColor={!delivForm || delivForm === "—" ? "orange.300" : "#e2e8f0"} boxShadow="xs">
-                    <Flex align="center" justify="space-between" mb={2}>
-                      <HStack spacing={2}>
-                        <Text fontSize="15px">🚚</Text>
-                        <Text fontSize="11px" fontWeight="900" color={!delivForm || delivForm === "—" ? "orange.700" : "gray.800"} textTransform="uppercase">
+                  <Box p={{ base: 2.5, md: 3 }} bg={!delivForm || delivForm === "—" ? "orange.50" : "white"} borderRadius="lg" border="1.5px solid" borderColor={!delivForm || delivForm === "—" ? "orange.300" : "#e2e8f0"} boxShadow="xs">
+                    <Flex align="center" justify="space-between" mb={1.5}>
+                      <HStack spacing={1.5}>
+                        <Text fontSize="14px">🚚</Text>
+                        <Text fontSize="12px" fontWeight="900" color={!delivForm || delivForm === "—" ? "orange.700" : "gray.800"} textTransform="uppercase">
                           Logística y Despacho
                         </Text>
                       </HStack>
                       {!delivForm || delivForm === "—" ? (
-                        <Badge colorScheme="orange" variant="solid" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="900">
+                        <Badge colorScheme="orange" variant="solid" fontSize="11.5px" px={2} py={0.5} borderRadius="md" fontWeight="900">
                           ⚠️ INCOMPLETO
                         </Badge>
                       ) : (
-                      <Badge colorScheme="teal" variant="subtle" fontSize="9px" px={2} py={0.5} borderRadius="md">
+                      <Badge colorScheme="teal" variant="subtle" fontSize="11.5px" px={2} py={0.5} borderRadius="md">
                         Almacén 014
                       </Badge>
                       )}
                     </Flex>
                     {(!delivForm || delivForm === "—") && (
-                      <Box bg="orange.100" border="1px solid" borderColor="orange.400" borderRadius="lg" p={2.5} mb={2.5}>
-                        <Text fontSize="11px" fontWeight="800" color="orange.800">
+                      <Box bg="orange.100" border="1px solid" borderColor="orange.400" borderRadius="md" p={1} mb={1}>
+                        <Text fontSize="11.5px" fontWeight="800" color="orange.800" lineHeight="1.25">
                           ⚠️ El vendedor no completó los datos de logística (Forma de Entrega, Transporte, Destino). Debe abrirse el formulario y completar la sección antes de sincronizar a SAP.
                         </Text>
                       </Box>
                     )}
-                    <VStack align="stretch" spacing={1.5} fontSize="xs">
-                      <Flex justify="space-between">
-                        <Text color={!delivForm || delivForm === "—" ? "orange.500" : "gray.500"} fontWeight="700">Forma:</Text>
-                        <Text fontWeight="800" color={!delivForm || delivForm === "—" ? "orange.600" : "gray.800"} textAlign="right" isTruncated maxW="190px" title={delivForm}>{delivForm || "Sin especificar"}</Text>
+                    <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)" }} columnGap={3} rowGap={0.5} fontSize="11.5px">
+                      <Flex justify="space-between" gap={1.5} minW={0}>
+                        <Text color={!delivForm || delivForm === "—" ? "orange.500" : "gray.500"} fontWeight="700" flexShrink={0}>Forma:</Text>
+                        <Text fontWeight="800" color={!delivForm || delivForm === "—" ? "orange.600" : "gray.800"} textAlign="right" isTruncated title={delivForm}>{delivForm || "Sin especificar"}</Text>
                       </Flex>
-                      <Flex justify="space-between">
-                        <Text color="gray.500" fontWeight="700">Transporte:</Text>
-                        <Text fontWeight="800" color="gray.800" textAlign="right" isTruncated maxW="190px" title={transportName}>{transportName}</Text>
+                      <Flex justify="space-between" gap={1.5} minW={0}>
+                        <Text color="gray.500" fontWeight="700" flexShrink={0}>Transporte:</Text>
+                        <Text fontWeight="800" color="gray.800" textAlign="right" isTruncated title={transportName}>{transportName}</Text>
+                      </Flex>
+                      <Flex justify="space-between" gap={1.5} minW={0}>
+                        <Text color="gray.500" fontWeight="700" flexShrink={0}>Destino:</Text>
+                        <Text fontWeight="800" color="gray.800" textAlign="right" isTruncated title={delivAddress}>{delivAddress}</Text>
+                      </Flex>
+                      <Flex justify="space-between" gap={1.5} minW={0}>
+                        <Text color="gray.500" fontWeight="700" flexShrink={0}>Op. SUNAT:</Text>
+                        <Text fontWeight="800" color="emerald.700" fontSize="11.5px" textAlign="right" isTruncated title={sunatType}>{sunatType}</Text>
                       </Flex>
                       {transportDir && transportDir !== "-" && (
-                        <Flex justify="space-between">
-                          <Text color="gray.500" fontWeight="700">Dir. Agencia:</Text>
-                          <Text fontWeight="800" color="gray.700" textAlign="right" isTruncated maxW="190px" title={transportDir}>{transportDir}</Text>
-                        </Flex>
+                        <GridItem colSpan={{ base: 1, md: 2 }} minW={0}>
+                          <Flex justify="space-between" gap={1.5} minW={0}>
+                            <Text color="gray.500" fontWeight="700" flexShrink={0}>Dir. Agencia:</Text>
+                            <Text fontWeight="800" color="gray.700" textAlign="right" isTruncated title={transportDir}>{transportDir}</Text>
+                          </Flex>
+                        </GridItem>
                       )}
-                      <Flex justify="space-between">
-                        <Text color="gray.500" fontWeight="700">Destino:</Text>
-                        <Text fontWeight="800" color="gray.800" textAlign="right" isTruncated maxW="190px" title={delivAddress}>{delivAddress}</Text>
-                      </Flex>
-                      <Flex justify="space-between">
-                        <Text color="gray.500" fontWeight="700">Op. SUNAT:</Text>
-                        <Text fontWeight="800" color="emerald.700" fontSize="10px" textAlign="right" isTruncated maxW="190px" title={sunatType}>{sunatType}</Text>
-                      </Flex>
-                    </VStack>
+                    </Grid>
                   </Box>
                 </Grid>
               </>
@@ -3079,27 +3487,28 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
               return (
                 <Box
-                  p={3.5}
+                  p={{ base: 1.5, md: 1.5 }}
+                  px={{ base: 2, md: 2.5 }}
                   bg="linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)"
-                  borderRadius="2xl"
+                  borderRadius="lg"
                   border="1.5px solid"
                   borderColor="#cbd5e1"
                   boxShadow="xs"
-                  mb={3.5}
+                  mb={1.5}
                 >
-                  <Flex align="center" justify="space-between" mb={2}>
-                    <HStack spacing={2}>
-                      <Text fontSize="16px">💬</Text>
-                      <Text fontSize="11px" fontWeight="900" color="gray.800" textTransform="uppercase" letterSpacing="wide">
+                  <Flex align="center" justify="space-between" mb={0.5}>
+                    <HStack spacing={1.5}>
+                      <Text fontSize="12px">💬</Text>
+                      <Text fontSize="11.5px" fontWeight="900" color="gray.800" textTransform="uppercase" letterSpacing="wide">
                         Comentarios u Observaciones del Pedido (`Comments`)
                       </Text>
                     </HStack>
-                    <Badge colorScheme="blue" variant="subtle" fontSize="9px" px={2} py={0.5} borderRadius="md" fontWeight="800">
+                    <Badge colorScheme="blue" variant="subtle" fontSize="11px" px={1.5} py={0} borderRadius="md" fontWeight="800">
                       REFERENCIAL SAP / ASESOR
                     </Badge>
                   </Flex>
-                  <Box bg="white" p={3} borderRadius="xl" border="1px solid" borderColor="#e2e8f0" boxShadow="xs">
-                    <Text fontSize="xs" fontWeight="700" color="gray.800" whiteSpace="pre-wrap" lineHeight="tall">
+                  <Box bg="white" px={2} py={1} borderRadius="md" border="1px solid" borderColor="#e2e8f0" boxShadow="xs">
+                    <Text fontSize="11.5px" fontWeight="700" color="gray.800" whiteSpace="pre-wrap" lineHeight="1.25">
                       {quoteComment}
                     </Text>
                   </Box>
@@ -3111,7 +3520,15 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
             {(() => {
               const targetDoc = effectiveQuote || quote;
               const quoteProducts = targetDoc?.products || targetDoc?.items || targetDoc?.totals?.products || targetDoc?.totals?.normalizedProducts || [];
+              const hasTaxOnlyItems =
+                quoteProducts.some((it) => isItemTaxOnly(it)) ||
+                Boolean(
+                  targetDoc?.hasTaxOnlyItems ||
+                  targetDoc?.totals?.hasTaxOnlyItems ||
+                  Number(targetDoc?.taxOnlyCount || targetDoc?.totals?.taxOnlyCount || 0) > 0
+                );
               const maxAdicDiscount = quoteProducts.reduce((max, it) => {
+                if (isItemTaxOnly(it)) return max;
                 const isSpecial = isSpecialAgreementItem(it);
                 const adic = Number(
                   it.lineDiscount ??
@@ -3123,6 +3540,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                 return Math.max(max, adic);
               }, quoteProducts.length > 0 ? 0 : Number(targetDoc?.maxDiscount || targetDoc?.totals?.maxDiscount || 0));
               const hasAnyLineApproval = quoteProducts.some((it) => {
+                if (isItemTaxOnly(it)) return false;
                 const isSpecial = isSpecialAgreementItem(it);
                 const sapDisc = Number(it.sapDiscount ?? it.discount ?? 0);
                 const totalDisc = Number(it.discountPercent ?? sapDisc);
@@ -3136,50 +3554,102 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                 (quoteProducts.length === 0 && (
                   Boolean(targetDoc?.hasAdditionalDiscount) ||
                   Boolean(targetDoc?.totals?.hasAdditionalDiscount) ||
-                  Boolean(targetDoc?.totals?.hasDiscount) ||
-                  Boolean(targetDoc?.totals?.requiresDiscountApproval)
+                  Boolean(targetDoc?.totals?.hasDiscount && !hasTaxOnlyItems) ||
+                  Boolean(targetDoc?.totals?.requiresDiscountApproval && !hasTaxOnlyItems)
                 )) ||
                 Number(targetDoc?.headerDiscount || targetDoc?.DiscountPercent || targetDoc?.discountPercent || 0) > 0;
 
-              if (!hasAdditionalDiscount) return null;
+              if (!hasAdditionalDiscount && !hasTaxOnlyItems) return null;
 
               return (
-                <Box
-                  p={4}
-                  bg={isQuoteApproved ? "emerald.50" : "purple.50"}
-                  border="2px solid"
-                  borderColor={isQuoteApproved ? "emerald.300" : "purple.300"}
-                  borderRadius="2xl"
-                  boxShadow="sm"
-                  mb={2}
-                >
-                  <HStack spacing={3.5} align="flex-start">
-                    <Box fontSize="24px" lineHeight="1">{isQuoteApproved ? "✅" : "⚡"}</Box>
-                    <VStack align="stretch" spacing={1}>
-                      <HStack spacing={2} wrap="wrap">
-                        <Text fontSize="13px" fontWeight="900" color={isQuoteApproved ? "emerald.900" : "purple.900"} textTransform="uppercase">
-                          Cotización con Descuento Adicional Aplicado
-                        </Text>
-                        <Badge
-                          colorScheme={isQuoteApproved ? "green" : "purple"}
-                          variant="solid"
-                          fontSize="10px"
-                          px={2.5}
-                          py={0.5}
-                          borderRadius="full"
-                        >
-                          {isQuoteApproved ? "✅ Aprobación Comercial Otorgada" : "⚠️ Requiere Aprobación Comercial"}
-                        </Badge>
+                <>
+                  {hasTaxOnlyItems && (
+                    <Box
+                      p={{ base: 1.5, md: 1.5 }}
+                      px={{ base: 2, md: 2.5 }}
+                      bg={isQuoteApproved ? "emerald.50" : "pink.50"}
+                      border="1.5px solid"
+                      borderColor={isQuoteApproved ? "emerald.300" : "pink.300"}
+                      borderRadius="lg"
+                      boxShadow="xs"
+                      mb={1.5}
+                    >
+                      <HStack spacing={2} align="center">
+                        <Box fontSize="13px" lineHeight="1" flexShrink={0}>🎁</Box>
+                        <Box flex="1" minW={0}>
+                          <Flex align="center" gap={1.5} wrap="wrap">
+                            <Text fontSize="11.5px" fontWeight="900" color={isQuoteApproved ? "emerald.900" : "pink.900"} textTransform="uppercase" lineHeight="1.2">
+                              Transferencia Gratuita (Solo IGV 18%)
+                            </Text>
+                            <Badge
+                              colorScheme={isQuoteApproved ? "green" : "pink"}
+                              bg={isQuoteApproved ? "#16a34a" : "#be185d"}
+                              color="white"
+                              variant="solid"
+                              fontSize="11px"
+                              px={1.5}
+                              py={0}
+                              borderRadius="full"
+                              maxW="full"
+                              whiteSpace="normal"
+                            >
+                              {isQuoteApproved ? "✅ Aprobación Comercial Otorgada" : "⚠️ Requiere Aprobación Comercial"}
+                            </Badge>
+                          </Flex>
+                          <Text fontSize="11.5px" color={isQuoteApproved ? "emerald.700" : "pink.800"} fontWeight="500" lineHeight="1.25" noOfLines={1}>
+                            {isQuoteApproved
+                              ? "Artículos en Transferencia Gratuita (TaxOnly) aprobados para facturación solo de IGV (18%)."
+                              : "Modalidad Solo Impuesto (TaxOnly): el cliente asume únicamente el IGV (18%) referencial."}
+                          </Text>
+                        </Box>
                       </HStack>
-                      <Text fontSize="12px" color={isQuoteApproved ? "emerald.800" : "purple.800"} fontWeight="600">
-                        {isQuoteApproved
-                          ? "El asesor de ventas aplicó descuentos especiales que fueron aprobados comercialmente y consolidados en el documento oficial."
-                          : "El asesor de ventas aplicó descuentos especiales por encima de la tarifa de lista SAP. Revise los porcentajes individuales por artículo en la grilla inferior antes de emitir la aprobación en SAP."
-                        }
-                      </Text>
-                    </VStack>
-                  </HStack>
-                </Box>
+                    </Box>
+                  )}
+
+                  {hasAdditionalDiscount && (
+                    <Box
+                      p={{ base: 1.5, md: 1.5 }}
+                      px={{ base: 2, md: 2.5 }}
+                      bg={isQuoteApproved ? "emerald.50" : "purple.50"}
+                      border="1.5px solid"
+                      borderColor={isQuoteApproved ? "emerald.300" : "purple.300"}
+                      borderRadius="lg"
+                      boxShadow="xs"
+                      mb={1.5}
+                    >
+                      <HStack spacing={2} align="center">
+                        <Box fontSize="13px" lineHeight="1" flexShrink={0}>{isQuoteApproved ? "✅" : "⚡"}</Box>
+                        <Box flex="1" minW={0}>
+                          <Flex align="center" gap={1.5} wrap="wrap">
+                            <Text fontSize="11.5px" fontWeight="900" color={isQuoteApproved ? "emerald.900" : "purple.900"} textTransform="uppercase" lineHeight="1.2">
+                              Cotización con Descuento Adicional Aplicado
+                            </Text>
+                            <Badge
+                              colorScheme={isQuoteApproved ? "green" : "purple"}
+                              variant="solid"
+                              fontSize="11px"
+                              px={1.5}
+                              py={0}
+                              borderRadius="full"
+                              maxW="full"
+                              whiteSpace="normal"
+                            >
+                              {isQuoteApproved ? "✅ Aprobación Comercial Otorgada" : "⚠️ Requiere Aprobación Comercial"}
+                            </Badge>
+                          </Flex>
+                          <Text fontSize="11.5px" color={isQuoteApproved ? "emerald.800" : "purple.800"} fontWeight="600" lineHeight="1.2" noOfLines={{ base: 2, md: 1 }} title={isQuoteApproved
+                            ? "El asesor de ventas aplicó descuentos especiales que fueron aprobados comercialmente y consolidados en el documento oficial."
+                            : "El asesor de ventas aplicó descuentos especiales por encima de la tarifa de lista SAP. Revise los porcentajes individuales por artículo en la grilla inferior antes de emitir la aprobación en SAP."}>
+                            {isQuoteApproved
+                              ? "El asesor de ventas aplicó descuentos especiales que fueron aprobados comercialmente y consolidados en el documento oficial."
+                              : "El asesor de ventas aplicó descuentos especiales por encima de la tarifa de lista SAP. Revise los porcentajes individuales por artículo en la grilla inferior antes de emitir la aprobación en SAP."
+                            }
+                          </Text>
+                        </Box>
+                      </HStack>
+                    </Box>
+                  )}
+                </>
               );
             })()}
 
@@ -3198,21 +3668,22 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
               return (
                 <Box
-                  p={4}
+                  p={{ base: 1.5, md: 1.5 }}
+                  px={{ base: 2, md: 2.5 }}
                   bg={isOverdue ? "#fff5f5" : "#f0fdf4"}
-                  border="2px solid"
+                  border="1.5px solid"
                   borderColor={isOverdue ? "#fca5a5" : "#bbf7d0"}
-                  borderRadius="2xl"
-                  boxShadow="sm"
-                  mb={3.5}
+                  borderRadius="lg"
+                  boxShadow="xs"
+                  mb={1.5}
                 >
-                  <HStack spacing={3.5} align="flex-start">
-                    <Box fontSize="24px" lineHeight="1">
+                  <HStack spacing={2} align="center">
+                    <Box fontSize="14px" lineHeight="1" flexShrink={0}>
                       {isOverdue ? "⚠️" : "🗓️"}
                     </Box>
-                    <VStack align="stretch" spacing={1}>
-                      <HStack spacing={2} wrap="wrap">
-                        <Text fontSize="13px" fontWeight="900" color={isOverdue ? "red.900" : "emerald.900"} textTransform="uppercase">
+                    <VStack align="stretch" spacing={0.2} flex="1" minW={0}>
+                      <HStack spacing={1.5} wrap="wrap">
+                        <Text fontSize="11.5px" fontWeight="900" color={isOverdue ? "red.900" : "emerald.900"} textTransform="uppercase">
                           {isOverdue ? "Observación Financiera: Cliente con Deuda Vencida" : "Información Financiera: Saldo Corriente (Cliente al Día)"}
                         </Text>
                         <Badge 
@@ -3220,18 +3691,18 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                           variant="solid" 
                           bg={isOverdue ? "#dc2626" : "#16a34a"} 
                           color="white" 
-                          fontSize="10px" 
-                          px={2.5} 
-                          py={0.5} 
+                          fontSize="11px" 
+                          px={1.5} 
+                          py={0} 
                           borderRadius="full"
                         >
                           {isOverdue ? "DEUDA VENCIDA" : "AL DÍA • SALDO POR VENCER"}
                         </Badge>
                       </HStack>
-                      <Text fontSize="12px" color={isOverdue ? "red.800" : "emerald.800"} fontWeight="700">
+                      <Text fontSize="11.5px" color={isOverdue ? "red.800" : "emerald.800"} fontWeight="700" lineHeight="1.2">
                         {debtSummary || (isOverdue ? "El cliente registra cuotas vencidas en SAP / Cobranzas." : "El cliente mantiene compras vigentes por vencer dentro del plazo de crédito acordado.")}
                       </Text>
-                      <Text fontSize="11px" color={isOverdue ? "red.700" : "emerald.700"} fontWeight="500">
+                      <Text fontSize="11.5px" color={isOverdue ? "red.700" : "emerald.700"} fontWeight="500" lineHeight="1.2" noOfLines={{ base: 2, md: 1 }}>
                         {isOverdue 
                           ? "Verifique el estado financiero del cliente y sus acuerdos de pago antes de autorizar el pedido en SAP." 
                           : "El cliente no registra mora en SAP. El saldo corresponde a compras recientes dentro del plazo acordado."}
@@ -3264,59 +3735,60 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
               return (
                 <Box
-                  p={4}
+                  p={{ base: 1.5, md: 1.5 }}
+                  px={{ base: 2, md: 2.5 }}
                   bg={exceedsCredit && isCreditSale ? "#fff1f2" : "#f0fdf4"}
-                  border="2px solid"
+                  border="1.5px solid"
                   borderColor={exceedsCredit && isCreditSale ? "#fca5a5" : "#bbf7d0"}
-                  borderRadius="2xl"
-                  boxShadow="sm"
-                  mb={3.5}
+                  borderRadius="lg"
+                  boxShadow="xs"
+                  mb={1.5}
                 >
-                  <HStack spacing={3.5} align="flex-start">
-                    <Box fontSize="24px" lineHeight="1">💳</Box>
-                    <VStack align="stretch" spacing={2} flex={1}>
-                      <Flex justify="space-between" align="center" wrap="wrap" gap={2}>
-                        <Text fontSize="13px" fontWeight="900" color={exceedsCredit && isCreditSale ? "red.900" : "green.900"} textTransform="uppercase">
+                  <HStack spacing={2} align="flex-start">
+                    <Box fontSize="14px" lineHeight="1" mt={0.5}>💳</Box>
+                    <VStack align="stretch" spacing={1} flex={1}>
+                      <Flex justify="space-between" align="center" wrap="wrap" gap={1.5}>
+                        <Text fontSize="11.5px" fontWeight="900" color={exceedsCredit && isCreditSale ? "red.900" : "green.900"} textTransform="uppercase">
                           Línea de Crédito & Estado Financiero (SAP B1)
                         </Text>
                         {!isCreditSale ? (
-                          <Badge bg="#dcfce7" color="#166534" border="1px solid #86efac" fontSize="10px" px={2.5} py={0.5} borderRadius="full" fontWeight="800">
+                          <Badge bg="#dcfce7" color="#166534" border="1px solid #86efac" fontSize="11px" px={1.5} py={0} borderRadius="full" fontWeight="800">
                             🟢 VENTA AL CONTADO
                           </Badge>
                         ) : exceedsCredit ? (
-                          <Badge bg="#dc2626" color="white" fontSize="10px" px={2.5} py={0.5} borderRadius="full" fontWeight="900">
+                          <Badge bg="#dc2626" color="white" fontSize="11px" px={1.5} py={0} borderRadius="full" fontWeight="900">
                             🔴 SOBREGIRADO (+${formatThousands(creditOverflow)} USD)
                           </Badge>
                         ) : (
-                          <Badge bg="#dcfce7" color="#166534" border="1px solid #86efac" fontSize="10px" px={2.5} py={0.5} borderRadius="full" fontWeight="800">
+                          <Badge bg="#dcfce7" color="#166534" border="1px solid #86efac" fontSize="11px" px={1.5} py={0} borderRadius="full" fontWeight="800">
                             🟢 DENTRO DE LA LÍNEA
                           </Badge>
                         )}
                       </Flex>
 
-                      <Grid templateColumns={{ base: "1fr 1fr", sm: "repeat(4, 1fr)" }} gap={2}>
-                        <Box bg="white" p={2} borderRadius="md" border="1px solid" borderColor="gray.200">
-                          <Text fontSize="9px" fontWeight="700" color="gray.500" textTransform="uppercase">Línea SAP</Text>
-                          <Text fontSize="xs" fontWeight="900" color="gray.800">${formatThousands(creditLimit)}</Text>
+                      <Grid templateColumns={{ base: "1fr 1fr", sm: "repeat(4, 1fr)" }} gap={1.5}>
+                        <Box bg="white" px={2} py={0.5} borderRadius="md" border="1px solid" borderColor="gray.200">
+                          <Text fontSize="11px" fontWeight="700" color="gray.500" textTransform="uppercase" lineHeight="1.1">Línea SAP</Text>
+                          <Text fontSize="11.5px" fontWeight="900" color="gray.800" lineHeight="1.2">${formatThousands(creditLimit)}</Text>
                         </Box>
-                        <Box bg="white" p={2} borderRadius="md" border="1px solid" borderColor="gray.200">
-                          <Text fontSize="9px" fontWeight="700" color="gray.500" textTransform="uppercase">Compromiso SAP</Text>
-                          <Text fontSize="xs" fontWeight="900" color="gray.800">${formatThousands(creditUsed)}</Text>
+                        <Box bg="white" px={2} py={0.5} borderRadius="md" border="1px solid" borderColor="gray.200">
+                          <Text fontSize="11px" fontWeight="700" color="gray.500" textTransform="uppercase" lineHeight="1.1">Compromiso SAP</Text>
+                          <Text fontSize="11.5px" fontWeight="900" color="gray.800" lineHeight="1.2">${formatThousands(creditUsed)}</Text>
                         </Box>
-                        <Box bg="white" p={2} borderRadius="md" border="1px solid" borderColor="gray.200">
-                          <Text fontSize="9px" fontWeight="700" color="gray.500" textTransform="uppercase">Disponible</Text>
-                          <Text fontSize="xs" fontWeight="900" color="green.700">${formatThousands(creditAvailable)}</Text>
+                        <Box bg="white" px={2} py={0.5} borderRadius="md" border="1px solid" borderColor="gray.200">
+                          <Text fontSize="11px" fontWeight="700" color="gray.500" textTransform="uppercase" lineHeight="1.1">Disponible</Text>
+                          <Text fontSize="11.5px" fontWeight="900" color="green.700" lineHeight="1.2">${formatThousands(creditAvailable)}</Text>
                         </Box>
-                        <Box bg="white" p={2} borderRadius="md" border="1px solid" borderColor="gray.200">
-                          <Text fontSize="9px" fontWeight="700" color="gray.500" textTransform="uppercase">Exceso / Sobregiro</Text>
-                          <Text fontSize="xs" fontWeight="900" color={creditOverflow > 0 ? "red.700" : "gray.600"}>
+                        <Box bg="white" px={2} py={0.5} borderRadius="md" border="1px solid" borderColor="gray.200">
+                          <Text fontSize="11px" fontWeight="700" color="gray.500" textTransform="uppercase" lineHeight="1.1">Exceso / Sobregiro</Text>
+                          <Text fontSize="11.5px" fontWeight="900" color={creditOverflow > 0 ? "red.700" : "gray.600"} lineHeight="1.2">
                             {creditOverflow > 0 ? `+$${formatThousands(creditOverflow)}` : "$0.00"}
                           </Text>
                         </Box>
                       </Grid>
 
                       {exceedsCredit && isCreditSale && (
-                        <Text fontSize="11px" color="red.700" fontWeight="700">
+                        <Text fontSize="11.5px" color="red.700" fontWeight="700" lineHeight="1.2">
                           ⚠️ Esta cotización a crédito excede la línea autorizada del cliente. Evalúe una excepción crediticia antes de autorizar la emisión de la orden a SAP.
                         </Text>
                       )}
@@ -3356,23 +3828,32 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                     addDisc = Number((totalDisc - (sapDisc + promoDisc)).toFixed(2));
                   }
                 }
-                const isVolume = qty > 100 && totalDisc > 55;
-                const reqAppr = (isSpecial || sapDisc >= totalDisc)
+                const isTaxOnly = Boolean(
+                  item.isTaxOnly === true ||
+                  item.taxOnly === true ||
+                  item.taxOnly === "tYES" ||
+                  item.TaxOnly === "tYES" ||
+                  item.taxOnly === "Y" ||
+                  item.TaxOnly === "Y"
+                );
+                const isVolume = !isTaxOnly && qty > 100 && totalDisc > 55;
+                const reqAppr = isTaxOnly || ((isSpecial || sapDisc >= totalDisc)
                   ? (addDisc > 0 || isVolume)
-                  : (totalDisc > 50.009 || isVolume);
-                const isHigherMargin = addDisc < 0;
+                  : (totalDisc > 50.009 || isVolume));
+                const isHigherMargin = !isTaxOnly && addDisc < 0;
 
                 const calculatedNetUnitPrice = Number((item.price * (1 - totalDisc / 100)).toFixed(2));
                 const discountedUnitPrice = (item.discountedUnitPrice && Math.abs(Number(item.discountedUnitPrice) - calculatedNetUnitPrice) <= 0.05)
                   ? Number(item.discountedUnitPrice)
                   : calculatedNetUnitPrice;
-                const rawLineTotal = qty * discountedUnitPrice;
+                const rawLineTotal = isTaxOnly ? 0 : (qty * discountedUnitPrice);
                 const descText = item.description || item.ItemDescription || item.name || "Artículo";
 
                 return {
                   item,
                   qty,
                   isSpecial,
+                  isTaxOnly,
                   sapDisc,
                   promoDisc,
                   addDisc,
@@ -3389,26 +3870,57 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
               const reconciledTotals = reconcileLineTotalsWithSap(preparedInStock, subtotalUSD);
               const computedInStockProducts = preparedInStock.map((entry, idx) => ({
                 ...entry,
-                lineTotalNum: reconciledTotals[idx] ?? Number(entry.rawLineTotal.toFixed(2)),
+                lineTotalNum: entry.isTaxOnly ? 0 : (reconciledTotals[idx] ?? Number(entry.rawLineTotal.toFixed(2))),
               }));
 
+              const hasAnyTaxOnly = displayProducts.some((it) => isItemTaxOnly(it));
+              const isTaxOnlyDrawerMode = Boolean(canToggleTaxOnly && (showTaxOnlyControls || hasAnyTaxOnly));
+
               return (
-                <Box bg="white" p={{ base: 3, md: 4 }} borderRadius="2xl" border="1px solid" borderColor="gray.200" boxShadow="sm" overflow="hidden" mb={5}>
+                <Box bg="white" p={{ base: 2.5, md: 3 }} borderRadius="lg" border="1px solid" borderColor="gray.200" boxShadow="xs" overflow="hidden" mb={2.5}>
                   {/* CABECERA GENERAL */}
-                  <Flex justify="space-between" align="center" mb={3} gap={2} wrap="wrap">
+                  <Flex justify="space-between" align="center" mb={2} gap={2} wrap="wrap">
                     <HStack spacing={2}>
-                      <Text fontSize={{ base: "13px", md: "xs" }} fontWeight="900" color="gray.800" textTransform="uppercase" letterSpacing="wide">
+                      <Text fontSize={{ base: "12px", md: "13px" }} fontWeight="900" color="gray.800" textTransform="uppercase" letterSpacing="wide">
                         ARTÍCULOS COTIZADOS
                       </Text>
-                      <Badge colorScheme="blue" variant="solid" borderRadius="full" fontSize="10px" px={2.5}>
+                      <Badge colorScheme="blue" variant="solid" borderRadius="full" fontSize="11.5px" px={2} py={0.5}>
                         {displayProducts.length} {displayProducts.length === 1 ? "Item" : "Items"}
                       </Badge>
                       {outOfStockProducts.length > 0 && (
-                        <Badge colorScheme="red" bg="#fee2e2" color="#991b1b" border="1px solid #fca5a5" borderRadius="full" fontSize="10px" px={2.5} py={0.5} fontWeight="900">
+                        <Badge colorScheme="red" bg="#fee2e2" color="#991b1b" border="1px solid #fca5a5" borderRadius="full" fontSize="11.5px" px={2} py={0.5} fontWeight="900">
                           ⚠️ {outOfStockProducts.length} Sin Stock (Back Order)
                         </Badge>
                       )}
                     </HStack>
+                    {canToggleTaxOnly && (
+                      <Flex
+                        align="center"
+                        gap={2}
+                        px={2.5}
+                        py={1}
+                        borderRadius="lg"
+                        bg={isTaxOnlyDrawerMode ? "orange.50" : "gray.50"}
+                        border="1px solid"
+                        borderColor={isTaxOnlyDrawerMode ? "orange.300" : "gray.200"}
+                      >
+                        <Switch
+                          size="sm"
+                          colorScheme="orange"
+                          isChecked={isTaxOnlyDrawerMode}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setIsTaxOnlyConfirmOpen(true);
+                            } else {
+                              setShowTaxOnlyControls(false);
+                            }
+                          }}
+                        />
+                        <Text fontSize="11.5px" fontWeight="800" color={isTaxOnlyDrawerMode ? "orange.700" : "gray.700"} whiteSpace="nowrap">
+                          ⚠️ Transferencia Gratuita
+                        </Text>
+                      </Flex>
+                    )}
                   </Flex>
 
                   {/* TABLA 1: ARTÍCULOS COTIZADOS CON STOCK DISPONIBLE */}
@@ -3449,7 +3961,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                 borderColor={isVolume ? "orange.300" : promoDisc > 0 ? "amber.300" : "gray.200"}
                               >
                                 <Flex justify="space-between" align="start" gap={2} mb={1}>
-                                  <Badge colorScheme="blue" variant="solid" fontSize="10px" borderRadius="md" px={1.5} fontFamily="mono">
+                                  <Badge colorScheme="blue" variant="solid" fontSize="11.5px" borderRadius="md" px={1.5} fontFamily="mono">
                                     {item.itemCode || item.code || item.id || "ART"}
                                   </Badge>
                                   <Text fontSize="xs" fontWeight="900" color="emerald.900" fontFamily="mono">
@@ -3462,44 +3974,74 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                     {descText}
                                   </Text>
                                   {(promoDisc > 0 || item.promoPriceConIGV || item.U_US_PROMO) && (
-                                    <Badge bg="amber.400" color="amber.950" fontSize="8.5px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
+                                    <Badge bg="amber.400" color="amber.950" fontSize="11px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
                                       🏷️ {(item.campaignName || "OFERTA DEL MES").toUpperCase()}: -{totalDisc}% DTO
                                     </Badge>
                                   )}
                                   {isVolume && (
-                                    <Badge bg="#ea580c" color="white" fontSize="8.5px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
+                                    <Badge bg="#ea580c" color="white" fontSize="11px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
                                       🔥 MAYOREO ESPECIAL ({totalDisc}%)
                                     </Badge>
                                   )}
+                                  {isItemTaxOnly(item) && (
+                                    <Badge colorScheme="pink" bg="#be185d" color="white" fontSize="11px" px={1.5} py={0.5} borderRadius="md" fontWeight="900" maxW="full" whiteSpace="normal" wordBreak="break-word">
+                                      🎁 TRANSFERENCIA GRATUITA (SOLO IGV)
+                                    </Badge>
+                                  )}
+                                  {isTaxOnlyDrawerMode && (
+                                    <Flex
+                                      align="center"
+                                      gap={2}
+                                      mt={1}
+                                      px={2}
+                                      py={1}
+                                      borderRadius="md"
+                                      bg={isItemTaxOnly(item) ? "purple.50" : "gray.50"}
+                                      border="1px solid"
+                                      borderColor={isItemTaxOnly(item) ? "purple.200" : "gray.200"}
+                                      w="fit-content"
+                                    >
+                                      <Switch
+                                        size="sm"
+                                        colorScheme="purple"
+                                        isChecked={isItemTaxOnly(item)}
+                                        isDisabled={isUpdatingTaxOnly}
+                                        onChange={(e) => handleToggleItemTaxOnly(item, e.target.checked)}
+                                      />
+                                      <Text fontSize="11px" fontWeight="700" color={isItemTaxOnly(item) ? "purple.700" : "gray.600"}>
+                                        Gratuita / Solo IGV
+                                      </Text>
+                                    </Flex>
+                                  )}
                                 </VStack>
 
-                                <Grid templateColumns={promoDisc > 0 ? "repeat(4, 1fr)" : "repeat(3, 1fr)"} gap={1} fontSize="10px" bg="white" p={2} borderRadius="lg" border="1px solid" borderColor="gray.200" mb={1.5}>
+                                <Grid templateColumns={promoDisc > 0 ? "repeat(4, 1fr)" : "repeat(3, 1fr)"} gap={1} fontSize="11.5px" bg="white" p={2} borderRadius="lg" border="1px solid" borderColor="gray.200" mb={1.5}>
                                   <Box textAlign="center">
-                                    <Text color="gray.500" fontWeight="700" fontSize="9px">Desc. SAP</Text>
-                                    <Badge colorScheme="green" fontSize="9px">{sapDisc}%</Badge>
+                                    <Text color="gray.500" fontWeight="700" fontSize="11px">Desc. SAP</Text>
+                                    <Badge colorScheme="green" fontSize="11px">{sapDisc}%</Badge>
                                   </Box>
                                   {promoDisc > 0 && (
                                     <Box textAlign="center" borderLeft="1px solid" borderColor="gray.200">
-                                      <Text color="gray.500" fontWeight="700" fontSize="9px">Promo</Text>
-                                      <Badge colorScheme="amber" bg="amber.100" color="amber.900" fontSize="9px">-{promoDisc}%</Badge>
+                                      <Text color="gray.500" fontWeight="700" fontSize="11px">Promo</Text>
+                                      <Badge colorScheme="amber" bg="amber.100" color="amber.900" fontSize="11px">-{promoDisc}%</Badge>
                                     </Box>
                                   )}
                                   <Box textAlign="center" borderLeft="1px solid" borderRight="1px solid" borderColor="gray.200">
-                                    <Text color="gray.500" fontWeight="700" fontSize="9px">
+                                    <Text color="gray.500" fontWeight="700" fontSize="11px">
                                       {addDisc < 0 ? "Margen" : "Desc. Adic."}
                                     </Text>
                                     <Badge
                                       colorScheme={addDisc > 0 ? "purple" : addDisc < 0 ? "green" : "gray"}
                                       bg={addDisc < 0 ? "emerald.100" : undefined}
                                       color={addDisc < 0 ? "emerald.900" : undefined}
-                                      fontSize="9px"
+                                      fontSize="11px"
                                     >
                                       {addDisc > 0 ? `+${Number(addDisc).toFixed(2)}%` : addDisc < 0 ? `${Number(addDisc).toFixed(2)}%` : "0%"}
                                     </Badge>
                                   </Box>
                                   <Box textAlign="center">
-                                    <Text color="gray.500" fontWeight="700" fontSize="9px">Desc. Total</Text>
-                                    <Badge colorScheme={isVolume ? "orange" : "blue"} fontSize="9px" fontWeight="900">{totalDisc}%</Badge>
+                                    <Text color="gray.500" fontWeight="700" fontSize="11px">Desc. Total</Text>
+                                    <Badge colorScheme={isVolume ? "orange" : "blue"} fontSize="11px" fontWeight="900">{totalDisc}%</Badge>
                                   </Box>
                                 </Grid>
 
@@ -3509,11 +4051,11 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                     P. Unit:{" "}
                                     {totalDisc > 0 ? (
                                       <Text as="span">
-                                        <Text as="s" color="gray.400" fontSize="10px" mr={1}>${formatThousands(item.price)}</Text>
+                                        <Text as="s" color="gray.400" fontSize="11.5px" mr={1}>${formatThousands(item.price)}</Text>
                                         <Text as="span" fontWeight="950" color="#047857">
                                           ${formatThousands(discountedUnitPrice)}
                                         </Text>
-                                        <Text as="span" fontSize="9px" color="gray.500" fontWeight="700"> /u</Text>
+                                        <Text as="span" fontSize="11px" color="gray.500" fontWeight="700"> /u</Text>
                                       </Text>
                                     ) : (
                                       <Text as="span" fontWeight="800" color="gray.900">${formatThousands(item.price)} /u</Text>
@@ -3533,7 +4075,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                         ? "orange"
                                         : "green"
                                     }
-                                    fontSize="9px"
+                                    fontSize="11px"
                                     px={1.5}
                                     borderRadius="md"
                                     fontWeight="800"
@@ -3561,19 +4103,19 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
                       {/* Vista Escritorio Tabla 1 */}
                       <Box display={{ base: "none", md: "block" }}>
-                        <TableContainer border="1px solid" borderColor="gray.200" borderRadius="lg" overflowX="auto">
-                          <Table variant="simple" size="sm">
+                        <TableContainer border="1px solid" borderColor="gray.200" borderRadius="md" overflowX="auto">
+                          <Table variant="simple" size="sm" sx={{ "th, td": { py: "3px" } }}>
                             <Thead bg="gray.50">
                               <Tr>
-                                <Th fontSize="10px" color="gray.600" px={2} whiteSpace="nowrap">Código</Th>
-                                <Th fontSize="10px" color="gray.600" px={2} minW="110px" maxW="150px">Descripción</Th>
-                                <Th fontSize="10px" textAlign="right" color="gray.600" px={1.5} whiteSpace="nowrap">Cant.</Th>
-                                <Th fontSize="10px" textAlign="right" color="gray.600" px={2} whiteSpace="nowrap">Precio Unitario</Th>
-                                <Th fontSize="10px" textAlign="center" color="gray.600" px={1.5} whiteSpace="nowrap">Desc. SAP</Th>
-                                <Th fontSize="10px" textAlign="center" color="gray.600" px={1.5} whiteSpace="nowrap">Desc. Adic.</Th>
-                                <Th fontSize="10px" textAlign="center" color="gray.600" px={1.5} whiteSpace="nowrap">Desc. Total</Th>
-                                <Th fontSize="10px" textAlign="center" color="gray.600" px={1.5} whiteSpace="nowrap">¿Aprobación?</Th>
-                                <Th fontSize="10px" textAlign="right" color="gray.600" px={2.5} whiteSpace="nowrap">Total (USD)</Th>
+                                <Th fontSize="11.5px" color="gray.600" px={2.5} py={2} whiteSpace="nowrap">Código</Th>
+                                <Th fontSize="11.5px" color="gray.600" px={2.5} py={2} minW="160px" maxW="280px">Descripción</Th>
+                                <Th fontSize="11.5px" textAlign="right" color="gray.600" px={2} py={2} whiteSpace="nowrap">Cant.</Th>
+                                <Th fontSize="11.5px" textAlign="right" color="gray.600" px={2.5} py={2} whiteSpace="nowrap">Precio Unitario</Th>
+                                <Th fontSize="11.5px" textAlign="center" color="gray.600" px={2} py={2} whiteSpace="nowrap">Desc. SAP</Th>
+                                <Th fontSize="11.5px" textAlign="center" color="gray.600" px={2} py={2} whiteSpace="nowrap">Desc. Adic.</Th>
+                                <Th fontSize="11.5px" textAlign="center" color="gray.600" px={2} py={2} whiteSpace="nowrap">Desc. Total</Th>
+                                <Th fontSize="11.5px" textAlign="center" color="gray.600" px={2} py={2} whiteSpace="nowrap">¿Aprobación?</Th>
+                                <Th fontSize="11.5px" textAlign="right" color="gray.600" px={2.5} py={2} whiteSpace="nowrap">Total (USD)</Th>
                               </Tr>
                             </Thead>
                             <Tbody fontSize="xs">
@@ -3594,85 +4136,111 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
                                 return (
                                   <Tr key={`in-${idx}`} _hover={{ bg: "gray.50" }}>
-                                    <Td fontWeight="800" color="gray.700" fontFamily="mono" px={2} fontSize="11px" whiteSpace="nowrap">
+                                    <Td fontWeight="800" color="gray.700" fontFamily="mono" px={2} fontSize="11.5px" whiteSpace="nowrap">
                                       {item.itemCode || item.code || item.id || "ART"}
                                     </Td>
-                                    <Td fontWeight="600" color="gray.900" px={2} minW="110px" maxW="150px" whiteSpace="normal">
+                                    <Td fontWeight="600" color="gray.900" px={2} minW="160px" maxW="260px" whiteSpace="normal">
                                       <VStack align="start" spacing={0.5}>
-                                        <Text fontSize="11px" lineHeight="1.3" noOfLines={2} title={descText}>
+                                        <Text fontSize="11.5px" lineHeight="1.2" noOfLines={2} title={descText}>
                                           {descText}
                                         </Text>
                                         {(isSpecial || item.campaignName === "Convenio Cliente") && (
-                                          <Badge bg="teal.600" color="white" fontSize="8.5px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
+                                          <Badge bg="teal.600" color="white" fontSize="11px" px={1.5} py={0} borderRadius="sm" fontWeight="900">
                                             🏢 CONVENIO CLIENTE: -{totalDisc}% DTO
                                           </Badge>
                                         )}
                                         {(!isSpecial && (promoDisc > 0 || item.promoPriceConIGV || item.U_US_PROMO)) && (
-                                          <Badge bg="amber.400" color="amber.950" fontSize="8.5px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
+                                          <Badge bg="amber.400" color="amber.950" fontSize="11px" px={1.5} py={0} borderRadius="sm" fontWeight="900">
                                             🏷️ {(item.campaignName || "OFERTA DEL MES").toUpperCase()}: -{totalDisc}% DTO
                                           </Badge>
                                         )}
                                         {isVolume && (
-                                          <Badge bg="#ea580c" color="white" fontSize="8.5px" px={1.5} py={0.2} borderRadius="md" fontWeight="900">
+                                          <Badge bg="#ea580c" color="white" fontSize="11px" px={1.5} py={0} borderRadius="sm" fontWeight="900">
                                             🔥 MAYOREO ({totalDisc}%)
                                           </Badge>
                                         )}
+                                        {isItemTaxOnly(item) && (
+                                          <Badge colorScheme="pink" bg="#be185d" color="white" fontSize="11px" px={1.5} py={0} borderRadius="sm" fontWeight="900">
+                                            🎁 TRANSFERENCIA GRATUITA (SOLO IGV)
+                                          </Badge>
+                                        )}
+                                        {isTaxOnlyDrawerMode && (
+                                          <Flex
+                                            align="center"
+                                            gap={2}
+                                            mt={1}
+                                            px={2}
+                                            py={0.5}
+                                            borderRadius="md"
+                                            bg={isItemTaxOnly(item) ? "purple.50" : "gray.50"}
+                                            border="1px solid"
+                                            borderColor={isItemTaxOnly(item) ? "purple.200" : "gray.200"}
+                                            w="fit-content"
+                                          >
+                                            <Switch
+                                              size="sm"
+                                              colorScheme="purple"
+                                              isChecked={isItemTaxOnly(item)}
+                                              isDisabled={isUpdatingTaxOnly}
+                                              onChange={(e) => handleToggleItemTaxOnly(item, e.target.checked)}
+                                            />
+                                            <Text fontSize="11px" fontWeight="700" color={isItemTaxOnly(item) ? "purple.700" : "gray.600"} whiteSpace="nowrap">
+                                              Gratuita / Solo IGV
+                                            </Text>
+                                          </Flex>
+                                        )}
                                       </VStack>
                                     </Td>
-                                    <Td textAlign="right" fontWeight="800" px={1.5} fontSize="11.5px">{item.quantity}</Td>
-                                    <Td textAlign="right" px={2}>
+                                    <Td textAlign="right" fontWeight="800" px={1.5} fontSize="11px">{item.quantity}</Td>
+                                    <Td textAlign="right" px={2} whiteSpace="nowrap">
                                       {totalDisc > 0 ? (
-                                        <VStack align="flex-end" spacing={0}>
-                                          <HStack spacing={1} justify="flex-end">
-                                            <Text fontSize="8.5px" color="gray.400" fontWeight="600">Antes:</Text>
-                                            <Text as="s" fontSize="9.5px" color="gray.400" fontWeight="600" title="Precio original de lista SAP">
-                                              ${formatThousands(item.price)}
-                                            </Text>
-                                          </HStack>
-                                          <HStack spacing={0.5} align="baseline" justify="flex-end">
-                                            <Text fontWeight="950" fontSize="11.5px" color="#047857" title="Precio neto unitario con descuento">
-                                              ${formatThousands(discountedUnitPrice)}
-                                            </Text>
-                                            <Text fontSize="8.5px" color="gray.500" fontWeight="700">
-                                              /u
-                                            </Text>
-                                          </HStack>
-                                        </VStack>
-                                      ) : (
-                                        <HStack spacing={0.5} justify="flex-end" align="baseline">
-                                          <Text fontWeight="800" fontSize="11.5px" color="gray.800">
+                                        <HStack spacing={1} justify="flex-end" align="baseline">
+                                          <Text as="s" fontSize="11px" color="gray.400" fontWeight="600" title="Precio original de lista SAP">
                                             ${formatThousands(item.price)}
                                           </Text>
-                                          <Text fontSize="8.5px" color="gray.500" fontWeight="700">
+                                          <Text fontWeight="950" fontSize="11px" color="#047857" title="Precio neto unitario con descuento">
+                                            ${formatThousands(discountedUnitPrice)}
+                                          </Text>
+                                          <Text fontSize="11px" color="gray.500" fontWeight="700">
+                                            /u
+                                          </Text>
+                                        </HStack>
+                                      ) : (
+                                        <HStack spacing={0.5} justify="flex-end" align="baseline">
+                                          <Text fontWeight="800" fontSize="11px" color="gray.800">
+                                            ${formatThousands(item.price)}
+                                          </Text>
+                                          <Text fontSize="11px" color="gray.500" fontWeight="700">
                                             /u
                                           </Text>
                                         </HStack>
                                       )}
                                     </Td>
-                                    <Td textAlign="center" px={1.5}>
-                                      <Badge colorScheme="green" fontSize="9.5px" px={1.5}>{sapDisc}%</Badge>
+                                    <Td textAlign="center" px={2}>
+                                      <Badge colorScheme="green" fontSize="11px" px={2.5} py={0.5} borderRadius="md" fontWeight="800">{sapDisc}%</Badge>
                                     </Td>
-                                    <Td textAlign="center" px={1.5}>
+                                    <Td textAlign="center" px={2}>
                                       <VStack spacing={0.5}>
                                         {promoDisc > 0 && (
-                                          <Badge colorScheme="amber" bg="amber.100" color="amber.900" fontSize="8.5px" px={1}>
+                                          <Badge colorScheme="amber" bg="amber.100" color="amber.900" fontSize="11.5px" px={2} py={0.5} borderRadius="md" fontWeight="800">
                                             Promo -{promoDisc}%
                                           </Badge>
                                         )}
                                         <Badge
                                           colorScheme={addDisc > 0 ? "purple" : addDisc < 0 ? "green" : "gray"}
-                                          fontSize="9.5px"
-                                          px={1.5}
-                                          py={0.2}
+                                          fontSize="11px"
+                                          px={2.5}
+                                          py={0.5}
                                           borderRadius="md"
+                                          fontWeight="800"
                                           title={addDisc < 0 ? `Mayor margen comercial (${addDisc}%).` : undefined}
                                         >
                                           {addDisc > 0 ? `+${Number(addDisc).toFixed(2)}%` : addDisc < 0 ? `${Number(addDisc).toFixed(2)}%` : "0%"}
                                         </Badge>
                                       </VStack>
                                     </Td>
-                                    <Td textAlign="center" fontWeight="900" px={1.5}>
-                                      <Badge colorScheme={isVolume ? "orange" : "blue"} fontSize="9.5px" px={1.5} fontWeight="900">
+                                    <Td textAlign="center" fontWeight="900" px={2}>
+                                      <Badge colorScheme={isVolume ? "orange" : "blue"} fontSize="11px" px={2.5} py={0.5} borderRadius="md" fontWeight="900">
                                         {totalDisc}%
                                       </Badge>
                                     </Td>
@@ -3691,9 +4259,9 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                             ? "orange"
                                             : "green"
                                         }
-                                        fontSize="9.5px"
+                                        fontSize="11px"
                                         px={1.5}
-                                        py={0.5}
+                                        py={0}
                                         borderRadius="full"
                                         fontWeight="800"
                                       >
@@ -3710,7 +4278,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                           : "🟢 NO"}
                                       </Badge>
                                     </Td>
-                                    <Td textAlign="right" fontWeight="850" color="emerald.900" fontFamily="mono" px={2.5}>
+                                    <Td textAlign="right" fontWeight="850" color="emerald.900" fontFamily="mono" fontSize="11px" px={2} whiteSpace="nowrap">
                                       ${formatThousands(lineTotalNum)}
                                     </Td>
                                   </Tr>
@@ -3725,18 +4293,18 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
                   {/* TABLA 2: ARTÍCULOS SIN STOCK (DEMANDA BACK ORDER) - SEPARADA DEBAJO NOMÁS */}
                   {outOfStockProducts.length > 0 && (
-                    <Box mt={4} pt={1}>
+                    <Box mt={2} pt={0.5}>
                       {/* CABECERA DE DEMANDA BACK ORDER (Diseño Responsivo Antidesbordamiento) */}
-                      <Box mb={2} p={{ base: 2.5, md: 2 }} bg="#fff5f5" borderRadius="lg" border="1px solid #fecaca">
-                        <Flex justify="space-between" align="center" wrap="wrap" gap={2} mb={1}>
-                          <Badge colorScheme="red" variant="solid" bg="#dc2626" color="white" fontSize="10px" px={2.5} py={0.5} borderRadius="full" fontWeight="900">
+                      <Box mb={1.5} p={{ base: 2, md: 2 }} bg="#fff5f5" borderRadius="lg" border="1px solid #fecaca">
+                        <Flex justify="space-between" align="center" wrap="wrap" gap={1.5} mb={0.5}>
+                          <Badge colorScheme="red" variant="solid" bg="#dc2626" color="white" fontSize="11.5px" px={2} py={0.2} borderRadius="full" fontWeight="900">
                             ⚠️ CÓDIGOS SIN STOCK (DEMANDA BACK ORDER)
                           </Badge>
-                          <Badge colorScheme="red" bg="#fee2e2" color="#991b1b" border="1px solid #fca5a5" fontSize="10px" fontWeight="900" px={2.5} py={0.5} borderRadius="full">
+                          <Badge colorScheme="red" bg="#fee2e2" color="#991b1b" border="1px solid #fca5a5" fontSize="11.5px" fontWeight="900" px={2} py={0.2} borderRadius="full">
                             {outOfStockProducts.length} {outOfStockProducts.length === 1 ? "artículo" : "artículos"}
                           </Badge>
                         </Flex>
-                        <Text fontSize={{ base: "11px", md: "11.5px" }} color="#991b1b" fontWeight="600" lineHeight="1.4">
+                        <Text fontSize={{ base: "11.5px", md: "11.5px" }} color="#991b1b" fontWeight="600" lineHeight="1.3">
                           Almacén 014 • Registrados para Importaciones (no se facturan ni suman al total de la cotización)
                         </Text>
                       </Box>
@@ -3752,10 +4320,10 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                             return (
                               <Box key={`m-out-${idx}`} p={3} bg="#fff5f5" borderRadius="xl" border="1px solid #fecaca" boxShadow="xs">
                                 <Flex justify="space-between" align="center" mb={1}>
-                                  <Badge fontFamily="mono" fontSize="10px" fontWeight="900" colorScheme="red">
+                                  <Badge fontFamily="mono" fontSize="11.5px" fontWeight="900" colorScheme="red">
                                     {pCode}
                                   </Badge>
-                                  <Badge colorScheme="red" variant="solid" bg="#dc2626" fontSize="9px" px={2} py={0.5} borderRadius="md">
+                                  <Badge colorScheme="red" variant="solid" bg="#dc2626" fontSize="11px" px={2} py={0.5} borderRadius="md">
                                     BACK ORDER
                                   </Badge>
                                 </Flex>
@@ -3764,7 +4332,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                 </Text>
                                 <Flex justify="space-between" align="center" pt={1.5} borderTop="1px dashed #fecaca" fontSize="11px">
                                   <Text color="gray.600">Cant: <Text as="span" fontWeight="900" color="gray.900">{qty} uds</Text></Text>
-                                  <Badge colorScheme="red" bg="#fee2e2" color="#991b1b" fontSize="9px">
+                                  <Badge colorScheme="red" bg="#fee2e2" color="#991b1b" fontSize="11px">
                                     Sin Stock (Alm. 014)
                                   </Badge>
                                 </Flex>
@@ -3776,15 +4344,15 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
                       {/* Vista Escritorio Tabla 2 */}
                       <Box display={{ base: "none", md: "block" }}>
-                        <TableContainer border="1.5px solid" borderColor="#fecaca" borderRadius="lg" bg="white" overflowX="auto">
-                          <Table variant="simple" size="sm">
+                        <TableContainer border="1.5px solid" borderColor="#fecaca" borderRadius="md" bg="white" overflowX="auto">
+                          <Table variant="simple" size="sm" sx={{ "th, td": { py: "3px" } }}>
                             <Thead bg="#fee2e2">
                               <Tr>
-                                <Th fontSize="10px" color="#991b1b" fontWeight="900" px={2.5}>Código</Th>
-                                <Th fontSize="10px" color="#991b1b" fontWeight="900" px={2.5}>Descripción</Th>
-                                <Th fontSize="10px" color="#991b1b" fontWeight="900" textAlign="center" px={2}>Cant. Solicitada</Th>
-                                <Th fontSize="10px" color="#991b1b" fontWeight="900" textAlign="center" px={2}>Estado Almacén</Th>
-                                <Th fontSize="10px" color="#991b1b" fontWeight="900" textAlign="right" px={2.5}>Destino Operativo</Th>
+                                <Th fontSize="11px" color="#991b1b" fontWeight="900" px={2}>Código</Th>
+                                <Th fontSize="11px" color="#991b1b" fontWeight="900" px={2}>Descripción</Th>
+                                <Th fontSize="11px" color="#991b1b" fontWeight="900" textAlign="center" px={2}>Cant. Solicitada</Th>
+                                <Th fontSize="11px" color="#991b1b" fontWeight="900" textAlign="center" px={2}>Estado Almacén</Th>
+                                <Th fontSize="11px" color="#991b1b" fontWeight="900" textAlign="right" px={2}>Destino Operativo</Th>
                               </Tr>
                             </Thead>
                             <Tbody fontSize="xs">
@@ -3803,11 +4371,11 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                       <VStack align="start" spacing={0.5}>
                                         <Text fontSize="11px" lineHeight="1.3" noOfLines={2} title={pName}>{pName}</Text>
                                         <HStack spacing={1} wrap="wrap">
-                                          <Badge colorScheme="red" bg="#fee2e2" color="#991b1b" border="1px solid #fca5a5" fontSize="8.5px" px={1.5} py={0.2} borderRadius="md" fontWeight="800">
+                                          <Badge colorScheme="red" bg="#fee2e2" color="#991b1b" border="1px solid #fca5a5" fontSize="11px" px={1.5} py={0.2} borderRadius="md" fontWeight="800">
                                             ⚠️ SIN STOCK (PENDIENTE A IMPORTACIÓN)
                                           </Badge>
                                           {pSigla && (
-                                            <Badge colorScheme="blue" variant="subtle" fontSize="9px" px={1.5} py={0.2} borderRadius="md" fontWeight="800">
+                                            <Badge colorScheme="blue" variant="subtle" fontSize="11px" px={1.5} py={0.2} borderRadius="md" fontWeight="800">
                                               {pSigla}
                                             </Badge>
                                           )}
@@ -3820,12 +4388,12 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                       </Badge>
                                     </Td>
                                     <Td textAlign="center" px={2}>
-                                      <Badge colorScheme="red" variant="solid" bg="#dc2626" color="white" fontSize="10px" fontWeight="900" px={2} py={0.5} borderRadius="md">
+                                      <Badge colorScheme="red" variant="solid" bg="#dc2626" color="white" fontSize="11.5px" fontWeight="900" px={2} py={0.5} borderRadius="md">
                                         ⚠️ STK: 0 (Sin Stock)
                                       </Badge>
                                     </Td>
                                     <Td textAlign="right" px={2.5}>
-                                      <Badge colorScheme="red" bg="#fee2e2" color="#991b1b" border="1px solid #fca5a5" fontSize="10px" fontWeight="900" px={2.5} py={0.5} borderRadius="full">
+                                      <Badge colorScheme="red" bg="#fee2e2" color="#991b1b" border="1px solid #fca5a5" fontSize="11.5px" fontWeight="900" px={2.5} py={0.5} borderRadius="full">
                                         📦 Demanda Back Order (Importaciones)
                                       </Badge>
                                     </Td>
@@ -3856,14 +4424,14 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
                     return (
                       <Grid
-                        templateColumns={{ base: "1fr", lg: "1fr 380px" }}
-                        gap={4}
-                        mt={5}
-                        alignItems="start"
+                        templateColumns={{ base: "1fr", lg: "1fr 340px" }}
+                        gap={3}
+                        mt={2.5}
+                        alignItems="stretch"
                       >
                         {/* COLUMNA IZQUIERDA: Comprobante de pago (si existe) + Historial de Actividad */}
-                        <GridItem order={{ base: 2, lg: 1 }} minW="0">
-                          <VStack align="stretch" spacing={3.5}>
+                        <GridItem order={{ base: 2, lg: 1 }} minW="0" display="flex" flexDirection="column">
+                          <VStack align="stretch" spacing={2.5} flex="1" h="full">
                             {/* Comprobante de Pago y Anexos (si existe) */}
                             {hasVoucherData && (
                               <Box p={3.5} borderRadius="xl" border="1.5px solid" borderColor="purple.200" bg="purple.50" boxShadow="xs">
@@ -3875,7 +4443,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                     </Text>
                                   </HStack>
                                   {(currentQuote?.opNum || currentQuote?.U_VS_OPNUM) && (
-                                    <Badge colorScheme="purple" variant="solid" fontSize="10px" px={2} py={0.5} borderRadius="md" fontWeight="900">
+                                    <Badge colorScheme="purple" variant="solid" fontSize="11.5px" px={2} py={0.5} borderRadius="md" fontWeight="900">
                                       OP: {currentQuote?.opNum || currentQuote?.U_VS_OPNUM}
                                     </Badge>
                                   )}
@@ -3897,14 +4465,14 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
                                 {currentQuote?.attachments && currentQuote?.attachments.length > 0 && (
                                   <Box mt={2}>
-                                    <Text fontSize="10px" fontWeight="800" color="purple.800" textTransform="uppercase" mb={1}>
+                                    <Text fontSize="11.5px" fontWeight="800" color="purple.800" textTransform="uppercase" mb={1}>
                                       📎 Anexos de Resguardo ({currentQuote.attachments.length}):
                                     </Text>
                                     <VStack align="stretch" spacing={1}>
                                       {currentQuote.attachments.map((att, aIdx) => (
                                         <HStack key={aIdx} p={1.5} bg="white" borderRadius="md" border="1px solid" borderColor="purple.200" justify="space-between">
                                           <Text fontSize="xs" fontWeight="600" color="gray.700" isTruncated>{att.name}</Text>
-                                          {att.size && <Badge fontSize="9px">{att.size}</Badge>}
+                                          {att.size && <Badge fontSize="11px">{att.size}</Badge>}
                                         </HStack>
                                       ))}
                                     </VStack>
@@ -3914,23 +4482,24 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                             )}
 
                             {/* Historial de Actividad Comercial */}
-                            <Box bg="white" p={{ base: 3, md: 3.5 }} borderRadius="xl" border="1.5px solid" borderColor="gray.200" boxShadow="xs">
-                              <Flex justify="space-between" align="center" mb={2} pb={2} borderBottom="1px solid" borderColor="gray.100" wrap="wrap" gap={2}>
+                            <Box bg="white" p={{ base: 3, md: 4 }} borderRadius="xl" border="1.5px solid" borderColor="gray.200" boxShadow="xs" flex="1" display="flex" flexDirection="column">
+                              <Flex justify="space-between" align="center" mb={2.5} pb={2} borderBottom="1px solid" borderColor="gray.100" wrap="wrap" gap={2}>
                                 <HStack spacing={2}>
-                                  <Flex w="24px" h="24px" borderRadius="md" bg="emerald.50" color="#126C36" align="center" justify="center" flexShrink={0}>
-                                    <History className="w-3.5 h-3.5 stroke-[2.5]" />
+                                  <Flex w="26px" h="26px" borderRadius="md" bg="emerald.50" color="#126C36" align="center" justify="center" flexShrink={0}>
+                                    <History className="w-4 h-4 stroke-[2.5]" />
                                   </Flex>
-                                  <Text fontSize="11px" fontWeight="900" color="gray.700" textTransform="uppercase" letterSpacing="wider">
+                                  <Text fontSize="13px" fontWeight="900" color="gray.700" textTransform="uppercase" letterSpacing="wider">
                                     Historial de Actividad
                                   </Text>
-                                  <Badge colorScheme="emerald" variant="subtle" fontSize="10px" px={2} py={0.2} borderRadius="full" fontWeight="800">
+                                  <Badge colorScheme="emerald" variant="subtle" fontSize="11.5px" px={2} py={0.5} borderRadius="full" fontWeight="800">
                                     {historyLog.length} {historyLog.length === 1 ? "registro" : "registros"}
                                   </Badge>
                                 </HStack>
                               </Flex>
 
                               <Box
-                                maxH="220px"
+                                maxH="114px"
+                                flex="1"
                                 overflowY="auto"
                                 pr={1}
                                 sx={{
@@ -3947,7 +4516,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                   </Box>
                                 ) : (
                                   <VStack align="stretch" spacing={1} position="relative" pl={1}>
-                                    <Box position="absolute" top="10px" bottom="10px" left="13px" w="1.5px" bg="gray.200" zIndex={0} />
+                                    <Box position="absolute" top="11.5px" bottom="11.5px" left="13px" w="1.5px" bg="gray.200" zIndex={0} />
 
                                     {historyLog.map((log, idx) => {
                                       let dotColor = "#ea580c";
@@ -4047,7 +4616,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                               <HStack spacing={2} minW="0" flex="1" wrap="wrap">
                                                 <Badge
                                                   colorScheme={tagScheme}
-                                                  fontSize="9.5px"
+                                                  fontSize="11.5px"
                                                   px={1.5}
                                                   py={0.2}
                                                   borderRadius="md"
@@ -4066,7 +4635,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                                 )}
                                               </HStack>
 
-                                              <HStack spacing={1} color="gray.400" fontSize="10.5px" fontWeight="600" flexShrink={0}>
+                                              <HStack spacing={1} color="gray.400" fontSize="11.5px" fontWeight="600" flexShrink={0}>
                                                 <Clock className="w-3 h-3 text-gray-400" />
                                                 <Text whiteSpace="nowrap">{formatLogTime(log.timestamp)}</Text>
                                               </HStack>
@@ -4091,23 +4660,25 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                         </GridItem>
 
                         {/* COLUMNA DERECHA: RESUMEN DEL DOCUMENTO (Exacto a SapQuotationForm) */}
-                        <GridItem order={{ base: 1, lg: 2 }} minW="0">
+                        <GridItem order={{ base: 1, lg: 2 }} minW="0" alignSelf={!hasVoucherData ? "stretch" : "start"}>
                           <Box
                             bg="linear-gradient(135deg, #064e3b 0%, #0f5132 100%)"
                             color="#ffffff"
-                            p={{ base: 4, sm: 5 }}
+                            p={{ base: 3.5, sm: 4 }}
                             borderRadius="xl"
-                            boxShadow="0 4px 20px -2px rgba(15, 81, 50, 0.35)"
+                            boxShadow="0 4px 14px -2px rgba(15, 81, 50, 0.35)"
                             border="1px solid"
                             borderColor="rgba(255,255,255,0.15)"
                             w="100%"
-                            alignSelf="start"
+                            h={{ base: "auto", lg: !hasVoucherData ? "100%" : "auto" }}
+                            display="flex"
+                            flexDirection="column"
                           >
-                            <Text fontSize="xs" fontWeight="800" textTransform="uppercase" letterSpacing="wider" color="#a7f3d0" mb={3}>
+                            <Text fontSize={{ base: "13px", sm: "14px" }} fontWeight="900" textTransform="uppercase" letterSpacing="wider" color="#a7f3d0" mb={3}>
                               RESUMEN DEL DOCUMENTO
                             </Text>
 
-                            <VStack align="stretch" spacing={2} fontSize="xs">
+                            <VStack align="stretch" spacing={2} fontSize="13.5px" flex="1">
                               {/* Valor Venta Neto (con conteo de ítems con stock) */}
                               <Flex justify="space-between" align="center" color="#ecfdf5">
                                 <Text fontWeight="600">
@@ -4121,10 +4692,10 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                               {/* Back Order row */}
                               {outOfStockProducts.length > 0 && (
                                 <Flex justify="space-between" align="center" bg="rgba(239, 68, 68, 0.25)" px={2} py={1} borderRadius="md" border="1px solid rgba(248, 113, 113, 0.4)">
-                                  <Text fontSize="10px" fontWeight="700" color="#fecaca">
+                                  <Text fontSize="11.5px" fontWeight="700" color="#fecaca">
                                     📦 Sin Stock ({outOfStockProducts.length} {outOfStockProducts.length === 1 ? 'ítem' : 'ítems'}):
                                   </Text>
-                                  <Badge colorScheme="red" bg="#dc2626" color="white" fontSize="9px" px={1.5} py={0.2} borderRadius="sm" fontWeight="800">
+                                  <Badge colorScheme="red" bg="#dc2626" color="white" fontSize="11px" px={1.5} py={0.2} borderRadius="sm" fontWeight="800">
                                     BACK ORDER
                                   </Badge>
                                 </Flex>
@@ -4138,33 +4709,35 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                                 </Text>
                               </Flex>
 
-                              <Divider borderColor="rgba(255,255,255,0.25)" my={0.5} />
+                              <Box mt="auto" pt={2}>
+                                <Divider borderColor="rgba(255,255,255,0.25)" mb={2} />
 
-                              {/* TOTAL A PAGAR */}
-                              <Flex justify="space-between" align="center" pt={1.5} gap={2} wrap="nowrap">
-                                <Text
-                                  fontSize={{ base: "xs", sm: "sm" }}
-                                  fontWeight="900"
-                                  color="#e6f4ea"
-                                  textTransform="uppercase"
-                                  letterSpacing="tight"
-                                  whiteSpace="nowrap"
-                                  flexShrink={0}
-                                >
-                                  TOTAL A PAGAR
-                                </Text>
-                                <Text
-                                  fontSize={{ base: "xl", sm: "2xl" }}
-                                  fontWeight="950"
-                                  color="#fef08a"
-                                  fontFamily="mono"
-                                  textShadow="0 2px 8px rgba(0,0,0,0.3)"
-                                  whiteSpace="nowrap"
-                                  textAlign="right"
-                                >
-                                  USD {formatThousands(grandTotalUSD)}
-                                </Text>
-                              </Flex>
+                                {/* TOTAL A PAGAR */}
+                                <Flex justify="space-between" align="center" gap={2} wrap="nowrap">
+                                  <Text
+                                    fontSize={{ base: "xs", sm: "sm" }}
+                                    fontWeight="900"
+                                    color="#e6f4ea"
+                                    textTransform="uppercase"
+                                    letterSpacing="tight"
+                                    whiteSpace="nowrap"
+                                    flexShrink={0}
+                                  >
+                                    TOTAL A PAGAR
+                                  </Text>
+                                  <Text
+                                    fontSize={{ base: "lg", sm: "xl" }}
+                                    fontWeight="950"
+                                    color="#fef08a"
+                                    fontFamily="mono"
+                                    textShadow="0 2px 11px rgba(0,0,0,0.3)"
+                                    whiteSpace="nowrap"
+                                    textAlign="right"
+                                  >
+                                    USD {formatThousands(grandTotalUSD)}
+                                  </Text>
+                                </Flex>
+                              </Box>
                             </VStack>
                           </Box>
                         </GridItem>
@@ -4175,9 +4748,16 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
               );
             })()}
           </DrawerBody>
-          <DrawerFooter bg="gray.50" borderTop="1px solid" borderColor="gray.200" py={3} px={{ base: 4, md: 6 }}>
-            <Flex justify="space-between" align="center" w="100%" flexWrap="wrap" gap={3}>
-              <HStack spacing={2.5} wrap="wrap" align="center">
+          <DrawerFooter bg="gray.50" borderTop="1px solid" borderColor="gray.200" py={{ base: 2, md: 2.5 }} px={{ base: 3, md: 5 }}>
+            <Flex
+              display={{ base: "grid", md: "flex" }}
+              gridTemplateColumns={{ base: "repeat(2, 1fr)", md: "none" }}
+              justify="space-between"
+              align="center"
+              w="100%"
+              gap={{ base: 2, md: 3 }}
+            >
+              <HStack display={{ base: "contents", md: "flex" }} spacing={{ base: 2, md: 2.5 }} wrap="wrap" align="center">
 
 
 
@@ -4195,7 +4775,10 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                     rightIcon={<ChevronDown className="w-3.5 h-3.5 text-emerald-600" />}
                     fontWeight="800"
                     borderRadius="lg"
-                    px={3}
+                    px={{ base: 3, md: 5 }}
+                    h={{ base: "34px", md: "42px" }}
+                    w={{ base: "full", md: "auto" }}
+                    fontSize={{ base: "11.5px", md: "14px" }}
                   >
                     Compartir
                   </MenuButton>
@@ -4242,30 +4825,87 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                     leftIcon={<Code2 className="w-4 h-4 text-purple-600" />}
                     onClick={() => setIsJsonModalOpen(true)}
                     fontWeight="800"
+                    h={{ base: "34px", md: "42px" }}
+                    w={{ base: "full", md: "auto" }}
+                    px={{ base: 3, md: 5 }}
+                    fontSize={{ base: "11.5px", md: "14px" }}
                     title="Inspector Técnico: Ver Trama JSON para SAP Service Layer (Solo Administrador)"
                   >
-                    Ver JSON SAP
+                    <Text as="span" display={{ base: "inline", sm: "none" }}>JSON SAP</Text>
+                    <Text as="span" display={{ base: "none", sm: "inline" }}>Ver JSON SAP</Text>
                   </Button>
                 )}
               </HStack>
-              <HStack spacing={2.5} align="center">
+              <HStack display={{ base: "contents", md: "flex" }} spacing={{ base: 1.5, md: 2.5 }} align="center">
                 {isAdminUser && !isAlreadySyncedToSap && (isPendingQuote || isApprovedQuote) && (
-                  <Button
-                    size="sm"
-                    bg="#0f5132"
-                    _hover={{ bg: "#093822" }}
-                    color="white"
-                    leftIcon={<Zap className="w-4 h-4" />}
-                    isLoading={isSyncingSap}
-                    loadingText="Emitiendo a SAP..."
-                    isDisabled={isDrawerLockedByOther || isSyncingSap}
-                    title={isDrawerLockedByOther ? `Bloqueado: En revisión activa por ${drawerLockCheck.lockInfo?.lockedByUsername}` : ""}
-                    onClick={handleSyncToSap}
-                    fontWeight="900"
-                    boxShadow="0 4px 12px rgba(15,81,50,0.3)"
-                  >
-                    ⚡ Aprobar y Emitir a SAP
-                  </Button>
+                  requiresGerenciaForTaxOnly ? (
+                    isPendingGerencia ? (
+                      <Button
+                        size="sm"
+                        colorScheme="purple"
+                        variant="outline"
+                        borderColor="purple.400"
+                        color="purple.800"
+                        bg="purple.50"
+                        leftIcon={<Clock className="w-3.5 h-3.5 md:w-4 md:h-4 text-purple-600" />}
+                        isDisabled={true}
+                        _disabled={{ opacity: 0.95, cursor: "default" }}
+                        fontWeight="800"
+                        h={{ base: "34px", md: "42px" }}
+                        w={{ base: "full", md: "auto" }}
+                        px={{ base: 3, md: 5 }}
+                        fontSize={{ base: "11.5px", md: "13.5px" }}
+                      >
+                        ⏳ Esperando Aprobación de Juan (SAP)
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        bg="#7e22ce"
+                        _hover={{ bg: "#6b21a8" }}
+                        color="white"
+                        leftIcon={<ShieldCheck className="w-3.5 h-3.5 md:w-4 md:h-4" />}
+                        isLoading={isEscalatingGerencia}
+                        loadingText="Enviando a Juan..."
+                        isDisabled={isDrawerLockedByOther || isEscalatingGerencia}
+                        title={isDrawerLockedByOther ? `Bloqueado: En revisión activa por ${drawerLockCheck.lockInfo?.lockedByUsername}` : "Transferencia Gratuita: valida y deriva a Gerencia (Juan) para emisión final a SAP"}
+                        onClick={handleEscalateTaxOnlyToGerencia}
+                        fontWeight="900"
+                        h={{ base: "34px", md: "42px" }}
+                        w={{ base: "full", md: "auto" }}
+                        px={{ base: 3, md: 6 }}
+                        fontSize={{ base: "11.5px", md: "14px" }}
+                        boxShadow="0 4px 12px rgba(126,34,206,0.3)"
+                      >
+                        <Text as="span" display={{ base: "inline", sm: "none" }}>Enviar a Juan</Text>
+                        <Text as="span" display={{ base: "none", sm: "inline" }}>👑 Validar y Enviar a Gerencia (Juan)</Text>
+                      </Button>
+                    )
+                  ) : (
+                    <Button
+                      size="sm"
+                      bg="#0f5132"
+                      _hover={{ bg: "#093822" }}
+                      color="white"
+                      leftIcon={<Zap className="w-3.5 h-3.5 md:w-4 md:h-4" />}
+                      isLoading={isSyncingSap}
+                      loadingText="Emitiendo..."
+                      isDisabled={isDrawerLockedByOther || isSyncingSap}
+                      title={isDrawerLockedByOther ? `Bloqueado: En revisión activa por ${drawerLockCheck.lockInfo?.lockedByUsername}` : ""}
+                      onClick={handleSyncToSap}
+                      fontWeight="900"
+                      h={{ base: "34px", md: "42px" }}
+                      w={{ base: "full", md: "auto" }}
+                      px={{ base: 3, md: 6 }}
+                      fontSize={{ base: "11.5px", md: "14px" }}
+                      boxShadow="0 4px 12px rgba(15,81,50,0.3)"
+                    >
+                      <Text as="span" display={{ base: "inline", sm: "none" }}>Aprobar y Emitir</Text>
+                      <Text as="span" display={{ base: "none", sm: "inline" }}>
+                        {isPendingGerencia ? "👑 Aprobar (Gerencia) y Emitir a SAP" : "⚡ Aprobar y Emitir a SAP"}
+                      </Text>
+                    </Button>
+                  )
                 )}
 
                 {isAdminUser && isAlreadySyncedToSap && (
@@ -4302,7 +4942,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                     Ir al Historial de Cotizaciones
                   </Button>
                 ) : (
-                  <Button size="sm" onClick={onClose} fontWeight="700">
+                  <Button size="sm" h={{ base: "34px", md: "42px" }} w={{ base: "full", md: "auto" }} px={{ base: 3, md: 5 }} fontSize={{ base: "11.5px", md: "14px" }} onClick={onClose} fontWeight="700">
                     Cerrar
                   </Button>
                 )}
@@ -4410,7 +5050,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
               {/* Recordatorio del motivo de rechazo original */}
               <Box bg="red.50" border="1px solid" borderColor="red.200" p={3} borderRadius="lg">
-                <Text fontSize={{ base: "11px", md: "10px" }} fontWeight="800" color="red.700" textTransform="uppercase" mb={1}>
+                <Text fontSize={{ base: "11px", md: "11.5px" }} fontWeight="800" color="red.700" textTransform="uppercase" mb={1}>
                   Motivo de Rechazo Original:
                 </Text>
                 <Text fontSize={{ base: "13px", md: "xs" }} color="red.800" fontStyle="italic" fontWeight="600" overflowWrap="anywhere">
@@ -4433,7 +5073,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                   resize="vertical"
                 />
                 <FormHelperText
-                  fontSize={{ base: "12px", md: "10px" }}
+                  fontSize={{ base: "12px", md: "11.5px" }}
                   color={resubmitNote.trim().length < 10 ? "red.600" : "green.700"}
                   fontWeight="700"
                 >
@@ -4511,7 +5151,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                 color="white"
                 align="center"
                 justify="center"
-                boxShadow="0 8px 18px -3px rgba(5, 150, 105, 0.45)"
+                boxShadow="0 11px 18px -3px rgba(5, 150, 105, 0.45)"
               >
                 <ChakraIcon as={Zap} boxSize="22px" />
               </Flex>
@@ -4520,7 +5160,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                 <Text fontSize="sm" fontWeight="900" color="gray.800" letterSpacing="-0.01em">
                   Sincronizando con SAP...
                 </Text>
-                <Text fontSize="10.5px" fontWeight="600" color="gray.500" isTruncated maxW="240px">
+                <Text fontSize="11.5px" fontWeight="600" color="gray.500" isTruncated maxW="240px">
                   Emitiendo Orden de Venta oficial
                 </Text>
               </VStack>
@@ -4537,7 +5177,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
               <HStack spacing={1.5} bg="gray.50" px={2.5} py={1} borderRadius="full" border="1px solid" borderColor="gray.200">
                 <Spinner size="xs" color="emerald.500" speed="0.8s" />
-                <Text fontSize="10px" fontWeight="700" color="gray.600" isTruncated maxW="220px">
+                <Text fontSize="11.5px" fontWeight="700" color="gray.600" isTruncated maxW="220px">
                   Validando datos fiscales SUNAT...
                 </Text>
               </HStack>
@@ -4678,12 +5318,12 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                   <Box p={2.5} bg="gray.50" borderRadius="lg">
                     <HStack spacing={1.5} mb={0.5}>
                       <ChakraIcon as={Building2} boxSize="13px" color="gray.500" />
-                      <Text fontSize="10.5px" fontWeight="700" color="gray.500" textTransform="uppercase">Cliente</Text>
+                      <Text fontSize="11.5px" fontWeight="700" color="gray.500" textTransform="uppercase">Cliente</Text>
                     </HStack>
                     <Text fontSize="xs" fontWeight="900" color="gray.800" isTruncated maxW="200px">
                       {sapSyncResult?.cardName || effectiveQuote?.clientName || "—"}
                     </Text>
-                    <Text fontSize="10px" fontWeight="700" color="gray.500">
+                    <Text fontSize="11.5px" fontWeight="700" color="gray.500">
                       RUC/DNI: {sapSyncResult?.cardCode || effectiveQuote?.clientDocument || "—"}
                     </Text>
                   </Box>
@@ -4691,29 +5331,29 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                   <Box p={2.5} bg="gray.50" borderRadius="lg">
                     <HStack spacing={1.5} mb={0.5}>
                       <ChakraIcon as={User} boxSize="13px" color="gray.500" />
-                      <Text fontSize="10.5px" fontWeight="700" color="gray.500" textTransform="uppercase">Vendedor Asignado</Text>
+                      <Text fontSize="11.5px" fontWeight="700" color="gray.500" textTransform="uppercase">Vendedor Asignado</Text>
                     </HStack>
                     <Text fontSize="xs" fontWeight="900" color="blue.800" isTruncated maxW="200px">
                       {effectiveQuote?.sellerName || "Vendedor Autorizado"}
                     </Text>
-                    <Text fontSize="10px" fontWeight="700" color="gray.500">
+                    <Text fontSize="11.5px" fontWeight="700" color="gray.500">
                       Código SAP: ID {sapSyncResult?.salesPersonCode ?? (effectiveQuote?.SlpCode || "—")}
                     </Text>
                   </Box>
 
                   <Box p={2.5} bg="#ecfdf5" borderRadius="lg" border="1px solid" borderColor="#a7f3d0">
-                    <Text fontSize="10.5px" fontWeight="700" color="#065f46" textTransform="uppercase">Importe Total SAP</Text>
+                    <Text fontSize="11.5px" fontWeight="700" color="#065f46" textTransform="uppercase">Importe Total SAP</Text>
                     <Text fontSize="md" fontWeight="900" color="#064e3b" fontFamily="mono">
                       ${formatThousands(Number(sapSyncResult?.docTotalUSD ?? sapSyncResult?.docTotal ?? effectiveQuote?.totals?.grandTotalUSD ?? 0))} USD
                     </Text>
                   </Box>
 
                   <Box p={2.5} bg="purple.50" borderRadius="lg" border="1px solid" borderColor="purple.200">
-                    <Text fontSize="10.5px" fontWeight="700" color="purple.800" textTransform="uppercase">Condición Comercial</Text>
+                    <Text fontSize="11.5px" fontWeight="700" color="purple.800" textTransform="uppercase">Condición Comercial</Text>
                     <Text fontSize="xs" fontWeight="900" color="purple.900">
                       {effectiveQuote?.saleCondition || "CONTADO"}
                     </Text>
-                    <Text fontSize="10px" fontWeight="700" color="purple.700">
+                    <Text fontSize="11.5px" fontWeight="700" color="purple.700">
                       {formatPaymentTerms(effectiveQuote?.paymentType || effectiveQuote?.selectedPaymentType, effectiveQuote?.saleCondition) || "Estándar SAP B1"}
                     </Text>
                   </Box>
@@ -4787,6 +5427,15 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
           </ModalFooter>
         </ModalContent>
       </Modal>
+
+      <TaxOnlyConfirmModal
+        isOpen={isTaxOnlyConfirmOpen}
+        onClose={() => setIsTaxOnlyConfirmOpen(false)}
+        onConfirm={() => {
+          setShowTaxOnlyControls(true);
+          setIsTaxOnlyConfirmOpen(false);
+        }}
+      />
     </>
   );
 }

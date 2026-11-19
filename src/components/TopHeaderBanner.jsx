@@ -22,7 +22,7 @@ import { useAuthStore } from "../features/auth/stores/useAuthStore";
 import { useNotifications } from "../features/quotes/hooks/queries/quotesQueries";
 import { useHeaderTheme } from "../hooks/useHeaderTheme";
 import { getHeaderThemeConfig } from "../shared/utils/headerThemes";
-import { useIsAdmin } from "../shared/utils/permissions";
+import { useIsAdmin, useCanEmitTaxOnlyToSap } from "../shared/utils/permissions";
 import { QUERY_KEYS } from "../shared/utils/queryKeys";
 import { subscribeToPush } from "../shared/services/pushNotificationService";
 
@@ -86,6 +86,7 @@ export function TopHeaderBanner({
   }, []);
 
   const isAdminHook = useIsAdmin();
+  const canApproveGerencia = useCanEmitTaxOnlyToSap();
   const sessionRoleUpper = String(role || localStorage.getItem("role") || "").trim().toUpperCase();
   const isVerifierOrAdminRole =
     isAdminHook ||
@@ -103,7 +104,7 @@ export function TopHeaderBanner({
 
   const isAdmin = Boolean(isVerifierOrAdminRole);
   const { data: serverNotifs } = useNotifications(
-    isAdmin ? "FACTURACION" : "VENDEDOR",
+    canApproveGerencia ? "ADMIN" : isAdmin ? "FACTURACION" : "VENDEDOR",
     username
   );
 
@@ -141,6 +142,11 @@ export function TopHeaderBanner({
         roleUpper.includes("JEFE");
 
       if (isAdminOrMaster) {
+        const statusUpper = (n.status || "").trim().toUpperCase();
+        // 👑 Alertas de Transferencia Gratuita en PENDIENTE_GERENCIA son exclusivas de Gerencia/Admin (Juan)
+        if (targetRoleUpper === "GERENCIA" || statusUpper === "PENDIENTE_GERENCIA") {
+          return Boolean(canApproveGerencia);
+        }
         if (
           targetRoleUpper !== "FACTURACION" &&
           targetRoleUpper !== "ADMIN" &&
@@ -151,7 +157,6 @@ export function TopHeaderBanner({
         ) {
           return false;
         }
-        const statusUpper = (n.status || "").trim().toUpperCase();
         if (statusUpper === "EMITIDO" || statusUpper === "ANULADO" || statusUpper === "CANCELADO") return false;
         const titleLower = (n.title || "").toLowerCase();
         if (titleLower.includes("orden sap") || titleLower.includes("pedido emitido") || titleLower.includes("orden de venta") || titleLower.includes("orden emitida") || titleLower.includes("cotización enviada a validación")) return false;

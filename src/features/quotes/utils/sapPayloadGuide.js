@@ -371,19 +371,6 @@ export function buildCanonicalSapPayload(quote = {}) {
     ? (rawTransport.Name || rawTransport.name || rawTransport.label || "")
     : String(rawTransport || "");
 
-  // Detracción
-  const grandTotal = Number(totals.grandTotalUSD || totals.docTotal || totals.total || 0);
-  const isSubjectToDetraction = grandTotal > 700; // Umbral referencial SUNAT aprox. S/ 700
-
-  // Comentarios limpios
-  const cleanComments = String(
-    q.comment ||
-    q.comments ||
-    q.observations ||
-    totals.comment ||
-    `Cotización Web ${q.docNumber || ""}`
-  ).trim().slice(0, 254);
-
   // Referencia
   const numAtCard = String(q.refNumber || q.docNumber || q.id || `COT-${Date.now().toString().slice(-6)}`).trim();
 
@@ -399,6 +386,14 @@ export function buildCanonicalSapPayload(quote = {}) {
     const addDisc = Number(p.lineDiscount ?? p.LineDiscount ?? 0);
     const totalDisc = Number(p.discountPercent ?? (sapDisc + promoDisc + addDisc));
     const finalPrice = Number((unitPrice * (1 - totalDisc / 100)).toFixed(2));
+    const isTaxOnly = Boolean(
+      p.isTaxOnly === true ||
+      p.taxOnly === true ||
+      p.taxOnly === "tYES" ||
+      p.TaxOnly === "tYES" ||
+      p.taxOnly === "Y" ||
+      p.TaxOnly === "Y"
+    );
     const { descListaPct, valorDescLista, descVenta } = computeSapTqcBreakdown({
       item: p,
       sapUnitPrice: unitPrice,
@@ -414,10 +409,11 @@ export function buildCanonicalSapPayload(quote = {}) {
       UnitPrice: unitPrice,
       Price: finalPrice,
       DiscountPercent: totalDisc,
+      ...(isTaxOnly ? { TaxOnly: "tYES" } : {}),
       WarehouseCode: p.whsCode || q.whsCode || "014",
       SalesPersonCode: resolvedSalesPerson,
-      TaxCode: "IGV_18",
-      VatGroup: "IGV_18",
+      TaxCode: "I18",
+      VatGroup: "I18",
       TaxLiable: "tYES",
       MeasureUnit: "NIU",
       UnitsOfMeasurment: 1.0,
@@ -435,13 +431,33 @@ export function buildCanonicalSapPayload(quote = {}) {
     };
   });
 
-  // Condición de Pago
+  const allLinesTaxOnly = documentLines.length > 0 && documentLines.every((l) => l.TaxOnly === "tYES");
+
+  // Detracción (nunca aplica en Transferencia Gratuita 100% TaxOnly)
+  const grandTotal = Number(totals.grandTotalUSD || totals.docTotal || totals.total || 0);
+  const isSubjectToDetraction = !allLinesTaxOnly && grandTotal > 700; // Umbral referencial SUNAT aprox. S/ 700
+
+  // Comentarios limpios
+  const cleanUserComments = String(
+    q.comment ||
+    q.comments ||
+    q.observations ||
+    totals.comment ||
+    ""
+  ).trim().slice(0, 254);
+  const cleanComments = cleanUserComments || (allLinesTaxOnly ? "10) TRANSFERENCIA GRATUITA" : `Cotización Web ${q.docNumber || ""}`.trim());
+
+  // Condición de Pago (10) TRANSFERENCIA GRATUITA = 96 cuando todas las líneas son TaxOnly)
   let paymentGroupCode = -1; // -1 = Contado en SAP B1
-  const rawPayType = q.selectedPaymentType || q.paymentType || totals.paymentType;
-  if (typeof rawPayType === "object" && rawPayType !== null) {
-    paymentGroupCode = Number(rawPayType.GroupNum ?? rawPayType.GroupNumber ?? -1);
-  } else if (!isNaN(Number(rawPayType))) {
-    paymentGroupCode = Number(rawPayType);
+  if (allLinesTaxOnly) {
+    paymentGroupCode = 96;
+  } else {
+    const rawPayType = q.selectedPaymentType || q.paymentType || totals.paymentType;
+    if (typeof rawPayType === "object" && rawPayType !== null) {
+      paymentGroupCode = Number(rawPayType.GroupNum ?? rawPayType.GroupNumber ?? -1);
+    } else if (!isNaN(Number(rawPayType))) {
+      paymentGroupCode = Number(rawPayType);
+    }
   }
 
   // Dirección
@@ -469,6 +485,7 @@ export function buildCanonicalSapPayload(quote = {}) {
     TaxDate: docDate,
     RequriedDate: dueDate,
     DocCurrency: q.currency || q.DocCurrency || totals.currency || "USD",
+    DiscountPercent: allLinesTaxOnly ? 0 : Number(q.headerDiscount || totals.headerDiscount || 0),
     Comments: cleanComments,
     NumAtCard: numAtCard,
     SalesPersonCode: resolvedSalesPerson,
@@ -477,6 +494,7 @@ export function buildCanonicalSapPayload(quote = {}) {
     U_VS_AFEDET: isSubjectToDetraction ? "Y" : "N",
     U_VS_TIPO_FACT: String(q.sunatOpType || q.U_VS_TIPO_FACT || "0101"),
     U_VS_TIPOPER: "01",
+    U_VS_NATNUM: String(q.natNum || q.U_VS_NATNUM || "T").trim().toUpperCase() || "T",
     U_OK1_Anulada: "N",
     ...(transportName ? { U_TQC_TRANSPOR: transportName.slice(0, 100) } : {}),
     AddressExtension: addressExtension,

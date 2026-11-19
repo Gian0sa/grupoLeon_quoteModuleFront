@@ -26,11 +26,17 @@ import { useQuoteStore, normalizeQuoteClient } from "../stores/quoteStore";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { useExchangeRate } from "../../dashboard/hooks/queries/dashboardQueries";
 import { useGetTransports, useGetPaymentType, useGetDeliveryForms, useGetPromotions } from "../hooks/queries/quotesQueries";
-import { calculateQuoteTotals, formatThousands } from "../../../shared/utils/quoteCalculator";
+import { calculateQuoteTotals, formatThousands, isItemTaxOnly } from "../../../shared/utils/quoteCalculator";
+import { isQuoteMarkedDeleted } from "../pages/QuoteApprovalPage";
 import { useNavigate } from "react-router-dom";
 import QuoteSubmitConfirmModal from "./QuoteSubmitConfirmModal";
+import {
+  FREE_TRANSFER_PAYMENT_TYPE,
+  DEFAULT_FREE_TRANSFER_DELIVERY_FORM,
+  isFreeTransferPaymentType,
+} from "../../../shared/utils/quoteLogisticsFormatters";
 import { isPickupInStoreForm } from "./NewSellTerms";
-import { useIsAdmin, useHasAccess, checkIsAdmin } from "../../../shared/utils/permissions";
+import { useIsAdmin, useHasAccess, checkIsAdmin, useCanEmitTaxOnlyToSap } from "../../../shared/utils/permissions";
 import { useSellersData, useGetProfileData } from "../../auth/hooks/queries/authQueries";
 import { useGetAccountsReceivable } from "../../receivable/hooks/receivableQueries";
 import { useClientPointsDelivery } from "../../clients/hooks/queries/clientQueries";
@@ -127,6 +133,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     roleUpper.startsWith("ADMIN") ||
     checkIsAdmin(endpoints, sessionUsername || username)
   );
+  const canApproveTaxOnlySap = useCanEmitTaxOnlyToSap() || isAdmin;
 
   // 🛡️ Identificación de perfil de Facturación y permisos de emisión directa a SAP:
   // Permite abrir el selector de vendedor y emitir directamente a SAP desde Nueva Cotización
@@ -566,6 +573,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     "PENDIENTE_APROBACION",
     "EN_PROCESO",
     "PENDIENTE_FACTURACION",
+    "PENDIENTE_GERENCIA",
     "BORRADOR",
     "GENERADO",
     "DRAFT",
@@ -575,6 +583,12 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     "RECHAZADO"
   ];
   const isUnapprovedStatus = UNAPPROVED_STATUSES.includes(String(approvalStatus || "").toUpperCase().trim());
+  const isPendingGerencia = String(approvalStatus || "").toUpperCase().trim() === "PENDIENTE_GERENCIA";
+  const hasTaxOnlyQuote = Boolean(
+    (Array.isArray(products) && products.some(isItemTaxOnly)) ||
+    isFreeTransferPaymentType(selectedPaymentType)
+  );
+  const mustEscalateTaxOnlyToGerencia = Boolean(canDirectEmitSap && hasTaxOnlyQuote && !canApproveTaxOnlySap);
 
   // Orden/Cotización oficialmente aprobada o emitida
   const isApprovedOrder = Boolean(
@@ -592,20 +606,23 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   const isSubmittedQuote = Boolean(
     quoteId &&
     approvalStatus &&
-    ["ENVIADO", "EN_PROCESO", "PENDIENTE_FACTURACION", "PENDIENTE_APROBACION", "APROBADO_COMERCIAL", "APROBADO", "RECHAZADO", "OBSERVADO", "EN_EDICION", "ANULADO", "EMITIDO"].includes(approvalStatus)
+    ["ENVIADO", "EN_PROCESO", "PENDIENTE_FACTURACION", "PENDIENTE_GERENCIA", "PENDIENTE_APROBACION", "APROBADO_COMERCIAL", "APROBADO", "RECHAZADO", "OBSERVADO", "EN_EDICION", "ANULADO", "EMITIDO"].includes(approvalStatus)
   );
 
   // Cotización pendiente enviada por un vendedor (para que el admin NO vea "Guardar como Borrador")
   const isSubmittedVendorQuote = Boolean(
     quoteId &&
-    ["ENVIADO", "EN_PROCESO", "PENDIENTE_APROBACION", "PENDIENTE_FACTURACION", "OBSERVADO", "EN_EDICION"].includes(String(approvalStatus || "").toUpperCase().trim())
+    ["ENVIADO", "EN_PROCESO", "PENDIENTE_APROBACION", "PENDIENTE_FACTURACION", "PENDIENTE_GERENCIA", "OBSERVADO", "EN_EDICION"].includes(String(approvalStatus || "").toUpperCase().trim())
   );
 
   // Devolver con Observación y Rechazar: cuando el vendedor envió la cotización y un aprobador (Admin/Facturación) está verificando
   const canAdminObserveOrReject = Boolean(
     canDirectEmitSap &&
     isSubmittedQuote &&
-    ["ENVIADO", "EN_PROCESO", "PENDIENTE_APROBACION", "PENDIENTE_FACTURACION"].includes(approvalStatus) &&
+    (
+      ["ENVIADO", "EN_PROCESO", "PENDIENTE_APROBACION", "PENDIENTE_FACTURACION"].includes(approvalStatus) ||
+      (approvalStatus === "PENDIENTE_GERENCIA" && canApproveTaxOnlySap)
+    ) &&
     !isApprovedOrder
   );
 
@@ -955,14 +972,148 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     return calculateQuoteTotals(products, exchangeRate, { currency: currency || "USD" });
   }, [products, exchangeRate, currency]);
 
+  const isAllInStockTaxOnly = useMemo(() => {
+    const inStockList =
+      totals?.inStockProducts && totals.inStockProducts.length > 0
+        ? totals.inStockProducts
+        : (products || []);
+    return inStockList.length > 0 && inStockList.every((it) => isItemTaxOnly(it));
+  }, [totals?.inStockProducts, products]);
+
+  // Auto-configuración inteligente cuando la cotización es 100% Transferencia Gratuita (TaxOnly)
+  const wasAllTaxOnlyRef = useRef(false);
+  const preTaxOnlyStateRef = useRef(null);
+  useEffect(() => {
+    if (isReadOnly || isSellerFieldsLocked) {
+      wasAllTaxOnlyRef.current = isAllInStockTaxOnly;
+      return;
+    }
+
+    const paymentTypesList = Array.isArray(dataPaymentTypes) ? dataPaymentTypes : [];
+    const deliveryFormsList = Array.isArray(dataDeliveryForms) ? dataDeliveryForms : [];
+
+    const resolvedFreeTransferType =
+      paymentTypesList.find((pt) => isFreeTransferPaymentType(pt)) ||
+      FREE_TRANSFER_PAYMENT_TYPE;
+
+    const resolvedDefaultDeliveryForm =
+      deliveryFormsList.find((df) => {
+        const code = String(df.TrnspCode ?? df.Code ?? df.value ?? "");
+        const name = String(df.TrnspName ?? df.Name ?? df.label ?? "").toLowerCase();
+        return code === "1" || name.includes("recojo tienda");
+      }) || DEFAULT_FREE_TRANSFER_DELIVERY_FORM;
+
+    const justActivated = isAllInStockTaxOnly && !wasAllTaxOnlyRef.current;
+    const justDeactivated = !isAllInStockTaxOnly && wasAllTaxOnlyRef.current;
+    wasAllTaxOnlyRef.current = isAllInStockTaxOnly;
+
+    if (isAllInStockTaxOnly) {
+      if (!isFreeTransferPaymentType(selectedPaymentType) && !preTaxOnlyStateRef.current) {
+        preTaxOnlyStateRef.current = {
+          paymentType: selectedPaymentType || null,
+          saleCondition: saleCondition || "",
+          isLetra: Boolean(isLetra),
+          creditTerm: creditTerm || "",
+          paymentMethod: paymentMethod || "",
+          autoFilledComment: false,
+        };
+      }
+
+      if (!isFreeTransferPaymentType(selectedPaymentType)) {
+        if (typeof setSelectedPaymentType === "function") {
+          setSelectedPaymentType(resolvedFreeTransferType);
+        }
+      }
+      if (saleCondition !== "CONTADO" && typeof setSaleCondition === "function") {
+        setSaleCondition("CONTADO");
+      }
+      if (isLetra && typeof setIsLetra === "function") {
+        setIsLetra(false);
+      }
+      if (creditTerm && typeof setCreditTerm === "function") {
+        setCreditTerm("");
+      }
+      if (paymentMethod && typeof setPaymentMethod === "function") {
+        setPaymentMethod("");
+      }
+
+      if (justActivated) {
+        if (!selectedDeliveryForm && typeof setSelectedDeliveryForm === "function") {
+          setSelectedDeliveryForm(resolvedDefaultDeliveryForm);
+        }
+        if (!deliveryDate && typeof setDeliveryDate === "function") {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          setDeliveryDate(today);
+        }
+        if ((!comment || !String(comment).trim()) && typeof setComment === "function") {
+          setComment("10) TRANSFERENCIA GRATUITA");
+          if (preTaxOnlyStateRef.current) {
+            preTaxOnlyStateRef.current.autoFilledComment = true;
+          } else {
+            preTaxOnlyStateRef.current = {
+              paymentType: null,
+              saleCondition: "",
+              isLetra: false,
+              creditTerm: "",
+              paymentMethod: "",
+              autoFilledComment: true,
+            };
+          }
+        }
+      }
+    } else if (justDeactivated) {
+      const prev = preTaxOnlyStateRef.current;
+      if (isFreeTransferPaymentType(selectedPaymentType)) {
+        if (prev?.paymentType) {
+          if (typeof setSelectedPaymentType === "function") setSelectedPaymentType(prev.paymentType);
+          if (typeof setSaleCondition === "function") setSaleCondition(prev.saleCondition || "");
+          if (typeof setIsLetra === "function") setIsLetra(Boolean(prev.isLetra));
+          if (typeof setCreditTerm === "function") setCreditTerm(prev.creditTerm || "");
+          if (typeof setPaymentMethod === "function") setPaymentMethod(prev.paymentMethod || "");
+        } else {
+          const clientGroupNum = client?.PayTermsGrpCode ?? client?.GroupNum ?? client?.raw?.PayTermsGrpCode ?? client?.raw?.GroupNum;
+          const clientDefaultPt =
+            clientGroupNum !== undefined && clientGroupNum !== null && clientGroupNum !== ""
+              ? paymentTypesList.find((pt) => String(pt.GroupNum ?? pt.GroupNumber ?? pt.value) === String(clientGroupNum))
+              : null;
+          if (typeof setSelectedPaymentType === "function") setSelectedPaymentType(clientDefaultPt || null);
+          if (typeof setSaleCondition === "function") setSaleCondition("");
+          if (typeof setIsLetra === "function") setIsLetra(false);
+          if (typeof setCreditTerm === "function") setCreditTerm("");
+        }
+      }
+      if (prev?.autoFilledComment && String(comment || "").trim() === "10) TRANSFERENCIA GRATUITA" && typeof setComment === "function") {
+        setComment("");
+      }
+      preTaxOnlyStateRef.current = null;
+    }
+  }, [
+    isAllInStockTaxOnly,
+    isReadOnly,
+    isSellerFieldsLocked,
+    dataPaymentTypes,
+    dataDeliveryForms,
+    selectedPaymentType,
+    selectedDeliveryForm,
+    deliveryDate,
+    comment,
+    saleCondition,
+    isLetra,
+    creditTerm,
+    paymentMethod,
+    client,
+  ]);
+
   // ─── ANÁLISIS DE LÍNEA DE CRÉDITO Y DISPONIBILIDAD EN TIEMPO REAL (SAP B1 U_TQC_LMCRED) ───
   const isCreditSale = useMemo(() => {
+    if (isAllInStockTaxOnly || isFreeTransferPaymentType(selectedPaymentType)) return false;
     if (saleCondition === "CREDITO") return true;
     if (saleCondition === "CONTADO") return false;
     const pLabel = extractPaymentLabel(selectedPaymentType).toLowerCase();
     if (pLabel.includes("contado") || pLabel.includes("anticipado")) return false;
     return pLabel.includes("credit") || pLabel.includes("crédito") || pLabel.includes("dias") || pLabel.includes("días") || pLabel.includes("letra");
-  }, [saleCondition, selectedPaymentType]);
+  }, [isAllInStockTaxOnly, saleCondition, selectedPaymentType]);
 
   const clientCreditInfo = useMemo(() => {
     if (!client) return null;
@@ -1063,6 +1214,22 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       isCreditSale,
     };
   }, [client, clientDebtInfo, totals?.grandTotalUSD, totals?.grandTotal, totals?.total, isCreditSale, exchangeRate]);
+
+  const creditStatusBadge = useMemo(() => {
+    if (isAllInStockTaxOnly || isFreeTransferPaymentType(selectedPaymentType)) {
+      return { colorScheme: "purple", label: "OP. GRATUITA" };
+    }
+    if (saleCondition === "CONTADO") {
+      return { colorScheme: "green", label: "CONTADO" };
+    }
+    if (clientCreditInfo?.isCreditSale && clientCreditInfo?.isExceeded) {
+      return { colorScheme: "red", label: "SOBREGIRADO" };
+    }
+    if (clientCreditInfo && !clientCreditInfo.hasCreditLine) {
+      return { colorScheme: "yellow", label: "SIN LÍNEA" };
+    }
+    return { colorScheme: "blue", label: "CRÉDITO" };
+  }, [isAllInStockTaxOnly, selectedPaymentType, saleCondition, clientCreditInfo]);
 
   // Solo mostrar cartillas financieras si el cliente realmente tiene línea de crédito o deuda activa
   const hasCreditCard = Boolean(
@@ -1177,7 +1344,11 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       return false;
     }
 
-    const activeDocNumber = quoteId || docNumber;
+    const liveStoreQuoteId = useQuoteStore.getState()?.quoteId;
+    const activeDocNumber = liveStoreQuoteId || quoteId || docNumber;
+    if (silent && activeDocNumber && isQuoteMarkedDeleted(activeDocNumber)) {
+      return false;
+    }
     const clientDocDigits = String(client?.FederalTaxID || client?.clientDocument || client?.documentNumber || client?.LicTradNum || client?.CardCode || "").replace(/\D/g, "");
     const effectiveDocType = clientDocDigits.length === 8 ? "BOLETA" : "FACTURA";
 
@@ -1239,17 +1410,32 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
     // Si la cotización está observada o ya fue enviada a validación/aprobación,
     // preservamos su estado actual para no degradarla a BORRADOR, pero SÍ guardamos todas las modificaciones
-    const isAdvanced = existingStatus && ["ENVIADO", "EN_PROCESO", "APROBADO_COMERCIAL", "PENDIENTE_FACTURACION", "APROBADO", "RECHAZADO", "OBSERVADO", "EN_EDICION"].includes(existingStatus);
+    const isAdvanced = existingStatus && ["ENVIADO", "EN_PROCESO", "APROBADO_COMERCIAL", "PENDIENTE_FACTURACION", "PENDIENTE_GERENCIA", "APROBADO", "RECHAZADO", "OBSERVADO", "EN_EDICION"].includes(existingStatus);
 
     const currentStatus = targetStatus === "BORRADOR"
       ? "BORRADOR"
-      : (targetStatus === "ENVIADO" ? "ENVIADO" : (isAdvanced ? existingStatus : targetStatus));
+      : (targetStatus === "PENDIENTE_GERENCIA"
+          ? "PENDIENTE_GERENCIA"
+          : (targetStatus === "ENVIADO" ? "ENVIADO" : (isAdvanced ? existingStatus : targetStatus)));
     const nowIso = new Date().toISOString();
     const prevHistory = existingDoc?.historyLog || [];
     
     let updatedHistory = [...prevHistory];
     
-    if (targetStatus === "ENVIADO") {
+    if (targetStatus === "PENDIENTE_GERENCIA") {
+      const actorName = username || localSeller || "Facturación";
+      finalTotals.hasTaxOnlyItems = true;
+      finalTotals.requiresGerenciaApproval = true;
+      finalTotals.preApprovedByFacturacion = actorName;
+      finalTotals.preApprovedAt = nowIso;
+      updatedHistory = updatedHistory.filter(h => h.status !== "BORRADOR" && h.note !== "Borrador guardado");
+      updatedHistory.push({
+        status: "PENDIENTE_GERENCIA",
+        timestamp: nowIso,
+        user: actorName,
+        note: `👑 Pre-aprobada por Facturación (${actorName}) — Transferencia Gratuita derivada a Gerencia (Juan) para aprobación final a SAP.`
+      });
+    } else if (targetStatus === "ENVIADO") {
       // Al enviar formalmente a validación, se purgan entradas internas de borrador previo para mantener limpia la línea de tiempo oficial
       updatedHistory = updatedHistory.filter(h => h.status !== "BORRADOR" && h.note !== "Borrador guardado");
       if (!updatedHistory.some(h => h.status === "ENVIADO")) {
@@ -1323,16 +1509,41 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     if (!finalSellerName) {
       finalSellerName = "001.Ofic Administración";
     }
-    const finalCreatedByUsername = originalCreatedByUsername || currentLoggedInUsername || (username || "admin");
-    const finalCreatedByUserId = originalUserId || (userId || null);
-
+    const isSavingDraftStatus = targetStatus === "BORRADOR";
     const resolvedNumericId = existingDoc?.id && !isNaN(Number(existingDoc.id))
       ? Number(existingDoc.id)
       : (activeNum !== null ? activeNum : null);
 
+    // Si Enrique/Misael (u otro usuario autorizado) edita un borrador existente de un vendedor,
+    // conservar el creador original en vez de sobrescribirlo con el usuario de la sesión activa.
+    const isEditingExistingDraft = Boolean(
+      isSavingDraftStatus &&
+      (resolvedNumericId || (existingDoc?.id && !["COT-PENDIENTE", "COT-NUEVA"].includes(String(existingDoc.id).toUpperCase().trim()))) &&
+      (originalUserId || originalCreatedByUsername)
+    );
+    const finalCreatedByUsername = isSavingDraftStatus && !isEditingExistingDraft
+      ? (username || localSeller || currentLoggedInUsername || originalCreatedByUsername || "admin")
+      : (originalCreatedByUsername || username || localSeller || currentLoggedInUsername || "admin");
+    const finalCreatedByUserId = isSavingDraftStatus && !isEditingExistingDraft
+      ? (userId || originalUserId || null)
+      : (originalUserId || (userId || null));
+
     const resolvedDocNumber = activeDocNumber && !["COT-PENDIENTE", "COT-NUEVA"].includes(String(activeDocNumber).toUpperCase().trim())
       ? activeDocNumber
       : (resolvedNumericId ? `COT-WEB-${String(resolvedNumericId).padStart(6, "0")}` : null);
+
+    const inStockSaveItems = (finalTotals?.inStockProducts && finalTotals.inStockProducts.length > 0)
+      ? finalTotals.inStockProducts
+      : products;
+    const allSaveItemsTaxOnly = inStockSaveItems.length > 0 && inStockSaveItems.every((it) => isItemTaxOnly(it));
+    const freeTransferPayTypeForSave = {
+      GroupNum: 96,
+      GroupNumber: 96,
+      PymntGroup: "10) TRANSFERENCIA GRATUITA",
+      PaymentTermsGroupName: "10) TRANSFERENCIA GRATUITA",
+      value: "96",
+      label: "10) TRANSFERENCIA GRATUITA",
+    };
 
     const newDoc = {
       id: resolvedNumericId || existingDoc?.id || activeDocNumber,
@@ -1375,10 +1586,10 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       whsCode: "014",
       contactPerson,
       refNumber,
-      saleCondition,
+      saleCondition: allSaveItemsTaxOnly ? "CONTADO" : saleCondition,
       documentType: effectiveDocType,
-      isLetra,
-      creditTerm,
+      isLetra: allSaveItemsTaxOnly ? false : isLetra,
+      creditTerm: allSaveItemsTaxOnly ? "" : creditTerm,
       docDate,
       docDueDate: deliveryDate ? (deliveryDate instanceof Date ? deliveryDate.toISOString().split("T")[0] : deliveryDate) : docDueDate,
       deliveryDate: deliveryDate ? (deliveryDate instanceof Date ? deliveryDate.toISOString().split("T")[0] : deliveryDate) : (existingDoc?.deliveryDate || null),
@@ -1387,15 +1598,15 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       selectedDeliveryForm,
       transport: selectedTransport,
       selectedTransport,
-      paymentType: selectedPaymentType,
-      selectedPaymentType,
+      paymentType: allSaveItemsTaxOnly ? freeTransferPayTypeForSave : selectedPaymentType,
+      selectedPaymentType: allSaveItemsTaxOnly ? freeTransferPayTypeForSave : selectedPaymentType,
       deliveryPoint: selectedPoint,
       selectedPoint,
       sellerName: finalSellerName,
       SlpCode: effectiveSlpCode,
       slpCode: effectiveSlpCode,
       salesPersonCode: effectiveSlpCode,
-      paymentMethod: paymentMethod || null,
+      paymentMethod: allSaveItemsTaxOnly ? null : (paymentMethod || null),
       bankAccount: bankAccount || null,
       sunatOpType: sunatOpType || "0101",
       U_VS_TIPOPER: "01",
@@ -1406,7 +1617,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       PayToCode: "FISCAL",
       U_VS_AFEDET: "N",
       U_VS_BANCO: bankAccount || null,
-      PaymentMethod: paymentMethod || null,
+      PaymentMethod: allSaveItemsTaxOnly ? null : (paymentMethod || null),
       createdByUsername: finalCreatedByUsername,
       createdByUserId: finalCreatedByUserId,
       userId: finalCreatedByUserId,
@@ -1461,11 +1672,38 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     const discountNotice = maxAdic > 0 ? ' • ⚠️ CON DESCUENTO ADICIONAL APLICADO' : '';
 
     // Persistencia centralizada en MySQL vía Backend
+    const isStillActiveDraftSession = () => {
+      if (!silent) return true;
+      if (typeof window !== "undefined") {
+        const path = String(window.location.pathname || "").toLowerCase();
+        if (path.includes("historyquotes") || path.includes("quoteapproval")) {
+          return false;
+        }
+      }
+      const storeState = useQuoteStore.getState();
+      if (!storeState?.products || storeState.products.length === 0) {
+        return false;
+      }
+      return true;
+    };
+
     const savePromise = createQuote(newDoc).then((res) => {
+      if (res?.deleted || res?.ignoredLateDraftSave) {
+        return res;
+      }
       queryClient.invalidateQueries({ queryKey: ["quotes"] });
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
 
       const assignedNumber = res?.docNumber || (res?.id ? `COT-WEB-${String(res.id).padStart(6, "0")}` : activeDocNumber);
+      if (
+        silent &&
+        (!isStillActiveDraftSession() ||
+          isQuoteMarkedDeleted(assignedNumber) ||
+          isQuoteMarkedDeleted(res?.id) ||
+          isQuoteMarkedDeleted(activeDocNumber))
+      ) {
+        return res;
+      }
       if (assignedNumber) {
         console.log(`🔄 [Correlativo Asignado] Oficial: ${assignedNumber}`);
         setDocNumber(assignedNumber);
@@ -1614,7 +1852,10 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         const result = handleSaveActionRef.current?.("BORRADOR", { silent: true });
         if (result && result.savePromise) {
           const res = await result.savePromise;
-          if (res && (res.id || res.docNumber)) {
+          const onHistoryScreen = typeof window !== "undefined" && String(window.location.pathname || "").toLowerCase().includes("historyquotes");
+          const storeProducts = useQuoteStore.getState()?.products;
+          const isDeletedRes = Boolean(res?.deleted || res?.ignoredLateDraftSave || isQuoteMarkedDeleted(res?.id) || isQuoteMarkedDeleted(res?.docNumber));
+          if (res && (res.id || res.docNumber) && !onHistoryScreen && Array.isArray(storeProducts) && storeProducts.length > 0 && !isDeletedRes) {
             const assignedNumber = res.docNumber || (res.id ? `COT-WEB-${String(res.id).padStart(6, "0")}` : null);
             if (res.id && setQuoteId) setQuoteId(res.id);
             if (assignedNumber) setDocNumber(assignedNumber);
@@ -1653,16 +1894,14 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     isAdminReviewing
   ]);
 
-  // 2. Guardado al salir de la pantalla (Desmontaje / Cambio de ruta)
+  // 2. Cancelar timer pendiente al salir de la pantalla (NO disparar nuevo POST en desmontaje para evitar revivir borradores que el usuario eliminará enseguida)
   useEffect(() => {
     return () => {
-      if (!isExplicitlySubmittingRef.current && !isExplicitlyClearedRef.current && !isReadOnly && !isAdminReviewing) {
-        try {
-          handleSaveActionRef.current?.("BORRADOR", { silent: true });
-        } catch (e) {}
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
       }
     };
-  }, [isReadOnly, isAdminReviewing]);
+  }, []);
 
   // 3. Guardado al cerrar la pestaña o recargar el navegador (beforeunload)
   useEffect(() => {
@@ -1814,7 +2053,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     }
 
     // 4. Validar Condición de Pago / Comercial (Sección 2)
-    const hasValidPaymentType = Boolean(
+    const inStockCheck = (totals?.inStockProducts && totals.inStockProducts.length > 0) ? totals.inStockProducts : products;
+    const isAllTaxOnlyQuote = inStockCheck.length > 0 && inStockCheck.every((it) => isItemTaxOnly(it));
+    const hasValidPaymentType = isAllTaxOnlyQuote || Boolean(
       selectedPaymentType &&
       (typeof selectedPaymentType === "object"
         ? (selectedPaymentType.value || selectedPaymentType.GroupNum !== undefined || selectedPaymentType.PymntGroup || selectedPaymentType.PaymentTermsGroupName || selectedPaymentType.label)
@@ -1834,7 +2075,11 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     }
 
     // 4.1. Auto-deducir Condición de Venta (CONTADO o CRÉDITO) según la condición de pago SAP
-    if (!saleCondition || !String(saleCondition).trim()) {
+    if (isAllTaxOnlyQuote || isFreeTransferPaymentType(selectedPaymentType)) {
+      if (saleCondition !== "CONTADO" && setSaleCondition) setSaleCondition("CONTADO");
+      if (isLetra && setIsLetra) setIsLetra(false);
+      if (creditTerm && setCreditTerm) setCreditTerm("");
+    } else if (!saleCondition || !String(saleCondition).trim()) {
       const pLabel = extractPaymentLabel(selectedPaymentType).toLowerCase();
       const isCredit = pLabel.includes("credit") || pLabel.includes("crédito") || pLabel.includes("dias") || pLabel.includes("días") || pLabel.includes("letra");
       const derivedCondition = isCredit ? "CREDITO" : "CONTADO";
@@ -1851,12 +2096,14 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     // 5. Validar Términos de Crédito (si aplica)
     const currentPymntLabel = (extractPaymentLabel(selectedPaymentType) || saleCondition || "").toLowerCase();
 
-    const isCreditCondition = currentPymntLabel.includes("credit") || 
-                              currentPymntLabel.includes("crédito") || 
-                              currentPymntLabel.includes("dias") || 
-                              currentPymntLabel.includes("días") || 
-                              currentPymntLabel.includes("letra") || 
-                              saleCondition === "CREDITO";
+    const isCreditCondition = !isAllTaxOnlyQuote && !isFreeTransferPaymentType(selectedPaymentType) && (
+      currentPymntLabel.includes("credit") ||
+      currentPymntLabel.includes("crédito") ||
+      currentPymntLabel.includes("dias") ||
+      currentPymntLabel.includes("días") ||
+      currentPymntLabel.includes("letra") ||
+      saleCondition === "CREDITO"
+    );
 
     if (isCreditCondition && (!creditTerm || !String(creditTerm).trim())) {
       if (setCreditTerm) setCreditTerm("30 días");
@@ -1866,6 +2113,18 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   };
 
   const handleAdminApproveQuote = async () => {
+    if (hasTaxOnlyQuote && !canApproveTaxOnlySap) {
+      toast({
+        title: "👑 Requiere Aprobación de Gerencia (Juan)",
+        description: "Las Transferencias Gratuitas no pueden emitirse directamente a SAP por Facturación. Usa 'Validar y Enviar a Gerencia (Juan)' para derivarla a Juan.",
+        status: "warning",
+        duration: 6000,
+        isClosable: true,
+        position: "top-right",
+      });
+      return;
+    }
+
     if (!validateBeforeAdminApproval()) {
       return;
     }
@@ -1939,7 +2198,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       const isSol = currency === "SOL" || currency === "PEN";
       const rateMultiplier = isSol ? Number(exchangeRate || 3.43) : 1;
       const sapUnitPrice = Number((rawPrice * rateMultiplier).toFixed(4));
-      const sapCustomPrice = p.customPriceConIGV && Number(p.customPriceConIGV) > 0 ? Number(p.customPriceConIGV) : null;
+      const sapCustomPrice = p.customPriceConIGV && Number(p.customPriceConIGV) > 0
+        ? Number((Number(p.customPriceConIGV) * rateMultiplier).toFixed(2))
+        : null;
 
       const isSpecial = isSpecialAgreementItem(p);
       const specialDisc = isSpecial ? Number(p.specialDiscount ?? p.discount ?? p.sapDiscount ?? 0) : 0;
@@ -2062,6 +2323,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         isAgotado: isOutOfStock,
         sigla: p.sigla || p.Sigla || p.U_TQC_SIGLA || "",
         whsCode: p.whsCode || "014",
+        ...(isItemTaxOnly(p) ? { isTaxOnly: true, taxOnly: true, TaxOnly: "tYES", taxCode: p.taxCode || "I18" } : {}),
       };
 
       if (isOutOfStock) {
@@ -2073,12 +2335,22 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       return itemClean;
     });
 
+    const allInStockTaxOnly = inStockProductsForSap.length > 0 && inStockProductsForSap.every((it) => isItemTaxOnly(it));
+    const freeTransferPaymentType = {
+      GroupNum: 96,
+      GroupNumber: 96,
+      PymntGroup: "10) TRANSFERENCIA GRATUITA",
+      PaymentTermsGroupName: "10) TRANSFERENCIA GRATUITA",
+      value: "96",
+      label: "10) TRANSFERENCIA GRATUITA",
+    };
+
     const isAlreadyEmittedLocally = Boolean(currentQuoteObj.sapDocNum && Number(currentQuoteObj.sapDocNum) > 1000);
     const quotePayload = {
       ...currentQuoteObj,
-      grandTotalUSD: totals?.grandTotalUSD || grandTotal,
-      subtotalUSD: totals?.subtotalUSD || subtotal,
-      igvUSD: totals?.igvUSD || igv,
+      grandTotalUSD: totals?.grandTotalUSD ?? 0,
+      subtotalUSD: totals?.subtotalUSD ?? 0,
+      igvUSD: totals?.igvUSD ?? 0,
       id: activeDocNumber,
       docNumber: activeDocNumber,
       sapDocNum: isAlreadyEmittedLocally ? Number(currentQuoteObj.sapDocNum) : null,
@@ -2102,8 +2374,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       shipToCode: selectedPoint?.AddressName || undefined,
       transport: selectedTransport,
       deliveryDate: deliveryDate,
-      paymentType: selectedPaymentType,
-      paymentMethod: paymentMethod || null,
+      paymentType: allInStockTaxOnly ? freeTransferPaymentType : selectedPaymentType,
+      ...(allInStockTaxOnly ? { paymentGroupCode: 96, PaymentGroupCode: 96 } : {}),
+      paymentMethod: allInStockTaxOnly ? null : (paymentMethod || null),
       bankAccount: bankAccount || null,
       sunatOpType: sunatOpType || "0101",
       U_VS_TIPOPER: "01",
@@ -2114,10 +2387,10 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       PayToCode: "FISCAL",
       U_VS_AFEDET: "N",
       U_VS_BANCO: bankAccount || null,
-      saleCondition: saleCondition || (extractPaymentLabel(selectedPaymentType).toLowerCase().includes("credit") ? "CREDITO" : "CONTADO"),
+      saleCondition: allInStockTaxOnly ? "CONTADO" : (saleCondition || (extractPaymentLabel(selectedPaymentType).toLowerCase().includes("credit") ? "CREDITO" : "CONTADO")),
       documentType: effectiveDocType,
-      creditTerm: creditTerm || (saleCondition === "CREDITO" ? "30 días" : null),
-      isLetra: isLetra !== undefined ? isLetra : false,
+      creditTerm: allInStockTaxOnly ? null : (creditTerm || (saleCondition === "CREDITO" ? "30 días" : null)),
+      isLetra: allInStockTaxOnly ? false : (isLetra !== undefined ? isLetra : false),
       opNum: opNum || null,
       refNumber: null,
       NumAtCard: null,
@@ -2544,7 +2817,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       return false;
     }
     // 3. Validar Condición de Pago / Comercial (Tabla OCTG)
-    const hasPaymentType = Boolean(
+    const inStockCheck = (totals?.inStockProducts && totals.inStockProducts.length > 0) ? totals.inStockProducts : products;
+    const isAllTaxOnlyQuote = inStockCheck.length > 0 && inStockCheck.every((it) => isItemTaxOnly(it));
+    const hasPaymentType = isAllTaxOnlyQuote || Boolean(
       selectedPaymentType &&
       (typeof selectedPaymentType === "object"
         ? (selectedPaymentType.value || selectedPaymentType.GroupNum !== undefined || selectedPaymentType.PymntGroup || selectedPaymentType.PaymentTermsGroupName || selectedPaymentType.label)
@@ -2563,7 +2838,11 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     }
 
     // 4. Auto-deducir Condición de Venta (CONTADO o CRÉDITO) según la condición de pago SAP
-    if (!saleCondition || !String(saleCondition).trim()) {
+    if (isAllTaxOnlyQuote || isFreeTransferPaymentType(selectedPaymentType)) {
+      if (saleCondition !== "CONTADO" && setSaleCondition) setSaleCondition("CONTADO");
+      if (isLetra && setIsLetra) setIsLetra(false);
+      if (creditTerm && setCreditTerm) setCreditTerm("");
+    } else if (!saleCondition || !String(saleCondition).trim()) {
       const pLabel = extractPaymentLabel(selectedPaymentType).toLowerCase();
       const isCredit = pLabel.includes("credit") || pLabel.includes("crédito") || pLabel.includes("dias") || pLabel.includes("días") || pLabel.includes("letra");
       const derivedCondition = isCredit ? "CREDITO" : "CONTADO";
@@ -2672,8 +2951,63 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     }
   };
 
+  // 👑 Transferencia Gratuita: Facturación valida/pre-aprueba y deriva a Gerencia (Juan) para emisión final a SAP
+  const handleEscalateTaxOnlyToGerencia = async () => {
+    if (!validateBeforeAdminApproval()) {
+      return;
+    }
+
+    isExplicitlySubmittingRef.current = true;
+    const activeDocNumber = quoteId || docNumber || "COT-000000";
+    setIsSendingToValidation(true);
+    setValidationLoadingTitle("Validando y Enviando a Gerencia (Juan)...");
+    setValidationLoadingSub(`Pre-aprobando Transferencia Gratuita ${activeDocNumber} por Facturación`);
+    setValidationStepText("Registrando validación de Facturación y notificando a Gerencia (Juan)...");
+
+    try {
+      const result = handleSaveAction("PENDIENTE_GERENCIA");
+      let assignedDocNumber = activeDocNumber;
+      if (result && result.savePromise) {
+        const savedRes = await result.savePromise;
+        if (savedRes && savedRes.docNumber) {
+          assignedDocNumber = savedRes.docNumber;
+        }
+      }
+
+      if (quoteId) {
+        releaseQuoteLock(quoteId);
+      }
+
+      toast({
+        title: "👑 Validada y Enviada a Gerencia (Juan)",
+        description: `Transferencia Gratuita ${assignedDocNumber} pre-aprobada por Facturación. Se notificó a Juan / Gerencia para la aprobación y emisión final a SAP B1.`,
+        status: "success",
+        duration: 6000,
+        isClosable: true,
+        position: "top-right",
+      });
+
+      clear();
+      setIsSendingToValidation(false);
+      navigate("/historyquotes");
+    } catch (err) {
+      console.error("Error al derivar Transferencia Gratuita a Gerencia:", err);
+      setIsSendingToValidation(false);
+      toast({
+        title: "❌ No se pudo enviar a Gerencia (Juan)",
+        description: err?.message || "Ocurrió un error al guardar la pre-aprobación. Por favor intenta nuevamente.",
+        status: "error",
+        duration: 6000,
+        isClosable: true,
+        position: "top",
+      });
+    }
+  };
+
   const handleNewQuote = async () => {
     isExplicitlyClearedRef.current = true;
+    preTaxOnlyStateRef.current = null;
+    wasAllTaxOnlyRef.current = false;
     clear();
     if (canSelectSeller) {
       setSelectedSlpCode(20);
@@ -3145,23 +3479,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                                 px={1.5}
                                 py={0.2}
                                 borderRadius="sm"
-                                colorScheme={
-                                  saleCondition === "CONTADO"
-                                    ? "green"
-                                    : clientCreditInfo.isCreditSale && clientCreditInfo.isExceeded
-                                    ? "red"
-                                    : !clientCreditInfo.hasCreditLine
-                                    ? "yellow"
-                                    : "blue"
-                                }
+                                colorScheme={creditStatusBadge.colorScheme}
                               >
-                                {saleCondition === "CONTADO"
-                                  ? "CONTADO"
-                                  : clientCreditInfo.isCreditSale && clientCreditInfo.isExceeded
-                                  ? "SOBREGIRADO"
-                                  : !clientCreditInfo.hasCreditLine
-                                  ? "SIN LÍNEA"
-                                  : "CRÉDITO"}
+                                {creditStatusBadge.label}
                               </Badge>
                             </Flex>
 
@@ -3259,9 +3579,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                                 py={0.5}
                                 borderRadius="md"
                                 fontWeight="800"
-                                colorScheme={saleCondition === "CONTADO" ? "green" : "blue"}
+                                colorScheme={creditStatusBadge.colorScheme}
                               >
-                                {saleCondition === "CONTADO" ? "CONTADO" : "CRÉDITO"}
+                                {creditStatusBadge.label}
                               </Badge>
                             </Flex>
 
@@ -3481,23 +3801,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                             px={1}
                             py={0}
                             borderRadius="sm"
-                            colorScheme={
-                              saleCondition === "CONTADO"
-                                ? "green"
-                                : clientCreditInfo.isCreditSale && clientCreditInfo.isExceeded
-                                ? "red"
-                                : !clientCreditInfo.hasCreditLine
-                                ? "yellow"
-                                : "blue"
-                            }
+                            colorScheme={creditStatusBadge.colorScheme}
                           >
-                            {saleCondition === "CONTADO"
-                              ? "CONTADO"
-                              : clientCreditInfo.isCreditSale && clientCreditInfo.isExceeded
-                              ? "SOBREGIRADO"
-                              : !clientCreditInfo.hasCreditLine
-                              ? "SIN LÍNEA"
-                              : "CRÉDITO"}
+                            {creditStatusBadge.label}
                           </Badge>
                         </Flex>
 
@@ -3794,6 +4100,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                     isAdmin={canManageFinance}
                     isDeliveryLocked={isDeliveryLocked}
                     isFinanceLocked={adminForceEditMode ? false : isReadOnly}
+                    isPureFreeTransfer={isAllInStockTaxOnly}
                   />
                 </VStack>
               </TabPanel>
@@ -3864,6 +4171,38 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                 OFICIAL
               </Badge>
             </Flex>
+            {totals?.hasTaxOnlyItems && !isSellerFieldsLocked && (
+              <HStack spacing={1.5} wrap="wrap" mb={2}>
+                <Text fontSize="10px" fontWeight="800" color="purple.700">
+                  Motivos rápidos:
+                </Text>
+                {[
+                  "10) TRANSFERENCIA GRATUITA",
+                  "OBSEQUIO / REGALO",
+                  "BONIFICACIÓN",
+                  "MUESTRA SIN VALOR COMERCIAL",
+                  "REPOSICIÓN POR GARANTÍA",
+                ].map((motivo) => {
+                  const isActiveMotivo = String(comment || "").trim().toUpperCase() === motivo;
+                  return (
+                    <Button
+                      key={motivo}
+                      size="2xs"
+                      h="22px"
+                      px={2}
+                      borderRadius="md"
+                      fontSize="10px"
+                      fontWeight="800"
+                      variant={isActiveMotivo ? "solid" : "outline"}
+                      colorScheme="purple"
+                      onClick={() => setComment && setComment(motivo)}
+                    >
+                      {motivo}
+                    </Button>
+                  );
+                })}
+              </HStack>
+            )}
             <Textarea
               size="sm"
               borderRadius="md"
@@ -3906,6 +4245,17 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                 {currency === "SOL" ? `S/ ${formatThousands(totals.subtotalSOL)}` : `USD ${formatThousands(totals.subtotalUSD)}`}
               </Text>
             </Flex>
+
+            {totals.hasTaxOnlyItems && (
+              <Flex justify="space-between" align="center" bg="rgba(168, 85, 247, 0.25)" px={2} py={1} borderRadius="md" border="1px solid rgba(216, 180, 254, 0.45)" gap={2}>
+                <Text fontSize="10px" fontWeight="700" color="#f3e8ff">
+                  🎁 Op. Gratuitas ({totals.taxOnlyCount} {totals.taxOnlyCount === 1 ? 'ítem' : 'ítems'} • Base ref. {currency === "SOL" ? `S/ ${formatThousands(totals.taxOnlyBaseRefSOL)}` : `USD ${formatThousands(totals.taxOnlyBaseRefUSD)}`}):
+                </Text>
+                <Badge bg="#7e22ce" color="white" fontSize="9px" px={1.5} py={0.2} borderRadius="sm" fontWeight="800" whiteSpace="nowrap">
+                  Solo IGV
+                </Badge>
+              </Flex>
+            )}
 
             {totals.backOrderProducts && totals.backOrderProducts.length > 0 && (
               <Flex justify="space-between" align="center" bg="rgba(239, 68, 68, 0.25)" px={2} py={1} borderRadius="md" border="1px solid rgba(248, 113, 113, 0.4)">
@@ -3978,9 +4328,34 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         p={{ base: 3, sm: 4 }}
         borderRadius="2xl"
         border="1px solid"
-        borderColor="gray.200"
+        borderColor={hasTaxOnlyQuote && canDirectEmitSap ? "purple.300" : "gray.200"}
         boxShadow="sm"
       >
+        {hasTaxOnlyQuote && canDirectEmitSap && !isReadOnly && (
+          <Flex
+            align="center"
+            gap={2}
+            bg={isPendingGerencia && canApproveTaxOnlySap ? "#faf5ff" : "#fdf4ff"}
+            border="1px solid"
+            borderColor="#d8b4fe"
+            borderRadius="xl"
+            px={3}
+            py={2}
+            mb={3}
+          >
+            <Shield className="w-4 h-4 text-purple-700 flex-shrink-0" />
+            <Text fontSize="xs" fontWeight="700" color="#581c87">
+              {canApproveTaxOnlySap
+                ? (isPendingGerencia
+                    ? "👑 Transferencia Gratuita pre-aprobada por Facturación — Lista para tu aprobación final y emisión a SAP B1."
+                    : "👑 Transferencia Gratuita — Como Gerencia / Administrador, puedes aprobar y emitir directamente a SAP B1.")
+                : (isPendingGerencia
+                    ? "⏳ Transferencia Gratuita ya validada por Facturación — Esperando aprobación final de Gerencia (Juan) para emisión a SAP B1."
+                    : "👑 Regla de Transferencia Gratuita: Facturación valida el pedido y lo deriva a Gerencia (Juan) para su aprobación final y emisión a SAP B1.")}
+            </Text>
+          </Flex>
+        )}
+
         <Flex
           gap={2.5}
           direction={{ base: "column", sm: "row" }}
@@ -3994,25 +4369,63 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
             </Badge>
           ) : canDirectEmitSap ? (
             <>
-              <Button
-                bg="#0f5132"
-                color="white"
-                _hover={{ bg: "#093822" }}
-                size="md"
-                h="44px"
-                w={{ base: "full", sm: "auto" }}
-                leftIcon={<Zap className="w-4 h-4" />}
-                onClick={() => {
-                  if (!validateBeforeAdminApproval()) return;
-                  setShowAdminConfirmModal(true);
-                }}
-                fontWeight="900"
-                boxShadow="0 4px 12px rgba(15,81,50,0.3)"
-                isLoading={isSendingToValidation}
-                isDisabled={isSendingToValidation}
-              >
-                {isSubmittedVendorQuote ? "⚡ Aprobar y Emitir a SAP" : "⚡ Emitir Directamente a SAP"}
-              </Button>
+              {mustEscalateTaxOnlyToGerencia ? (
+                isPendingGerencia ? (
+                  <Badge
+                    colorScheme="purple"
+                    bg="#f3e8ff"
+                    color="#6b21a8"
+                    border="1px solid #c084fc"
+                    p={3}
+                    borderRadius="lg"
+                    fontSize="xs"
+                    fontWeight="800"
+                    w={{ base: "full", sm: "auto" }}
+                    textAlign="center"
+                  >
+                    ⏳ Validado por Facturación — Esperando Aprobación de Juan (SAP)
+                  </Badge>
+                ) : (
+                  <Button
+                    bg="#7e22ce"
+                    color="white"
+                    _hover={{ bg: "#6b21a8" }}
+                    size="md"
+                    h="44px"
+                    w={{ base: "full", sm: "auto" }}
+                    leftIcon={<Shield className="w-4 h-4" />}
+                    onClick={handleEscalateTaxOnlyToGerencia}
+                    fontWeight="900"
+                    boxShadow="0 4px 12px rgba(126,34,206,0.3)"
+                    isLoading={isSendingToValidation}
+                    isDisabled={isSendingToValidation}
+                  >
+                    👑 Validar y Enviar a Gerencia (Juan)
+                  </Button>
+                )
+              ) : (
+                <Button
+                  bg="#0f5132"
+                  color="white"
+                  _hover={{ bg: "#093822" }}
+                  size="md"
+                  h="44px"
+                  w={{ base: "full", sm: "auto" }}
+                  leftIcon={<Zap className="w-4 h-4" />}
+                  onClick={() => {
+                    if (!validateBeforeAdminApproval()) return;
+                    setShowAdminConfirmModal(true);
+                  }}
+                  fontWeight="900"
+                  boxShadow="0 4px 12px rgba(15,81,50,0.3)"
+                  isLoading={isSendingToValidation}
+                  isDisabled={isSendingToValidation}
+                >
+                  {isPendingGerencia
+                    ? "👑 Aprobar (Gerencia) y Emitir a SAP"
+                    : (isSubmittedVendorQuote ? "⚡ Aprobar y Emitir a SAP" : "⚡ Emitir Directamente a SAP")}
+                </Button>
+              )}
 
               {canAdminObserveOrReject && (
                 <>

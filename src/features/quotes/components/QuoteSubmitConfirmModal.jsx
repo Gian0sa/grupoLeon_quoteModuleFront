@@ -4,11 +4,13 @@ import {
   Box, Text, Flex, VStack, HStack, Badge, Button, Divider, Alert, AlertIcon
 } from "@chakra-ui/react";
 import { CheckCircle2, AlertTriangle, Send, Zap } from "lucide-react";
-import { calculateQuoteTotals } from "../../../shared/utils/quoteCalculator";
+import { calculateQuoteTotals, isItemTaxOnly } from "../../../shared/utils/quoteCalculator";
 import {
   formatDeliveryForm,
   formatTransportName,
-  formatPaymentTerms
+  formatPaymentTerms,
+  isFreeTransferPaymentType,
+  FREE_TRANSFER_PAYMENT_TYPE,
 } from "../../../shared/utils/quoteLogisticsFormatters";
 
 function formatRucOrDni(val) {
@@ -53,6 +55,11 @@ export default function QuoteSubmitConfirmModal({
     const stk = p.stock !== undefined && p.stock !== null ? Number(p.stock) : (p.stockChecked ? 0 : 1);
     return isAgotado || stk <= 0;
   });
+  const hasTaxOnlyItems = Boolean(totals.hasTaxOnlyItems || inStockItems.some((p) => isItemTaxOnly(p)));
+  const allInStockTaxOnly = inStockItems.length > 0 && inStockItems.every((p) => isItemTaxOnly(p));
+  const effectiveConfirmPaymentType = allInStockTaxOnly
+    ? (isFreeTransferPaymentType(selectedPaymentType) ? selectedPaymentType : FREE_TRANSFER_PAYMENT_TYPE)
+    : selectedPaymentType;
 
   return (
     <Modal
@@ -154,6 +161,11 @@ export default function QuoteSubmitConfirmModal({
                           <Text fontWeight="700" isTruncated>
                             {p.itemCode || p.ItemCode || ""} - {p.description || p.ItemDescription || p.name || p.productName || "Producto"}
                           </Text>
+                          {!isOutOfStock && isItemTaxOnly(p) && (
+                            <Badge colorScheme="purple" fontSize="9px" px={1.5} flexShrink={0}>
+                              SOLO IGV
+                            </Badge>
+                          )}
                         </HStack>
                         <Text fontWeight="800" whiteSpace="nowrap">
                           {Number(p.quantity || p.Quantity || 1)} x ${Number(p.unitPrice ?? p.price ?? p.Price ?? 0).toFixed(2)}
@@ -167,12 +179,25 @@ export default function QuoteSubmitConfirmModal({
 
             {/* Sección: Totales */}
             <Box bg="#fefce8" border="1px solid #fde68a" borderRadius="lg" p={3}>
-              <Text fontSize="xs" fontWeight="900" color="#92400e" textTransform="uppercase" mb={2}>💰 Totales del Documento</Text>
+              <Flex justify="space-between" align="center" mb={2} wrap="wrap" gap={1}>
+                <Text fontSize="xs" fontWeight="900" color="#92400e" textTransform="uppercase">💰 Totales del Documento</Text>
+                {hasTaxOnlyItems && (
+                  <Badge bg="purple.600" color="white" fontSize="9.5px" px={2} py={0.5} borderRadius="md" fontWeight="800">
+                    🎁 {allInStockTaxOnly ? "TRANSFERENCIA GRATUITA (SOLO IGV)" : "INCLUYE OP. GRATUITA (SOLO IGV)"}
+                  </Badge>
+                )}
+              </Flex>
               <VStack align="stretch" spacing={1} fontSize="sm">
                 <Flex justify="space-between">
                   <Text fontWeight="700" color="#475569">Valor Venta Neto:</Text>
                   <Text fontWeight="800">${Number(totals.subtotalUSD ?? 0).toFixed(2)}</Text>
                 </Flex>
+                {hasTaxOnlyItems && Number(totals.taxOnlyBaseRefUSD || 0) > 0 && (
+                  <Flex justify="space-between">
+                    <Text fontWeight="700" color="purple.700" fontSize="xs">Base Ref. Op. Gratuitas:</Text>
+                    <Text fontWeight="800" color="purple.700" fontSize="xs">${Number(totals.taxOnlyBaseRefUSD || 0).toFixed(2)} (no cobrable)</Text>
+                  </Flex>
+                )}
                 <Flex justify="space-between">
                   <Text fontWeight="700" color="#475569">I.G.V. (18%):</Text>
                   <Text fontWeight="800">+${Number(totals.igvUSD || 0).toFixed(2)}</Text>
@@ -189,7 +214,7 @@ export default function QuoteSubmitConfirmModal({
             <Box bg="#f8fafc" border="1px solid #e2e8f0" borderRadius="lg" p={3}>
               <Text fontSize="xs" fontWeight="900" color="#475569" textTransform="uppercase" mb={2}>🚚 Logística & Términos</Text>
               <VStack align="flex-start" spacing={1} fontSize="xs">
-                <HStack><Text fontWeight="700" color="#475569">Condición Comercial:</Text><Text fontWeight="800">{formatPaymentTerms(selectedPaymentType, quote.saleCondition) || quote.saleCondition || "CONTADO"}</Text></HStack>
+                <HStack><Text fontWeight="700" color="#475569">Condición Comercial:</Text><Text fontWeight="800">{formatPaymentTerms(effectiveConfirmPaymentType, quote.saleCondition) || quote.saleCondition || "CONTADO"}</Text></HStack>
                 <HStack><Text fontWeight="700" color="#475569">Modalidad de Entrega:</Text><Text fontWeight="800">{formatDeliveryForm(selectedDeliveryForm)}</Text></HStack>
                 <HStack><Text fontWeight="700" color="#475569">Transporte:</Text><Text fontWeight="800">{formatTransportName(selectedTransport, selectedDeliveryForm)}</Text></HStack>
               </VStack>

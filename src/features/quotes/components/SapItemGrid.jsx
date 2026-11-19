@@ -2,15 +2,17 @@ import React, { useState, useEffect } from "react";
 import {
   Box, Table, Thead, Tbody, Tr, Th, Td, TableContainer,
   IconButton, Input, Text, Button, Select,
-  HStack, Badge, Flex, VStack, Divider, Grid
+  HStack, Badge, Flex, VStack, Divider, Grid, Switch
 } from "@chakra-ui/react";
 import { Trash2, Package, Sparkles, Flame, Building2, Star } from "lucide-react";
 import ItemAutocomplete from "./ItemAutocomplete";
 import { DiscountPopoverModal } from "./DiscountPopoverModal";
 import { ClientSpecialPricesModal } from "./ClientSpecialPricesModal";
+import { TaxOnlyConfirmModal } from "./TaxOnlyConfirmModal";
 import PackagingHelper from "./PackagingHelper";
 import { useIsAdmin } from "../../../shared/utils/permissions";
-import { formatThousands } from "../../../shared/utils/quoteCalculator";
+import { useAuthStore } from "../../../features/auth/stores/useAuthStore";
+import { formatThousands, isItemTaxOnly } from "../../../shared/utils/quoteCalculator";
 import { useGetPromotions, useClientSpecialPrices } from "../hooks/queries/quotesQueries";
 
 const money = (val, currency = "USD") => {
@@ -47,8 +49,20 @@ export default function SapItemGrid({
   const [selectedDiscountItem, setSelectedDiscountItem] = useState(null);
   const [isDiscountModalOpen, setIsDiscountModalOpen] = useState(false);
   const [isSpecialPricesModalOpen, setIsSpecialPricesModalOpen] = useState(false);
+  const [showTaxOnlyControls, setShowTaxOnlyControls] = useState(false);
+  const [isTaxOnlyConfirmOpen, setIsTaxOnlyConfirmOpen] = useState(false);
 
   const isAdmin = useIsAdmin();
+  const { role: authRole } = useAuthStore();
+  const roleUpper = String(authRole || localStorage.getItem("role") || "").toUpperCase();
+  const canToggleTaxOnly =
+    roleUpper === "ADMIN" ||
+    roleUpper === "ADMINISTRADOR" ||
+    roleUpper.startsWith("ADMIN") ||
+    roleUpper === "FACTURACION" ||
+    isAdmin;
+  const hasAnyTaxOnlyItem = Array.isArray(products) && products.some((p) => isItemTaxOnly(p));
+  const isTaxOnlyModeVisible = Boolean(canToggleTaxOnly && (showTaxOnlyControls || hasAnyTaxOnlyItem));
   const { promotionsMap = {} } = useGetPromotions();
 
   const clientCardCode = client?.CardCode || client?.cardCode || client?.sapCode || "";
@@ -169,6 +183,17 @@ export default function SapItemGrid({
         ? Number(rawBaseListDiscount)
         : null;
 
+    const isOutOfStockNew = Boolean(
+      selectedItem.isAgotado ||
+      (selectedItem.stockChecked && typeof selectedItem.stock === "number" && selectedItem.stock <= 0) ||
+      (selectedItem.stock !== undefined && selectedItem.stock !== null && Number(selectedItem.stock) === 0)
+    );
+    const shouldAutoMarkTaxOnly = Boolean(
+      !isOutOfStockNew &&
+      showTaxOnlyControls &&
+      (inStockProducts.length === 0 || inStockProducts.every((p) => isItemTaxOnly(p)))
+    );
+
     onAddProduct({
       id: itemId,
       code: itemId,
@@ -194,6 +219,7 @@ export default function SapItemGrid({
       specialPriceConIGV,
       whsCode: whsCode || "014",
       taxCode: "I18",
+      ...(shouldAutoMarkTaxOnly ? { isTaxOnly: true, taxOnly: true, TaxOnly: "tYES" } : {}),
       stock: selectedItem.stock ?? (isSpecial && sp?.stock !== undefined ? Number(sp.stock) : null),
       stockChecked: selectedItem.stockChecked ?? (selectedItem.stock !== null && selectedItem.stock !== undefined),
       isAgotado: selectedItem.isAgotado || false,
@@ -348,11 +374,74 @@ export default function SapItemGrid({
           )}
 
           <Box mb={4} p={{ base: 2.5, md: 3.5 }} bg="white" borderRadius="xl" border="1px solid" borderColor="gray.200" boxShadow="xs">
-            <Flex align="center" gap={1.5} mb={2}>
-              <Package className="w-4 h-4 text-emerald-800" />
-              <Text fontSize="xs" fontWeight="800" color="#166534" textTransform="uppercase" letterSpacing="wider">
-                Buscar Artículo
-              </Text>
+            <Flex align="center" justify="space-between" gap={2} mb={2} wrap="wrap">
+              <Flex align="center" gap={1.5}>
+                <Package className="w-4 h-4 text-emerald-800" />
+                <Text fontSize="xs" fontWeight="800" color="#166534" textTransform="uppercase" letterSpacing="wider">
+                  Buscar Artículo
+                </Text>
+              </Flex>
+              {canToggleTaxOnly && (
+                <Flex align="center" gap={2} wrap="wrap">
+                  {isTaxOnlyModeVisible && inStockProducts.length > 0 && inStockProducts.some((p) => !isItemTaxOnly(p)) && (
+                    <Button
+                      size="xs"
+                      h="26px"
+                      px={2.5}
+                      colorScheme="purple"
+                      variant="outline"
+                      fontSize="10.5px"
+                      fontWeight="800"
+                      borderRadius="lg"
+                      onClick={() => {
+                        if (typeof onUpdateProduct === "function") {
+                          inStockProducts.forEach((p) => {
+                            if (!isItemTaxOnly(p)) {
+                              onUpdateProduct(p.id, { isTaxOnly: true, taxOnly: true, TaxOnly: "tYES", taxCode: "I18" });
+                            }
+                          });
+                        }
+                      }}
+                    >
+                      Marcar todos gratuitos
+                    </Button>
+                  )}
+                  <Flex
+                    align="center"
+                    gap={2}
+                    px={2.5}
+                    py={1}
+                    borderRadius="lg"
+                    bg={isTaxOnlyModeVisible ? "orange.50" : "gray.50"}
+                    border="1px solid"
+                    borderColor={isTaxOnlyModeVisible ? "orange.300" : "gray.200"}
+                  >
+                    <Switch
+                      size="sm"
+                      colorScheme="orange"
+                      isChecked={isTaxOnlyModeVisible}
+                      onChange={(e) => {
+                        const next = e.target.checked;
+                        if (next) {
+                          setIsTaxOnlyConfirmOpen(true);
+                        } else {
+                          setShowTaxOnlyControls(false);
+                          if (hasAnyTaxOnlyItem && typeof onUpdateProduct === "function") {
+                            products.forEach((p) => {
+                              if (isItemTaxOnly(p)) {
+                                onUpdateProduct(p.id, { isTaxOnly: false, taxOnly: false, TaxOnly: "tNO", taxCode: "I18" });
+                              }
+                            });
+                          }
+                        }
+                      }}
+                    />
+                    <Text fontSize="11px" fontWeight="800" color={isTaxOnlyModeVisible ? "orange.700" : "gray.700"} whiteSpace="nowrap">
+                      ⚠️ Transferencia Gratuita
+                    </Text>
+                  </Flex>
+                </Flex>
+              )}
             </Flex>
             <ItemAutocomplete 
               onSelect={handleItemSelect} 
@@ -483,24 +572,28 @@ export default function SapItemGrid({
               const finalNet2 = Number(netUnitPrice.toFixed(2));
               unitPriceConIGV = Number((finalNet2 + Number((finalNet2 * 0.18).toFixed(2))).toFixed(2));
             }
+            const isTaxOnly = !isOutOfStock && isItemTaxOnly(item);
             const finalUnitPrice = Number(netUnitPrice.toFixed(2));
             const isDirectConIGV = Boolean(customPrice || (isSpecial && targetSpecialPriceConIGV > 0 && addDisc <= 0) || (!customPrice && hasPromoPrice && targetPromoNeto > 0 && targetPromoPriceConIGV > 0));
             const lineTotal = Number((qty * (isDirectConIGV ? netUnitPrice : finalUnitPrice)).toFixed(2));
-            const lineTax = isDirectConIGV
+            const lineTax = (isDirectConIGV && !isTaxOnly)
               ? Number((unitPriceConIGV * qty - lineTotal).toFixed(2))
               : Number((lineTotal * 0.18).toFixed(2));
-            const lineTotalConIGV = isDirectConIGV
-              ? Number((unitPriceConIGV * qty).toFixed(2))
-              : Number((lineTotal + lineTax).toFixed(2));
-            const lineSavings = isOutOfStock ? 0 : Math.max(0, (qty * price) - lineTotal);
+            const lineTotalConIGV = isTaxOnly
+              ? lineTax
+              : (isDirectConIGV
+                  ? Number((unitPriceConIGV * qty).toFixed(2))
+                  : Number((lineTotal + lineTax).toFixed(2)));
+            const lineSavings = (isOutOfStock || isTaxOnly) ? 0 : Math.max(0, (qty * price) - lineTotal);
             const hasAnyDiscount = !isOutOfStock && totalDisc > 0;
             const itemName = item.name || item.productName || item.description || item.ItemName || item.ItemDescription || "Artículo General";
-            const isVolume = !isOutOfStock && qty > 100 && totalDisc > 55;
+            const isVolume = !isOutOfStock && !isTaxOnly && qty > 100 && totalDisc > 55;
 
             const displayPrice = Number((price * rateMultiplier).toFixed(2));
             const displayUnitPriceConIGV = Number((unitPriceConIGV * rateMultiplier).toFixed(2));
             const displayFinalUnitPrice = Number((finalUnitPrice * rateMultiplier).toFixed(2));
             const displayLineTotalConIGV = Number((lineTotalConIGV * rateMultiplier).toFixed(2));
+            const displayLineRefNet = Number((lineTotal * rateMultiplier).toFixed(2));
             const displayLineSavings = Number((lineSavings * rateMultiplier).toFixed(2));
 
             return (
@@ -565,6 +658,24 @@ export default function SapItemGrid({
                       <Badge bg="#ea580c" color="white" fontSize="10px" px={2} py={0.5} borderRadius="md" fontWeight="900" mt={1}>
                         🔥 MAYOREO ({totalDisc}%)
                       </Badge>
+                    )}
+                    {!isOutOfStock && isTaxOnly && (
+                      <Badge bg="purple.600" color="white" fontSize="10px" px={2} py={0.5} borderRadius="md" fontWeight="900" mt={1}>
+                        🎁 GRATUITA / SOLO IGV
+                      </Badge>
+                    )}
+                    {!isOutOfStock && !isReadOnly && isTaxOnlyModeVisible && (
+                      <HStack spacing={2} mt={1.5}>
+                        <Switch
+                          size="sm"
+                          colorScheme="purple"
+                          isChecked={isTaxOnly}
+                          onChange={(e) => onUpdateProduct(item.id, { isTaxOnly: e.target.checked, taxOnly: e.target.checked, TaxOnly: e.target.checked ? "tYES" : "tNO", taxCode: "I18" })}
+                        />
+                        <Text fontSize="10px" fontWeight="700" color={isTaxOnly ? "purple.700" : "gray.600"}>
+                          Gratuita / Solo IGV
+                        </Text>
+                      </HStack>
                     )}
                   </Box>
                   {!isReadOnly && (
@@ -719,12 +830,24 @@ export default function SapItemGrid({
                     )}
                   </Box>
                 </Grid>
-                <Flex justify="space-between" align="center" bg={isOutOfStock ? "#fef2f2" : "#f8fafc"} p={2.5} borderRadius="lg" border="1px solid" borderColor={isOutOfStock ? "#fee2e2" : "gray.100"}>
-                  <Text fontSize="0.65rem" fontWeight="800" color={isOutOfStock ? "red.700" : "gray.600"}>TOTAL (C/IGV):</Text>
+                <Flex justify="space-between" align="center" bg={isOutOfStock ? "#fef2f2" : isTaxOnly ? "#faf5ff" : "#f8fafc"} p={2.5} borderRadius="lg" border="1px solid" borderColor={isOutOfStock ? "#fee2e2" : isTaxOnly ? "#d8b4fe" : "gray.100"}>
+                  <Text fontSize="0.65rem" fontWeight="800" color={isOutOfStock ? "red.700" : isTaxOnly ? "purple.700" : "gray.600"}>
+                    {isTaxOnly ? "COBRABLE (SOLO IGV):" : "TOTAL (C/IGV):"}
+                  </Text>
                   {isOutOfStock ? (
                     <Badge colorScheme="red" variant="solid" bg="#dc2626" color="white" fontSize="10px" fontWeight="800" px={2} py={0.5} borderRadius="md">
                       Demanda Back Order
                     </Badge>
+                  ) : isTaxOnly ? (
+                    <VStack align="flex-end" spacing={0.5}>
+                      <HStack spacing={1.5}>
+                        <Text fontSize="sm" fontWeight="950" color="purple.700">{money(displayLineTotalConIGV, currency)}</Text>
+                        <Text fontSize="10px" color="purple.600" fontWeight="700">(Solo IGV 18%)</Text>
+                      </HStack>
+                      <Text fontSize="9px" color="gray.500" fontWeight="600">
+                        Base ref. {money(displayLineRefNet, currency)} ({qty} {qty === 1 ? "ud" : "uds"})
+                      </Text>
+                    </VStack>
                   ) : (
                     <VStack align="flex-end" spacing={0.5}>
                       <HStack spacing={1.5}>
@@ -898,24 +1021,28 @@ export default function SapItemGrid({
                     const finalNet2 = Number(netUnitPrice.toFixed(2));
                     unitPriceConIGV = Number((finalNet2 + Number((finalNet2 * 0.18).toFixed(2))).toFixed(2));
                   }
+                  const isTaxOnly = !isOutOfStock && isItemTaxOnly(item);
                   const finalUnitPrice = Number(netUnitPrice.toFixed(2));
                   const isDirectConIGV = Boolean(customPrice || (isSpecial && targetSpecialPriceConIGV > 0 && addDisc <= 0) || (!customPrice && hasPromoPrice && targetPromoNeto > 0 && targetPromoPriceConIGV > 0));
                   const lineTotal = Number((qty * (isDirectConIGV ? netUnitPrice : finalUnitPrice)).toFixed(2));
-                  const lineTax = isDirectConIGV
+                  const lineTax = (isDirectConIGV && !isTaxOnly)
                     ? Number((unitPriceConIGV * qty - lineTotal).toFixed(2))
                     : Number((lineTotal * 0.18).toFixed(2));
-                  const lineTotalConIGV = isDirectConIGV
-                    ? Number((unitPriceConIGV * qty).toFixed(2))
-                    : Number((lineTotal + lineTax).toFixed(2));
-                  const lineSavings = isOutOfStock ? 0 : Math.max(0, (qty * price) - lineTotal);
+                  const lineTotalConIGV = isTaxOnly
+                    ? lineTax
+                    : (isDirectConIGV
+                        ? Number((unitPriceConIGV * qty).toFixed(2))
+                        : Number((lineTotal + lineTax).toFixed(2)));
+                  const lineSavings = (isOutOfStock || isTaxOnly) ? 0 : Math.max(0, (qty * price) - lineTotal);
                   const hasAnyDiscount = !isOutOfStock && totalDisc > 0;
                   const itemName = item.name || item.productName || item.description || item.ItemName || item.ItemDescription || "Artículo General";
-                  const isVolume = !isOutOfStock && qty > 100 && totalDisc > 55;
+                  const isVolume = !isOutOfStock && !isTaxOnly && qty > 100 && totalDisc > 55;
 
                   const displayPrice = Number((price * rateMultiplier).toFixed(2));
                   const displayUnitPriceConIGV = Number((unitPriceConIGV * rateMultiplier).toFixed(2));
                   const displayFinalUnitPrice = Number((finalUnitPrice * rateMultiplier).toFixed(2));
                   const displayLineTotalConIGV = Number((lineTotalConIGV * rateMultiplier).toFixed(2));
+                  const displayLineRefNet = Number((lineTotal * rateMultiplier).toFixed(2));
                   const displayLineSavings = Number((lineSavings * rateMultiplier).toFixed(2));
 
                   return (
@@ -980,6 +1107,35 @@ export default function SapItemGrid({
                             <Badge bg="#ea580c" color="white" fontSize="9px" px={1.5} py={0.2} borderRadius="md" fontWeight="900" mt={0.5}>
                               🔥 MAYOREO ({totalDisc}%)
                             </Badge>
+                          )}
+                          {!isOutOfStock && isTaxOnly && (
+                            <Badge bg="purple.600" color="white" fontSize="9px" px={1.5} py={0.2} borderRadius="md" fontWeight="900" mt={0.5}>
+                              🎁 GRATUITA / SOLO IGV
+                            </Badge>
+                          )}
+                          {!isOutOfStock && !isReadOnly && isTaxOnlyModeVisible && (
+                            <Flex
+                              align="center"
+                              gap={2}
+                              mt={1}
+                              px={2.5}
+                              py={1}
+                              borderRadius="md"
+                              bg={isTaxOnly ? "purple.50" : "gray.50"}
+                              border="1px solid"
+                              borderColor={isTaxOnly ? "purple.200" : "gray.200"}
+                              w="fit-content"
+                            >
+                              <Switch
+                                size="sm"
+                                colorScheme="purple"
+                                isChecked={isTaxOnly}
+                                onChange={(e) => onUpdateProduct(item.id, { isTaxOnly: e.target.checked, taxOnly: e.target.checked, TaxOnly: e.target.checked ? "tYES" : "tNO", taxCode: "I18" })}
+                              />
+                              <Text fontSize="11px" fontWeight="700" color={isTaxOnly ? "purple.700" : "gray.600"} whiteSpace="nowrap">
+                                Gratuita / Solo IGV
+                              </Text>
+                            </Flex>
                           )}
                         </VStack>
                       </Td>
@@ -1135,6 +1291,15 @@ export default function SapItemGrid({
                           <Badge colorScheme="red" variant="solid" bg="#dc2626" color="white" fontSize="10px" fontWeight="800" px={2} py={0.5} borderRadius="md">
                             Back Order
                           </Badge>
+                        ) : isTaxOnly ? (
+                          <VStack align="flex-end" spacing={0.5}>
+                            <Text fontWeight="950" fontSize="sm" color="purple.700" lineHeight="1" title="Transferencia Gratuita: solo se cobra el IGV (18%)">
+                              {money(displayLineTotalConIGV, currency)}
+                            </Text>
+                            <Badge colorScheme="purple" variant="subtle" fontSize="9px" px={1.5} py={0.2} borderRadius="md" fontWeight="800">
+                              Solo IGV (Ref. {money(displayLineRefNet, currency)})
+                            </Badge>
+                          </VStack>
                         ) : (
                           <VStack align="flex-end" spacing={0.5}>
                             {/* Total final a pagar con IGV */}
@@ -1427,6 +1592,21 @@ export default function SapItemGrid({
         currentProducts={products}
         currency={currency}
         rateMultiplier={rateMultiplier}
+      />
+
+      {/* Modal informativo para confirmar Transacción Gratuita */}
+      <TaxOnlyConfirmModal
+        isOpen={isTaxOnlyConfirmOpen}
+        onClose={() => setIsTaxOnlyConfirmOpen(false)}
+        onConfirm={() => {
+          setShowTaxOnlyControls(true);
+          if (typeof onUpdateProduct === "function" && inStockProducts.length > 0 && !hasAnyTaxOnlyItem) {
+            inStockProducts.forEach((p) => {
+              onUpdateProduct(p.id, { isTaxOnly: true, taxOnly: true, TaxOnly: "tYES", taxCode: "I18" });
+            });
+          }
+          setIsTaxOnlyConfirmOpen(false);
+        }}
       />
     </Box>
   );

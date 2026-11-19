@@ -88,6 +88,18 @@ const normalizeItem = (item, isSol = false, tc = 1) => {
     lineTotalNum = Number((lineTotalNum * tc).toFixed(2));
   }
 
+  const isTaxOnly = !isOutOfStock && Boolean(
+    item.isTaxOnly === true ||
+    item.taxOnly === true ||
+    item.taxOnly === "tYES" ||
+    item.TaxOnly === "tYES" ||
+    item.taxOnly === "Y" ||
+    item.TaxOnly === "Y"
+  );
+  if (isTaxOnly) {
+    lineTotalNum = 0;
+  }
+
   const code = item.code || item.itemCode || item.ItemCode || item.productCode || item.id || "";
   let baseName = item.name || item.productName || item.description || item.Description || item.ItemDescription || item.ItemName || item.Dscription || "";
   if (!baseName) {
@@ -98,6 +110,7 @@ const normalizeItem = (item, isSol = false, tc = 1) => {
   if (sapDisc > 0) discParts.push(`-${sapDisc}%`);
   if (promoDisc > 0) discParts.push(`-${promoDisc}% Promo`);
   if (addDisc > 0) discParts.push(`-${Number(addDisc).toFixed(2)}%`);
+  if (isTaxOnly) discParts.push("TRANSFERENCIA GRATUITA - SOLO IGV");
   const discTag = discParts.length > 0 ? ` (${discParts.join(" ")})` : "";
 
   return {
@@ -109,6 +122,7 @@ const normalizeItem = (item, isSol = false, tc = 1) => {
     finalUnitPrice,
     lineTotalNum,
     isOutOfStock,
+    isTaxOnly,
   };
 };
 
@@ -318,9 +332,17 @@ export const QuotePdfDocument = React.forwardRef(({ quote, isPrintMode = false }
     ? Number(quote.totals?.grandTotalPEN || quote.totals?.grandTotalSOL || calcRes.grandTotalSOL || quote.DocTotal || (grandTotalUSD * tcVal))
     : grandTotalUSD;
 
+  const hasTaxOnly = Boolean(quote.totals?.hasTaxOnlyItems || calcRes.hasTaxOnlyItems);
+  const hasStoredSubUSD = quote.totals?.subtotalUSD !== undefined || quote.totals?.subTotalUSD !== undefined || quote.subtotalUSD !== undefined;
+  const hasStoredSubSOL = quote.totals?.subtotalSOL !== undefined || quote.totals?.subtotalPEN !== undefined;
+
   const subtotalDocNum = isSol
-    ? Number(quote.totals?.subtotalSOL || calcRes.subtotalSOL || (documentTotalNum / 1.18))
-    : (storedSubtotal > 0 ? storedSubtotal : (calcRes.subtotalUSD || Number((documentTotalNum / 1.18).toFixed(2))));
+    ? (hasStoredSubSOL && (Number(quote.totals?.subtotalSOL ?? quote.totals?.subtotalPEN ?? 0) > 0 || hasTaxOnly)
+        ? Number(quote.totals?.subtotalSOL ?? quote.totals?.subtotalPEN ?? 0)
+        : (hasTaxOnly ? Number(calcRes.subtotalSOL ?? 0) : Number(quote.totals?.subtotalSOL || calcRes.subtotalSOL || (documentTotalNum / 1.18))))
+    : ((storedSubtotal > 0 || (hasTaxOnly && hasStoredSubUSD))
+        ? storedSubtotal
+        : (hasTaxOnly ? Number(calcRes.subtotalUSD ?? 0) : (calcRes.subtotalUSD || Number((documentTotalNum / 1.18).toFixed(2)))));
 
   const igvDocNum = isSol
     ? Number(quote.totals?.igvSOL || calcRes.igvSOL || (documentTotalNum - subtotalDocNum))

@@ -1,5 +1,42 @@
 import { useAuthStore } from "../../features/auth/stores/useAuthStore";
 
+export const MASTER_ADMIN_IDS = [2, 10, 12, 15, 16, 17, 35, 42];
+
+// Únicos Administradores Maestros con visibilidad/auditoría global de borradores: Enrique (10) y Misael (12)
+export const DRAFT_MASTER_ADMIN_IDS = [10, 12];
+
+export function isDraftMasterAdmin({ userId, username, role } = {}) {
+  const roleUpper = String(role || "").toUpperCase().trim();
+  if (
+    roleUpper.includes("FACTUR") ||
+    roleUpper.includes("VENDEDOR") ||
+    roleUpper.includes("ASESOR") ||
+    roleUpper.includes("DIGIT")
+  ) {
+    return false;
+  }
+
+  const numericId = Number(userId);
+  if (!Number.isNaN(numericId) && numericId > 0 && DRAFT_MASTER_ADMIN_IDS.includes(numericId)) {
+    return true;
+  }
+  const normUser = String(username || "").toLowerCase().trim();
+  if (!normUser) return false;
+  return normUser.includes("misael") || normUser.includes("cumapa") || normUser.includes("enrique");
+}
+
+export function useIsDraftMasterAdmin() {
+  const userId = useAuthStore((state) => state.userId);
+  const username = useAuthStore((state) => state.username);
+  const role = useAuthStore((state) => state.role);
+
+  return isDraftMasterAdmin({
+    userId: userId ?? localStorage.getItem("userId"),
+    username: username || localStorage.getItem("username"),
+    role: role || localStorage.getItem("role"),
+  });
+}
+
 /**
  * Función pura para validar si un usuario posee privilegios de Administrador / Maestro
  * Puede recibir endpoints (array) y username (string)
@@ -24,6 +61,110 @@ export function checkIsAdmin(endpoints = [], username = "") {
     normUser.includes("jimmy") ||
     normUser.includes("punkay") ||
     ((normUser === "julio" || normUser.startsWith("julio ")) && !normUser.includes("flores"))
+  );
+}
+
+/**
+ * Determina si un usuario tiene facultad de Gerencia / Administrador Maestro
+ * para aprobar y emitir Transferencias Gratuitas (TaxOnly) a SAP B1.
+ * Las usuarias de FACTURACION validan/pre-aprueban y derivan a PENDIENTE_GERENCIA (Juan).
+ */
+export function canEmitTaxOnlyToSap({ userId, role, username, endpoints = [] } = {}) {
+  const numericId = Number(userId);
+  if (!Number.isNaN(numericId) && MASTER_ADMIN_IDS.includes(numericId)) {
+    return true;
+  }
+
+  const roleUpper = String(role || "").toUpperCase().trim();
+  if (
+    roleUpper.includes("FACTUR") ||
+    roleUpper.includes("VENDEDOR") ||
+    roleUpper.includes("ASESOR") ||
+    roleUpper.includes("COMERCIAL") ||
+    roleUpper.includes("DIGIT")
+  ) {
+    return false;
+  }
+
+  if (
+    roleUpper === "ADMIN" ||
+    roleUpper === "ADMINISTRADOR" ||
+    roleUpper.startsWith("ADMIN") ||
+    roleUpper.includes("GERENC") ||
+    roleUpper === "MASTER"
+  ) {
+    return true;
+  }
+
+  return checkIsAdmin(endpoints, username);
+}
+
+/**
+ * Hook reactivo para determinar si el usuario en sesión puede emitir
+ * Transferencias Gratuitas (TaxOnly) directamente a SAP B1 (Gerencia / Admin Maestro).
+ */
+export function useCanEmitTaxOnlyToSap() {
+  const userId = useAuthStore((state) => state.userId);
+  const role = useAuthStore((state) => state.role);
+  const username = useAuthStore((state) => state.username);
+  const endpoints = useAuthStore((state) => state.endpoints);
+
+  return canEmitTaxOnlyToSap({
+    userId: userId ?? localStorage.getItem("userId"),
+    role: role || localStorage.getItem("role"),
+    username: username || localStorage.getItem("username"),
+    endpoints,
+  });
+}
+
+/**
+ * Propiedad estricta de borradores por creador real (userId / createdByUsername).
+ * NUNCA compara por sellerName ("001.Ofic Administración") para garantizar que
+ * dos cuentas de Facturación (ej. Angela y Celia) NO vean ni borren borradores entre sí.
+ */
+export function isDraftOwnedByUser(quote, { userId, username } = {}) {
+  if (!quote || typeof quote !== "object") return false;
+
+  const qUserId = quote.userId ?? quote.createdByUserId;
+  const hasQuoteUserId =
+    qUserId !== null &&
+    qUserId !== undefined &&
+    String(qUserId).trim() !== "" &&
+    !Number.isNaN(Number(qUserId)) &&
+    Number(qUserId) > 0;
+
+  const hasUserId =
+    userId !== null &&
+    userId !== undefined &&
+    String(userId).trim() !== "" &&
+    !Number.isNaN(Number(userId)) &&
+    Number(userId) > 0;
+
+  const qCreator = String(quote.createdByUsername || quote.username || "").toLowerCase().trim();
+  const currentUser = String(username || "").toLowerCase().trim();
+
+  if (hasQuoteUserId && hasUserId) {
+    if (Number(qUserId) === Number(userId)) return true;
+    // Si por algún motivo de sesión no coinciden los IDs pero el username exacto del creador sí coincide
+    if (qCreator && currentUser && qCreator === currentUser) return true;
+    return false;
+  }
+
+  // Fallback cuando falta user.userId (ej. null en localStorage) o falta quote.userId (borradores legacy)
+  if (!qCreator || !currentUser) return false;
+  return qCreator === currentUser;
+}
+
+/**
+ * Determina si el usuario actual puede visualizar un borrador:
+ * - Administradores Maestros (Enrique id: 10, Misael id: 12) ven todos los borradores.
+ * - Cualquier otro usuario (Facturación, Vendedores, etc.) solo ve sus propios borradores.
+ */
+export function canUserViewDraft(quote, { userId, username } = {}) {
+  if (!quote || typeof quote !== "object") return false;
+  return (
+    isDraftMasterAdmin({ userId, username }) ||
+    isDraftOwnedByUser(quote, { userId, username })
   );
 }
 

@@ -31,6 +31,7 @@ import { useQuoteMutations } from "../hooks/mutations/quotesMutations";
 import { Truck, CreditCard, Shield, MapPin, Plus, Edit2 } from "lucide-react";
 import { SAP_TRANSPORTS_CATALOG } from "../constants/sapTransportsCatalog";
 import { DatePickerField } from "../../../components/DatePickerField";
+import { isFreeTransferPaymentType } from "../../../shared/utils/quoteLogisticsFormatters";
 
 export const isPickupInStoreForm = (form) => {
   if (!form) return false;
@@ -252,6 +253,7 @@ export function NewSellTerms({
   isAdmin = false,
   isDeliveryLocked = false,
   isFinanceLocked = false,
+  isPureFreeTransfer = false,
 }) {
   const { uploadImageMutation, deleteImageMutation } = useQuoteMutations();
   const [attachments, setAttachments] = useState([]);
@@ -668,7 +670,12 @@ export function NewSellTerms({
     // Auto-sincronización inteligente de casillas comerciales UDF al seleccionar la Condición de Pago SAP
     if (!isDeliveryLocked || !isFinanceLocked) {
       const lbl = String(selectedObj.PymntGroup || selectedObj.PaymentTermsGroupName || "").toLowerCase();
-      if (lbl.includes("contado")) {
+      if (isFreeTransferPaymentType(selectedObj)) {
+        if (setSaleCondition) setSaleCondition("CONTADO");
+        if (setIsLetra) setIsLetra(false);
+        if (setCreditTerm) setCreditTerm("");
+        if (setPaymentMethod) setPaymentMethod("");
+      } else if (lbl.includes("contado")) {
         if (setSaleCondition) setSaleCondition("CONTADO");
         if (setIsLetra) setIsLetra(false);
         if (setCreditTerm) setCreditTerm("ANTICIPADO");
@@ -773,6 +780,10 @@ export function NewSellTerms({
   const prevClientCodeRef = useRef(null);
   useEffect(() => {
     const currentCode = client?.CardCode || client?.cardCode || client?.id;
+    if (isPureFreeTransfer || isFreeTransferPaymentType(selectedPaymentType)) {
+      if (currentCode) prevClientCodeRef.current = currentCode;
+      return;
+    }
     if (client && currentCode && currentCode !== prevClientCodeRef.current) {
       prevClientCodeRef.current = currentCode;
       const clientGroupNum = client.PayTermsGrpCode ?? client.GroupNum ?? client.raw?.PayTermsGrpCode ?? client.raw?.GroupNum;
@@ -795,7 +806,7 @@ export function NewSellTerms({
         }
       }
     }
-  }, [client, allPaymentTypes, selectedPaymentType]);
+  }, [client, allPaymentTypes, selectedPaymentType, isPureFreeTransfer]);
 
   // Auto-deducir internamente si es BOLETA o FACTURA según documento del cliente (DNI 8 dígitos -> BOLETA, RUC/Empresa -> FACTURA)
   useEffect(() => {
@@ -882,6 +893,11 @@ export function NewSellTerms({
             {deliveryFormsOptions.length > 0 && (
               <Text fontSize="11px" color="gray.500" mt={1}>
                 📦 <b>{deliveryFormsOptions.length}</b> modalidades de despacho activas en el sistema.
+              </Text>
+            )}
+            {isPureFreeTransfer && (
+              <Text fontSize="11px" color="purple.700" fontWeight="600" mt={1}>
+                🎁 Modo Transferencia Gratuita: preseleccionado por defecto; puedes cambiarlo si requiere reparto o agencia.
               </Text>
             )}
           </Box>
@@ -1211,12 +1227,16 @@ export function NewSellTerms({
               ""
             ).toLowerCase();
 
-            const isCreditCondition = currentPymntLabel.includes("credit") || 
-                                      currentPymntLabel.includes("crédito") || 
-                                      currentPymntLabel.includes("dias") || 
-                                      currentPymntLabel.includes("días") || 
-                                      currentPymntLabel.includes("letra") || 
-                                      saleCondition === "CREDITO";
+            const isFreeTransfer = Boolean(isPureFreeTransfer || isFreeTransferPaymentType(selectedPaymentType));
+
+            const isCreditCondition = !isFreeTransfer && (
+              currentPymntLabel.includes("credit") ||
+              currentPymntLabel.includes("crédito") ||
+              currentPymntLabel.includes("dias") ||
+              currentPymntLabel.includes("días") ||
+              currentPymntLabel.includes("letra") ||
+              saleCondition === "CREDITO"
+            );
 
             const clientDocDigits = String(client?.FederalTaxID || client?.clientDocument || client?.documentNumber || client?.LicTradNum || client?.CardCode || "").replace(/\D/g, "");
             const isLikelyDni = clientDocDigits.length === 8;
@@ -1234,14 +1254,20 @@ export function NewSellTerms({
                         <Badge colorScheme={effectiveDocType === "FACTURA" ? "blue" : "teal"} fontSize="10px" px={2} py={0.5} borderRadius="md" fontWeight="800">
                           {effectiveDocType === "FACTURA" ? "📄 FACTURA (RUC)" : "🧾 BOLETA (DNI)"}
                         </Badge>
-                        <Badge colorScheme={isCreditCondition ? "purple" : "green"} fontSize="10px" px={2} py={0.5} borderRadius="md" fontWeight="800">
-                          {isCreditCondition ? "CRÉDITO" : "CONTADO"}
-                        </Badge>
+                        {isFreeTransfer ? (
+                          <Badge bg="purple.600" color="white" fontSize="10px" px={2} py={0.5} borderRadius="md" fontWeight="800">
+                            🎁 OP. GRATUITA (SOLO IGV)
+                          </Badge>
+                        ) : (
+                          <Badge colorScheme={isCreditCondition ? "purple" : "green"} fontSize="10px" px={2} py={0.5} borderRadius="md" fontWeight="800">
+                            {isCreditCondition ? "CRÉDITO" : "CONTADO"}
+                          </Badge>
+                        )}
                       </HStack>
                     </Flex>
                     <CreatableSelect
                       isDisabled={isFinanceLocked}
-                      isClearable={!isFinanceLocked}
+                      isClearable={!isFinanceLocked && !isPureFreeTransfer}
                       options={paymentTypesOptions}
                       value={normalizePaymentTypeValue(selectedPaymentType)}
                       onChange={handlePaymentTypeChange}
@@ -1296,7 +1322,21 @@ export function NewSellTerms({
                 )}
 
                 {/* RESUMEN COMERCIAL INFORMATIVO SEGÚN MODALIDAD */}
-                {isCreditCondition ? (
+                {isFreeTransfer ? (
+                  <Box p={3} bg="purple.50" borderRadius="xl" border="1px dashed" borderColor="purple.300">
+                    <HStack spacing={3} align="center">
+                      <Text fontSize="20px" lineHeight="1">🎁</Text>
+                      <VStack align="stretch" spacing={0.5} flex="1">
+                        <Text fontSize="xs" fontWeight="900" color="purple.900">
+                          OPERACIÓN GRATUITA — SOLO COBRO DE I.G.V. (18%)
+                        </Text>
+                        <Text fontSize="11px" color="purple.800" fontWeight="600">
+                          ℹ️ Se registrará automáticamente con condición "10) TRANSFERENCIA GRATUITA" (SAP Cód. 96), comprobante <b>{effectiveDocType}</b>, sin financiamiento ni detracción.
+                        </Text>
+                      </VStack>
+                    </HStack>
+                  </Box>
+                ) : isCreditCondition ? (
                   <Box p={3} bg="purple.50/60" borderRadius="xl" border="1px dashed" borderColor="purple.300">
                     <HStack spacing={3} align="center">
                       <Text fontSize="20px" lineHeight="1">💳</Text>

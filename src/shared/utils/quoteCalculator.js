@@ -36,6 +36,17 @@ export const isItemWithoutStock = (p) => Boolean(
   )
 );
 
+export const isItemTaxOnly = (p) => Boolean(
+  p && (
+    p.isTaxOnly === true ||
+    p.taxOnly === true ||
+    p.taxOnly === "tYES" ||
+    p.TaxOnly === "tYES" ||
+    p.taxOnly === "Y" ||
+    p.TaxOnly === "Y"
+  )
+);
+
 export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options = {}) {
   const tc = Number(exchangeRate) || 3.45;
   const isSapDoc = Boolean(options.isSapDoc || options.isSapDirect);
@@ -43,6 +54,8 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
   let grossSubtotalUSD = 0;   // Suma de (qty × precio de lista) antes de descuentos
   let totalDiscountUSD = 0;  // Suma de montos descontados
   let netSubtotalUSD = 0;    // Base imponible neta (Suma de líneas con descuento)
+  let taxOnlyBaseRefUSD = 0; // Base referencial neta de líneas Transferencia Gratuita (solo para IGV)
+  let taxOnlyCount = 0;
   let hasAdditionalDiscount = false;
   let hasVolumeDiscount = false; // Descuentos mayores a 50% hasta 55% por volumen (>100 uds)
   let hasDiscountAboveThreshold = false; // Descuentos mayores o iguales a 50%
@@ -51,6 +64,7 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
   const normalizedProducts = (products || []).map((p) => {
     const qty = Math.max(0, Number(p.quantity ?? p.Quantity ?? 1));
     const isOutOfStock = isItemWithoutStock(p);
+    const isTaxOnly = !isOutOfStock && isItemTaxOnly(p);
 
     // Detección de artículo de Convenio de Precios Especiales (OSPP SAP)
     const isSpecial = !isOutOfStock && Boolean(
@@ -227,41 +241,55 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
 
     const isDirectConIGV = customPrice || (hasSpecialPrice && targetSpecialPriceConIGV > 0 && addDisc <= 0) || isPromoConIGV;
     const finalUnitPrice = Number(netUnitPrice.toFixed(2));
-    const netLine = isOutOfStock
+    const referentialNetLine = isOutOfStock
       ? 0
-      : (isLineFromSap && (p.subtotal || p.lineTotal)
-        ? Number(Number(p.subtotal || p.lineTotal).toFixed(2))
+      : (isLineFromSap && (p.referentialNetTotal || (!isTaxOnly && (p.subtotal || p.lineTotal)))
+        ? Number(Number(p.referentialNetTotal || p.subtotal || p.lineTotal).toFixed(2))
         : Number((qty * (isDirectConIGV ? netUnitPrice : finalUnitPrice)).toFixed(2)));
 
     const lineTax = isOutOfStock
       ? 0
-      : (isDirectConIGV ? Number((unitPriceConIGV * qty - netLine).toFixed(2)) : Number((netLine * 0.18).toFixed(2)));
+      : (isLineFromSap && p.taxTotal !== undefined && Number(p.taxTotal) > 0 && isTaxOnly
+        ? Number(Number(p.taxTotal).toFixed(2))
+        : (isDirectConIGV && !isTaxOnly
+          ? Number((unitPriceConIGV * qty - referentialNetLine).toFixed(2))
+          : Number((referentialNetLine * 0.18).toFixed(2))));
 
+    const netLine = (isOutOfStock || isTaxOnly) ? 0 : referentialNetLine;
+    const referentialLineConIGV = isOutOfStock
+      ? 0
+      : (isDirectConIGV ? Number((unitPriceConIGV * qty).toFixed(2)) : Number((referentialNetLine + lineTax).toFixed(2)));
     const lineTotalConIGV = isOutOfStock
       ? 0
-      : (isDirectConIGV ? Number((unitPriceConIGV * qty).toFixed(2)) : Number((netLine + lineTax).toFixed(2)));
+      : (isTaxOnly ? lineTax : referentialLineConIGV);
 
-    const discAmount = isOutOfStock ? 0 : Math.max(0, grossLine - netLine);
+    const discAmount = (isOutOfStock || isTaxOnly) ? 0 : Math.max(0, grossLine - netLine);
 
-    const isVolumeLine = !isOutOfStock && qty > 100 && totalDisc > APPROVAL_DISCOUNT_THRESHOLD + 0.01;
+    const isVolumeLine = !isOutOfStock && !isTaxOnly && qty > 100 && totalDisc > APPROVAL_DISCOUNT_THRESHOLD + 0.01;
     if (isVolumeLine) {
       hasVolumeDiscount = true;
     }
     // Si el artículo proviene de un convenio oficial SAP (OSPP) con precio pactado, no dispara alerta comercial a menos que haya descuento adicional
-    if (!isOutOfStock && !hasSpecialPrice && totalDisc > APPROVAL_DISCOUNT_THRESHOLD + 0.009) {
+    if (!isOutOfStock && !isTaxOnly && !hasSpecialPrice && totalDisc > APPROVAL_DISCOUNT_THRESHOLD + 0.009) {
       hasDiscountAboveThreshold = true;
     }
 
     if (!isOutOfStock) {
-      grossSubtotalUSD += grossLine;
-      totalDiscountUSD += discAmount;
-      netSubtotalUSD += netLine;
+      if (isTaxOnly) {
+        taxOnlyCount += 1;
+        taxOnlyBaseRefUSD += referentialNetLine;
+      } else {
+        grossSubtotalUSD += grossLine;
+        totalDiscountUSD += discAmount;
+        netSubtotalUSD += netLine;
+      }
     }
 
     const requiresApproval = !isOutOfStock && (
-      hasSpecialPrice 
+      isTaxOnly ||
+      (hasSpecialPrice 
         ? (addDisc > 0 || isVolumeLine) 
-        : (totalDisc > APPROVAL_DISCOUNT_THRESHOLD + 0.009 || isVolumeLine)
+        : (totalDisc > APPROVAL_DISCOUNT_THRESHOLD + 0.009 || isVolumeLine))
     );
 
     return {
@@ -279,17 +307,21 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
       discountAmount: Number(discAmount.toFixed(2)),
       discountedUnitPrice: netUnitPrice,
       unitPriceConIGV,
+      isTaxOnly,
+      taxOnly: isTaxOnly,
+      referentialNetTotal: referentialNetLine,
+      referentialLineConIGV,
       lineTotal: netLine,
       totalPrice: netLine,
       lineTotalConIGV,
       taxTotal: lineTax,
       igvLine: lineTax,
       requiresApproval,
-      isHigherMargin: !isOutOfStock && (addDisc < 0 || Boolean(hasSpecialPrice && customPrice && resolvedBaseSpecialConIGV > 0 && unitPriceConIGV > resolvedBaseSpecialConIGV + 0.009)),
+      isHigherMargin: !isOutOfStock && !isTaxOnly && (addDisc < 0 || Boolean(hasSpecialPrice && customPrice && resolvedBaseSpecialConIGV > 0 && unitPriceConIGV > resolvedBaseSpecialConIGV + 0.009)),
       isVolumeDiscount: isVolumeLine,
-      isExceedingCeiling: !isOutOfStock && !isLineFromSap && !hasSpecialPrice && (sapDisc + promoDisc + addDisc > MAX_DISCOUNT_CEILING + 0.01),
-      isDirectConIGV: Boolean(isDirectConIGV && !isOutOfStock),
-      rawNetLineExact: isOutOfStock ? 0 : (qty * netUnitPrice),
+      isExceedingCeiling: !isOutOfStock && !isTaxOnly && !isLineFromSap && !hasSpecialPrice && (sapDisc + promoDisc + addDisc > MAX_DISCOUNT_CEILING + 0.01),
+      isDirectConIGV: Boolean(isDirectConIGV && !isOutOfStock && !isTaxOnly),
+      rawNetLineExact: (isOutOfStock || isTaxOnly) ? 0 : (qty * netUnitPrice),
       isOutOfStock,
       isBackOrder: isOutOfStock,
     };
@@ -369,7 +401,11 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
     hasVolumeDiscount,
     hasDiscountAboveThreshold,
     hasExceededDiscountCeiling,
-    requiresDiscountApproval: hasVolumeDiscount || hasDiscountAboveThreshold,
+    hasTaxOnlyItems: taxOnlyCount > 0,
+    taxOnlyCount,
+    taxOnlyBaseRefUSD: Number(taxOnlyBaseRefUSD.toFixed(2)),
+    taxOnlyBaseRefSOL: Number((taxOnlyBaseRefUSD * tc).toFixed(2)),
+    requiresDiscountApproval: hasVolumeDiscount || hasDiscountAboveThreshold || taxOnlyCount > 0,
     standardDiscountCeiling: STANDARD_DISCOUNT_CEILING,
     maxDiscountCeiling: MAX_DISCOUNT_CEILING,
     approvalDiscountThreshold: APPROVAL_DISCOUNT_THRESHOLD,
