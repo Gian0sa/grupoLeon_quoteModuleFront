@@ -25,6 +25,10 @@ import { getHeaderThemeConfig } from "../shared/utils/headerThemes";
 import { useIsAdmin, useCanEmitTaxOnlyToSap } from "../shared/utils/permissions";
 import { QUERY_KEYS } from "../shared/utils/queryKeys";
 import { subscribeToPush } from "../shared/services/pushNotificationService";
+import {
+  getNotificationCanonicalKey,
+  mergeServerAndLocalNotifications,
+} from "../features/quotes/utils/notificationUtils";
 
 export { HEADER_BRAND_IMAGE };
 export const HEADER_MAIN_BG = "linear-gradient(135deg, #0e572b 0%, #126C36 50%, #0b4a24 100%)";
@@ -103,7 +107,7 @@ export function TopHeaderBanner({
     sessionRoleUpper.includes("JEFE");
 
   const isAdmin = Boolean(isVerifierOrAdminRole);
-  const { data: serverNotifs } = useNotifications(
+  const { data: serverNotifs, isFetched: isServerNotifsFetched } = useNotifications(
     canApproveGerencia ? "ADMIN" : isAdmin ? "FACTURACION" : "VENDEDOR",
     username
   );
@@ -118,8 +122,10 @@ export function TopHeaderBanner({
       rawLocal = [];
     }
 
-    const serverList = Array.isArray(serverNotifs) ? serverNotifs : [];
-    const combined = [...rawLocal, ...serverList];
+    const { combined } = mergeServerAndLocalNotifications(
+      rawLocal,
+      isServerNotifsFetched && Array.isArray(serverNotifs) ? serverNotifs : null
+    );
 
     const filtered = combined.filter((n) => {
       if (!n || !n.title || n.read) return false;
@@ -171,20 +177,14 @@ export function TopHeaderBanner({
     const uniqueQuoteKeys = new Set();
     let unreadTotal = 0;
     for (const notif of filtered) {
-      const rawQ = String(notif.quoteId || notif.id || "").trim();
-      const matchWeb = String(notif.title || "").match(/COT-WEB-(\d+)/i) || 
-                       String(notif.title || "").match(/COT-(\d+)/i) ||
-                       rawQ.match(/COT-WEB-(\d+)/i) || 
-                       rawQ.match(/COT-(\d+)/i) || 
-                       rawQ.match(/^(\d+)$/);
-      const key = matchWeb ? `QUOTE-${Number(matchWeb[1])}` : rawQ;
+      const key = getNotificationCanonicalKey(notif);
       if (!uniqueQuoteKeys.has(key)) {
         uniqueQuoteKeys.add(key);
         unreadTotal++;
       }
     }
     return unreadTotal;
-  }, [serverNotifs, username, userId, role, isAdmin, localVersion]);
+  }, [serverNotifs, isServerNotifsFetched, username, userId, role, isAdmin, canApproveGerencia, localVersion]);
 
   const { data: exchangeRate, isLoading: isLoadingExchangeRate } = useExchangeRate(
     {

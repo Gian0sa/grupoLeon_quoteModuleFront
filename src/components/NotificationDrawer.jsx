@@ -28,6 +28,12 @@ import { checkQuoteLock, forceUnlockQuote } from "../features/quotes/services/qu
 import { Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, ModalCloseButton, Alert, AlertIcon } from "@chakra-ui/react";
 import { Lock, Eye } from "lucide-react";
 import { useIsAdmin, useCanEmitTaxOnlyToSap } from "../shared/utils/permissions";
+import {
+  getNotificationCanonicalKey,
+  getNotificationTimestampMs,
+  mergeServerAndLocalNotifications,
+  formatNotificationTimeAgo,
+} from "../features/quotes/utils/notificationUtils";
 
 export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
   const toast = useToast();
@@ -107,7 +113,7 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
     sessionRoleUpper.includes("JEFE");
 
   const isAdmin = Boolean(isVerifierOrAdminRole);
-  const { data: serverNotifs } = useNotifications(
+  const { data: serverNotifs, isFetched: isServerNotifsFetched } = useNotifications(
     canApproveGerencia ? "ADMIN" : isAdmin ? "FACTURACION" : "VENDEDOR",
     username
   );
@@ -179,18 +185,20 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
     });
   };
 
-  const getNotifTimestamp = (n) => {
-    if (!n) return 0;
-    const raw = n.createdAt || n.timestamp || n.created_at || n.date || n.updatedAt;
-    if (typeof raw === "number") return raw;
-    if (raw) {
-      const t = new Date(raw).getTime();
-      if (!isNaN(t) && t > 0) return t;
-    }
-    const numId = Number(n.id);
-    if (!isNaN(numId) && numId > 0) return numId;
-    return 0;
-  };
+  const getNotifTimestamp = getNotificationTimestampMs;
+
+  useEffect(() => {
+    if (!isServerNotifsFetched || !Array.isArray(serverNotifs)) return;
+    try {
+      const raw = localStorage.getItem("grupoLeon_notifications");
+      const rawLocal = raw ? JSON.parse(raw) : [];
+      const { freshLocal, didPruneLocal } = mergeServerAndLocalNotifications(rawLocal, serverNotifs);
+      if (didPruneLocal) {
+        localStorage.setItem("grupoLeon_notifications", JSON.stringify(freshLocal));
+        window.dispatchEvent(new Event("localNotificationsUpdated"));
+      }
+    } catch {}
+  }, [serverNotifs, isServerNotifsFetched]);
 
   const myNotifications = React.useMemo(() => {
     let rawLocal = [];
@@ -202,10 +210,10 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
       rawLocal = [];
     }
 
-    const serverList = Array.isArray(serverNotifs) ? serverNotifs : [];
-    
-    // Lista combinada de candidatos (las locales traen las alertas en vivo más frescas de WebSocket)
-    const combined = [...rawLocal, ...serverList];
+    const { combined } = mergeServerAndLocalNotifications(
+      rawLocal,
+      isServerNotifsFetched && Array.isArray(serverNotifs) ? serverNotifs : null
+    );
 
     const filteredByUser = filterForCurrentUser(combined).filter(
       (n) => !String(n.title || "").includes("- null") &&
@@ -219,19 +227,15 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
     const uniqueMap = new Map();
     for (const notif of filteredByUser) {
       const rawQ = String(notif.quoteId || notif.id || "").trim();
-      const matchWeb = String(notif.title || "").match(/COT-WEB-(\d+)/i) || 
-                       String(notif.title || "").match(/COT-(\d+)/i) ||
-                       rawQ.match(/COT-WEB-(\d+)/i) || 
-                       rawQ.match(/COT-(\d+)/i) || 
-                       rawQ.match(/^(\d+)$/);
-      const canonicalKey = matchWeb ? `QUOTE-${Number(matchWeb[1])}` : rawQ;
+      const canonicalKey = getNotificationCanonicalKey(notif) || rawQ;
+      const numericMatch = canonicalKey.match(/^QUOTE-(\d+)$/);
 
       // Omitir alertas descartadas manualmente
       if (
         dismissedKeys.has(String(notif.id)) ||
         dismissedKeys.has(String(notif.quoteId)) ||
         dismissedKeys.has(canonicalKey) ||
-        (matchWeb && dismissedKeys.has(`QUOTE-${Number(matchWeb[1])}`))
+        (numericMatch && dismissedKeys.has(`QUOTE-${Number(numericMatch[1])}`))
       ) {
         continue;
       }
@@ -360,30 +364,7 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
     }
   };
 
-  const formatTimeAgo = (dateStr) => {
-    if (!dateStr) return "Hace un momento";
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return "Hace un momento";
-
-    const now = new Date();
-    const diffMs = now - date;
-    const diffMins = Math.floor(diffMs / (1000 * 60));
-    const diffHours = Math.floor(diffMins / 60);
-    const diffDays = Math.floor(diffHours / 24);
-
-    const timeStr = date.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit", hour12: true });
-
-    if (diffMins < 1) return `Ahora mismo • ${timeStr}`;
-    if (diffMins < 60) return `Hace ${diffMins} min • ${timeStr}`;
-    if (diffHours < 24) return `Hoy a las ${timeStr} • Hace ${diffHours} h`;
-    if (diffDays === 1) return `Ayer a las ${timeStr}`;
-    if (diffDays < 7) {
-      const dayNum = date.toLocaleDateString("es-PE", { weekday: "short", day: "numeric", month: "short" });
-      return `Hace ${diffDays} días • ${dayNum} (${timeStr})`;
-    }
-
-    return `${date.toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit", year: "numeric" })} • ${timeStr}`;
-  };
+  const formatTimeAgo = (dateStr) => formatNotificationTimeAgo(dateStr);
 
   const handleOpenQuote = async (quoteObj, quoteId, notifId) => {
     const clickId = String(notifId || quoteId || "");
