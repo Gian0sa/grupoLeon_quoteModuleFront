@@ -81,6 +81,19 @@ export function useQuoteSocket() {
       }, 100);
     };
 
+    const isPendingApprovalState = (statusUpper, qObj) =>
+      !qObj?.sapDocNum &&
+      !qObj?.DocNum &&
+      [
+        "ENVIADO",
+        "PENDIENTE",
+        "PENDIENTE_APROBACION",
+        "PENDIENTE_GERENCIA",
+        "PENDIENTE_FACTURACION",
+        "EN_FACTURACION",
+        "EN_PROCESO",
+      ].includes(statusUpper);
+
     // 1. Escuchar cotizaciones creadas en vivo
     const handleQuoteCreated = (quote) => {
       const docId = quote?.docNumber || quote?.id;
@@ -101,6 +114,9 @@ export function useQuoteSocket() {
         }
       }
       console.log("⚡ [WS EVENT] quote:created recibido:", docId);
+      if (isPendingApprovalState(rawSt, quote)) {
+        window.dispatchEvent(new CustomEvent("pendingQuoteArrived", { detail: { docId, status: rawSt } }));
+      }
       scheduleRefresh({ quotes: true, notifications: !isDraft, quoteDetails: true, highlightDocId: docId });
     };
 
@@ -184,6 +200,10 @@ export function useQuoteSocket() {
             console.error("Error limpiando notificaciones resueltas:", err);
           }
         }
+      }
+
+      if (isPendingApprovalState(st, quote)) {
+        window.dispatchEvent(new CustomEvent("pendingQuoteArrived", { detail: { docId, status: st } }));
       }
 
       scheduleRefresh({ quotes: true, notifications: true, quoteDetails: true, highlightDocId: docId });

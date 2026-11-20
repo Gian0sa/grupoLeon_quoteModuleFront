@@ -2514,6 +2514,50 @@ export function QuoteApprovalPage() {
     return res;
   }, [quotes, isAdminUser, isMasterAdminUser, canViewDrafts, activeCurrentUsername, activeCurrentUserId, currentPeruDate]);
 
+  // Alerta animada en el recuadro "1. Pend. Aprob." EXCLUSIVA para quienes aprueban (Admin/Facturación/Gerencia).
+  // Los vendedores que solo envían cotizaciones no ven la nubecita ni la animación de llegada.
+  const [isIncomingPendingBurst, setIsIncomingPendingBurst] = useState(false);
+  const incomingBurstTimerRef = useRef(null);
+  const prevPendingCountRef = useRef(null);
+
+  const triggerIncomingPendingBurst = () => {
+    if (!isAdminUser) return;
+    setIsIncomingPendingBurst(true);
+    if (incomingBurstTimerRef.current) {
+      clearTimeout(incomingBurstTimerRef.current);
+    }
+    incomingBurstTimerRef.current = setTimeout(() => {
+      setIsIncomingPendingBurst(false);
+      incomingBurstTimerRef.current = null;
+    }, 3200);
+  };
+
+  useEffect(() => {
+    if (!isAdminUser) return;
+    const handleIncomingPending = () => {
+      triggerIncomingPendingBurst();
+    };
+    window.addEventListener("pendingQuoteArrived", handleIncomingPending);
+    return () => {
+      window.removeEventListener("pendingQuoteArrived", handleIncomingPending);
+      if (incomingBurstTimerRef.current) {
+        clearTimeout(incomingBurstTimerRef.current);
+      }
+    };
+  }, [isAdminUser]);
+
+  useEffect(() => {
+    if (!isAdminUser) {
+      prevPendingCountRef.current = counts.ENVIADO;
+      setIsIncomingPendingBurst(false);
+      return;
+    }
+    if (prevPendingCountRef.current !== null && counts.ENVIADO > prevPendingCountRef.current) {
+      triggerIncomingPendingBurst();
+    }
+    prevPendingCountRef.current = counts.ENVIADO;
+  }, [counts.ENVIADO, isAdminUser]);
+
   const renderStatusBadge = (status, q = null) => {
     const getMainBadge = () => {
       switch (status) {
@@ -3543,8 +3587,8 @@ export function QuoteApprovalPage() {
     <Box w="full" maxW="100%" minW={0} overflowX="clip" py={{ base: 0, md: 2 }}>
       <VStack align="stretch" spacing={{ base: 2.5, md: 5 }} w="full" minW={0}>
         {/* KPI CARDS: PÍLDORAS COMPACTAS EN MÓVIL / TARJETAS AMPLIAS EN ESCRITORIO */}
-        <Box bg={{ base: "white", md: "#f8fafc" }} p={{ base: 2.5, md: 4 }} borderRadius={{ base: "xl", md: "2xl" }} border="1px solid" borderColor="#e2e8f0" boxShadow="xs" w="full" minW={0}>
-          <Text fontSize={{ base: "10px", md: "xs" }} fontWeight="900" color="#475569" mb={{ base: 2, md: 3 }} textTransform="uppercase" letterSpacing="wider">
+        <Box bg={{ base: "white", md: "#f8fafc" }} p={{ base: 2.5, md: 4 }} borderRadius={{ base: "xl", md: "2xl" }} border="1px solid" borderColor="#e2e8f0" boxShadow="xs" w="full" minW={0} overflow="visible">
+          <Text fontSize={{ base: "10px", md: "xs" }} fontWeight="900" color="#475569" mb={{ base: 3, md: 4 }} textTransform="uppercase" letterSpacing="wider">
             Filtrar por fase comercial:
           </Text>
           {(() => {
@@ -3563,33 +3607,132 @@ export function QuoteApprovalPage() {
             const numCols = filterCards.length;
 
             return (
-              <Grid templateColumns={{ base: "repeat(2, minmax(0, 1fr))", md: `repeat(${Math.min(3, numCols)}, minmax(0, 1fr))`, lg: `repeat(${numCols}, minmax(0, 1fr))` }} gap={{ base: 2, md: 3 }} w="full" minW={0}>
+              <Grid templateColumns={{ base: "repeat(2, minmax(0, 1fr))", md: `repeat(${Math.min(3, numCols)}, minmax(0, 1fr))`, lg: `repeat(${numCols}, minmax(0, 1fr))` }} gap={{ base: 2.5, md: 3 }} w="full" minW={0} overflow="visible">
                 {filterCards.map((card) => {
                   const isSelected = selectedTab === card.id;
+                  const showPendingApproverAlert = card.id === "ENVIADO" && isAdminUser && card.count > 0;
+                  const cardAnimation = showPendingApproverAlert
+                    ? (isIncomingPendingBurst
+                        ? "pendingCardIncomingShake 0.65s ease-in-out 4"
+                        : "pendingCardAttention 2.6s ease-in-out infinite")
+                    : undefined;
+
                   return (
                     <Flex
                       key={card.id}
+                      position="relative"
+                      overflow="visible"
                       onClick={() => setSelectedTab(card.id)}
                       cursor="pointer"
                       direction="column"
                       align="center"
                       justify="center"
                       gap={1}
-                      bg={isSelected ? card.bgSelected : "white"}
+                      bg={isSelected ? card.bgSelected : (showPendingApproverAlert ? "#f0f9ff" : "white")}
                       color={isSelected ? "white" : card.color}
                       py={{ base: 2.5, md: 3.5 }}
                       px={{ base: 2, md: 3.5 }}
                       borderRadius="xl"
                       border={{ base: "2px solid", md: "2.5px solid" }}
-                      borderColor={isSelected ? card.bgSelected : "#cbd5e1"}
-                      boxShadow={isSelected ? "md" : "xs"}
+                      borderColor={isSelected ? card.bgSelected : (showPendingApproverAlert ? "#0284c7" : "#cbd5e1")}
+                      boxShadow={
+                        showPendingApproverAlert
+                          ? "0 0 0 3px rgba(14, 165, 233, 0.22), 0 6px 14px rgba(2, 132, 199, 0.18)"
+                          : (isSelected ? "md" : "xs")
+                      }
                       transition="all 0.15s ease-in-out"
                       textAlign="center"
                       userSelect="none"
                       minW={0}
+                      sx={
+                        showPendingApproverAlert
+                          ? {
+                              animation: cardAnimation,
+                              "@keyframes pendingCardAttention": {
+                                "0%, 100%": {
+                                  transform: "translateY(0) rotate(0deg)",
+                                  boxShadow: "0 0 0 2px rgba(14, 165, 233, 0.18), 0 4px 10px rgba(2, 132, 199, 0.16)",
+                                },
+                                "20%": {
+                                  transform: "translateY(-3px) rotate(-0.8deg) scale(1.015)",
+                                  boxShadow: "0 0 0 5px rgba(14, 165, 233, 0.30), 0 8px 18px rgba(2, 132, 199, 0.28)",
+                                },
+                                "35%": {
+                                  transform: "translateY(0) rotate(0.8deg) scale(1.01)",
+                                },
+                                "50%": {
+                                  transform: "translateY(-2px) rotate(0deg)",
+                                },
+                                "65%": {
+                                  transform: "translateY(0) rotate(0deg)",
+                                },
+                              },
+                              "@keyframes pendingCardIncomingShake": {
+                                "0%, 100%": {
+                                  transform: "translateY(0) rotate(0deg) scale(1)",
+                                  boxShadow: "0 0 0 4px rgba(14, 165, 233, 0.35), 0 8px 20px rgba(2, 132, 199, 0.32)",
+                                },
+                                "20%": {
+                                  transform: "translateY(-6px) rotate(-2.2deg) scale(1.04)",
+                                  boxShadow: "0 0 0 7px rgba(56, 189, 248, 0.45), 0 12px 24px rgba(2, 132, 199, 0.4)",
+                                },
+                                "45%": {
+                                  transform: "translateY(-4px) rotate(2.2deg) scale(1.04)",
+                                },
+                                "70%": {
+                                  transform: "translateY(-2px) rotate(-1.2deg) scale(1.02)",
+                                },
+                              },
+                            }
+                          : undefined
+                      }
                       _hover={{ transform: "translateY(-1px)", borderColor: card.color }}
                       _active={{ transform: "scale(0.97)" }}
                     >
+                      {showPendingApproverAlert && (
+                        <Box
+                          position="absolute"
+                          top={{ base: "-13px", md: "-15px" }}
+                          left="50%"
+                          zIndex={3}
+                          pointerEvents="none"
+                          bgGradient="linear(to-r, #0284c7, #0ea5e9)"
+                          color="white"
+                          px={{ base: 2, md: 2.5 }}
+                          py="2px"
+                          borderRadius="full"
+                          border="2px solid white"
+                          boxShadow="0 4px 12px rgba(2, 132, 199, 0.45)"
+                          fontSize={{ base: "8.5px", md: "9.5px" }}
+                          fontWeight="900"
+                          letterSpacing="wider"
+                          textTransform="uppercase"
+                          whiteSpace="nowrap"
+                          sx={{
+                            animation: isIncomingPendingBurst
+                              ? "pendingCloudBounce 0.55s ease-in-out infinite"
+                              : "pendingCloudBounce 1.25s ease-in-out infinite",
+                            "@keyframes pendingCloudBounce": {
+                              "0%, 100%": { transform: "translate(-50%, 0px) scale(1)" },
+                              "50%": { transform: "translate(-50%, -5px) scale(1.05)" },
+                            },
+                            "&::after": {
+                              content: '""',
+                              position: "absolute",
+                              bottom: "-6px",
+                              left: "50%",
+                              transform: "translateX(-50%)",
+                              width: 0,
+                              height: 0,
+                              borderLeft: "5px solid transparent",
+                              borderRight: "5px solid transparent",
+                              borderTop: "6px solid #0ea5e9",
+                            },
+                          }}
+                        >
+                          ☁️ Pendiente
+                        </Box>
+                      )}
                       {card.isTrash ? (
                         <Flex align="center" justify="center" h={{ base: "22px", md: "32px" }}>
                           <Trash2 className="w-5 h-5 md:w-7 md:h-7 stroke-[2.5]" />
