@@ -173,8 +173,32 @@ export const useSyncQueue = ({ enabled = true } = {}) => {
               const failure = failedUuids.find((f) => f.uuid === item.uuid);
               const msg = failure?.reason || "No se pudo sincronizar el registro";
 
-              // Si es un Check-Out rechazado con "sin un Check-In previo", significa que la visita
-              // ya fue cerrada o no requiere Check-In previo en el servidor.
+              // Si este Check-Out todavía tiene su Check-In hermano sin confirmar en la cola/lote,
+              // NUNCA borrarlo como huérfano: dejarlo en PENDING hasta que el Check-In termine de subir.
+              const hasUnsyncedMatchingIn =
+                item.type === "OUT" &&
+                sortedQueue.some(
+                  (qItem) =>
+                    qItem.id !== item.id &&
+                    qItem.type === "IN" &&
+                    qItem.status !== QUEUE_STATUS.SYNCED &&
+                    !syncedUuids.includes(qItem.uuid) &&
+                    (item.visitGroupId
+                      ? qItem.visitGroupId === item.visitGroupId
+                      : qItem.storeName === item.storeName)
+                );
+
+              if (hasUnsyncedMatchingIn) {
+                console.warn(`⏳ Manteniendo Check-Out ${item.id} en cola esperando su Check-In previo.`);
+                await updateQueueItem(item.id, {
+                  status: QUEUE_STATUS.PENDING,
+                  errorMessage: "Esperando sincronización previa de Check-In",
+                });
+                continue;
+              }
+
+              // Si es un Check-Out rechazado con "sin un Check-In previo" y NO tiene ningún Check-In hermano pendiente,
+              // significa que la visita ya fue cerrada previamente en el servidor.
               if (item.type === "OUT" && msg.includes("sin un Check-In previo")) {
                 console.log(`ℹ️ Check-Out ${item.id} conciliado con el servidor. Eliminando de cola.`);
                 await removeFromQueue(item.id);
