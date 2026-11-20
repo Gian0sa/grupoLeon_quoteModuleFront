@@ -100,6 +100,19 @@ import {
   extractQuoteApprovalAudit,
   hasGranularApprovalAuditAccess,
 } from "../utils/quoteHistoryUtils";
+import {
+  getTodayPeruDateString,
+  getQuoteDateString,
+  getQuoteApprovalOrUpdatedDateString,
+  isQuoteOperationalDaily,
+} from "../utils/dailyOperationalFilter";
+
+export {
+  getTodayPeruDateString,
+  getQuoteDateString,
+  getQuoteApprovalOrUpdatedDateString,
+  isQuoteOperationalDaily,
+};
 
 const isDraftState = (status) => {
   if (!status) return true;
@@ -319,39 +332,6 @@ export const isQuotePendingApproval = (q) => {
 };
 
 /**
- * Obtiene la fecha actual en la zona horaria oficial del negocio (Perú: America/Lima, UTC-5)
- * en formato YYYY-MM-DD.
- */
-export const getTodayPeruDateString = () => {
-  try {
-    return new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" });
-  } catch {
-    return new Date().toISOString().split("T")[0];
-  }
-};
-
-/**
- * Obtiene la fecha representativa de una cotización en formato YYYY-MM-DD
- * respetando la zona horaria de Perú si viene como ISO timestamp.
- */
-export const getQuoteDateString = (q) => {
-  if (!q) return "";
-  const rawDate = q.docDate || q.DocDate || q.createdAt || "";
-  if (!rawDate) return "";
-  const str = String(rawDate).trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
-    return str;
-  }
-  try {
-    const d = new Date(str);
-    if (!isNaN(d.getTime())) {
-      return d.toLocaleDateString("en-CA", { timeZone: "America/Lima" });
-    }
-  } catch {}
-  return str.split("T")[0] || "";
-};
-
-/**
  * Suma o resta días a una fecha en formato YYYY-MM-DD de forma exacta,
  * manejando automáticamente meses de 31, 30, 28/29 días y años bisiestos.
  */
@@ -378,102 +358,6 @@ export const diffDaysBetweenDateStrings = (startStr, endStr) => {
   const dt1 = new Date(Date.UTC(y1, m1 - 1, d1, 12, 0, 0));
   const dt2 = new Date(Date.UTC(y2, m2 - 1, d2, 12, 0, 0));
   return Math.round((dt2 - dt1) / (1000 * 60 * 60 * 24));
-};
-
-/**
- * Obtiene la fecha en que una cotización fue aprobada o emitida a SAP en formato YYYY-MM-DD (hora Perú).
- * Revisa el historial de aprobaciones/emisiones y campos de timestamp de aprobación formal.
- */
-export const getQuoteApprovalOrUpdatedDateString = (q) => {
-  if (!q) return "";
-
-  // 1. Revisar campos específicos de aprobación/emisión si existen en el modelo
-  const rawApproval = q.approvedAt || q.emittedAt || q.sapEmittedAt || q.sapSyncDate || q.totals?.emittedAt || q.totals?.approvedAt;
-  if (rawApproval) {
-    const str = String(rawApproval).trim();
-    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
-    try {
-      const d = new Date(str);
-      if (!isNaN(d.getTime())) {
-        return d.toLocaleDateString("en-CA", { timeZone: "America/Lima" });
-      }
-    } catch {}
-    return str.split("T")[0] || "";
-  }
-
-  // 2. Buscar en el historial de eventos la última fecha de emisión o aprobación formal
-  const historyList = Array.isArray(q.history)
-    ? q.history
-    : (typeof q.history === "string" ? (() => { try { return JSON.parse(q.history); } catch { return []; } })() : (Array.isArray(q.historyLog) ? q.historyLog : []));
-
-  if (Array.isArray(historyList) && historyList.length > 0) {
-    for (let i = historyList.length - 1; i >= 0; i--) {
-      const h = historyList[i];
-      const hStatus = String(h?.status || h?.state || "").toUpperCase();
-      const hNote = String(h?.note || h?.comment || "").toUpperCase();
-      if (
-        ["EMITIDO", "EMITIDO_SAP", "APROBADO", "APROBADO_COMERCIAL", "APROBADO_CREDITOS", "PEDIDO_EMITIDO", "FACTURADO"].includes(hStatus) ||
-        hNote.includes("APROBADA") ||
-        hNote.includes("EMITIDA") ||
-        hNote.includes("ORDEN DE VENTA")
-      ) {
-        const rawTs = h.timestamp || h.date || h.createdAt;
-        if (rawTs) {
-          const str = String(rawTs).trim();
-          if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
-          try {
-            const d = new Date(str);
-            if (!isNaN(d.getTime())) {
-              return d.toLocaleDateString("en-CA", { timeZone: "America/Lima" });
-            }
-          } catch {}
-          return str.split("T")[0] || "";
-        }
-      }
-    }
-  }
-
-  // 3. Fallback a la fecha del documento o creación
-  return getQuoteDateString(q);
-};
-
-/**
- * Determina si una cotización cumple la regla operativa de visualización diaria:
- * 1. Cotizaciones Pendientes de Aprobación: SIEMPRE se muestran (sin importar antigüedad) hasta que sean formalmente aprobadas o canceladas.
- * 2. Cotizaciones Emitidas a SAP o Aprobadas: Se muestran durante todo el día calendario (hora Perú) en que fueron aprobadas/emitidas (o creadas si fue hoy).
- *    Al pasar la medianoche (11:59:59 PM PET) del día de su aprobación/emisión, pertenecen al Histórico.
- */
-export const isQuoteOperationalDaily = (q, todayDateStr) => {
-  if (!q) return false;
-  // 1. Las pendientes de aprobación NUNCA se ocultan ni se borran por fecha
-  if (isQuotePendingApproval(q)) {
-    return true;
-  }
-
-  // 2. Si ya fue emitida a SAP o aprobada formalmente
-  const currentStatus = String(q.approvalStatus || q.state || q.status || "").toUpperCase().trim();
-  const isEmitted = isQuoteEmittedToSap(q) || Boolean(q.sapDocNum || q.DocNum || q.isSapDirect || ["EMITIDO", "EMITIDO_SAP", "APROBADO", "APROBADO_COMERCIAL", "APROBADO_CREDITOS", "PEDIDO_EMITIDO", "FACTURADO", "COMPLETADO"].includes(currentStatus));
-
-  if (isEmitted) {
-    const today = todayDateStr || getTodayPeruDateString();
-
-    // Regla operativa diaria: si fue formalmente aprobada/emitida hoy, pertenece al flujo del día
-    const approvalDate = getQuoteApprovalOrUpdatedDateString(q);
-    if (approvalDate && approvalDate === today) {
-      return true;
-    }
-
-    // O si su fecha de creación/documento es de hoy (Día Completo)
-    const qDate = getQuoteDateString(q);
-    if (qDate === today) {
-      return true;
-    }
-
-    return false;
-  }
-
-  // Borradores u otros estados intermedios siguen las reglas de su pestaña respectiva
-  return true;
 };
 
 
@@ -911,10 +795,11 @@ export function QuoteApprovalPage() {
       const today = getTodayPeruDateString();
       if (today !== currentPeruDate) {
         setCurrentPeruDate(today);
+        queryClient.invalidateQueries({ queryKey: ["quotes"] });
       }
     }, 30000);
     return () => clearInterval(interval);
-  }, [currentPeruDate]);
+  }, [currentPeruDate, queryClient]);
 
   const [processModal, setProcessModal] = useState({
     isOpen: false,
@@ -1252,10 +1137,13 @@ export function QuoteApprovalPage() {
               emittedByRole: sq.emittedByRole || matchedLocal.emittedByRole || sq.totals?.emittedByRole || matchedLocal.totals?.emittedByRole || null,
               emittedAt: sq.emittedAt || matchedLocal.emittedAt || sq.totals?.emittedAt || matchedLocal.totals?.emittedAt || null,
               emittedSapUser: sq.emittedSapUser || matchedLocal.emittedSapUser || sq.totals?.emittedSapUser || matchedLocal.totals?.emittedSapUser || null,
+              invoicedAt: sq.invoicedAt || sq.totals?.invoicedAt || matchedLocal.invoicedAt || matchedLocal.totals?.invoicedAt || null,
+              sapClosedAt: sq.sapClosedAt || sq.totals?.sapClosedAt || matchedLocal.sapClosedAt || matchedLocal.totals?.sapClosedAt || null,
+              cancelledAt: sq.cancelledAt || sq.totals?.cancelledAt || matchedLocal.cancelledAt || matchedLocal.totals?.cancelledAt || null,
               products: sqItems.length > 0 ? sqItems : lqItems,
               client: sq.client || matchedLocal.client,
               clientName: sq.clientName || matchedLocal.clientName,
-              totals: (sq.totals && sq.totals.grandTotalUSD) ? sq.totals : matchedLocal.totals,
+              totals: (sq.totals && (sq.totals.grandTotalUSD || sq.totals.grandTotal || sq.totals.invoicedAt || sq.totals.sapUpdateDateVerified)) ? sq.totals : matchedLocal.totals,
               deliveryForm: cleanDeliveryForm(sq.deliveryForm || matchedLocal.deliveryForm || sq.selectedDeliveryForm || matchedLocal.selectedDeliveryForm || null),
               selectedDeliveryForm: cleanDeliveryForm(sq.selectedDeliveryForm || matchedLocal.selectedDeliveryForm || sq.deliveryForm || matchedLocal.deliveryForm || null),
               transport: sq.transport || matchedLocal.transport || sq.selectedTransport || matchedLocal.selectedTransport || null,
@@ -1402,10 +1290,13 @@ export function QuoteApprovalPage() {
                 emittedByRole: sq.emittedByRole || localMatch.emittedByRole || sq.totals?.emittedByRole || localMatch.totals?.emittedByRole || null,
                 emittedAt: sq.emittedAt || localMatch.emittedAt || sq.totals?.emittedAt || localMatch.totals?.emittedAt || null,
                 emittedSapUser: sq.emittedSapUser || localMatch.emittedSapUser || sq.totals?.emittedSapUser || localMatch.totals?.emittedSapUser || null,
+                invoicedAt: sq.invoicedAt || sq.totals?.invoicedAt || localMatch.invoicedAt || localMatch.totals?.invoicedAt || null,
+                sapClosedAt: sq.sapClosedAt || sq.totals?.sapClosedAt || localMatch.sapClosedAt || localMatch.totals?.sapClosedAt || null,
+                cancelledAt: sq.cancelledAt || sq.totals?.cancelledAt || localMatch.cancelledAt || localMatch.totals?.cancelledAt || null,
                 products: (sq.products && sq.products.length > 0) ? sq.products : (localMatch.products || localMatch.items || []),
                 client: sq.client || localMatch.client,
                 clientName: sq.clientName || localMatch.clientName,
-                totals: (sq.totals && sq.totals.grandTotalUSD) ? sq.totals : localMatch.totals,
+                totals: (sq.totals && (sq.totals.grandTotalUSD || sq.totals.grandTotal || sq.totals.invoicedAt || sq.totals.sapUpdateDateVerified)) ? sq.totals : localMatch.totals,
                 deliveryForm: cleanDeliveryForm(sq.deliveryForm || localMatch.deliveryForm || sq.selectedDeliveryForm || localMatch.selectedDeliveryForm || null),
                 selectedDeliveryForm: cleanDeliveryForm(sq.selectedDeliveryForm || localMatch.selectedDeliveryForm || sq.deliveryForm || localMatch.deliveryForm || null),
                 transport: sq.transport || localMatch.transport || sq.selectedTransport || localMatch.selectedTransport || null,

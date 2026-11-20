@@ -170,6 +170,8 @@ function isGenericSystemActor(name) {
   return (
     !norm ||
     norm === "sistema" ||
+    norm === "sistema sap b1" ||
+    norm.startsWith("sistema sap") ||
     norm === "sap service layer" ||
     norm === "sap" ||
     norm === "sap b1" ||
@@ -237,11 +239,16 @@ export function extractQuoteApprovalAudit(quote = {}) {
   const realLogs = logs.filter((entry) => entry && typeof entry === "object" && !isSyntheticSapDirectLog(entry));
   const sortedRealLogs = [...realLogs].sort((a, b) => getEntryTimeMs(b) - getEntryTimeMs(a));
 
-  const emittedLog = sortedRealLogs.find((l) =>
-    ["EMITIDO", "EMITIDO_SAP", "PEDIDO_EMITIDO", "FACTURADO"].includes(
-      String(l.status || "").toUpperCase().trim()
-    )
-  );
+  const emittedLog =
+    sortedRealLogs.find((l) =>
+      ["EMITIDO", "EMITIDO_SAP", "PEDIDO_EMITIDO"].includes(
+        String(l.status || "").toUpperCase().trim()
+      )
+    ) ||
+    sortedRealLogs.find((l) =>
+      String(l.status || "").toUpperCase().trim() === "FACTURADO" &&
+      Boolean(extractActorFromLogEntry(l).name)
+    );
   const approvedLog = sortedRealLogs.find((l) =>
     ["APROBADO", "APROBADO_COMERCIAL"].includes(
       String(l.status || "").toUpperCase().trim()
