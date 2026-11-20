@@ -13,6 +13,11 @@ async function loadHistoryUtils() {
   return import(pathToFileURL(full).href);
 }
 
+async function loadNotificationUtils() {
+  const full = path.resolve(__dirname, '../src/features/quotes/utils/notificationUtils.js');
+  return import(pathToFileURL(full).href);
+}
+
 test('isQuoteOperationalDaily muestra facturados el mismo día y los oculta automáticamente al día siguiente', async () => {
   const { isQuoteOperationalDaily } = await loadDailyFilter();
 
@@ -109,4 +114,33 @@ test('extractQuoteApprovalAudit ignora Sistema SAP B1 como aprobador y respeta a
   });
   assert.equal(realAudit.approvedBy, 'Juan');
   assert.equal(realAudit.emittedBy, 'Juan');
+});
+
+test('mergeServerAndLocalNotifications purga alertas locales ya emitidas en servidor y distingue Hoy vs Ayer', async () => {
+  const { mergeServerAndLocalNotifications, formatNotificationTimeAgo } = await loadNotificationUtils();
+  const nowMs = new Date('2026-11-20T08:35:00.000-05:00').getTime();
+
+  const rawLocal = [
+    { id: 'N-80', quoteId: 'COT-WEB-000080', createdAt: '2026-11-19T12:45:00.000-05:00' },
+    { id: 'N-81', quoteId: 'COT-WEB-000081', createdAt: '2026-11-20T08:19:00.000-05:00' },
+    { id: 'N-82', quoteId: 'COT-WEB-000082', createdAt: '2026-11-20T08:34:55.000-05:00' }, // recién llegada (5s)
+  ];
+  // Servidor solo devuelve COT-WEB-000081 porque COT-WEB-000080 ya se emitió como COT-022428
+  const serverNotifs = [
+    { id: 810, quoteId: 'COT-WEB-000081', createdAt: '2026-11-20T08:19:00.000-05:00' },
+  ];
+
+  const { freshLocal, didPruneLocal } = mergeServerAndLocalNotifications(rawLocal, serverNotifs, { nowMs });
+  assert.equal(didPruneLocal, true);
+  assert.deepEqual(
+    freshLocal.map((n) => n.quoteId),
+    ['COT-WEB-000081', 'COT-WEB-000082']
+  );
+
+  const nowDate = new Date('2026-11-20T08:35:00.000-05:00');
+  const yesterdayLabel = formatNotificationTimeAgo('2026-11-19T12:45:00.000-05:00', nowDate);
+  assert.ok(yesterdayLabel.startsWith('Ayer a las'));
+
+  const todayLabel = formatNotificationTimeAgo('2026-11-20T07:20:00.000-05:00', nowDate);
+  assert.ok(todayLabel.startsWith('Hoy a las'));
 });
