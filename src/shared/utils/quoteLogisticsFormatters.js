@@ -210,6 +210,179 @@ export const formatTransportAddress = (transport, deliveryForm, fallbackAddress 
   return "-";
 };
 
+export const PERU_DEPARTMENT_NAMES = {
+  "01": "AMAZONAS",
+  "02": "ÁNCASH",
+  "03": "APURÍMAC",
+  "04": "AREQUIPA",
+  "05": "AYACUCHO",
+  "06": "CAJAMARCA",
+  "07": "CALLAO",
+  "08": "CUSCO",
+  "09": "HUANCAVELICA",
+  "10": "HUÁNUCO",
+  "11": "ICA",
+  "12": "JUNÍN",
+  "13": "LA LIBERTAD",
+  "14": "LAMBAYEQUE",
+  "15": "LIMA",
+  "16": "LORETO",
+  "17": "MADRE DE DIOS",
+  "18": "MOQUEGUA",
+  "19": "PASCO",
+  "20": "PIURA",
+  "21": "PUNO",
+  "22": "SAN MARTÍN",
+  "23": "TACNA",
+  "24": "TUMBES",
+  "25": "UCAYALI",
+};
+
+const normalizeGeoToken = (val) =>
+  String(val || "")
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+export const resolvePeruDepartmentName = (stateVal) => {
+  if (stateVal === null || stateVal === undefined) return "";
+  const raw = String(stateVal).trim();
+  if (!raw) return "";
+  const padded = /^\d+$/.test(raw) ? raw.padStart(2, "0") : raw;
+  if (PERU_DEPARTMENT_NAMES[padded]) return PERU_DEPARTMENT_NAMES[padded];
+  return raw.toUpperCase();
+};
+
+/**
+ * Construye la dirección completa de un cliente o punto SAP incluyendo:
+ * Calle/Dirección + Distrito (County) + Provincia (City) + Departamento (State/BillToState).
+ * Nunca modifica el campo crudo `Address` usado para enviar `BillToStreet`/`ShipToStreet` a SAP.
+ */
+export const formatClientFullAddress = (clientOrAddr, fallbackAddress = "") => {
+  if (!clientOrAddr || typeof clientOrAddr !== "object") {
+    return String(fallbackAddress || "").trim();
+  }
+
+  const raw =
+    clientOrAddr.raw && typeof clientOrAddr.raw === "object"
+      ? clientOrAddr.raw
+      : clientOrAddr;
+
+  const bpAddresses =
+    clientOrAddr.BPAddresses ||
+    clientOrAddr.bpAddresses ||
+    clientOrAddr.addresses ||
+    raw.BPAddresses ||
+    raw.bpAddresses ||
+    raw.addresses ||
+    [];
+
+  const isSingleBpAddr =
+    !Array.isArray(bpAddresses) ||
+    (bpAddresses.length === 0 &&
+      (clientOrAddr.Street !== undefined ||
+        clientOrAddr.AddressType !== undefined ||
+        clientOrAddr.AddressName !== undefined));
+
+  let fiscalEntry = null;
+  if (Array.isArray(bpAddresses) && bpAddresses.length > 0 && !isSingleBpAddr) {
+    const billToDefault = String(
+      clientOrAddr.BillToDefault || raw.BillToDefault || clientOrAddr.BillToDef || raw.BillToDef || ""
+    )
+      .trim()
+      .toUpperCase();
+
+    fiscalEntry =
+      bpAddresses.find(
+        (a) =>
+          (a.AddressType === "bo_BillTo" || a.AdresType === "B") &&
+          (!billToDefault || String(a.AddressName || a.Address || "").trim().toUpperCase() === billToDefault)
+      ) ||
+      bpAddresses.find((a) => a.AddressType === "bo_BillTo" || a.AdresType === "B") ||
+      bpAddresses.find((a) => String(a.AddressName || a.Address || "").trim().toUpperCase() === "FISCAL") ||
+      bpAddresses[0];
+  }
+
+  const street = String(
+    clientOrAddr.Street ||
+      fiscalEntry?.Street ||
+      clientOrAddr.Address ||
+      clientOrAddr.address ||
+      clientOrAddr.clientAddress ||
+      raw.Address ||
+      raw.address ||
+      fallbackAddress ||
+      ""
+  ).trim();
+
+  const block = String(
+    clientOrAddr.Block || fiscalEntry?.Block || raw.Block || ""
+  ).trim();
+
+  const county = String(
+    clientOrAddr.County ||
+      clientOrAddr.county ||
+      clientOrAddr.district ||
+      clientOrAddr.District ||
+      fiscalEntry?.County ||
+      raw.County ||
+      clientOrAddr.MailCounty ||
+      raw.MailCounty ||
+      ""
+  ).trim();
+
+  const city = String(
+    clientOrAddr.City ||
+      clientOrAddr.city ||
+      clientOrAddr.province ||
+      clientOrAddr.Province ||
+      fiscalEntry?.City ||
+      raw.City ||
+      clientOrAddr.MailCity ||
+      raw.MailCity ||
+      ""
+  ).trim();
+
+  const stateCodeOrName =
+    clientOrAddr.State ??
+    clientOrAddr.state ??
+    clientOrAddr.department ??
+    clientOrAddr.Department ??
+    fiscalEntry?.State ??
+    clientOrAddr.BillToState ??
+    raw.BillToState ??
+    clientOrAddr.State1 ??
+    raw.State1 ??
+    clientOrAddr.ShipToState ??
+    raw.ShipToState ??
+    "";
+
+  const department = resolvePeruDepartmentName(stateCodeOrName);
+
+  const geoParts = [];
+  const seenGeo = new Set();
+  for (const part of [block, county, city, department]) {
+    if (!part) continue;
+    const norm = normalizeGeoToken(part);
+    if (!norm || seenGeo.has(norm)) continue;
+    seenGeo.add(norm);
+    geoParts.push(part.toUpperCase());
+  }
+
+  if (!street) return geoParts.join(" - ");
+  if (geoParts.length === 0) return street;
+
+  const geoSuffix = geoParts.join(" - ");
+  const normStreet = normalizeGeoToken(street);
+  const normSuffix = normalizeGeoToken(geoSuffix);
+  if (normSuffix && normStreet.endsWith(normSuffix)) {
+    return street;
+  }
+
+  return `${street} — ${geoSuffix}`;
+};
+
 export const formatDeliveryPoint = (point, clientAddress) => {
   if (!point) return clientAddress || "Dirección Principal";
 
@@ -225,14 +398,15 @@ export const formatDeliveryPoint = (point, clientAddress) => {
 
   if (typeof parsed === "object" && parsed !== null) {
     const street = parsed.Street || parsed.address || parsed.label || "";
+    const fullStreet = formatClientFullAddress(parsed, street) || street;
     let name = parsed.AddressName || parsed.name || "";
     if (name.toUpperCase() === "DESTINO NUEVO" || name.toUpperCase() === "NUEVO DESTINO") {
       name = parsed.City || parsed.County || "";
     }
-    if (street && name && street !== name) {
-      return `${name} - ${street}`;
+    if (fullStreet && name && fullStreet !== name) {
+      return `${name} - ${fullStreet}`;
     }
-    return street || name || clientAddress || "Dirección Principal";
+    return fullStreet || name || clientAddress || "Dirección Principal";
   }
 
   const str = String(parsed).trim();

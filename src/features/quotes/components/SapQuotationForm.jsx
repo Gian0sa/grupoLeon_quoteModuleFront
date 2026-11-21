@@ -9,9 +9,10 @@ import {
 import {
   FileText, Truck, CreditCard, Paperclip, ChevronDown, CheckCircle2,
   Save, Copy, RefreshCw, Shield, AlertTriangle, Printer, Lock, Edit3,
-  MessageSquare, XCircle, Send, Zap, Code2, Sparkles, Check, Building2, User, ArrowRight
+  MessageSquare, XCircle, Send, Zap, Code2, Sparkles, Check, Building2, User, UserPlus, ArrowRight
 } from "lucide-react";
 import ClientAutocomplete from "./ClientAutocomplete";
+import AddContactPersonModal from "./AddContactPersonModal";
 import SapItemGrid from "./SapItemGrid";
 import { NewSellTerms } from "./NewSellTerms";
 import { SapQuoteDocumentModal } from "./SapQuoteDocumentModal";
@@ -34,6 +35,7 @@ import {
   FREE_TRANSFER_PAYMENT_TYPE,
   DEFAULT_FREE_TRANSFER_DELIVERY_FORM,
   isFreeTransferPaymentType,
+  formatClientFullAddress,
 } from "../../../shared/utils/quoteLogisticsFormatters";
 import { isPickupInStoreForm } from "./NewSellTerms";
 import { useIsAdmin, useHasAccess, checkIsAdmin, useCanEmitTaxOnlyToSap } from "../../../shared/utils/permissions";
@@ -205,6 +207,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   const [docNumber, setDocNumber] = useState("");
   const [isObserveModalOpen, setIsObserveModalOpen] = useState(false);
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
+  const [isAddContactModalOpen, setIsAddContactModalOpen] = useState(false);
   const isExplicitlySubmittingRef = useRef(false);
   const isExplicitlyClearedRef = useRef(false);
   const [lastAutoSavedTime, setLastAutoSavedTime] = useState(null);
@@ -394,10 +397,18 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     if (!clientCardCode) return;
     const rawLimit = Number(client?.U_TQC_LMCRED ?? client?.raw?.U_TQC_LMCRED ?? 0);
     const rawCommitment = Number(client?.MaxCommitment ?? client?.raw?.MaxCommitment ?? 0);
+    const hasGeoDetails = Boolean(
+      client?.County ||
+      client?.City ||
+      client?.raw?.County ||
+      client?.raw?.City ||
+      (Array.isArray(client?.raw?.BPAddresses) && client.raw.BPAddresses.length > 0) ||
+      (Array.isArray(client?.BPAddresses) && client.BPAddresses.length > 0)
+    );
     const alreadyFetched = lastFetchedCreditRef.current === clientCardCode;
 
-    if ((rawLimit > 0 || rawCommitment > 0) && client?.creditChecked) return;
-    if (alreadyFetched && client?.creditChecked) return;
+    if ((rawLimit > 0 || rawCommitment > 0) && client?.creditChecked && hasGeoDetails) return;
+    if (alreadyFetched && client?.creditChecked && hasGeoDetails) return;
 
     lastFetchedCreditRef.current = clientCardCode;
     fetchClientByCode(clientCardCode).then((fullData) => {
@@ -726,12 +737,14 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       const key = `${name}_${street}`.toLowerCase();
       if ((name || street) && !seen.has(key)) {
         seen.add(key);
+        const fullPointAddress = formatClientFullAddress(p, street) || street;
         uniquePoints.push({
           ...p,
           AddressName: name || "SUCURSAL",
           Street: street,
           Address: street,
-          label: street ? (name ? `${name} - ${street}` : street) : name,
+          fullAddress: fullPointAddress,
+          label: fullPointAddress ? (name ? `${name} - ${fullPointAddress}` : fullPointAddress) : name,
         });
       }
     });
@@ -3031,10 +3044,43 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   const renderDocParamsGrid = (isMobile = false) => (
     <Grid templateColumns="repeat(2, 1fr)" gap={{ base: 2, sm: 2.5 }}>
       {/* 1. Persona de Contacto */}
-      <FormControl>
-        <FormLabel fontSize={{ base: "11px", md: "xs" }} fontWeight="700" color="gray.700" mb={{ base: 0.5, md: 1 }}>
-          Persona de Contacto {isSellerFieldsLocked && "🔒"}
-        </FormLabel>
+      <FormControl minW="0">
+        <Flex justify="space-between" align="center" gap={1} minH={{ base: "20px", md: "22px" }} mb={{ base: 0.5, md: 1 }}>
+          <FormLabel
+            fontSize={{ base: "11px", md: "xs" }}
+            fontWeight="700"
+            color="gray.700"
+            mb={0}
+            mr={0}
+            whiteSpace="nowrap"
+            overflow="hidden"
+            textOverflow="ellipsis"
+          >
+            <Box as="span" display={{ base: "none", sm: "inline" }}>Persona de </Box>
+            Contacto {isSellerFieldsLocked && "🔒"}
+          </FormLabel>
+          {client?.CardCode && !isSellerFieldsLocked && (
+            <Button
+              size="xs"
+              h="18px"
+              minH="18px"
+              px={1.5}
+              fontSize="10px"
+              fontWeight="800"
+              borderRadius="full"
+              bg="#dcfce7"
+              color="#166534"
+              _hover={{ bg: "#bbf7d0" }}
+              flexShrink={0}
+              gap={1}
+              onClick={() => setIsAddContactModalOpen(true)}
+              title="Registrar nueva persona de contacto en SAP"
+            >
+              <UserPlus size={11} style={{ flexShrink: 0 }} />
+              <Box as="span" ml={0.5}>Nuevo</Box>
+            </Button>
+          )}
+        </Flex>
         {contactList.length > 0 ? (
           <ChakraSelect
             size={{ base: "xs", md: "sm" }}
@@ -3068,17 +3114,17 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       </FormControl>
 
       {/* 2. Moneda */}
-      <FormControl>
-        <HStack justify="space-between" mb={{ base: 0.5, md: 1 }}>
-          <FormLabel fontSize={{ base: "11px", md: "xs" }} fontWeight="700" color="gray.700" mb={0}>
+      <FormControl minW="0">
+        <Flex justify="space-between" align="center" gap={1} minH={{ base: "20px", md: "22px" }} mb={{ base: 0.5, md: 1 }}>
+          <FormLabel fontSize={{ base: "11px", md: "xs" }} fontWeight="700" color="gray.700" mb={0} mr={0} whiteSpace="nowrap">
             Moneda {!canChangeCurrency && "🔒"}
           </FormLabel>
           {!canChangeCurrency && (
-            <Badge colorScheme="gray" fontSize={{ base: "8px", md: "9px" }} px={1} borderRadius="md" title="Requiere autorización para cotizar en Soles">
+            <Badge colorScheme="gray" fontSize={{ base: "8px", md: "9px" }} px={1} borderRadius="md" flexShrink={0} title="Requiere autorización para cotizar en Soles">
               BLOQUEADO
             </Badge>
           )}
-        </HStack>
+        </Flex>
         <ChakraSelect
           size={{ base: "xs", md: "sm" }}
           borderRadius="md"
@@ -3393,9 +3439,9 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                     <Text fontSize="0.75rem" color="gray.500" fontWeight="600" mt={0.5}>
                       Documento / Código: {client?.CardCode || client?.id || "N/A"}
                     </Text>
-                    {client?.Address && (
+                    {(client?.fullAddress || client?.Address) && (
                       <Text fontSize="0.75rem" color="gray.500" fontWeight="500" wordBreak="break-word">
-                        Dirección: {client.Address}
+                        Dirección: {client?.fullAddress || formatClientFullAddress(client) || client.Address}
                       </Text>
                     )}
                   </Box>
@@ -4821,6 +4867,50 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         onClose={() => setIsRejectModalOpen(false)}
         quoteId={quoteId || docNumber}
         onConfirmReject={(qId, reason) => handleRejectFromForm(qId, reason)}
+      />
+
+      {/* Modal para agregar nueva Persona de Contacto en SAP B1 vía Service Layer */}
+      <AddContactPersonModal
+        isOpen={isAddContactModalOpen}
+        onClose={() => setIsAddContactModalOpen(false)}
+        client={client}
+        onSuccess={(result) => {
+          const newContactName = result?.contact?.Name || result?.contactPerson || "";
+          const updatedContacts = Array.isArray(result?.contactEmployees)
+            ? result.contactEmployees
+            : client?.raw?.ContactEmployees || [];
+          if (client) {
+            setClient(
+              normalizeQuoteClient({
+                ...client,
+                Phone1: result?.Phone1 ?? client.Phone1,
+                Cellular: result?.Cellular ?? client.Cellular,
+                EmailAddress: result?.EmailAddress ?? client.EmailAddress,
+                ContactEmployees: updatedContacts,
+                ContactPerson: client.ContactPerson || result?.contactPerson || newContactName,
+                raw: {
+                  ...(client.raw || {}),
+                  Phone1: result?.Phone1 ?? client.raw?.Phone1,
+                  Cellular: result?.Cellular ?? client.raw?.Cellular,
+                  EmailAddress: result?.EmailAddress ?? client.raw?.EmailAddress,
+                  ContactEmployees: updatedContacts,
+                  ContactPerson: client.raw?.ContactPerson || result?.contactPerson || newContactName,
+                },
+              })
+            );
+          }
+          if (newContactName && typeof setContactPerson === "function") {
+            setContactPerson(newContactName);
+          }
+          queryClient.invalidateQueries({ queryKey: ["client"] });
+          toast({
+            title: result?.alreadyExists ? "Contacto ya registrado" : "Contacto guardado en SAP",
+            description: result?.message || `${newContactName} seleccionado para esta cotización.`,
+            status: result?.alreadyExists ? "info" : "success",
+            duration: 3500,
+            isClosable: true,
+          });
+        }}
       />
 
       {/* MODAL DE ANIMACIÓN DE CARGA AL GUARDAR Y ENVIAR A VALIDACIÓN (MINIATURA) */}

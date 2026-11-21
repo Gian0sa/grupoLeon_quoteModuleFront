@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { formatClientFullAddress } from '../../../shared/utils/quoteLogisticsFormatters';
 
 const isMeaningfulValue = (value) => {
   if (value === undefined || value === null) return false;
@@ -201,12 +202,18 @@ export const normalizeQuoteClient = (clientData) => {
   const rawOpenOrders = Number(clientData.OpenOrdersBalance ?? raw.OpenOrdersBalance ?? 0);
   const rawOpenDeliveries = Number(clientData.OpenDeliveryNotesBalance ?? raw.OpenDeliveryNotesBalance ?? 0);
 
+  const fullAddress = formatClientFullAddress(
+    { ...raw, ...clientData, Address: address },
+    address
+  ) || address;
+
   return {
     ...clientData,
     CardCode: normalizedCardCode,
     LicTradNum: documentNumber,
     CardName: cardName,
     Address: address,
+    fullAddress,
     clientRuc: documentNumber,
     clientDocument: documentNumber,
     U_TQC_LMCRED: rawCreditLimit,

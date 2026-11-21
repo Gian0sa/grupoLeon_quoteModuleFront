@@ -20,6 +20,14 @@ export const createClient = async (client) => {
   return response.data;
 }
 
+export const addClientContact = async (cardCode, contactData) => {
+  const response = await axiosInstance.post(
+    `/quoteModule/clients/${encodeURIComponent(cardCode)}/contacts`,
+    contactData
+  );
+  return response.data;
+}
+
 export const fetchSapStates = async () => {
   try {
     const response = await axiosInstance.get(`/quoteModule/clients/states`);

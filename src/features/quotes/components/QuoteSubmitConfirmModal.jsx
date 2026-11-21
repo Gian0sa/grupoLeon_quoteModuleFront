@@ -9,6 +9,7 @@ import {
   formatDeliveryForm,
   formatTransportName,
   formatPaymentTerms,
+  formatClientFullAddress,
   isFreeTransferPaymentType,
   FREE_TRANSFER_PAYMENT_TYPE,
 } from "../../../shared/utils/quoteLogisticsFormatters";
@@ -39,7 +40,7 @@ export default function QuoteSubmitConfirmModal({
   const rawRuc = client?.LicTradNum || client?.raw?.LicTradNum || client?.FederalTaxID || client?.raw?.FederalTaxID || client?.CardCode || client?.cardCode || "";
   const cleanRuc = formatRucOrDni(rawRuc);
   const rucLabel = cleanRuc.length === 8 ? "DNI" : "RUC";
-  const address = client?.Address || client?.raw?.Address || client?.address || "-";
+  const address = formatClientFullAddress(client) || client?.Address || client?.raw?.Address || client?.address || "-";
 
   const totals = quote.totals || calculateQuoteTotals(products, 3.76);
   const itemCount = products.length;

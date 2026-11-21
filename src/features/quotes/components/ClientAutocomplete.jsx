@@ -8,6 +8,7 @@ import { adaptClientFromApi } from "../../clients/adapters/clientAdapter";
 import { fetchClientByCode } from "../../clients/services/clientService";
 import { useDebounce } from "../../../shared/hooks/useDebounce";
 import { normalizeQuoteClient } from "../stores/quoteStore";
+import { formatClientFullAddress } from "../../../shared/utils/quoteLogisticsFormatters";
 import CreateBusinessPartnerModal from "../../clients/components/CreateBusinessPartnerModal";
 
 export default function ClientAutocomplete({ client, setClient, debtSummary, onClear }) {
@@ -206,9 +207,9 @@ export default function ClientAutocomplete({ client, setClient, debtSummary, onC
           </Text>
         )}
 
-        {normalizedClient.Address && (
-          <Text fontSize="10.5px" color="gray.500" wordBreak="break-word" title={normalizedClient.Address} isTruncated>
-            <strong style={{ color: "#334155" }}>Dirección:</strong> {normalizedClient.Address}
+        {(normalizedClient.fullAddress || normalizedClient.Address) && (
+          <Text fontSize="10.5px" color="gray.500" wordBreak="break-word" whiteSpace="normal">
+            <strong style={{ color: "#334155" }}>Dirección:</strong> {normalizedClient.fullAddress || normalizedClient.Address}
           </Text>
         )}
 
@@ -369,7 +370,7 @@ export default function ClientAutocomplete({ client, setClient, debtSummary, onC
             Código: {dataByCode.CardCode || dataByCode.id}
           </Text>
           <Text fontSize="0.7rem" color="gray.500" wordBreak="break-word">
-            {dataByCode.Address || dataByCode.address || "Sin dirección registrada"}
+            {formatClientFullAddress(dataByCode) || dataByCode.Address || dataByCode.address || "Sin dirección registrada"}
           </Text>
         </Box>
       )}
@@ -381,7 +382,7 @@ export default function ClientAutocomplete({ client, setClient, debtSummary, onC
             const adapted = adaptClientFromApi(clientData);
             const cardCode = adapted.id || clientData.CardCode || clientData.cardCode;
             const cardName = adapted.firstName || clientData.CardName || clientData.clientName;
-            const address = adapted.address || clientData.Address || clientData.address || "Sin dirección";
+            const address = adapted.fullAddress || adapted.address || clientData.Address || clientData.address || "Sin dirección";
 
             return (
               <Box
