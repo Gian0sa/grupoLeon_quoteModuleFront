@@ -1,8 +1,11 @@
+import { formatClientFullAddress } from "../../../shared/utils/quoteLogisticsFormatters";
+
 export function adaptBusinessPartner(data) {
   return {
     cardCode: data.CardCode,
     cardName: data.CardName,
-    address: data.Address
+    address: data.Address,
+    fullAddress: formatClientFullAddress(data) || data.fullAddress || data.Address || "",
   };
 }
 

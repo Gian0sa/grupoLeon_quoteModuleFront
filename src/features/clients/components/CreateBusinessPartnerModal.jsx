@@ -862,7 +862,14 @@ export default function CreateBusinessPartnerModal({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} size={{ base: "full", md: "5xl" }} scrollBehavior="inside">
+    <Modal
+      isOpen={isOpen}
+      onClose={handleClose}
+      closeOnOverlayClick={false}
+      closeOnEsc={false}
+      size={{ base: "full", md: "5xl" }}
+      scrollBehavior="inside"
+    >
       <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" />
       <ModalContent
         borderRadius={{ base: "none", md: "2xl" }}

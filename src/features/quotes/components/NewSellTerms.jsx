@@ -836,7 +836,7 @@ export function NewSellTerms({
           </Flex>
           <Text fontSize="xs" color="gray.700" wordBreak="break-word"><strong>Código:</strong> {clientAdapted.cardCode}</Text>
           <Text fontSize="xs" color="gray.700" wordBreak="break-word"><strong>Nombre:</strong> {clientAdapted.cardName}</Text>
-          <Text fontSize="xs" color="gray.700" wordBreak="break-word"><strong>Dirección Fiscal:</strong> {clientAdapted.address}</Text>
+          <Text fontSize="xs" color="gray.700" wordBreak="break-word"><strong>Dirección Fiscal:</strong> {clientAdapted.fullAddress || clientAdapted.address}</Text>
         </Box>
       ) : (
         <Box p={{ base: 2.5, sm: 3.5 }} bg="gray.50" borderRadius="xl" border="1.5px dashed" borderColor="gray.300">
@@ -1372,6 +1372,8 @@ export function NewSellTerms({
       <Modal
         isOpen={isAddressModalOpen}
         onClose={onCloseAddressModal}
+        closeOnOverlayClick={false}
+        closeOnEsc={false}
         size={{ base: "full", sm: "md" }}
         isCentered
         scrollBehavior="inside"

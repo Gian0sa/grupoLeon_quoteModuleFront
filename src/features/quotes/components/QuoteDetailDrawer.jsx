@@ -112,6 +112,7 @@ import {
   formatTransportName,
   formatTransportAddress,
   formatDeliveryPoint,
+  formatClientFullAddress,
   formatPaymentTerms,
   formatSunatOp,
   cleanSellerName,
@@ -873,7 +874,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
   const client = effectiveQuote.client || {};
   const clientName = cleanClientName(effectiveQuote);
   const clientRuc = effectiveQuote.clientRuc || effectiveQuote.clientDocument || client.LicTradNum || client.FederalTaxID || client.clientRuc || client.CardCode || "—";
-  const clientAddress = effectiveQuote.clientAddress || client.Address || client.address || "—";
+  const clientAddress = formatClientFullAddress(client, effectiveQuote.clientAddress) || effectiveQuote.clientAddress || client.Address || client.address || "—";
   const sellerName = formatQuoteSellerName(effectiveQuote, sellersList);
   const isApprovedQuote = ["APROBADO", "APROBADO_COMERCIAL", "EMITIDO", "EMITIDO_SAP", "FACTURADO", "PEDIDO_EMITIDO", "COMPLETADO"].includes(String(status).toUpperCase());
   const isPendingGerencia = String(status).toUpperCase() === "PENDIENTE_GERENCIA";
