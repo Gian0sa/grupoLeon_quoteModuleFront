@@ -274,4 +274,25 @@ export const getSapStatusService = async () => {
   }
 };
 
+const sapWarmupLastTriggeredByUser = new Map();
+const SAP_WARMUP_CLIENT_THROTTLE_MS = 10 * 60 * 1000;
+
+export const warmUpUserSapSession = async (userKey = "default") => {
+  const normalizedKey = String(userKey || "default").trim().toLowerCase() || "default";
+  const now = Date.now();
+  const lastTriggeredAt = sapWarmupLastTriggeredByUser.get(normalizedKey) || 0;
+  if (now - lastTriggeredAt < SAP_WARMUP_CLIENT_THROTTLE_MS) {
+    return { skipped: true, throttled: true };
+  }
+  sapWarmupLastTriggeredByUser.set(normalizedKey, now);
+  try {
+    const response = await axiosInstance.post('/quoteModule/quotes/sap/warmup');
+    return response.data;
+  } catch (err) {
+    // No bloquear la UI si el warm-up de respaldo falla; se reintentará al siguiente ingreso tras limpiar throttle si fue red
+    sapWarmupLastTriggeredByUser.delete(normalizedKey);
+    return { success: false, error: err?.message };
+  }
+};
+
   

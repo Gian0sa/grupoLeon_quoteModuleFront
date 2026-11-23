@@ -472,6 +472,34 @@ export function HeaderThemeManagerModal({ isOpen, onClose }) {
                             bg={item.circleBg}
                             opacity={0.85}
                           />
+                          {item.decorationVariant === "christmas" && (
+                            <Box
+                              position="absolute"
+                              inset={0}
+                              pointerEvents="none"
+                            >
+                              <Box
+                                position="absolute"
+                                top="4px"
+                                left="4px"
+                                w="6px"
+                                h="6px"
+                                borderRadius="full"
+                                bg="#EF4444"
+                                boxShadow="0 0 6px #FCA5A5"
+                              />
+                              <Box
+                                position="absolute"
+                                bottom="4px"
+                                right="5px"
+                                w="5px"
+                                h="5px"
+                                borderRadius="full"
+                                bg="#FDE047"
+                                boxShadow="0 0 6px #FDE047"
+                              />
+                            </Box>
+                          )}
                           {isSelected && (
                             <Flex
                               position="absolute"

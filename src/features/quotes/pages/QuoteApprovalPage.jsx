@@ -87,7 +87,7 @@ import { calculateQuoteTotals, getQuoteTotalUSD, formatThousands } from "../../.
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { useGetQuotes } from "../hooks/queries/quotesQueries";
-import { updateQuote, deleteQuote, getQuotes } from "../services/quoteService";
+import { updateQuote, deleteQuote, getQuotes, warmUpUserSapSession } from "../services/quoteService";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { cleanSellerName, cleanClientName, formatQuoteSellerName, SALES_PERSONS_MAP } from "../../../shared/utils/quoteLogisticsFormatters";
@@ -698,6 +698,13 @@ export function QuoteApprovalPage() {
   );
   const activeCurrentUsername = (authUsername || localStorage.getItem("username") || "").toLowerCase().trim();
   const activeCurrentUserId = authUserId || localStorage.getItem("userId");
+
+  // 🔥 Precalienta la sesión personal SAP B1 apenas Facturación/Admin ingresa al módulo
+  useEffect(() => {
+    if (!isAdminUser) return;
+    const warmKey = `${activeCurrentUserId || ""}:${activeCurrentUsername || ""}`;
+    warmUpUserSapSession(warmKey);
+  }, [isAdminUser, activeCurrentUserId, activeCurrentUsername]);
 
   const { data: serverQuotes, isLoading: isServerLoading, refetch: refetchServerQuotes } = useGetQuotes({
     limit: 50,

@@ -22,7 +22,7 @@ import { ObserveReasonModal } from "./ObserveReasonModal";
 import { RejectReasonModal } from "./RejectReasonModal";
 import { OrderTimelineBar, OrderChecklist } from "./OrderProgressTracker";
 import { useQueryClient } from "@tanstack/react-query";
-import { createQuote, updateQuote, getNextDocNumber } from "../services/quoteService";
+import { createQuote, updateQuote, getNextDocNumber, warmUpUserSapSession } from "../services/quoteService";
 import { useQuoteStore, normalizeQuoteClient } from "../stores/quoteStore";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { useExchangeRate } from "../../dashboard/hooks/queries/dashboardQueries";
@@ -195,6 +195,13 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     (isBilling && (hasBillingApprovalAccess || hasSapCreateAccess)) ||
     (!isSeller && (hasBillingApprovalAccess || (roleUpper === "SUPERVISOR" && hasSapCreateAccess)))
   );
+
+  // 🔥 Precalienta sesión personal SAP B1 si Facturación/Admin entra directo al formulario de emisión
+  useEffect(() => {
+    if (!canDirectEmitSap) return;
+    const warmKey = `${userProfile?.id || localStorage.getItem("userId") || ""}:${sessionUsername || ""}`;
+    warmUpUserSapSession(warmKey);
+  }, [canDirectEmitSap, userProfile?.id, sessionUsername]);
 
   // 🛡️ Permisos operativos para áreas financieras/logísticas (Facturación y Supervisión)
   const canManageFinance = isAdmin || isBilling || roleUpper === "FACTURACION" || roleUpper === "SUPERVISOR";

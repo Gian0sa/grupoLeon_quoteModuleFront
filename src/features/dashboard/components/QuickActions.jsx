@@ -110,18 +110,18 @@ const THEME_ACTION_PALETTES = {
       receivable: { color: "#F43F5E", bgGlow: "rgba(244, 63, 94, 0.22)", borderColor: "rgba(244, 63, 94, 0.40)" },
     },
   },
-  gold_amber: {
-    pillBg: { base: "rgba(255, 255, 255, 0.22)", md: "rgba(255, 255, 255, 0.20)" },
-    pillBorder: "rgba(255, 255, 255, 0.28)",
+  christmas_green: {
+    pillBg: { base: "rgba(255, 255, 255, 0.20)", md: "rgba(255, 255, 255, 0.18)" },
+    pillBorder: "rgba(253, 224, 71, 0.34)",
     pillShadow: "0 4px 18px rgba(0, 0, 0, 0.18)",
     pillHoverBg: "rgba(255, 255, 255, 0.28)",
-    pillHoverBorder: "rgba(255, 255, 255, 0.55)",
+    pillHoverBorder: "rgba(253, 224, 71, 0.65)",
     pillHoverShadow: "0 8px 24px rgba(0, 0, 0, 0.26)",
     actions: {
-      quotes: { color: "#FDE047", bgGlow: "rgba(253, 224, 71, 0.22)", borderColor: "rgba(253, 224, 71, 0.40)" },
-      prices: { color: "#A3E635", bgGlow: "rgba(163, 230, 53, 0.22)", borderColor: "rgba(163, 230, 53, 0.40)" },
-      orders: { color: "#38BDF8", bgGlow: "rgba(56, 189, 248, 0.22)", borderColor: "rgba(56, 189, 248, 0.40)" },
-      receivable: { color: "#FB7185", bgGlow: "rgba(251, 113, 133, 0.22)", borderColor: "rgba(251, 113, 133, 0.40)" },
+      quotes: { color: "#FDE047", bgGlow: "rgba(253, 224, 71, 0.24)", borderColor: "rgba(253, 224, 71, 0.44)" },
+      prices: { color: "#4ADE80", bgGlow: "rgba(74, 222, 128, 0.22)", borderColor: "rgba(74, 222, 128, 0.42)" },
+      orders: { color: "#7DD3FC", bgGlow: "rgba(125, 211, 252, 0.22)", borderColor: "rgba(125, 211, 252, 0.42)" },
+      receivable: { color: "#FB7185", bgGlow: "rgba(251, 113, 133, 0.24)", borderColor: "rgba(251, 113, 133, 0.44)" },
     },
   },
   emerald_mint: {
