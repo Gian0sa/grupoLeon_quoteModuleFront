@@ -16,7 +16,7 @@ import {
   History,
 } from "lucide-react";
 
-export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
+export const DebtCard = React.memo(function DebtCard({ debt, onViewInvoices, onViewHistory }) {
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
   // Soporte para ambas monedas separadas (saldoPEN/saldoUSD) y el modo legado (saldoPrincipal)
   const saldoPEN = debt.saldoPEN ?? (debt.monedaPrincipal === "PEN" ? debt.saldoPrincipal : 0) ?? 0;
@@ -693,12 +693,14 @@ export function DebtCard({ debt, onViewInvoices, onViewHistory }) {
         </div>
       </div>
 
-      {/* Modal de Envío por WhatsApp y Enlace Web */}
-      <WhatsAppStatementModal
-        isOpen={isWhatsAppModalOpen}
-        onClose={() => setIsWhatsAppModalOpen(false)}
-        debt={debt}
-      />
+      {/* Modal de Envío por WhatsApp y Enlace Web: montado solo al abrir */}
+      {isWhatsAppModalOpen && (
+        <WhatsAppStatementModal
+          isOpen={isWhatsAppModalOpen}
+          onClose={() => setIsWhatsAppModalOpen(false)}
+          debt={debt}
+        />
+      )}
     </Box>
   );
-}
+});

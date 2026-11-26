@@ -4,9 +4,9 @@ import { DebtList } from "../components/DebtList";
 import { ReceivableStatusFilter } from "../components/ReceivableStatusFilter";
 import SellerSelectReceivable from "../components/SellerSelectReceivable";
 import { useGetAccountsReceivable } from "../hooks/receivableQueries";
-import { useState, useEffect, useRef, useMemo } from "react";
-import InvoicesModal from "../components/InvoicesModal";
-import ClientInvoiceHistoryModal from "../components/ClientInvoiceHistoryModal";
+import { useState, useEffect, useRef, useMemo, lazy, Suspense } from "react";
+const InvoicesModal = lazy(() => import("../components/InvoicesModal"));
+const ClientInvoiceHistoryModal = lazy(() => import("../components/ClientInvoiceHistoryModal"));
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { useHasAccess, useIsAdmin } from "../../../shared/utils/permissions";
 import { QUERY_KEYS } from "../../../shared/utils/queryKeys";
@@ -74,6 +74,7 @@ export function ReceivablePage() {
     setLastClient(null);
     setCurrentSkip(0);
     setAllClients([]);
+    setIsInitialFetching(true);
     setSearchValue(value || "");
   };
 
@@ -88,6 +89,7 @@ export function ReceivablePage() {
       setLastClient(null);
       setCurrentSkip(0);
       setAllClients([]);
+      setIsInitialFetching(true);
     }
   };
 
@@ -116,13 +118,21 @@ export function ReceivablePage() {
     setIsHistoryModalOpen(true);
   };
 
+  const effectiveSelectedSeller = selectedSeller ?? (
+    isPureSeller
+      ? { value: sellerCode, label: `${sellerCode}. ${username}` }
+      : canViewAllReceivables
+        ? { value: "", label: "Todos los vendedores" }
+        : null
+  );
+
   const vendedorNombre = isPureSeller
     ? username
     : (cliente || clientecode)
       ? "" // Si busca un cliente específico, buscar en toda la cartera
-      : (selectedSeller?.value ? (selectedSeller.label.includes(".") ? selectedSeller.label.split(".")[1].trim() : selectedSeller.label) : "");
+      : (effectiveSelectedSeller?.value ? (effectiveSelectedSeller.label.includes(".") ? effectiveSelectedSeller.label.split(".")[1].trim() : effectiveSelectedSeller.label) : "");
 
-  const { data, isLoading, error } = useGetAccountsReceivable({
+  const { data, isLoading, isFetching, error } = useGetAccountsReceivable({
     vendedor: vendedorNombre,
     cliente: cliente.toUpperCase(),
     clientecode,
@@ -131,6 +141,23 @@ export function ReceivablePage() {
   });
 
   const [isInitialFetching, setIsInitialFetching] = useState(true);
+
+  // Derivación síncrona de la primera página para evitar un frame vacío al montar o volver desde caché
+  const firstPageClients = useMemo(() => {
+    if (lastClient || currentSkip !== 0) return null;
+    const rawIncoming = Array.isArray(data?.clients?.clients)
+      ? data.clients.clients
+      : Array.isArray(data?.clients)
+      ? data.clients
+      : null;
+    if (!rawIncoming) return null;
+    return rawIncoming
+      .map((c) => ({
+        ...c,
+        documents: sanitizeDocs(c.documents || []),
+      }))
+      .filter((c) => Array.isArray(c.documents) && c.documents.length > 0);
+  }, [data, lastClient, currentSkip]);
 
   useEffect(() => {
     const rawIncomingClients = Array.isArray(data?.clients?.clients)
@@ -182,10 +209,21 @@ export function ReceivablePage() {
         setCurrentSkip(data.nextSkip || 0);
       }, 100);
       return () => clearTimeout(timer);
-    } else if (!data?.hasMore) {
+    } else if (data !== undefined && !isFetching) {
       setIsInitialFetching(false);
     }
-  }, [data]);
+  }, [data, isFetching]);
+
+  const effectiveClients = useMemo(() => {
+    if (allClients.length === 0 && !lastClient && currentSkip === 0 && firstPageClients !== null) {
+      return firstPageClients;
+    }
+    return allClients;
+  }, [allClients, lastClient, currentSkip, firstPageClients]);
+
+  const isLoadingList =
+    effectiveClients.length === 0 &&
+    (isLoading || isFetching || (isInitialFetching && (data === undefined || Boolean(data?.hasMore))));
 
   const refreshQueries = [
     ["accountsReceivable"]
@@ -215,10 +253,10 @@ export function ReceivablePage() {
   };
 
   // Conteos exactos y mutuamente excluyentes para las 4 pestañas memoizados:
-  const totalCount = useMemo(() => allClients.length, [allClients]);
-  const overdueCount = useMemo(() => allClients.filter(isClientOverdue).length, [allClients]);
-  const creditCount = useMemo(() => allClients.filter(isClientCredit).length, [allClients]);
-  const onTimeCount = useMemo(() => allClients.filter(isClientActive).length, [allClients]);
+  const totalCount = useMemo(() => effectiveClients.length, [effectiveClients]);
+  const overdueCount = useMemo(() => effectiveClients.filter(isClientOverdue).length, [effectiveClients]);
+  const creditCount = useMemo(() => effectiveClients.filter(isClientCredit).length, [effectiveClients]);
+  const onTimeCount = useMemo(() => effectiveClients.filter(isClientActive).length, [effectiveClients]);
 
   const [ageFilter, setAgeFilter] = useState("all"); // 'all' | '1-30' | '31-60' | '61-90' | '90+'
   const [sortBy, setSortBy] = useState("debt"); // 'debt' | 'age'
@@ -239,7 +277,7 @@ export function ReceivablePage() {
 
   // RN-FECHAS-03 y RN-FECHAS-04: Filtrado por tramo de días de mora y ordenación inteligente con useMemo
   const filteredClients = useMemo(() => {
-    return allClients
+    return effectiveClients
       .filter((debt) => {
         if (statusFilter === "rechazados") {
           if (!isClientOverdue(debt)) return false;
@@ -263,24 +301,7 @@ export function ReceivablePage() {
         }
         return 0;
       });
-  }, [allClients, statusFilter, ageFilter, sortBy]);
-
-  if ((isLoading || (isInitialFetching && data?.hasMore)) && allClients.length === 0) {
-    return (
-      <Box bg="gray.50" minH="100vh">
-        <SearchHeader
-          title="Cuentas por cobrar"
-          placeholder="Buscar nombre de cliente"
-          searchValue={searchValue}
-          onSearch={handleClientSearch}
-          onSearchInputChange={handleSearchInputChange}
-        />
-        <Center h="50vh">
-          <Spinner size="xl" color="green.500" />
-        </Center>
-      </Box>
-    );
-  }
+  }, [effectiveClients, statusFilter, ageFilter, sortBy]);
 
   if (error) {
     return (
@@ -317,7 +338,7 @@ export function ReceivablePage() {
       {canViewAllReceivables && (
         <Box maxW="1200px" mx="auto" px={4} pt={2} pb={1}>
           <SellerSelectReceivable
-            selectedSeller={selectedSeller}
+            selectedSeller={effectiveSelectedSeller}
             setSelectedSeller={handleSellerChange}
             setValue={() => {}}
             error={null}
@@ -325,13 +346,15 @@ export function ReceivablePage() {
         </Box>
       )}
 
-      {/* Barra de progreso de consolidación de cartera en background */}
-      {isInitialFetching && data?.hasMore && allClients.length > 0 && (
+      {/* Barra de progreso de consolidación o actualización en background */}
+      {((isInitialFetching && data?.hasMore) || isFetching) && effectiveClients.length > 0 && (
         <Box maxW="1200px" mx="auto" px={4} pt={2}>
           <HStack spacing={2} bg="#f8fafc" p={2} px={3} borderRadius="lg" border="1px solid" borderColor="#e2e8f0">
             <Spinner size="xs" color="#0284c7" />
             <Text fontSize="xs" color="#475569" fontWeight="600">
-              Consolidando cartera ({allClients.length} clientes cargados)...
+              {data?.hasMore
+                ? `Consolidando cartera (${effectiveClients.length} clientes cargados)...`
+                : `Actualizando cartera (${effectiveClients.length} clientes)...`}
             </Text>
           </HStack>
         </Box>
@@ -346,6 +369,7 @@ export function ReceivablePage() {
           overdueCount={overdueCount}
           onTimeCount={onTimeCount}
           creditCount={creditCount}
+          isLoading={isLoadingList}
           ageFilter={ageFilter}
           onAgeFilterChange={setAgeFilter}
           sortBy={sortBy}
@@ -402,6 +426,7 @@ export function ReceivablePage() {
       <Box maxW="1200px" mx="auto" p={4} pt={2}>
         <DebtList
           debts={filteredClients}
+          isLoading={isLoadingList}
           onViewInvoices={handleViewInvoices}
           onViewHistory={handleViewHistory}
           onViewDetails={() => {}}
@@ -427,34 +452,42 @@ export function ReceivablePage() {
         )}
       </Box>
 
-      <InvoicesModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        cliente={selectedClient}
-        documentos={selectedInvoices}
-        onOpenHistory={(cli) => handleViewHistory(cli || selectedClient)}
-      />
+      {isModalOpen && (
+        <Suspense fallback={null}>
+          <InvoicesModal
+            isOpen={isModalOpen}
+            onClose={() => setIsModalOpen(false)}
+            cliente={selectedClient}
+            documentos={selectedInvoices}
+            onOpenHistory={(cli) => handleViewHistory(cli || selectedClient)}
+          />
+        </Suspense>
+      )}
 
-      <ClientInvoiceHistoryModal
-        isOpen={isHistoryModalOpen}
-        onClose={() => {
-          setIsHistoryModalOpen(false);
-          setHistoryTargetClient(null);
-        }}
-        clientDocOrCode={
-          historyTargetClient?.clientCode ||
-          historyTargetClient?.ruc ||
-          historyTargetClient?.cardCode ||
-          historyTargetClient?.CARDCODE ||
-          (typeof historyTargetClient === "string" ? historyTargetClient : "")
-        }
-        clientName={
-          historyTargetClient?.clientName ||
-          historyTargetClient?.nombre ||
-          historyTargetClient?.CARDNAME ||
-          ""
-        }
-      />
+      {isHistoryModalOpen && (
+        <Suspense fallback={null}>
+          <ClientInvoiceHistoryModal
+            isOpen={isHistoryModalOpen}
+            onClose={() => {
+              setIsHistoryModalOpen(false);
+              setHistoryTargetClient(null);
+            }}
+            clientDocOrCode={
+              historyTargetClient?.clientCode ||
+              historyTargetClient?.ruc ||
+              historyTargetClient?.cardCode ||
+              historyTargetClient?.CARDCODE ||
+              (typeof historyTargetClient === "string" ? historyTargetClient : "")
+            }
+            clientName={
+              historyTargetClient?.clientName ||
+              historyTargetClient?.nombre ||
+              historyTargetClient?.CARDNAME ||
+              ""
+            }
+          />
+        </Suspense>
+      )}
     </Box>
   );
 }

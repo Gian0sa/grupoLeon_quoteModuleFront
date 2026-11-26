@@ -166,14 +166,26 @@ export function TopProductsCard({ year, month, sellerCode, sellerName, canFilter
 
   // Medallas de Ranking Visual
   const getRankBadge = (idx) => {
-    if (isSeller) {
-      const ranks = [
-        { labelDesktop: "⭐ #1 MÁS VENDIDO MES", labelMobile: "⭐ #1 MES", bg: "linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)", color: "white" },
-        { labelDesktop: "🥇 #2 MÁS VENDIDO MES", labelMobile: "🥇 #2 MES", bg: "linear-gradient(135deg, #d97706 0%, #b45309 100%)", color: "white" },
-        { labelDesktop: "🥈 #3 MÁS VENDIDO MES", labelMobile: "🥈 #3 MES", bg: "linear-gradient(135deg, #64748b 0%, #475569 100%)", color: "white" },
-        { labelDesktop: "🥉 #4 MÁS VENDIDO MES", labelMobile: "🥉 #4 MES", bg: "linear-gradient(135deg, #b45309 0%, #78350f 100%)", color: "white" },
-      ];
-      const rank = ranks[idx] || { labelDesktop: `#${idx + 1} MÁS VENDIDO`, labelMobile: `#${idx + 1}`, bg: "#475569", color: "white" };
+    if (!isAllSellers) {
+      const ranks = isSeller
+        ? [
+            { labelDesktop: "⭐ #1 MÁS VENDIDO MES", labelMobile: "⭐ #1 MES", bg: "linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)", color: "white" },
+            { labelDesktop: "🥇 #2 MÁS VENDIDO MES", labelMobile: "🥇 #2 MES", bg: "linear-gradient(135deg, #d97706 0%, #b45309 100%)", color: "white" },
+            { labelDesktop: "🥈 #3 MÁS VENDIDO MES", labelMobile: "🥈 #3 MES", bg: "linear-gradient(135deg, #64748b 0%, #475569 100%)", color: "white" },
+            { labelDesktop: "🥉 #4 MÁS VENDIDO MES", labelMobile: "🥉 #4 MES", bg: "linear-gradient(135deg, #b45309 0%, #78350f 100%)", color: "white" },
+          ]
+        : [
+            { labelDesktop: "⭐ #1 DEL VENDEDOR", labelMobile: "⭐ #1 VENDEDOR", bg: "linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)", color: "white" },
+            { labelDesktop: "🥇 #2 DEL VENDEDOR", labelMobile: "🥇 #2 VENDEDOR", bg: "linear-gradient(135deg, #d97706 0%, #b45309 100%)", color: "white" },
+            { labelDesktop: "🥈 #3 DEL VENDEDOR", labelMobile: "🥈 #3 VENDEDOR", bg: "linear-gradient(135deg, #64748b 0%, #475569 100%)", color: "white" },
+            { labelDesktop: "🥉 #4 DEL VENDEDOR", labelMobile: "🥉 #4 VENDEDOR", bg: "linear-gradient(135deg, #b45309 0%, #78350f 100%)", color: "white" },
+          ];
+      const rank = ranks[idx] || {
+        labelDesktop: isSeller ? `#${idx + 1} MÁS VENDIDO` : `#${idx + 1} DEL VENDEDOR`,
+        labelMobile: `#${idx + 1}`,
+        bg: "#475569",
+        color: "white",
+      };
       return (
         <Badge
           style={{ background: rank.bg, color: rank.color }}

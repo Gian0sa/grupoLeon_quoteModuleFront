@@ -1,4 +1,4 @@
-import { Flex, Box, Text, HStack, Badge, Icon } from "@chakra-ui/react";
+import { Flex, Box, Text, HStack, Badge, Icon, Spinner } from "@chakra-ui/react";
 import { Layers, CheckCircle2, AlertCircle, FileText } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -11,6 +11,7 @@ export function ReceivableStatusFilter({
   overdueCount,
   onTimeCount,
   creditCount = 0,
+  isLoading = false,
   ageFilter = "all",
   onAgeFilterChange,
   sortBy = "debt",
@@ -168,7 +169,7 @@ export function ReceivableStatusFilter({
                   color={isActive ? f.badgeColor : f.inactiveColor}
                   flexShrink={0}
                 >
-                  {f.count}
+                  {isLoading ? <Spinner size="xs" speed="0.7s" /> : f.count}
                 </Badge>
               </HStack>
             </MotionBox>
