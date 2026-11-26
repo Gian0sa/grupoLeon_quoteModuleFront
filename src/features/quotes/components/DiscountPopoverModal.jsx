@@ -17,6 +17,7 @@ import {
 } from "@chakra-ui/react";
 import { Plus, Minus, Tag } from "lucide-react";
 import { formatThousands } from "../../../shared/utils/quoteCalculator";
+import { isSpecialAgreementItem, resolveSpecialDiscountPct } from "../utils/discountBreakdown";
 
 export const APPROVAL_DISCOUNT_THRESHOLD = 50.0; // Umbral de activación de aprobación comercial (50.0%)
 export const REGULAR_DISCOUNT_CEILING = 55.0;    // Tope comercial estándar para artículos regulares (55.0%)
@@ -31,8 +32,8 @@ export function DiscountPopoverModal({ isOpen, onClose, item, onApplyDiscount, s
 
   const itemCode = item?.code || item?.productCode || item?.itemCode || item?.id || "";
   const spItem = (specialPricesMap && (specialPricesMap[itemCode] || specialPricesMap[item?.id] || specialPricesMap[item?.code])) || null;
-  const isSpecial = Boolean(item?.isSpecialPrice || spItem || (item?.specialDiscount && Number(item.specialDiscount) > 0) || Number(item?.discount || item?.sapDiscount || 0) > 55.0);
-  const specialDisc = isSpecial ? Number(item?.specialDiscount ?? spItem?.discountPercent ?? item?.discount ?? item?.sapDiscount ?? 0) : 0;
+  const isSpecial = isSpecialAgreementItem(item, spItem);
+  const specialDisc = resolveSpecialDiscountPct(item, spItem);
   const specialPriceNeto = isSpecial ? Number(item?.specialPrice ?? item?.specialPriceNeto ?? spItem?.specialPrice ?? 0) : null;
   const specialPriceConIGV = isSpecial ? Number(item?.specialPriceConIGV ?? spItem?.specialPriceConIGV ?? (specialPriceNeto ? Number((specialPriceNeto * (1 + TAX_RATE)).toFixed(2)) : 0)) : null;
 

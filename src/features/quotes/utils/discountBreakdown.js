@@ -14,20 +14,57 @@ export function parseOptionalFiniteNumber(value) {
 
 /**
  * Determina si una línea corresponde a un artículo con Convenio Cliente (OSPP).
+ * Si `spItem` está presente (catálogo OSPP del cliente), siempre es Convenio.
+ * Si el ítem fue marcado explícitamente como `isSpecialPrice === false` o tiene
+ * promoción (`U_US_PROMO` / `Oferta del Mes`), NO debe reclasificarse por el %.
  */
-export function isSpecialAgreementItem(item) {
+export function isSpecialAgreementItem(item, spItem = null) {
+  if (spItem) return true;
   if (!item || typeof item !== "object") return false;
-  const sapDisc = Number(item.sapDiscount ?? item.discount ?? item.Discount ?? 0);
   const specialPrice = Number(item.specialPrice ?? 0);
   const specialDiscount = Number(item.specialDiscount ?? 0);
 
-  return Boolean(
-    item.isSpecialPrice ||
-      item.campaignName === "Convenio Cliente" ||
-      (Number.isFinite(specialPrice) && specialPrice > 0) ||
-      (Number.isFinite(specialDiscount) && specialDiscount > 0) ||
-      (Number.isFinite(sapDisc) && sapDisc > 55.0)
+  if (
+    item.isSpecialPrice === true ||
+    item.campaignName === "Convenio Cliente" ||
+    (Number.isFinite(specialPrice) && specialPrice > 0) ||
+    (Number.isFinite(specialDiscount) && specialDiscount > 0)
+  ) {
+    return true;
+  }
+
+  if (item.isSpecialPrice === false) return false;
+
+  const hasPromoSignal = Boolean(
+    Number(item.promoDiscount ?? item.PromoDiscount ?? 0) > 0 ||
+      item.promoPrice ||
+      item.promoPriceConIGV ||
+      item.U_US_PROMO ||
+      item.campaignName === "Oferta del Mes"
   );
+  if (hasPromoSignal) return false;
+
+  const sapDisc = Number(item.sapDiscount ?? item.discount ?? item.Discount ?? 0);
+  return Number.isFinite(sapDisc) && sapDisc > 55.0;
+}
+
+/**
+ * Resuelve el porcentaje efectivo de Convenio Cliente sin caer en la trampa `0 ?? fallback`.
+ */
+export function resolveSpecialDiscountPct(item, spItem = null) {
+  if (!isSpecialAgreementItem(item, spItem)) return 0;
+  const candidates = [
+    item?.specialDiscount,
+    spItem?.discountPercent,
+    item?.discount,
+    item?.Discount,
+    item?.sapDiscount,
+  ];
+  for (const candidate of candidates) {
+    const num = Number(candidate);
+    if (Number.isFinite(num) && num > 0) return num;
+  }
+  return 0;
 }
 
 /**

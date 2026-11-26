@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { formatClientFullAddress } from '../../../shared/utils/quoteLogisticsFormatters';
+import { isSpecialAgreementItem, resolveSpecialDiscountPct } from '../utils/discountBreakdown';
 
 const isMeaningfulValue = (value) => {
   if (value === undefined || value === null) return false;
@@ -33,14 +34,8 @@ export const normalizeQuoteItem = (item) => {
   const sapDiscount = Number(item.sapDiscount ?? item.discount ?? item.Discount ?? 0);
   const discount = Number(item.discount ?? item.Discount ?? item.sapDiscount ?? 0);
   const lineDiscount = Number(Number(item.lineDiscount ?? item.LineDiscount ?? 0).toFixed(2));
-  const isSpecialPrice = Boolean(
-    item.isSpecialPrice ||
-      item.campaignName === "Convenio Cliente" ||
-      (item.specialPrice !== undefined && item.specialPrice !== null && Number(item.specialPrice) > 0) ||
-      (item.specialDiscount !== undefined && item.specialDiscount !== null && Number(item.specialDiscount) > 0) ||
-      sapDiscount > 55.0
-  );
-  const specialDiscount = isSpecialPrice ? Number(item.specialDiscount ?? sapDiscount ?? 0) : 0;
+  const isSpecialPrice = isSpecialAgreementItem({ ...item, discount, sapDiscount });
+  const specialDiscount = resolveSpecialDiscountPct({ ...item, discount, sapDiscount, isSpecialPrice });
   const specialPrice =
     isSpecialPrice && item.specialPrice !== undefined && item.specialPrice !== null && item.specialPrice !== "" && !isNaN(Number(item.specialPrice))
       ? Number(item.specialPrice)

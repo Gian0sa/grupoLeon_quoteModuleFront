@@ -45,7 +45,7 @@ import { useClientPointsDelivery } from "../../clients/hooks/queries/clientQueri
 import InvoicesModal from "../../receivable/components/InvoicesModal";
 import { fetchClientByCode } from "../../clients/services/clientService";
 import { axiosInstance } from "../../../shared/lib/axiosInstance";
-import { isSpecialAgreementItem, computeSapTqcBreakdown } from "../utils/discountBreakdown";
+import { isSpecialAgreementItem, resolveSpecialDiscountPct, computeSapTqcBreakdown } from "../utils/discountBreakdown";
 import { dedupeViewHistoryLogs } from "../utils/quoteHistoryUtils";
 
 const money = (val, currency = "USD") => {
@@ -2223,7 +2223,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
         : null;
 
       const isSpecial = isSpecialAgreementItem(p);
-      const specialDisc = isSpecial ? Number(p.specialDiscount ?? p.discount ?? p.sapDiscount ?? 0) : 0;
+      const specialDisc = resolveSpecialDiscountPct(p);
       const sapDisc = Number(p.sapDiscount ?? p.discount ?? p.descuentoSAP ?? p.U_TQC_DESL ?? specialDisc ?? 0);
       const promoDisc = isSpecial ? 0 : Number(p.promoDiscount ?? p.promoDisc ?? 0);
       let addDisc = Number(p.lineDiscount ?? p.manualDiscount ?? p.addDisc ?? p.descuentoManual ?? p.descuentoAdicional ?? (isSpecial ? 0 : p.U_TQC_DESV) ?? 0);

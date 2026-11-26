@@ -1,5 +1,9 @@
 // Calculadora matemática unificada de totales de cotización/pedido para Grupo León / SAP B1
 import { reconcileLineTotalsWithSap } from "../../features/quotes/utils/sapLineReconciliation.js";
+import {
+  isSpecialAgreementItem,
+  resolveSpecialDiscountPct,
+} from "../../features/quotes/utils/discountBreakdown.js";
 export const APPROVAL_DISCOUNT_THRESHOLD = 50.0; // Umbral a partir del cual requiere aprobación comercial (50.0%)
 export const REGULAR_DISCOUNT_CEILING = 55.0;    // Tope comercial estándar para artículos regulares (55.0%)
 export const STANDARD_DISCOUNT_CEILING = 55.0;   // Compatibilidad estándar (55.0%)
@@ -7,15 +11,9 @@ export const MAX_DISCOUNT_CEILING = 55.0;        // Tope regular base (55.0%)
 
 export const getItemMaxDiscountCeiling = (item) => {
   if (!item) return REGULAR_DISCOUNT_CEILING;
-  const isSpecial = Boolean(
-    item.isSpecialPrice || 
-    item.campaignName === "Convenio Cliente" || 
-    item.specialPrice || 
-    item.specialDiscount ||
-    Number(item.sapDiscount ?? item.discount ?? 0) > 55.0
-  );
+  const isSpecial = isSpecialAgreementItem(item);
   if (isSpecial) {
-    const specialDisc = Number(item.specialDiscount ?? item.discount ?? item.sapDiscount ?? 0);
+    const specialDisc = resolveSpecialDiscountPct(item);
     return Math.max(REGULAR_DISCOUNT_CEILING, specialDisc);
   }
   const sapDisc = Math.max(0, Math.min(100, Number(item.sapDiscount ?? item.discount ?? 0)));
@@ -67,14 +65,8 @@ export function calculateQuoteTotals(products = [], exchangeRate = 3.45, options
     const isTaxOnly = !isOutOfStock && isItemTaxOnly(p);
 
     // Detección de artículo de Convenio de Precios Especiales (OSPP SAP)
-    const isSpecial = !isOutOfStock && Boolean(
-      p.isSpecialPrice || 
-      p.campaignName === "Convenio Cliente" || 
-      p.specialPrice || 
-      p.specialDiscount ||
-      Number(p.sapDiscount ?? p.discount ?? 0) > 55.0
-    );
-    const specialDisc = isSpecial ? Number(p.specialDiscount ?? p.discount ?? p.sapDiscount ?? 0) : 0;
+    const isSpecial = !isOutOfStock && isSpecialAgreementItem(p);
+    const specialDisc = isSpecial ? resolveSpecialDiscountPct(p) : 0;
 
     // Si no tiene stock, no tiene precio ni descuento en el cálculo comercial (Demanda Back Order)
     const rawListPrice = Math.max(0, Number(p.price ?? p.Price ?? p.unitPrice ?? p.UnitPrice ?? p.importe ?? p.itemPrice ?? (isSpecial ? p.listPrice : 0) ?? 0));

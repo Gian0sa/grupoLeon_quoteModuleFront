@@ -14,6 +14,7 @@ import { useIsAdmin } from "../../../shared/utils/permissions";
 import { useAuthStore } from "../../../features/auth/stores/useAuthStore";
 import { formatThousands, isItemTaxOnly } from "../../../shared/utils/quoteCalculator";
 import { useGetPromotions, useClientSpecialPrices } from "../hooks/queries/quotesQueries";
+import { isSpecialAgreementItem, resolveSpecialDiscountPct } from "../utils/discountBreakdown";
 
 const money = (val, currency = "USD") => {
   const num = Number(val || 0);
@@ -470,8 +471,8 @@ export default function SapItemGrid({
             const qty = Number(item.quantity || 1);
             const itemCode = item.code || item.productCode || item.itemCode || item.id || "";
             const spItem = specialPricesMap[itemCode] || null;
-            const isSpecial = Boolean(!isOutOfStock && (item.isSpecialPrice || spItem || Number(item.discount || item.sapDiscount || 0) > 55.0));
-            const specialDisc = isSpecial ? Number(item.specialDiscount ?? spItem?.discountPercent ?? item.discount ?? item.sapDiscount ?? 0) : 0;
+            const isSpecial = !isOutOfStock && isSpecialAgreementItem(item, spItem);
+            const specialDisc = isSpecial ? resolveSpecialDiscountPct(item, spItem) : 0;
             const targetSpecialPrice = isSpecial ? Number(item.specialPrice ?? spItem?.specialPrice ?? 0) : 0;
 
             const rawPrice = isSpecial && spItem?.listPrice && Number(item.price ?? item.unitPrice ?? 0) === 0
@@ -918,8 +919,8 @@ export default function SapItemGrid({
                   const qty = Number(item.quantity || 1);
                   const itemCode = item.code || item.productCode || item.itemCode || item.id || "";
                   const spItem = specialPricesMap[itemCode] || null;
-                  const isSpecial = Boolean(!isOutOfStock && (item.isSpecialPrice || spItem || Number(item.discount || item.sapDiscount || 0) > 55.0));
-                  const specialDisc = isSpecial ? Number(item.specialDiscount ?? spItem?.discountPercent ?? item.discount ?? item.sapDiscount ?? 0) : 0;
+                  const isSpecial = !isOutOfStock && isSpecialAgreementItem(item, spItem);
+                  const specialDisc = isSpecial ? resolveSpecialDiscountPct(item, spItem) : 0;
                   const targetSpecialPrice = isSpecial ? Number(item.specialPrice ?? spItem?.specialPrice ?? 0) : 0;
 
                   const rawPrice = isSpecial && spItem?.listPrice && Number(item.price ?? item.unitPrice ?? 0) === 0
