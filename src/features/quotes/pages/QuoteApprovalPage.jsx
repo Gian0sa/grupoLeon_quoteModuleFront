@@ -2812,7 +2812,7 @@ export function QuoteApprovalPage() {
     if (isSameActor && approvedBy) {
       const timeLabel = formatAuditTime(emittedAt || approvedAt);
       return (
-        <VStack align={compact ? "flex-start" : "start"} spacing={0.5} minW={compact ? 0 : "195px"} w={compact ? "full" : "max-content"} maxW={compact ? "full" : "240px"}>
+        <VStack align={compact ? "flex-start" : "start"} spacing={0.5} minW={0} w="full" maxW="full">
           <Badge
             colorScheme="teal"
             variant="subtle"
@@ -2822,12 +2822,14 @@ export function QuoteApprovalPage() {
             borderRadius="md"
             fontWeight="800"
             textTransform="none"
-            whiteSpace={compact ? "normal" : "nowrap"}
+            whiteSpace="normal"
+            wordBreak="break-word"
+            maxW="100%"
           >
             Aprobado por: {approvedBy}
           </Badge>
           {(emittedSapUser || timeLabel) && (
-            <Text fontSize="10px" color="gray.500" fontWeight="600" whiteSpace={compact ? "normal" : "nowrap"}>
+            <Text fontSize="10px" color="gray.500" fontWeight="600" whiteSpace="normal" wordBreak="break-word">
               {emittedSapUser ? `SAP: ${emittedSapUser}` : ""}
               {emittedSapUser && timeLabel ? " · " : ""}
               {timeLabel || ""}
@@ -2841,9 +2843,9 @@ export function QuoteApprovalPage() {
     const emittedTime = formatAuditTime(emittedAt);
 
     return (
-      <VStack align={compact ? "flex-start" : "start"} spacing={1} minW={compact ? 0 : "195px"} w={compact ? "full" : "max-content"} maxW={compact ? "full" : "240px"}>
+      <VStack align={compact ? "flex-start" : "start"} spacing={1} minW={0} w="full" maxW="full">
         {approvedBy && (
-          <Box>
+          <Box w="full" minW={0}>
             <Badge
               colorScheme="green"
               variant="subtle"
@@ -2853,19 +2855,21 @@ export function QuoteApprovalPage() {
               borderRadius="md"
               fontWeight="800"
               textTransform="none"
-              whiteSpace={compact ? "normal" : "nowrap"}
+              whiteSpace="normal"
+              wordBreak="break-word"
+              maxW="100%"
             >
               Aprobó: {approvedBy}
             </Badge>
             {approvedTime && (
-              <Text fontSize="10px" color="gray.500" fontWeight="600" mt={0.5} whiteSpace={compact ? "normal" : "nowrap"}>
+              <Text fontSize="10px" color="gray.500" fontWeight="600" mt={0.5} whiteSpace="normal" wordBreak="break-word">
                 {approvedTime}
               </Text>
             )}
           </Box>
         )}
         {emittedBy && (
-          <Box>
+          <Box w="full" minW={0}>
             <Badge
               colorScheme="purple"
               variant="subtle"
@@ -2875,12 +2879,14 @@ export function QuoteApprovalPage() {
               borderRadius="md"
               fontWeight="800"
               textTransform="none"
-              whiteSpace={compact ? "normal" : "nowrap"}
+              whiteSpace="normal"
+              wordBreak="break-word"
+              maxW="100%"
             >
               Envió SAP: {emittedBy}
             </Badge>
             {(emittedSapUser || emittedTime) && (
-              <Text fontSize="10px" color="gray.500" fontWeight="600" mt={0.5} whiteSpace={compact ? "normal" : "nowrap"}>
+              <Text fontSize="10px" color="gray.500" fontWeight="600" mt={0.5} whiteSpace="normal" wordBreak="break-word">
                 {emittedSapUser ? `SAP: ${emittedSapUser}` : ""}
                 {emittedSapUser && emittedTime ? " · " : ""}
                 {emittedTime || ""}
@@ -3017,7 +3023,7 @@ export function QuoteApprovalPage() {
     // ─────────────────────────────────────────────────────────────
     if (!stack) {
       return (
-        <Flex display="inline-flex" w="max-content" gap={1.5} justify="flex-end" align="center" wrap="nowrap" sx={{ "& > *": { flexShrink: 0 } }}>
+        <Flex w="full" minW={0} gap={1.5} justify="flex-end" align="center" flexWrap="wrap">
           {/* Si es Borrador: Editar, Compartir y Borrar */}
           {isDraft ? (
             <>
@@ -3831,19 +3837,19 @@ export function QuoteApprovalPage() {
           </Box>
         )}
 
-        {/* TABLA PRINCIPAL OPTIMIZADA CON ALTO CONTRASTE (solo escritorio) */}
-        <Box display={{ base: "none", lg: "block" }} bg="white" borderRadius="2xl" border="1.5px solid" borderColor="#cbd5e1" boxShadow="sm" overflowX="auto" overflowY="hidden" width="100%">
-          <Table variant="simple" size="sm" w="full" minW="1120px" style={{ width: "100%", tableLayout: "auto" }}>
+        {/* TABLA PRINCIPAL OPTIMIZADA CON ALTO CONTRASTE (solo escritorio, fija sin scroll horizontal) */}
+        <Box display={{ base: "none", lg: "block" }} bg="white" borderRadius="2xl" border="1.5px solid" borderColor="#cbd5e1" boxShadow="sm" overflowX="clip" overflowY="visible" width="100%" maxW="100%">
+          <Table variant="simple" size="sm" w="full" style={{ width: "100%", tableLayout: "fixed" }}>
             <Thead bg="#0e572b">
               <Tr>
-                <Th py={3} px={3} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider"><Box minW="210px">DOCUMENTO Y CLIENTE</Box></Th>
-                <Th py={3} px={2} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider" textAlign="center" whiteSpace="nowrap"><Box w="88px">FECHA</Box></Th>
-                <Th py={3} px={2} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider" textAlign="right" whiteSpace="nowrap"><Box w="88px">TOTAL (USD)</Box></Th>
-                <Th py={3} px={2} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider" textAlign="center" whiteSpace="nowrap"><Box minW="210px">ESTADO DE APROBACIÓN</Box></Th>
+                <Th py={3} px={3} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider" w={canViewApprovalAudit ? "25%" : "33%"}>DOCUMENTO Y CLIENTE</Th>
+                <Th py={3} px={2} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider" textAlign="center" w={canViewApprovalAudit ? "9%" : "10%"}>FECHA</Th>
+                <Th py={3} px={2} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider" textAlign="right" w={canViewApprovalAudit ? "9%" : "10%"}>TOTAL (USD)</Th>
+                <Th py={3} px={2} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider" textAlign="center" w={canViewApprovalAudit ? "17%" : "20%"}>ESTADO DE APROBACIÓN</Th>
                 {canViewApprovalAudit && (
-                  <Th py={3} px={2} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider" whiteSpace="nowrap"><Box minW="195px">APROBACIÓN / ENVÍO SAP</Box></Th>
+                  <Th py={3} px={2} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider" w="16%">APROBACIÓN / ENVÍO SAP</Th>
                 )}
-                <Th py={3} px={3} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider" textAlign="center" whiteSpace="nowrap"><Box minW="185px">ACCIONES</Box></Th>
+                <Th py={3} px={3} fontSize="11px" color="white" fontWeight="900" letterSpacing="wider" textAlign="center" w={canViewApprovalAudit ? "24%" : "27%"}>ACCIONES</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -4077,20 +4083,27 @@ export function QuoteApprovalPage() {
 
                       {/* Píldora de Estado */}
                       <Td textAlign="center" py={2.5} px={2}>
-                        <Flex justify="center" align="center" minW="210px" w="max-content" mx="auto">
+                        <Flex
+                          justify="center"
+                          align="center"
+                          w="full"
+                          minW={0}
+                          flexWrap="wrap"
+                          sx={{ "& .chakra-badge": { whiteSpace: "normal", maxW: "100%", textAlign: "center", lineHeight: "1.25" } }}
+                        >
                           {renderStatusBadge(status, q)}
                         </Flex>
                       </Td>
 
                       {/* Auditoría de Aprobación / Envío SAP (solo si tiene el permiso granular) */}
                       {canViewApprovalAudit && (
-                        <Td py={2.5} px={2} verticalAlign="middle">
+                        <Td py={2.5} px={2} verticalAlign="middle" overflow="hidden">
                           {renderApprovalAuditCell(q)}
                         </Td>
                       )}
 
                       {/* Acciones */}
-                      <Td textAlign="right" py={2.5} px={3} verticalAlign="middle" whiteSpace="nowrap">
+                      <Td textAlign="right" py={2.5} px={2.5} verticalAlign="middle">
                         {renderRowActions(q, docId, status)}
                       </Td>
                     </Tr>
