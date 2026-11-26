@@ -16,28 +16,39 @@ import {
   Tr,
   Th,
   Td,
+  useToast,
 } from "@chakra-ui/react";
 import {
   useGetInvoiceByCode,
   useGetPdfByCode,
 } from "../../hooks/queries/reportQueries";
+import {
+  downloadInvoicePDFdirectly,
+  normalizeInvoiceRefCode,
+} from "../../utils/pdfGenerators";
 import { useMemo, useState } from "react";
 
 export default function ModalFacturaDetalle({ isOpen, onClose, facturaId }) {
   const { data, isLoading, error } = useGetInvoiceByCode(facturaId);
   const [showPdf, setShowPdf] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const toast = useToast();
 
   const numAtCard = data?.numAtCard;
+  const cleanNumAtCard = useMemo(
+    () => (numAtCard ? normalizeInvoiceRefCode(numAtCard) : ""),
+    [numAtCard]
+  );
 
   const url = useMemo(() => {
-    if (!numAtCard) return null;
-    return `${import.meta.env.VITE_API_URL}/reportModule/pdf/${numAtCard}`;
-  }, [numAtCard]);
+    if (!cleanNumAtCard) return null;
+    return `${import.meta.env.VITE_API_URL}/reportModule/pdf/${cleanNumAtCard}`;
+  }, [cleanNumAtCard]);
 
   const {
     isFetching: isFetchingPdf,
     refetch: fetchPdf,
-  } = useGetPdfByCode(numAtCard, !!numAtCard);
+  } = useGetPdfByCode(cleanNumAtCard, !!cleanNumAtCard);
 
   function handleShowPdf() {
     setShowPdf(true);
@@ -52,22 +63,34 @@ export default function ModalFacturaDetalle({ isOpen, onClose, facturaId }) {
   }
 
   const downloadPdf = async () => {
-  try {
-    const response = await fetch(url);
-    const blob = await response.blob();
-    const blobUrl = window.URL.createObjectURL(blob);
-
-    const link = document.createElement("a");
-    link.href = blobUrl;
-    link.download = `Factura_${facturaId}.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(blobUrl);
-  } catch (err) {
-    alert("No se pudo descargar el archivo.");
-  }
-};
+    setDownloading(true);
+    try {
+      const result = await downloadInvoicePDFdirectly(
+        cleanNumAtCard || facturaId,
+        { invoiceId: facturaId, invoiceData: data }
+      );
+      if (result?.fallbackSap) {
+        toast({
+          title: "📄 Preliminar SAP descargado",
+          description:
+            "El comprobante aún está en cola de envío a SUNAT/TeFacturo; se descargó el detalle registrado en SAP.",
+          status: "info",
+          duration: 5000,
+          isClosable: true,
+        });
+      }
+    } catch (err) {
+      toast({
+        title: "No se pudo descargar el comprobante",
+        description: err?.message || "No se pudo descargar el archivo.",
+        status: "warning",
+        duration: 4500,
+        isClosable: true,
+      });
+    } finally {
+      setDownloading(false);
+    }
+  };
 
 
   if (isLoading) {
@@ -160,14 +183,25 @@ export default function ModalFacturaDetalle({ isOpen, onClose, facturaId }) {
 
         <ModalFooter>
           {!showPdf && (
-            <Button
-              colorScheme="blue"
-              mr={3}
-              onClick={handleShowPdf}
-              isDisabled={!url}
-            >
-              Ver PDF
-            </Button>
+            <>
+              <Button
+                colorScheme="blue"
+                mr={3}
+                onClick={handleShowPdf}
+                isDisabled={!url}
+              >
+                Ver PDF
+              </Button>
+              <Button
+                colorScheme="teal"
+                variant="outline"
+                mr={3}
+                onClick={downloadPdf}
+                isLoading={downloading}
+              >
+                Descargar PDF
+              </Button>
+            </>
           )}
           {showPdf && url && (
             <>
@@ -179,9 +213,10 @@ export default function ModalFacturaDetalle({ isOpen, onClose, facturaId }) {
                 variant="outline"
                 mr={3}
                 onClick={downloadPdf}
-                >
+                isLoading={downloading}
+              >
                 Descargar
-                </Button>
+              </Button>
               <Button onClick={() => setShowPdf(false)}>Volver</Button>
             </>
           )}
