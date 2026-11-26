@@ -101,7 +101,7 @@ import WhatsAppQuoteModal from "./WhatsAppQuoteModal";
 import { SapPayloadJsonModal } from "./SapPayloadJsonModal";
 import { TaxOnlyConfirmModal } from "./TaxOnlyConfirmModal";
 import { resolveUserProfileTitle, acquireQuoteLock, releaseQuoteLock, checkQuoteLock, forceUnlockQuote } from "../services/quoteLockService";
-import { calculateQuoteTotals, formatThousands, isItemTaxOnly } from "../../../shared/utils/quoteCalculator";
+import { calculateQuoteTotals, formatThousands, isItemTaxOnly, resolveOfficialDocumentTotals } from "../../../shared/utils/quoteCalculator";
 import { useAuthStore } from "../../../features/auth/stores/useAuthStore";
 import { useGetQuoteById } from "../hooks/queries/quotesQueries";
 import { useQueryClient } from "@tanstack/react-query";
@@ -1079,23 +1079,21 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
             ? Number((effectiveQuote.DocTotal / effectiveQuote.DocRate).toFixed(2))
             : Number(effectiveQuote.DocTotal || 0)));
 
-  // Totales normalizados y matemáticamente exactos (Subtotal + IGV = Total)
-  const storedSubtotal = Number(effectiveQuote.totals?.subtotalUSD ?? effectiveQuote.totals?.subTotalUSD ?? effectiveQuote.subtotalUSD ?? 0);
-  const storedIgv = Number(effectiveQuote.totals?.igvUSD ?? effectiveQuote.totals?.igv ?? effectiveQuote.igvUSD ?? 0);
-  const storedGrandTotal = Number(effectiveQuote.totals?.grandTotalUSD ?? effectiveQuote.totals?.grandTotal ?? effectiveQuote.grandTotalUSD ?? 0);
+  // Totales normalizados y matemáticamente exactos (coherentes con SAP y líneas vivas)
+  const isSolCurrency =
+    effectiveQuote.DocCurrency === "PEN" ||
+    effectiveQuote.DocCurrency === "SOL" ||
+    effectiveQuote.currency === "SOL" ||
+    effectiveQuote.currency === "PEN";
+  const resolvedTotals = resolveOfficialDocumentTotals(effectiveQuote, calcRes, {
+    isSol: isSolCurrency,
+    tc: tcVal,
+    isEmittedToSap: isAlreadySyncedToSap,
+  });
 
-  const grandTotalUSD = (isAlreadySyncedToSap && fallbackUSD > 0)
-    ? fallbackUSD
-    : (storedGrandTotal > 0
-        ? storedGrandTotal
-        : (calcRes.grandTotalUSD > 0
-            ? calcRes.grandTotalUSD
-            : Number((fallbackUSD || 0).toFixed(2))));
-
+  const grandTotalUSD = resolvedTotals.grandTotalUSD;
   const hasTaxOnly = Boolean(
-    effectiveQuote.totals?.hasTaxOnlyItems ||
-    effectiveQuote.hasTaxOnlyItems ||
-    calcRes.hasTaxOnlyItems ||
+    resolvedTotals.hasTaxOnly ||
     isFreeTransferPaymentType(effectiveQuote.paymentType || effectiveQuote.selectedPaymentType)
   );
   const requiresGerenciaForTaxOnly = Boolean(hasTaxOnly && !canApproveTaxOnlySap);
@@ -1103,22 +1101,9 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
     effectiveQuote.totals?.preApprovedByFacturacion ||
     effectiveQuote.preApprovedByFacturacion ||
     null;
-  const hasStoredSubtotal = effectiveQuote.totals?.subtotalUSD !== undefined || effectiveQuote.totals?.subTotalUSD !== undefined || effectiveQuote.subtotalUSD !== undefined;
-  const subtotalUSD = (storedSubtotal > 0 || (hasTaxOnly && hasStoredSubtotal))
-    ? storedSubtotal
-    : ((calcRes.subtotalUSD > 0 || hasTaxOnly)
-        ? calcRes.subtotalUSD
-        : (grandTotalUSD > 0 ? Number((grandTotalUSD / 1.18).toFixed(2)) : 0));
-
-  const igvUSD = storedIgv > 0
-    ? storedIgv
-    : (calcRes.igvUSD > 0
-        ? calcRes.igvUSD
-        : Number(Math.max(0, grandTotalUSD - subtotalUSD).toFixed(2)));
-
-  const grandTotalSOL = isSapDirect && effectiveQuote.DocTotal && (effectiveQuote.DocCurrency === "PEN" || effectiveQuote.DocCurrency === "SOL")
-    ? Number(effectiveQuote.DocTotal)
-    : (effectiveQuote.totals?.grandTotalSOL || calcRes.grandTotalSOL || Number((grandTotalUSD * tcVal).toFixed(2)));
+  const subtotalUSD = resolvedTotals.subtotalUSD;
+  const igvUSD = resolvedTotals.igvUSD;
+  const grandTotalSOL = resolvedTotals.grandTotalSOL;
 
   // Formateadores y cálculos de marca de tiempo en vivo
   const formatTimeStr = (isoStr) => {
@@ -1819,6 +1804,22 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
           discountPercent: totalDisc,
           DiscountPercent: totalDisc,
           isSpecialPrice: isSpecial,
+          specialDiscount: isSpecial ? Number(p.specialDiscount ?? sapDisc ?? 0) : 0,
+          specialPrice: isSpecial && p.specialPrice && Number(p.specialPrice) > 0
+            ? Number((Number(p.specialPrice) * rateMultiplier).toFixed(6))
+            : null,
+          specialPriceConIGV: isSpecial && p.specialPriceConIGV && Number(p.specialPriceConIGV) > 0
+            ? Number((Number(p.specialPriceConIGV) * rateMultiplier).toFixed(2))
+            : null,
+          promoPriceConIGV: !isSpecial && (p.promoPriceConIGV || p.U_US_PROMO) && Number(p.promoPriceConIGV || p.U_US_PROMO) > 0
+            ? Number((Number(p.promoPriceConIGV || p.U_US_PROMO) * rateMultiplier).toFixed(2))
+            : null,
+          U_US_PROMO: !isSpecial && (p.U_US_PROMO || p.promoPriceConIGV) && Number(p.U_US_PROMO || p.promoPriceConIGV) > 0
+            ? Number((Number(p.U_US_PROMO || p.promoPriceConIGV) * rateMultiplier).toFixed(2))
+            : null,
+          promoPriceNeto: !isSpecial && (p.promoPriceNeto || p.promoPrice) && Number(p.promoPriceNeto || p.promoPrice) > 0
+            ? Number((Number(p.promoPriceNeto || p.promoPrice) * rateMultiplier).toFixed(6))
+            : null,
           customPriceConIGV: p.customPriceConIGV
             ? Number((Number(p.customPriceConIGV) * rateMultiplier).toFixed(2))
             : null,
@@ -4419,7 +4420,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
                     return (
                       <Grid
-                        templateColumns={{ base: "1fr", lg: "1fr 340px" }}
+                        templateColumns={{ base: "1fr", lg: "minmax(0, 1fr) 365px" }}
                         gap={3}
                         mt={2.5}
                         alignItems="stretch"
@@ -4665,73 +4666,87 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                             border="1px solid"
                             borderColor="rgba(255,255,255,0.15)"
                             w="100%"
+                            maxW="100%"
+                            overflow="hidden"
                             h={{ base: "auto", lg: !hasVoucherData ? "100%" : "auto" }}
                             display="flex"
                             flexDirection="column"
                           >
-                            <Text fontSize={{ base: "13px", sm: "14px" }} fontWeight="900" textTransform="uppercase" letterSpacing="wider" color="#a7f3d0" mb={3}>
+                            <Text fontSize={{ base: "12px", sm: "13px" }} fontWeight="900" textTransform="uppercase" letterSpacing="wider" color="#a7f3d0" mb={3}>
                               RESUMEN DEL DOCUMENTO
                             </Text>
 
-                            <VStack align="stretch" spacing={2} fontSize="13.5px" flex="1">
+                            <VStack align="stretch" spacing={2.5} fontSize="12.5px" flex="1" minW={0}>
                               {/* Valor Venta Neto (con conteo de ítems con stock) */}
-                              <Flex justify="space-between" align="center" color="#ecfdf5">
-                                <Text fontWeight="600">
+                              <Flex justify="space-between" align="center" gap={3} color="#ecfdf5" minW={0}>
+                                <Text fontWeight="600" minW={0} lineHeight="1.3">
                                   Valor Venta Neto ({inStockProducts.length} {inStockProducts.length === 1 ? 'ítem con stock' : 'ítems con stock'})
                                 </Text>
-                                <Text fontWeight="800" fontFamily="mono">
+                                <Text fontWeight="800" fontFamily="mono" whiteSpace="nowrap" textAlign="right" flexShrink={0}>
                                   USD {formatThousands(netUSD)}
                                 </Text>
                               </Flex>
 
                               {/* Back Order row */}
                               {outOfStockProducts.length > 0 && (
-                                <Flex justify="space-between" align="center" bg="rgba(239, 68, 68, 0.25)" px={2} py={1} borderRadius="md" border="1px solid rgba(248, 113, 113, 0.4)">
-                                  <Text fontSize="11.5px" fontWeight="700" color="#fecaca">
+                                <Flex justify="space-between" align="center" gap={2} bg="rgba(239, 68, 68, 0.25)" px={2} py={1} borderRadius="md" border="1px solid rgba(248, 113, 113, 0.4)" minW={0}>
+                                  <Text fontSize="11.5px" fontWeight="700" color="#fecaca" minW={0}>
                                     📦 Sin Stock ({outOfStockProducts.length} {outOfStockProducts.length === 1 ? 'ítem' : 'ítems'}):
                                   </Text>
-                                  <Badge colorScheme="red" bg="#dc2626" color="white" fontSize="11px" px={1.5} py={0.2} borderRadius="sm" fontWeight="800">
+                                  <Badge colorScheme="red" bg="#dc2626" color="white" fontSize="10.5px" px={1.5} py={0.2} borderRadius="sm" fontWeight="800" whiteSpace="nowrap" flexShrink={0}>
                                     BACK ORDER
                                   </Badge>
                                 </Flex>
                               )}
 
                               {/* I.G.V. 18% oficial */}
-                              <Flex justify="space-between" align="center" color="#a7f3d0">
-                                <Text fontWeight="700">I.G.V. (18%)</Text>
-                                <Text fontWeight="800" fontFamily="mono">
+                              <Flex justify="space-between" align="center" gap={3} color="#a7f3d0" minW={0}>
+                                <Text fontWeight="700" minW={0}>I.G.V. (18%)</Text>
+                                <Text fontWeight="800" fontFamily="mono" whiteSpace="nowrap" textAlign="right" flexShrink={0}>
                                   +USD {formatThousands(igvUSD)}
                                 </Text>
                               </Flex>
 
-                              <Box mt="auto" pt={2}>
+                              <Box mt="auto" pt={2} minW={0}>
                                 <Divider borderColor="rgba(255,255,255,0.25)" mb={2} />
 
                                 {/* TOTAL A PAGAR */}
-                                <Flex justify="space-between" align="center" gap={2} wrap="nowrap">
-                                  <Text
-                                    fontSize={{ base: "xs", sm: "sm" }}
-                                    fontWeight="900"
-                                    color="#e6f4ea"
-                                    textTransform="uppercase"
-                                    letterSpacing="tight"
-                                    whiteSpace="nowrap"
-                                    flexShrink={0}
-                                  >
-                                    TOTAL A PAGAR
-                                  </Text>
-                                  <Text
-                                    fontSize={{ base: "lg", sm: "xl" }}
-                                    fontWeight="950"
-                                    color="#fef08a"
-                                    fontFamily="mono"
-                                    textShadow="0 2px 11px rgba(0,0,0,0.3)"
-                                    whiteSpace="nowrap"
-                                    textAlign="right"
-                                  >
-                                    USD {formatThousands(grandTotalUSD)}
-                                  </Text>
-                                </Flex>
+                                {(() => {
+                                  const totalDisplayStr = `USD ${formatThousands(grandTotalUSD)}`;
+                                  const dynamicTotalFontSize =
+                                    totalDisplayStr.length > 14
+                                      ? { base: "sm", sm: "md" }
+                                      : totalDisplayStr.length > 11
+                                        ? { base: "md", sm: "lg" }
+                                        : { base: "lg", sm: "xl" };
+                                  return (
+                                    <Flex justify="space-between" align="center" gap={2.5} wrap="nowrap" minW={0}>
+                                      <Text
+                                        fontSize={{ base: "11px", sm: "xs" }}
+                                        fontWeight="900"
+                                        color="#e6f4ea"
+                                        textTransform="uppercase"
+                                        letterSpacing="tight"
+                                        whiteSpace="nowrap"
+                                        flexShrink={0}
+                                      >
+                                        TOTAL A PAGAR
+                                      </Text>
+                                      <Text
+                                        fontSize={dynamicTotalFontSize}
+                                        fontWeight="950"
+                                        color="#fef08a"
+                                        fontFamily="mono"
+                                        textShadow="0 2px 11px rgba(0,0,0,0.3)"
+                                        whiteSpace="nowrap"
+                                        textAlign="right"
+                                        flexShrink={0}
+                                      >
+                                        {totalDisplayStr}
+                                      </Text>
+                                    </Flex>
+                                  );
+                                })()}
                               </Box>
                             </VStack>
                           </Box>

@@ -68,14 +68,24 @@ export default function InvoicesModal({ isOpen, onClose, cliente = null, documen
 
     setLoadingRef(normalized);
     try {
-      await downloadInvoicePDFdirectly(normalized);
-      toast({
-        title: "📄 Descarga iniciada",
-        description: `Descargando comprobante ${normalized}.pdf`,
-        status: "success",
-        duration: 3000,
-        isClosable: true,
-      });
+      const dlResult = await downloadInvoicePDFdirectly(normalized);
+      if (dlResult?.fallbackSap) {
+        toast({
+          title: "📄 Preliminar SAP descargado",
+          description: `El PDF oficial de ${normalized} aún está en cola SUNAT/TeFacturo; se descargó el comprobante contable de SAP.`,
+          status: "info",
+          duration: 5000,
+          isClosable: true,
+        });
+      } else {
+        toast({
+          title: "📄 Descarga iniciada",
+          description: `Descargando comprobante ${normalized}.pdf`,
+          status: "success",
+          duration: 3000,
+          isClosable: true,
+        });
+      }
     } catch (error) {
       console.error("Error al descargar el PDF de la referencia:", error);
       toast({

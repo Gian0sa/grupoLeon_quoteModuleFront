@@ -4290,6 +4290,8 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
           border="1px solid"
           borderColor="rgba(255,255,255,0.15)"
           w="full"
+          maxW="100%"
+          overflow="hidden"
           minW={{ base: 0, lg: "380px" }}
           alignSelf="start"
         >
@@ -4297,14 +4299,14 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
             Resumen del Documento
           </Text>
 
-          <VStack align="stretch" spacing={2} fontSize="xs">
+          <VStack align="stretch" spacing={2} fontSize="xs" minW={0}>
 
             {/* Valor Venta Neto (con conteo de ítems con stock) */}
-            <Flex justify="space-between" align="center" color="#ecfdf5" gap={2}>
-              <Text fontWeight="600">
+            <Flex justify="space-between" align="center" color="#ecfdf5" gap={3} minW={0}>
+              <Text fontWeight="600" minW={0} lineHeight="1.3">
                 Valor Venta Neto ({(totals.inStockProducts ? totals.inStockProducts.length : products.length)} {(totals.inStockProducts ? totals.inStockProducts.length : products.length) === 1 ? 'ítem con stock' : 'ítems con stock'})
               </Text>
-              <Text fontWeight="800" fontFamily="mono" whiteSpace="nowrap">
+              <Text fontWeight="800" fontFamily="mono" whiteSpace="nowrap" textAlign="right" flexShrink={0}>
                 {currency === "SOL" ? `S/ ${formatThousands(totals.subtotalSOL)}` : `USD ${formatThousands(totals.subtotalUSD)}`}
               </Text>
             </Flex>
@@ -4342,30 +4344,43 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
             <Divider borderColor="rgba(255,255,255,0.25)" my={0.5} />
 
             {/* TOTAL A PAGAR */}
-            <Flex justify="space-between" align="center" pt={1.5} gap={2} wrap="nowrap">
-              <Text
-                fontSize={{ base: "xs", sm: "sm" }}
-                fontWeight="900"
-                color="#e6f4ea"
-                textTransform="uppercase"
-                letterSpacing="tight"
-                whiteSpace="nowrap"
-                flexShrink={0}
-              >
-                Total a Pagar
-              </Text>
-              <Text
-                fontSize={{ base: "xl", sm: "2xl" }}
-                fontWeight="950"
-                color="#fef08a"
-                fontFamily="mono"
-                textShadow="0 2px 8px rgba(0,0,0,0.3)"
-                whiteSpace="nowrap"
-                textAlign="right"
-              >
-                {currency === "SOL" ? `S/ ${formatThousands(totals.grandTotalSOL)}` : `USD ${formatThousands(totals.grandTotalUSD)}`}
-              </Text>
-            </Flex>
+            {(() => {
+              const totalStr = currency === "SOL"
+                ? `S/ ${formatThousands(totals.grandTotalSOL)}`
+                : `USD ${formatThousands(totals.grandTotalUSD)}`;
+              const dynFont = totalStr.length > 14
+                ? { base: "md", sm: "lg" }
+                : totalStr.length > 11
+                  ? { base: "lg", sm: "xl" }
+                  : { base: "xl", sm: "2xl" };
+              return (
+                <Flex justify="space-between" align="center" pt={1.5} gap={2.5} wrap="nowrap" minW={0}>
+                  <Text
+                    fontSize={{ base: "xs", sm: "sm" }}
+                    fontWeight="900"
+                    color="#e6f4ea"
+                    textTransform="uppercase"
+                    letterSpacing="tight"
+                    whiteSpace="nowrap"
+                    flexShrink={0}
+                  >
+                    Total a Pagar
+                  </Text>
+                  <Text
+                    fontSize={dynFont}
+                    fontWeight="950"
+                    color="#fef08a"
+                    fontFamily="mono"
+                    textShadow="0 2px 8px rgba(0,0,0,0.3)"
+                    whiteSpace="nowrap"
+                    textAlign="right"
+                    flexShrink={0}
+                  >
+                    {totalStr}
+                  </Text>
+                </Flex>
+              );
+            })()}
           </VStack>
         </Box>
       </Grid>

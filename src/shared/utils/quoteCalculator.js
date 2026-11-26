@@ -503,3 +503,220 @@ export function calculateDiscountFromTargetPrice({
   };
 }
 
+const SPANISH_MONTHS = [
+  "Enero",
+  "Febrero",
+  "Marzo",
+  "Abril",
+  "Mayo",
+  "Junio",
+  "Julio",
+  "Agosto",
+  "Setiembre",
+  "Octubre",
+  "Noviembre",
+  "Diciembre",
+];
+
+/**
+ * Extrae día, mes y año calendario sin desplazamiento UTC (-1 día en Perú UTC-5)
+ * para cadenas ISO como "2026-11-26" o "2026-11-26T00:00:00Z".
+ */
+export function parseCalendarDateParts(rawDate) {
+  if (typeof rawDate === "string") {
+    const clean = rawDate.trim().split("T")[0];
+    const match = clean.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (match) {
+      const year = Number(match[1]);
+      const monthIdx = Number(match[2]) - 1;
+      const dayNum = Number(match[3]);
+      if (monthIdx >= 0 && monthIdx <= 11 && dayNum >= 1 && dayNum <= 31) {
+        return {
+          day: String(dayNum).padStart(2, "0"),
+          monthIndex: monthIdx,
+          monthName: SPANISH_MONTHS[monthIdx],
+          fullYear: String(year),
+          shortYear: String(year).slice(-2),
+        };
+      }
+    }
+  }
+
+  const parsed = rawDate ? new Date(rawDate) : new Date();
+  const dateObj = isNaN(parsed.getTime()) ? new Date() : parsed;
+  const fullYear = String(dateObj.getFullYear());
+  return {
+    day: String(dateObj.getDate()).padStart(2, "0"),
+    monthIndex: dateObj.getMonth(),
+    monthName: SPANISH_MONTHS[dateObj.getMonth()],
+    fullYear,
+    shortYear: fullYear.slice(-2),
+  };
+}
+
+/**
+ * Resuelve los totales oficiales (Subtotal, IGV y Total) para vistas, drawer y talonario PDF.
+ * Evita que totales obsoletos guardados en `quote.totals` (p. ej. antes de sincronizar promociones)
+ * contradigan el total oficial de SAP (`DocTotalFc` / `DocTotalSys`) o la suma real de las líneas.
+ */
+export function resolveOfficialDocumentTotals(
+  quote = {},
+  calcRes = {},
+  { isSol = false, tc = 3.45, isEmittedToSap = false } = {}
+) {
+  const rate = Number(tc) > 0 ? Number(tc) : 3.45;
+  const hasTaxOnly = Boolean(
+    quote?.totals?.hasTaxOnlyItems ||
+      quote?.hasTaxOnlyItems ||
+      calcRes?.hasTaxOnlyItems
+  );
+  const hasCalculatedProducts =
+    Array.isArray(calcRes?.normalizedProducts) &&
+    calcRes.normalizedProducts.length > 0;
+
+  const calcSubUSD = Number(calcRes?.subtotalUSD || 0);
+  const calcIgvUSD = Number(calcRes?.igvUSD || 0);
+  const calcGrandUSD = Number(calcRes?.grandTotalUSD || 0);
+
+  const docRate = Number(quote?.DocRate || quote?.docRate || 0);
+  const docCurrency = String(quote?.DocCurrency || "").toUpperCase();
+  const isSapLocalSol = docCurrency === "PEN" || docCurrency === "SOL";
+
+  const sapGrandUSD = Number(
+    quote?.DocTotalSys && Number(quote.DocTotalSys) > 0
+      ? Number(quote.DocTotalSys)
+      : quote?.DocTotalFc && Number(quote.DocTotalFc) > 0
+        ? Number(quote.DocTotalFc)
+        : quote?.DocTotal && docRate > 0 && !isSapLocalSol
+          ? Number((Number(quote.DocTotal) / docRate).toFixed(2))
+          : 0
+  );
+  const sapIgvUSD = Number(
+    quote?.VatSumSys && Number(quote.VatSumSys) > 0
+      ? Number(quote.VatSumSys)
+      : quote?.VatSumFc && Number(quote.VatSumFc) > 0
+        ? Number(quote.VatSumFc)
+        : quote?.VatSum && docRate > 0 && !isSapLocalSol
+          ? Number((Number(quote.VatSum) / docRate).toFixed(2))
+          : 0
+  );
+
+  const storedGrandUSD = Number(
+    quote?.totals?.grandTotalUSD ??
+      quote?.totals?.grandTotal ??
+      quote?.grandTotalUSD ??
+      0
+  );
+  const storedSubUSD = Number(
+    quote?.totals?.subtotalUSD ??
+      quote?.totals?.subTotalUSD ??
+      quote?.subtotalUSD ??
+      0
+  );
+  const storedIgvUSD = Number(
+    quote?.totals?.igvUSD ?? quote?.totals?.igv ?? quote?.igvUSD ?? 0
+  );
+  const hasStoredSubUSD =
+    quote?.totals?.subtotalUSD !== undefined ||
+    quote?.totals?.subTotalUSD !== undefined ||
+    quote?.subtotalUSD !== undefined;
+
+  const isStoredCoherentWithCalc =
+    storedGrandUSD > 0 &&
+    Math.abs(storedGrandUSD - calcGrandUSD) <= 0.1 &&
+    (storedSubUSD > 0 || (hasTaxOnly && hasStoredSubUSD)) &&
+    Math.abs(storedSubUSD - calcSubUSD) <= 0.1 &&
+    Math.abs(storedSubUSD + storedIgvUSD - storedGrandUSD) <= 0.05;
+
+  let grandTotalUSD = 0;
+  let subtotalUSD = 0;
+  let igvUSD = 0;
+
+  if (isEmittedToSap && sapGrandUSD > 0) {
+    grandTotalUSD = Number(sapGrandUSD.toFixed(2));
+    if (sapIgvUSD > 0) {
+      igvUSD = Number(sapIgvUSD.toFixed(2));
+      subtotalUSD =
+        hasTaxOnly && calcSubUSD === 0
+          ? 0
+          : Number(Math.max(0, grandTotalUSD - igvUSD).toFixed(2));
+    } else if (hasTaxOnly && calcSubUSD === 0) {
+      subtotalUSD = 0;
+      igvUSD = grandTotalUSD;
+    } else {
+      subtotalUSD = Number((grandTotalUSD / 1.18).toFixed(2));
+      igvUSD = Number(Math.max(0, grandTotalUSD - subtotalUSD).toFixed(2));
+    }
+  } else if (hasCalculatedProducts && (calcGrandUSD > 0 || hasTaxOnly)) {
+    if (isStoredCoherentWithCalc) {
+      subtotalUSD = Number(storedSubUSD.toFixed(2));
+      igvUSD = Number(storedIgvUSD.toFixed(2));
+      grandTotalUSD = Number(storedGrandUSD.toFixed(2));
+    } else {
+      subtotalUSD = Number(calcSubUSD.toFixed(2));
+      igvUSD = Number(calcIgvUSD.toFixed(2));
+      grandTotalUSD = Number(calcGrandUSD.toFixed(2));
+    }
+  } else {
+    grandTotalUSD =
+      storedGrandUSD > 0
+        ? Number(storedGrandUSD.toFixed(2))
+        : Number((sapGrandUSD || calcGrandUSD || 0).toFixed(2));
+    subtotalUSD =
+      storedSubUSD > 0 || (hasTaxOnly && hasStoredSubUSD)
+        ? Number(storedSubUSD.toFixed(2))
+        : hasTaxOnly
+          ? Number(calcSubUSD.toFixed(2))
+          : Number((grandTotalUSD / 1.18).toFixed(2));
+    igvUSD =
+      storedIgvUSD > 0 && Math.abs(subtotalUSD + storedIgvUSD - grandTotalUSD) <= 0.05
+        ? Number(storedIgvUSD.toFixed(2))
+        : Number(Math.max(0, grandTotalUSD - subtotalUSD).toFixed(2));
+  }
+
+  let grandTotalSOL = Number((grandTotalUSD * rate).toFixed(2));
+  let subtotalSOL = Number((subtotalUSD * rate).toFixed(2));
+  let igvSOL = Number(Math.max(0, grandTotalSOL - subtotalSOL).toFixed(2));
+
+  if (isSol && isEmittedToSap && isSapLocalSol && Number(quote?.DocTotal || 0) > 0) {
+    grandTotalSOL = Number(Number(quote.DocTotal).toFixed(2));
+    const sapVatSol = Number(quote?.VatSum || 0);
+    if (sapVatSol > 0) {
+      igvSOL = Number(sapVatSol.toFixed(2));
+      subtotalSOL =
+        hasTaxOnly && calcSubUSD === 0
+          ? 0
+          : Number(Math.max(0, grandTotalSOL - igvSOL).toFixed(2));
+    } else {
+      subtotalSOL = hasTaxOnly && calcSubUSD === 0 ? 0 : Number((grandTotalSOL / 1.18).toFixed(2));
+      igvSOL = Number(Math.max(0, grandTotalSOL - subtotalSOL).toFixed(2));
+    }
+  } else if (isSol) {
+    const storedGrandSOL = Number(quote?.totals?.grandTotalSOL ?? quote?.totals?.grandTotalPEN ?? 0);
+    const storedSubSOL = Number(quote?.totals?.subtotalSOL ?? quote?.totals?.subtotalPEN ?? 0);
+    const storedIgvSOL = Number(quote?.totals?.igvSOL ?? 0);
+    if (
+      storedGrandSOL > 0 &&
+      Math.abs(storedGrandSOL - grandTotalSOL) <= 0.15 &&
+      Math.abs(storedSubSOL + storedIgvSOL - storedGrandSOL) <= 0.05
+    ) {
+      grandTotalSOL = Number(storedGrandSOL.toFixed(2));
+      subtotalSOL = Number(storedSubSOL.toFixed(2));
+      igvSOL = Number(storedIgvSOL.toFixed(2));
+    }
+  }
+
+  return {
+    subtotalUSD,
+    igvUSD,
+    grandTotalUSD,
+    subtotalSOL,
+    igvSOL,
+    grandTotalSOL,
+    subtotalDocNum: isSol ? subtotalSOL : subtotalUSD,
+    igvDocNum: isSol ? igvSOL : igvUSD,
+    documentTotalNum: isSol ? grandTotalSOL : grandTotalUSD,
+    hasTaxOnly,
+  };
+}
+

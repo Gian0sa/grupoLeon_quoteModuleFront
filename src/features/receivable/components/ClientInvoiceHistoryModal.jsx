@@ -107,18 +107,30 @@ export function ClientInvoiceHistoryModal({
     }
   };
 
-  const handleDownloadPdf = async (referenceCode) => {
+  const handleDownloadPdf = async (referenceCode, docEntry = null) => {
     if (!referenceCode) return;
     setDownloadingRef(referenceCode);
     try {
-      await downloadInvoicePDFdirectly(referenceCode);
-      toast({
-        title: "📄 Descarga iniciada",
-        description: `Descargando comprobante ${referenceCode}.pdf`,
-        status: "success",
-        duration: 3000,
-        isClosable: true,
+      const dlResult = await downloadInvoicePDFdirectly(referenceCode, {
+        invoiceId: docEntry,
       });
+      if (dlResult?.fallbackSap) {
+        toast({
+          title: "📄 Preliminar SAP descargado",
+          description: `El PDF oficial de ${referenceCode} aún está en cola SUNAT/TeFacturo; se descargó el comprobante contable de SAP.`,
+          status: "info",
+          duration: 5000,
+          isClosable: true,
+        });
+      } else {
+        toast({
+          title: "📄 Descarga iniciada",
+          description: `Descargando comprobante ${referenceCode}.pdf`,
+          status: "success",
+          duration: 3000,
+          isClosable: true,
+        });
+      }
     } catch (err) {
       console.error("Error al descargar PDF:", err);
       toast({
@@ -651,7 +663,7 @@ export function ClientInvoiceHistoryModal({
                         fontWeight="700"
                         fontSize={{ base: "11.5px", sm: "12.5px" }}
                         leftIcon={<Download size={14} color="#16a34a" />}
-                        onClick={() => handleDownloadPdf(inv.reference)}
+                        onClick={() => handleDownloadPdf(inv.reference, inv.docEntry)}
                         isLoading={isDownloading}
                         loadingText="Generando comprobante..."
                       >

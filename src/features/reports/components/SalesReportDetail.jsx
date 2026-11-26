@@ -16,6 +16,7 @@ import {
   Spinner,
   Badge,
   Button,
+  useToast,
 } from "@chakra-ui/react";
 import { Check, Download } from "lucide-react";
 import {
@@ -50,6 +51,7 @@ const getOrdinalEntregaLabel = (index) => {
 
 export default function TrackingPage({ orden, data }) {
   const [loadingFacturaId, setLoadingFacturaId] = useState(null);
+  const toast = useToast();
 
   // Responsive values
   const bgMain = useColorModeValue("white", "gray.800");
@@ -257,30 +259,65 @@ export default function TrackingPage({ orden, data }) {
     useGetSeguimientoAlmacen(entregaId, Boolean(entregaId));
 
   const handleDownloadInvoice = async (targetFacturaId, explicitNumAtCard) => {
-    if (!targetFacturaId) return;
-    setLoadingFacturaId(targetFacturaId);
+    if (!targetFacturaId && !explicitNumAtCard) return;
+    setLoadingFacturaId(targetFacturaId || explicitNumAtCard);
     try {
       const matchedFactura = facturas.find(
         (f) => String(f.id) === String(targetFacturaId)
       );
+      const preloadedInvoice =
+        String(targetFacturaId) === String(facturaId) ? facturaDetalle : null;
+
+      let fetchedInvoiceData = preloadedInvoice;
       let referenceCode =
         explicitNumAtCard ||
         matchedFactura?.numAtCard ||
-        (String(targetFacturaId) === String(facturaId)
-          ? facturaDetalle?.numAtCard || facturaDetalle?.NumAtCard
-          : null);
-      if (!referenceCode) {
-        const invoiceData = await getInvoiceByCode(targetFacturaId);
-        referenceCode = invoiceData?.numAtCard || invoiceData?.NumAtCard;
+        preloadedInvoice?.numAtCard ||
+        preloadedInvoice?.NumAtCard;
+
+      if (!referenceCode && targetFacturaId) {
+        fetchedInvoiceData = await getInvoiceByCode(targetFacturaId);
+        referenceCode =
+          fetchedInvoiceData?.numAtCard || fetchedInvoiceData?.NumAtCard;
       }
-      if (referenceCode) {
-        await downloadInvoicePDFdirectly(referenceCode);
+
+      const dlResult = await downloadInvoicePDFdirectly(
+        referenceCode || targetFacturaId,
+        {
+          invoiceId: targetFacturaId,
+          invoiceData: fetchedInvoiceData,
+        }
+      );
+
+      if (dlResult?.fallbackSap) {
+        toast({
+          title: "📄 Preliminar SAP descargado",
+          description:
+            "El comprobante electrónico aún está sincronizándose con SUNAT/TeFacturo. Se descargó el comprobante registrado en SAP.",
+          status: "info",
+          duration: 5500,
+          isClosable: true,
+        });
       } else {
-        await downloadInvoicePDFdirectly(targetFacturaId);
+        toast({
+          title: "📄 Comprobante descargado",
+          description: `Se descargó ${dlResult?.fileName || "el comprobante PDF"}.`,
+          status: "success",
+          duration: 2800,
+          isClosable: true,
+        });
       }
     } catch (err) {
       console.error("Error al descargar factura:", err);
-      alert(`No se pudo descargar la factura: ${err.message || "Error desconocido"}`);
+      toast({
+        title: "No se pudo descargar el comprobante",
+        description:
+          err.message ||
+          "El comprobante aún no se encuentra disponible en SUNAT/TeFacturo.",
+        status: "warning",
+        duration: 5000,
+        isClosable: true,
+      });
     } finally {
       setLoadingFacturaId(null);
     }

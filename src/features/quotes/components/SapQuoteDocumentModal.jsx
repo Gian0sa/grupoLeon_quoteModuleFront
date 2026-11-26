@@ -20,7 +20,12 @@ import {
   Image
 } from "@chakra-ui/react";
 import { Printer, Download, Eye, CheckCircle2, FileText, Share2, Edit3, Check, ZoomIn, ZoomOut, Code2 } from "lucide-react";
-import { calculateQuoteTotals } from "../../../shared/utils/quoteCalculator";
+import {
+  calculateQuoteTotals,
+  resolveOfficialDocumentTotals,
+  parseCalendarDateParts,
+} from "../../../shared/utils/quoteCalculator";
+import { reconcileLineTotalsWithSap } from "../utils/sapLineReconciliation";
 import {
   formatDeliveryForm,
   formatTransportName,
@@ -314,13 +319,8 @@ export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) 
   const isBoleta = docType === "BOLETA";
   const isFactura = docType === "FACTURA";
 
-  // Fecha desglosada
-  const dateObj = quote.docDate ? new Date(quote.docDate) : new Date();
-  const day = !isNaN(dateObj.getDate()) ? String(dateObj.getDate()).padStart(2, "0") : String(new Date().getDate()).padStart(2, "0");
-  const months = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Setiembre", "Octubre", "Noviembre", "Diciembre"];
-  const monthName = !isNaN(dateObj.getMonth()) ? months[dateObj.getMonth()] : months[new Date().getMonth()];
-  const fullYear = !isNaN(dateObj.getFullYear()) ? String(dateObj.getFullYear()) : String(new Date().getFullYear());
-  const shortYear = fullYear.slice(-2);
+  // Fecha desglosada (sin desfase UTC-5 en Perú)
+  const { day, monthName, fullYear, shortYear } = parseCalendarDateParts(quote.docDate || quote.DocDate);
 
   // Datos del Cliente y Despacho
   const clientDocDigits = String(client.LicTradNum || client.FederalTaxID || quote.clientRuc || quote.clientDocument || "").replace(/\D/g, "");
@@ -353,49 +353,61 @@ export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) 
   // BCQ: Banco del Cheque (aplica únicamente si se paga con cheque; las cuentas de recaudo van en facturación/SAP posterior)
   const bcqVal = formatCheckBank(quote.checkBank || quote.bancoCheque);
 
-  // Totales y Normalización usando calculadora unificada
+  // Totales y Normalización usando calculadora unificada (anti-totales obsoletos)
   const normalizedList = calcTotals.normalizedProducts && calcTotals.normalizedProducts.length > 0
     ? calcTotals.normalizedProducts
     : products;
 
-  const storedGrandTotal = Number(quote.totals?.grandTotalUSD ?? quote.totals?.grandTotal ?? quote.grandTotalUSD ?? 0);
-  const storedSubtotal = Number(quote.totals?.subtotalUSD ?? quote.totals?.subTotalUSD ?? quote.subtotalUSD ?? 0);
-  const storedIgv = Number(quote.totals?.igvUSD ?? quote.totals?.igv ?? quote.igvUSD ?? 0);
+  const isEmittedToSapDoc = Boolean(
+    (quote.sapDocNum && String(quote.sapDocNum).trim() !== "") ||
+    (quote.DocNum && !String(quote.DocNum).startsWith("COT-")) ||
+    quote.status === "EMITIDO" ||
+    quote.isSyncedToSap === true
+  );
 
-  const grandTotalUSD = storedGrandTotal > 0
-    ? storedGrandTotal
-    : (calcTotals.grandTotalUSD || Number(quote.DocTotalSys || quote.DocTotalFc || 0));
-  const grandTotalSOL = Number(quote.totals?.grandTotalSOL || quote.totals?.grandTotalPEN || calcTotals.grandTotalSOL || (grandTotalUSD * tc));
+  const {
+    subtotalDocNum,
+    igvDocNum,
+    documentTotalNum,
+    hasTaxOnly,
+  } = resolveOfficialDocumentTotals(quote, calcTotals, {
+    isSol,
+    tc,
+    isEmittedToSap: isEmittedToSapDoc,
+  });
 
-  // Monto total del documento oficial (prioriza total unificado exacto)
-  const documentTotalNum = isSol
-    ? Number(quote.totals?.grandTotalPEN || quote.totals?.grandTotalSOL || grandTotalSOL || quote.DocTotal)
-    : grandTotalUSD;
+  // División de ítems normalizados para Grilla Doble de 30 renglones (1-15 y 16-30) reconciliados con subtotalDocNum
+  const normalizedPdfItems = normalizedList.map((raw) => normalizeItem(raw, isSol, tc));
+  const billableIndices = [];
+  const billableEntries = [];
+  normalizedPdfItems.forEach((it, idx) => {
+    if (it && !it.isOutOfStock && !it.isTaxOnly) {
+      billableIndices.push(idx);
+      billableEntries.push({ rawLineTotal: it.lineTotalNum });
+    }
+  });
+  if (billableEntries.length > 0 && subtotalDocNum > 0 && !hasTaxOnly) {
+    const rawSum = billableEntries.reduce((acc, e) => acc + e.rawLineTotal, 0);
+    if (Math.abs(rawSum - subtotalDocNum) <= 0.15) {
+      const reconciled = reconcileLineTotalsWithSap(billableEntries, subtotalDocNum);
+      billableIndices.forEach((origIdx, rIdx) => {
+        if (typeof reconciled[rIdx] === "number" && !isNaN(reconciled[rIdx])) {
+          normalizedPdfItems[origIdx] = {
+            ...normalizedPdfItems[origIdx],
+            lineTotalNum: reconciled[rIdx],
+          };
+        }
+      });
+    }
+  }
 
-  const hasTaxOnly = Boolean(quote.totals?.hasTaxOnlyItems || calcTotals.hasTaxOnlyItems);
-  const hasStoredSubUSD = quote.totals?.subtotalUSD !== undefined || quote.totals?.subTotalUSD !== undefined || quote.subtotalUSD !== undefined;
-  const hasStoredSubSOL = quote.totals?.subtotalSOL !== undefined || quote.totals?.subtotalPEN !== undefined;
-
-  const subtotalDocNum = isSol
-    ? (hasStoredSubSOL && (Number(quote.totals?.subtotalSOL ?? quote.totals?.subtotalPEN ?? 0) > 0 || hasTaxOnly)
-        ? Number(quote.totals?.subtotalSOL ?? quote.totals?.subtotalPEN ?? 0)
-        : (hasTaxOnly ? Number(calcTotals.subtotalSOL ?? 0) : Number(quote.totals?.subtotalSOL || calcTotals.subtotalSOL || (documentTotalNum / 1.18))))
-    : ((storedSubtotal > 0 || (hasTaxOnly && hasStoredSubUSD))
-        ? storedSubtotal
-        : (hasTaxOnly ? Number(calcTotals.subtotalUSD ?? 0) : (calcTotals.subtotalUSD || Number((documentTotalNum / 1.18).toFixed(2)))));
-
-  const igvDocNum = isSol
-    ? Number(quote.totals?.igvSOL || calcTotals.igvSOL || (documentTotalNum - subtotalDocNum))
-    : (storedIgv > 0 ? storedIgv : (calcTotals.igvUSD || Number(Math.max(0, documentTotalNum - subtotalDocNum).toFixed(2))));
-
-  // División de ítems normalizados para Grilla Doble de 30 renglones (1-15 y 16-30)
   const col1Items = [];
   const col2Items = [];
   for (let i = 0; i < 15; i++) {
-    col1Items.push(normalizedList[i] ? normalizeItem(normalizedList[i], isSol, tc) : null);
+    col1Items.push(normalizedPdfItems[i] || null);
   }
   for (let i = 15; i < 30; i++) {
-    col2Items.push(normalizedList[i] ? normalizeItem(normalizedList[i], isSol, tc) : null);
+    col2Items.push(normalizedPdfItems[i] || null);
   }
 
   const handlePrint = () => {
