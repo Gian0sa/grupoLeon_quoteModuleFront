@@ -3806,13 +3806,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
               const preparedInStock = inStockProducts.map((item) => {
                 const qty = Number(item.quantity ?? 1);
-                const isSpecial = Boolean(
-                  item.isSpecialPrice ||
-                  item.specialPrice ||
-                  item.specialDiscount ||
-                  item.campaignName === "Convenio Cliente" ||
-                  Number(item.sapDiscount ?? item.discount ?? 0) > 55.0
-                );
+                const isSpecial = isSpecialAgreementItem(item);
                 const sapDisc = Number(item.sapDiscount ?? item.discount ?? item.specialDiscount ?? 0);
                 const promoDisc = isSpecial ? 0 : Number(item.promoDiscount ?? 0);
                 let addDisc = Number(Number(item.lineDiscount ?? 0).toFixed(2));
