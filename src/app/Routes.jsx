@@ -1,54 +1,86 @@
 import { Component, lazy, Suspense } from "react";
 import { Routes, Route, Navigate, useLocation, useParams } from "react-router-dom";
-import { Flex, Spinner, Text, Button } from "@chakra-ui/react";
+import { Box, Flex, Spinner, Text, Button } from "@chakra-ui/react";
 import { PrivateRoute } from "../app/middlewares/privateRoute.jsx";
 import { RoleRoute } from "../app/middlewares/roleRoute.jsx";
 import { RouteMemoryTracker } from "./middlewares/RouteMemoryTracker.jsx";
+import { TopHeaderBanner } from "../components/TopHeaderBanner";
 
-// ─── Importaciones estáticas esenciales para funcionamiento offline en campo ───
+// ─── Importaciones estáticas esenciales para navegación 0ms desde el Dashboard ───
 import Login from "../features/auth/pages/Login.jsx";
 import { DashboardPage } from "../features/dashboard/pages/DashboardPage.jsx";
 import ClienteBusquedaPage from "../features/clients/pages/ClienteBusquedaPage.jsx";
 import VisitLogPage from "../features/checkinout/pages/VisitLogPage.jsx";
-const MyVisitsPage         = lazy(() => import("../features/checkinout/pages/MyVisitsPage.jsx"));
+import { HistoryQuotesPage } from "../features/quotes/pages/HistoryQuotesPage.jsx";
+import { QuoteApprovalPage } from "../features/quotes/pages/QuoteApprovalPage.jsx";
+import { ProductList } from "../features/products/pages/ProductsPriceList.jsx";
+import { ReportPage } from "../features/reports/pages/ReportPage.jsx";
+import { ReceivablePage } from "../features/receivable/pages/ReceivablePage.jsx";
 
-// ─── Lazy imports ── cada página privada descarga su propio chunk solo cuando se visita
-const Register             = lazy(() => import("../features/auth/pages/Register.jsx").then(m => ({ default: m.Register })));
-const ClientStatementPage  = lazy(() => import("../features/receivable/pages/ClientStatementPage.jsx").then(m => ({ default: m.ClientStatementPage })));
-const ClientQuoteSharePage  = lazy(() => import("../features/quotes/pages/ClientQuoteSharePage.jsx").then(m => ({ default: m.ClientQuoteSharePage })));
-const ClientPage           = lazy(() => import("../features/clients/pages/ClientPage.jsx").then(m => ({ default: m.ClientPage })));
-const NewQuotesPage        = lazy(() => import("../features/quotes/pages/NewQuotePage.jsx").then(m => ({ default: m.NewQuotesPage })));
-const SupervisorPage       = lazy(() => import("../features/supervisor/pages/SupervisorPage.jsx").then(m => ({ default: m.SupervisorPage })));
-const ProductosPage        = lazy(() => import("../features/products/pages/ProductosPage.jsx").then(m => ({ default: m.ProductosPage })));
-const History              = lazy(() => import("../features/dashboard/components/History.jsx").then(m => ({ default: m.History })));
-const HistoryQuotesPage    = lazy(() => import("../features/quotes/pages/HistoryQuotesPage.jsx").then(m => ({ default: m.HistoryQuotesPage })));
-const QuoteApprovalPage    = lazy(() => import("../features/quotes/pages/QuoteApprovalPage.jsx").then(m => ({ default: m.QuoteApprovalPage })));
-const ReportPage           = lazy(() => import("../features/reports/pages/ReportPage.jsx").then(m => ({ default: m.ReportPage })));
-const ConfigRulesPage      = lazy(() => import("../features/reports/pages/ConfigPage.jsx").then(m => ({ default: m.ConfigRulesPage })));
-const ReceivablePage       = lazy(() => import("../features/receivable/pages/ReceivablePage.jsx").then(m => ({ default: m.ReceivablePage })));
-const Profile              = lazy(() => import("../features/auth/pages/Profile.jsx").then(m => ({ default: m.Profile })));
-const ProfileAdmin         = lazy(() => import("../features/admin/pages/profileAdmin.jsx").then(m => ({ default: m.ProfileAdmin })));
-const NotificationPage     = lazy(() => import("../features/dashboard/pages/NotificationPage.jsx").then(m => ({ default: m.NotificationPage })));
-const ProductList          = lazy(() => import("../features/products/pages/ProductsPriceList.jsx").then(m => ({ default: m.ProductList })));
-const FormCatalogPage      = lazy(() => import("../features/catalog/pages/FormCatalogPage.jsx").then(m => ({ default: m.FormCatalogPage })));
-const CatalogPage          = lazy(() => import("../features/catalog/pages/CatalogPage.jsx"));
-const ProductDetailPage    = lazy(() => import("../features/catalog/pages/ProductDetailPage.jsx"));
-const OrdersDashboard      = lazy(() => import("../features/dashboard/pages/OrdersDashboard.jsx"));
-const ClienteInfo          = lazy(() => import("../features/reports/pages/ClienteInfo.jsx"));
-const ImportacionesPage    = lazy(() => import("../features/imports/pages/ImportacionesPage.jsx"));
-const VisitLogsMapView     = lazy(() => import("../features/checkinout/pages/VisitLogsMapView.jsx"));
-const EntradaPage          = lazy(() => import("../features/entrada/pages/EntradaPage.jsx").then(m => ({ default: m.EntradaPage })));
-const AttendanceAdminPage  = lazy(() => import("../features/entrada/pages/AttendanceAdminPage.jsx").then(m => ({ default: m.AttendanceAdminPage })));
-const NewClientsPage       = lazy(() => import("../features/clients/pages/NewClientsPage.jsx").then(m => ({ default: m.NewClientsPage })));
-const FAQPage              = lazy(() => import("../features/help/pages/FAQPage.jsx").then(m => ({ default: m.FAQPage })));
-const OnlineUsersPage      = lazy(() => import("../features/admin/pages/OnlineUsersPage.jsx"));
+function lazyWithRetry(importFn) {
+  return lazy(async () => {
+    try {
+      return await importFn();
+    } catch (err) {
+      console.warn("Reintentando carga diferida de módulo...", err);
+      return await importFn();
+    }
+  });
+}
 
-// ─── Fallback de carga: spinner mínimo centrado con color de marca ───────────
+// ─── Lazy imports con reintento automático ── páginas secundarias bajo demanda ───
+const MyVisitsPage         = lazyWithRetry(() => import("../features/checkinout/pages/MyVisitsPage.jsx"));
+const Register             = lazyWithRetry(() => import("../features/auth/pages/Register.jsx").then(m => ({ default: m.Register })));
+const ClientStatementPage  = lazyWithRetry(() => import("../features/receivable/pages/ClientStatementPage.jsx").then(m => ({ default: m.ClientStatementPage })));
+const ClientQuoteSharePage = lazyWithRetry(() => import("../features/quotes/pages/ClientQuoteSharePage.jsx").then(m => ({ default: m.ClientQuoteSharePage })));
+const ClientPage           = lazyWithRetry(() => import("../features/clients/pages/ClientPage.jsx").then(m => ({ default: m.ClientPage })));
+const NewQuotesPage        = lazyWithRetry(() => import("../features/quotes/pages/NewQuotePage.jsx").then(m => ({ default: m.NewQuotesPage })));
+const SupervisorPage       = lazyWithRetry(() => import("../features/supervisor/pages/SupervisorPage.jsx").then(m => ({ default: m.SupervisorPage })));
+const ProductosPage        = lazyWithRetry(() => import("../features/products/pages/ProductosPage.jsx").then(m => ({ default: m.ProductosPage })));
+const History              = lazyWithRetry(() => import("../features/dashboard/components/History.jsx").then(m => ({ default: m.History })));
+const ConfigRulesPage      = lazyWithRetry(() => import("../features/reports/pages/ConfigPage.jsx").then(m => ({ default: m.ConfigRulesPage })));
+const Profile              = lazyWithRetry(() => import("../features/auth/pages/Profile.jsx").then(m => ({ default: m.Profile })));
+const ProfileAdmin         = lazyWithRetry(() => import("../features/admin/pages/profileAdmin.jsx").then(m => ({ default: m.ProfileAdmin })));
+const NotificationPage     = lazyWithRetry(() => import("../features/dashboard/pages/NotificationPage.jsx").then(m => ({ default: m.NotificationPage })));
+const FormCatalogPage      = lazyWithRetry(() => import("../features/catalog/pages/FormCatalogPage.jsx").then(m => ({ default: m.FormCatalogPage })));
+const CatalogPage          = lazyWithRetry(() => import("../features/catalog/pages/CatalogPage.jsx"));
+const ProductDetailPage    = lazyWithRetry(() => import("../features/catalog/pages/ProductDetailPage.jsx"));
+const OrdersDashboard      = lazyWithRetry(() => import("../features/dashboard/pages/OrdersDashboard.jsx"));
+const ClienteInfo          = lazyWithRetry(() => import("../features/reports/pages/ClienteInfo.jsx"));
+const ImportacionesPage    = lazyWithRetry(() => import("../features/imports/pages/ImportacionesPage.jsx"));
+const VisitLogsMapView     = lazyWithRetry(() => import("../features/checkinout/pages/VisitLogsMapView.jsx"));
+const EntradaPage          = lazyWithRetry(() => import("../features/entrada/pages/EntradaPage.jsx").then(m => ({ default: m.EntradaPage })));
+const AttendanceAdminPage  = lazyWithRetry(() => import("../features/entrada/pages/AttendanceAdminPage.jsx").then(m => ({ default: m.AttendanceAdminPage })));
+const NewClientsPage       = lazyWithRetry(() => import("../features/clients/pages/NewClientsPage.jsx").then(m => ({ default: m.NewClientsPage })));
+const FAQPage              = lazyWithRetry(() => import("../features/help/pages/FAQPage.jsx").then(m => ({ default: m.FAQPage })));
+const OnlineUsersPage      = lazyWithRetry(() => import("../features/admin/pages/OnlineUsersPage.jsx"));
+
+// ─── Fallback de carga: mantiene la cabecera fija para evitar pantallas en blanco ──
 function PageLoader() {
+  const { pathname } = useLocation();
+  const isPublicNoHeader =
+    pathname === "/" ||
+    pathname.startsWith("/s/") ||
+    pathname.startsWith("/estado-cuenta/") ||
+    pathname.startsWith("/statement/") ||
+    pathname.startsWith("/c/") ||
+    pathname.startsWith("/cotizacion/");
+
+  if (isPublicNoHeader) {
+    return (
+      <Flex w="full" minH="100dvh" align="center" justify="center" bg="gray.50">
+        <Spinner size="xl" color="green.600" thickness="3px" speed="0.65s" />
+      </Flex>
+    );
+  }
+
   return (
-    <Flex w="full" minH="100dvh" align="center" justify="center" bg="gray.50">
-      <Spinner size="xl" color="green.600" thickness="3px" speed="0.65s" />
-    </Flex>
+    <Box w="full" minH="100dvh" bg="gray.50">
+      <TopHeaderBanner title="Cargando vista..." subtitle="Grupo León / Autopartes" showBack={true} />
+      <Flex w="full" py={16} align="center" justify="center">
+        <Spinner size="xl" color="green.600" thickness="3px" speed="0.65s" />
+      </Flex>
+    </Box>
   );
 }
 

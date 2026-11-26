@@ -247,18 +247,22 @@ export function HistoryQuotesPage() {
       </Box>
 
       {/* MODAL DE VISTA PREVIA DE COTIZACIÓN */}
-      <SapQuoteDocumentModal
-        isOpen={isPreviewOpen}
-        onClose={() => setIsPreviewOpen(false)}
-        quote={selectedQuote}
-        onLoadToForm={handleLoadQuote}
-      />
+      {isPreviewOpen && (
+        <SapQuoteDocumentModal
+          isOpen={isPreviewOpen}
+          onClose={() => setIsPreviewOpen(false)}
+          quote={selectedQuote}
+          onLoadToForm={handleLoadQuote}
+        />
+      )}
 
       {/* MODAL DE VISUALIZACIÓN DE OFERTAS DEL MES */}
-      <ProductPromotionsModal
-        isOpen={isPromoModalOpen}
-        onClose={() => setIsPromoModalOpen(false)}
-      />
+      {isPromoModalOpen && (
+        <ProductPromotionsModal
+          isOpen={isPromoModalOpen}
+          onClose={() => setIsPromoModalOpen(false)}
+        />
+      )}
     </Box>
   );
 }

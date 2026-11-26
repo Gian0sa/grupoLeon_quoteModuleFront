@@ -148,9 +148,10 @@ export const useTopCanceled = useTopCanceledProducts;
 
 // ✅ Top productos vendidos
 export const useTopSelledProducts = ({ yearFrom, monthFrom, monthTo, slpCode } = {}) => {
+  const normalizedSlpCode = Number(slpCode) || 0;
   return useQuery({
-    queryKey: ['topSelledProducts', yearFrom, monthFrom, monthTo, slpCode],
-    queryFn: () => getTopSelledProducts({ yearFrom, monthFrom, monthTo, slpCode }),
+    queryKey: ['topSelledProducts', yearFrom, monthFrom, monthTo, normalizedSlpCode],
+    queryFn: () => getTopSelledProducts({ yearFrom, monthFrom, monthTo, slpCode: normalizedSlpCode }),
     enabled: yearFrom != null && monthFrom != null && monthTo != null,
     staleTime: 5 * 60 * 1000, // 5 minutos de caché para evitar consultas masivas repetitivas
     refetchOnWindowFocus: false,

@@ -4260,6 +4260,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
               size="sm"
               borderRadius="md"
               rows={4}
+              maxLength={254}
               placeholder="Ingrese especificaciones comerciales, notas de entrega, acuerdos o vigencia..."
               value={comment || ""}
               onChange={(e) => setComment && setComment(e.target.value)}
@@ -4267,6 +4268,15 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
               bg={isSellerFieldsLocked ? "gray.100" : "white"}
               cursor={isSellerFieldsLocked ? "not-allowed" : "text"}
             />
+            <Flex justify="flex-end" mt={1}>
+              <Text
+                fontSize="10px"
+                fontWeight="700"
+                color={(comment || "").length >= 245 ? "orange.600" : "gray.400"}
+              >
+                {(comment || "").length}/254 caracteres (límite SAP)
+              </Text>
+            </Flex>
           </FormControl>
         </VStack>
 

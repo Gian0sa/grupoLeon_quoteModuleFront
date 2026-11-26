@@ -204,7 +204,7 @@ export function ProductPriceListCard({ product, tipoPrecio }) {
         </Flex>
       </MotionBox>
 
-      <ProductPriceListModal product={product} isOpen={isOpen} onClose={onClose} />
+      {isOpen && <ProductPriceListModal product={product} isOpen={isOpen} onClose={onClose} />}
     </>
   );
 }

@@ -1,7 +1,79 @@
-import { SimpleGrid, Text, Center } from "@chakra-ui/react";
+import { useState, useEffect, useRef } from "react";
+import { SimpleGrid, Text, Center, Box, VStack, HStack, Skeleton, SkeletonCircle, Spinner, Button } from "@chakra-ui/react";
 import { DebtCard } from "./DebtCard";
 
-export function DebtList({ debts, onViewInvoices, onViewHistory, onViewDetails }) {
+const INITIAL_BATCH = 24;
+const BATCH_STEP = 24;
+
+export function DebtList({ debts, isLoading = false, onViewInvoices, onViewHistory, onViewDetails }) {
+  const [visibleCount, setVisibleCount] = useState(INITIAL_BATCH);
+  const sentinelRef = useRef(null);
+
+  // Reiniciar ventana visible cuando cambia la lista (búsqueda, filtro o vendedor) para renderizar en <15ms
+  const firstCode = debts?.[0]?.clientCode || "";
+  const totalDebts = debts?.length || 0;
+  useEffect(() => {
+    setVisibleCount(INITIAL_BATCH);
+  }, [firstCode, totalDebts]);
+
+  // Carga incremental automática al hacer scroll cerca del final
+  useEffect(() => {
+    const node = sentinelRef.current;
+    if (!node || visibleCount >= totalDebts) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisibleCount((prev) => Math.min(prev + BATCH_STEP, totalDebts));
+        }
+      },
+      { rootMargin: "400px 0px" }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [visibleCount, totalDebts]);
+  if (isLoading && (!debts || debts.length === 0)) {
+    return (
+      <VStack spacing={4} align="stretch" w="full">
+        <HStack spacing={2.5} justify="center" py={2}>
+          <Spinner size="sm" color="green.500" thickness="2.5px" />
+          <Text color="gray.600" fontSize="sm" fontWeight="600">
+            Cargando cuentas por cobrar...
+          </Text>
+        </HStack>
+        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} w="full">
+          {[0, 1, 2, 3].map((i) => (
+            <Box
+              key={i}
+              bg="white"
+              borderRadius="2xl"
+              border="1px solid"
+              borderColor="gray.100"
+              p={5}
+              boxShadow="sm"
+            >
+              <HStack justify="space-between" mb={3}>
+                <HStack spacing={3} flex={1}>
+                  <SkeletonCircle size="36px" startColor="gray.100" endColor="gray.200" />
+                  <VStack align="start" spacing={1.5} flex={1}>
+                    <Skeleton height="14px" width="70%" borderRadius="md" startColor="gray.100" endColor="gray.200" />
+                    <Skeleton height="11px" width="40%" borderRadius="md" startColor="gray.100" endColor="gray.200" />
+                  </VStack>
+                </HStack>
+                <Skeleton height="22px" width="72px" borderRadius="full" startColor="gray.100" endColor="gray.200" />
+              </HStack>
+              <Skeleton height="44px" borderRadius="xl" mb={3} startColor="gray.100" endColor="gray.200" />
+              <HStack justify="space-between">
+                <Skeleton height="28px" width="45%" borderRadius="lg" startColor="gray.100" endColor="gray.200" />
+                <Skeleton height="28px" width="35%" borderRadius="lg" startColor="gray.100" endColor="gray.200" />
+              </HStack>
+            </Box>
+          ))}
+        </SimpleGrid>
+      </VStack>
+    );
+  }
+
   if (!debts || debts.length === 0) {
     return (
       <Center py={10}>
@@ -12,9 +84,13 @@ export function DebtList({ debts, onViewInvoices, onViewHistory, onViewDetails }
     );
   }
 
+  const visibleDebts = debts.slice(0, visibleCount);
+  const hasMoreToRender = visibleCount < debts.length;
+
   return (
-    <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} w="full">
-      {debts.map((debt, index) => {
+    <VStack spacing={4} align="stretch" w="full">
+      <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} w="full">
+        {visibleDebts.map((debt, index) => {
         // Montos por moneda desde el backend
         const saldoPEN = debt.pendingAmount?.PEN || 0;
         const saldoUSD = debt.pendingAmount?.USD || 0;
@@ -140,6 +216,22 @@ export function DebtList({ debts, onViewInvoices, onViewHistory, onViewDetails }
           />
         );
       })}
-    </SimpleGrid>
+      </SimpleGrid>
+
+      {hasMoreToRender && (
+        <Center ref={sentinelRef} py={3}>
+          <Button
+            size="sm"
+            variant="outline"
+            colorScheme="green"
+            borderRadius="full"
+            px={5}
+            onClick={() => setVisibleCount((prev) => Math.min(prev + BATCH_STEP, debts.length))}
+          >
+            Mostrando {visibleDebts.length} de {debts.length} • Ver más
+          </Button>
+        </Center>
+      )}
+    </VStack>
   );
 }
