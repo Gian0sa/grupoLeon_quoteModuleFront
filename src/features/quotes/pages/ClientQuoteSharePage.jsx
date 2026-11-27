@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useMemo } from "react";
+import React, { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   Box,
@@ -7,7 +7,6 @@ import {
   Text,
   Badge,
   HStack,
-  VStack,
   Table,
   Thead,
   Tbody,
@@ -16,8 +15,6 @@ import {
   Td,
   TableContainer,
   Button,
-  Grid,
-  GridItem,
   Spinner,
   useToast,
   IconButton,
@@ -27,17 +24,14 @@ import {
   Download,
   Printer,
   FileText,
-  Building,
-  User,
-  CreditCard,
-  Truck,
   AlertTriangle,
   ZoomIn,
   ZoomOut,
   Maximize2,
-  CheckCircle2,
   Phone,
   Clock,
+  List,
+  X,
 } from "lucide-react";
 import { fetchPublicQuoteByCode } from "../utils/quoteTokenUtils";
 import { calculateQuoteTotals } from "../../../shared/utils/quoteCalculator";
@@ -47,7 +41,13 @@ import {
   cleanClientName,
   formatQuoteSellerName,
 } from "../../../shared/utils/quoteLogisticsFormatters";
-import QuotePdfDocument from "../components/QuotePdfDocument";
+import QuotePdfDocument, {
+  preloadQuotePdfLibs,
+  downloadQuoteElementAsPdf,
+} from "../components/QuotePdfDocument";
+
+const DOC_BASE_WIDTH = 800;
+const DOC_DEFAULT_HEIGHT = 1132;
 
 const extractProducts = (q) => {
   if (!q) return [];
@@ -77,30 +77,92 @@ export function ClientQuoteSharePage() {
   const [hasError, setHasError] = useState(false);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [isPrintMode, setIsPrintMode] = useState(false);
-  const [zoomLevel, setZoomLevel] = useState(1);
+  const [zoomMode, setZoomMode] = useState(() =>
+    typeof window !== "undefined" && window.innerWidth >= 820 ? "manual" : "fit"
+  ); // "fit" | "manual"
+  const [zoomLevel, setZoomLevel] = useState(() =>
+    typeof window !== "undefined" && window.innerWidth >= 820 ? 0.97 : 0.5
+  );
+  const [docNaturalHeight, setDocNaturalHeight] = useState(DOC_DEFAULT_HEIGHT);
   const [showTableDetails, setShowTableDetails] = useState(false);
 
   const pdfRef = useRef(null);
+  const stageRef = useRef(null);
 
-  // Auto-ajuste de escala para pantallas móviles
-  const handleAutoFit = () => {
-    const availableW = window.innerWidth - 32;
-    const fitScale = Math.min(1, Math.max(0.35, availableW / 820));
-    setZoomLevel(Number(fitScale.toFixed(2)));
-  };
+  const computeFitScale = useCallback((stageEl, naturalH = DOC_DEFAULT_HEIGHT) => {
+    if (!stageEl) {
+      const vw = typeof window !== "undefined" ? window.innerWidth : 390;
+      const vh = typeof window !== "undefined" ? window.innerHeight : 760;
+      const wScale = (vw - 20) / DOC_BASE_WIDTH;
+      const hScale = (vh - 140) / naturalH;
+      return Number(Math.min(1, Math.max(0.32, Math.min(wScale, hScale))).toFixed(3));
+    }
+    const isMobile = stageEl.clientWidth < 768;
+    const padX = isMobile ? 16 : 36;
+    const padY = isMobile ? 16 : 28;
+    const availW = Math.max(240, stageEl.clientWidth - padX);
+    const availH = Math.max(240, stageEl.clientHeight - padY);
+    const scaleW = availW / DOC_BASE_WIDTH;
+    // En modo retrato o escritorio, encajar hoja completa sin barras de scroll;
+    // en móvil horizontal muy bajo (< 380px alto), priorizar ancho legible.
+    const scaleH = availH < 380 ? scaleW : availH / naturalH;
+    const fit = Math.min(1, Math.max(0.3, Math.min(scaleW, scaleH)));
+    return Number(fit.toFixed(3));
+  }, []);
 
+  const handleAutoFit = useCallback(() => {
+    setZoomMode("fit");
+    setZoomLevel(computeFitScale(stageRef.current, docNaturalHeight));
+  }, [computeFitScale, docNaturalHeight]);
+
+  const handleSetZoomManual = useCallback((nextZoom) => {
+    const clamped = Number(Math.min(1.8, Math.max(0.3, nextZoom)).toFixed(2));
+    setZoomMode("manual");
+    setZoomLevel(clamped);
+  }, []);
+
+  const handleToggleQuickZoom = useCallback(() => {
+    if (zoomMode === "fit" || zoomLevel < 0.85) {
+      handleSetZoomManual(1);
+    } else {
+      handleAutoFit();
+    }
+  }, [zoomMode, zoomLevel, handleSetZoomManual, handleAutoFit]);
+
+  // Medir altura real del documento A4 y tamaño disponible del visor en tiempo real
   useEffect(() => {
-    const updateSize = () => {
-      if (window.innerWidth < 840) {
-        handleAutoFit();
-      } else {
-        setZoomLevel(1);
+    if (!quote) return;
+    const stageEl = stageRef.current;
+    const docEl = pdfRef.current;
+
+    const syncDimensions = () => {
+      let measuredH = docNaturalHeight;
+      if (docEl && docEl.offsetHeight > 400) {
+        measuredH = docEl.offsetHeight;
+        if (Math.abs(measuredH - docNaturalHeight) > 2) {
+          setDocNaturalHeight(measuredH);
+        }
+      }
+      if (zoomMode === "fit") {
+        setZoomLevel(computeFitScale(stageEl, measuredH));
       }
     };
-    updateSize();
-    window.addEventListener("resize", updateSize);
-    return () => window.removeEventListener("resize", updateSize);
-  }, []);
+
+    syncDimensions();
+
+    let ro = null;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(() => syncDimensions());
+      if (stageEl) ro.observe(stageEl);
+      if (docEl) ro.observe(docEl);
+    }
+    window.addEventListener("resize", syncDimensions);
+
+    return () => {
+      if (ro) ro.disconnect();
+      window.removeEventListener("resize", syncDimensions);
+    };
+  }, [quote, zoomMode, docNaturalHeight, computeFitScale]);
 
   // Carga de la cotización por su código corto
   useEffect(() => {
@@ -138,7 +200,6 @@ export function ClientQuoteSharePage() {
     };
   }, [quoteCode]);
 
-  // Detección de emisión a SAP
   const isEmittedToSap = useMemo(() => {
     if (!quote) return false;
     return Boolean(
@@ -164,18 +225,6 @@ export function ClientQuoteSharePage() {
   const clientName = useMemo(() => {
     if (!quote) return "CLIENTE";
     return cleanClientName(quote) || quote.client?.CardName || quote.client?.name || quote.clientName || "Estimado(a) Cliente";
-  }, [quote]);
-
-  const clientDoc = useMemo(() => {
-    if (!quote) return "";
-    return (
-      quote.clientRuc ||
-      quote.clientDocument ||
-      quote.client?.LicTradNum ||
-      quote.client?.CardCode ||
-      quote.clientCode ||
-      ""
-    );
   }, [quote]);
 
   const sellerName = useMemo(() => {
@@ -231,71 +280,32 @@ export function ClientQuoteSharePage() {
   const paymentDesc = formatPaymentTerms(quote?.paymentType || quote?.selectedPaymentType, conditionRaw) || conditionRaw;
   const deliveryDesc = formatDeliveryForm(quote?.selectedDeliveryForm || quote?.deliveryForm) || "Por coordinar con almacén";
 
-  // Fecha de emisión
   const quoteDateFormatted = useMemo(() => {
     if (!quote) return "";
     const rawDate = quote.docDate || quote.createdAt || quote.CreationDate;
     if (!rawDate) return new Date().toLocaleDateString("es-PE");
     const d = new Date(rawDate);
     if (isNaN(d.getTime())) return String(rawDate).split("T")[0];
-    return d.toLocaleDateString("es-PE", { year: "numeric", month: "long", day: "2-digit" });
+    return d.toLocaleDateString("es-PE", { year: "numeric", month: "short", day: "2-digit" });
   }, [quote]);
 
-  // Manejo de descarga del PDF oficial exacto (A4 300+ DPI idéntico a QuotePdfModal)
+  useEffect(() => {
+    if (quote) {
+      preloadQuotePdfLibs().catch(() => {});
+    }
+  }, [quote]);
+
   const handleDownloadPdf = async () => {
     try {
       setIsDownloadingPdf(true);
-      setIsPrintMode(true);
-
-      await new Promise((res) => setTimeout(res, 120));
-
       const element = pdfRef.current;
       if (!element) {
         throw new Error("No se pudo localizar el contenedor del documento oficial");
       }
 
-      const origWidth = element.style.width;
-      const origMaxW = element.style.maxWidth;
-      const origMinH = element.style.minHeight;
-      const origBoxShadow = element.style.boxShadow;
-      const wrapperEl = element.parentElement;
-      const origTransform = wrapperEl ? wrapperEl.style.transform : "";
-
-      if (wrapperEl) {
-        wrapperEl.style.transform = "none";
-      }
-
-      element.style.width = "800px";
-      element.style.maxWidth = "800px";
-      element.style.minHeight = "1130px";
-      element.style.boxShadow = "none";
-
-      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
-        import("html2canvas"),
-        import("jspdf"),
-      ]);
-
-      const canvas = await html2canvas(element, {
-        scale: 3.5, // 300+ DPI Ultra High Definition
-        useCORS: true,
-        logging: false,
-        backgroundColor: "#fffdf7",
-        windowWidth: 1200,
-      });
-
-      element.style.width = origWidth;
-      element.style.maxWidth = origMaxW;
-      element.style.minHeight = origMinH;
-      element.style.boxShadow = origBoxShadow;
-      if (wrapperEl) {
-        wrapperEl.style.transform = origTransform;
-      }
-      setIsPrintMode(false);
-
-      const imgData = canvas.toDataURL("image/png", 1.0);
-      const pdf = new jsPDF("p", "mm", "a4");
-      pdf.addImage(imgData, "PNG", 0, 0, 210, 297, undefined, "FAST");
-      pdf.save(`Autopartes_${isEmittedToSap ? "Orden_Venta" : "Cotizacion"}_${docNumber}.pdf`);
+      const targetFileName = `Autopartes_${isEmittedToSap ? "Orden_Venta" : "Cotizacion"}_${docNumber}.pdf`;
+      const result = await downloadQuoteElementAsPdf(element, targetFileName);
+      if (result?.cancelled) return;
 
       toast({
         title: "📄 PDF Oficial Descargado",
@@ -308,7 +318,7 @@ export function ClientQuoteSharePage() {
       console.error("Error al generar PDF:", err);
       toast({
         title: "Error al generar PDF",
-        description: "No se pudo compilar el archivo PDF. Intente nuevamente.",
+        description: err?.message || "No se pudo compilar el archivo PDF. Intente nuevamente.",
         status: "error",
         duration: 4000,
         isClosable: true,
@@ -325,10 +335,10 @@ export function ClientQuoteSharePage() {
 
   if (isLoading) {
     return (
-      <Flex w="full" minH="100vh" align="center" justify="center" bg="#f8fafc" direction="column" gap={3}>
-        <Spinner size="xl" color="#126C36" thickness="3.5px" speed="0.65s" />
-        <Text fontSize="sm" fontWeight="700" color="gray.600">
-          Cargando cotización oficial de Autopartes S.A...
+      <Flex w="full" minH="100vh" align="center" justify="center" bg="#0f172a" direction="column" gap={3}>
+        <Spinner size="xl" color="#10b981" thickness="3.5px" speed="0.65s" />
+        <Text fontSize="sm" fontWeight="700" color="gray.300">
+          Cargando documento oficial de Autopartes S.A...
         </Text>
       </Flex>
     );
@@ -392,176 +402,364 @@ export function ClientQuoteSharePage() {
     );
   }
 
+  const scaledWidth = Math.round(DOC_BASE_WIDTH * zoomLevel);
+  const scaledHeight = Math.round(docNaturalHeight * zoomLevel);
+
   return (
-    <Box minH="100vh" bg="#4a5568" pb={16}>
-      {/* ─── BARRA SUPERIOR BRANDED AUTOPARTES S.A. ─── */}
-      <Box bg="#126C36" color="white" py={3.5} px={{ base: 4, md: 8 }} boxShadow="md" position="sticky" top={0} zIndex={50}>
-        <Container maxW="container.xl" px={0}>
-          <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
-            <HStack spacing={3}>
-              <Box bg="whiteAlpha.200" p={2} borderRadius="xl">
-                <FileText className="w-6 h-6 text-white" />
-              </Box>
+    <Flex
+      direction="column"
+      w="full"
+      h="100vh"
+      overflow="hidden"
+      bg="#0f172a"
+      style={{ height: "100dvh" }}
+    >
+      {/* Estilos limpios para impresión directa A4 */}
+      <style>{`
+        @media print {
+          @page {
+            size: A4 portrait;
+            margin: 4mm 5mm;
+          }
+          html, body {
+            height: auto !important;
+            overflow: visible !important;
+            background: white !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+          .share-print-shell,
+          .share-print-stage,
+          .share-print-footprint,
+          .share-print-scaler {
+            position: static !important;
+            display: block !important;
+            width: 100% !important;
+            height: auto !important;
+            min-height: 0 !important;
+            overflow: visible !important;
+            transform: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            box-shadow: none !important;
+            background: white !important;
+          }
+          #printable-autopartes-document {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-height: 0 !important;
+            margin: 0 auto !important;
+            padding: 6mm !important;
+            box-shadow: none !important;
+            border: 1.5px solid #000 !important;
+            background: #fffdf7 !important;
+          }
+        }
+      `}</style>
+
+      {/* ─── CABECERA COMPACTA EJECUTIVA (Fija arriba, sin ocupar media pantalla en móvil) ─── */}
+      <Box
+        as="header"
+        flexShrink={0}
+        className="no-print"
+        px={{ base: 3, md: 6 }}
+        py={{ base: 2, md: 2.5 }}
+        color="white"
+        borderBottom="1px solid rgba(255, 255, 255, 0.14)"
+        boxShadow="0 4px 20px rgba(0, 0, 0, 0.3)"
+        style={{
+          background: "linear-gradient(135deg, #0b4622 0%, #126C36 55%, #15803d 100%)",
+        }}
+        zIndex={30}
+      >
+        <Flex justify="space-between" align="center" gap={2} maxW="1440px" mx="auto">
+          {/* Identidad del Documento y Cliente */}
+          <HStack spacing={{ base: 2.5, md: 3 }} minW={0} flex={1}>
+            <Flex
+              w={{ base: "34px", md: "38px" }}
+              h={{ base: "34px", md: "38px" }}
+              bg="whiteAlpha.200"
+              border="1px solid rgba(255,255,255,0.22)"
+              borderRadius="xl"
+              align="center"
+              justify="center"
+              flexShrink={0}
+            >
+              <FileText className="w-4 h-4 md:w-5 md:h-5 text-white" />
+            </Flex>
+            <Box minW={0} flex={1}>
+              <HStack spacing={2} align="center">
+                <Text
+                  fontSize={{ base: "13.5px", sm: "15px", md: "16px" }}
+                  fontWeight="900"
+                  letterSpacing="-0.01em"
+                  isTruncated
+                >
+                  {docTypeName} #{docNumber}
+                </Text>
+                <Badge
+                  bg={isEmittedToSap ? "rgba(16, 185, 129, 0.95)" : "rgba(245, 158, 11, 0.95)"}
+                  color="white"
+                  fontSize={{ base: "9px", md: "10px" }}
+                  px={2}
+                  py="1px"
+                  borderRadius="full"
+                  fontWeight="800"
+                  flexShrink={0}
+                  boxShadow="0 1px 4px rgba(0,0,0,0.2)"
+                >
+                  {isEmittedToSap ? "EMITIDA EN SAP" : "VIGENTE"}
+                </Badge>
+              </HStack>
+              <HStack spacing={1.5} fontSize={{ base: "11px", md: "11.5px" }} color="whiteAlpha.900" minW={0}>
+                <Text isTruncated fontWeight="600" maxW={{ base: "170px", sm: "280px", md: "360px" }}>
+                  {clientName}
+                </Text>
+                <Text opacity={0.6}>•</Text>
+                <Text fontWeight="800" color="#bbf7d0" flexShrink={0}>
+                  {totalFormatted}
+                </Text>
+                <Text opacity={0.6} display={{ base: "none", lg: "inline" }}>•</Text>
+                <Text opacity={0.85} display={{ base: "none", lg: "inline" }} flexShrink={0}>
+                  Emisión: {quoteDateFormatted}
+                </Text>
+              </HStack>
+            </Box>
+          </HStack>
+
+          {/* Barra Central de Zoom en Escritorio */}
+          <HStack
+            spacing={1}
+            display={{ base: "none", md: "flex" }}
+            bg="blackAlpha.400"
+            border="1px solid rgba(255,255,255,0.16)"
+            borderRadius="full"
+            px={2}
+            py={1}
+          >
+            <Tooltip label="Alejar (-)">
+              <IconButton
+                size="xs"
+                variant="ghost"
+                color="white"
+                _hover={{ bg: "whiteAlpha.200" }}
+                borderRadius="full"
+                icon={<ZoomOut className="w-3.5 h-3.5" />}
+                onClick={() => handleSetZoomManual(zoomLevel - 0.12)}
+                aria-label="Alejar"
+              />
+            </Tooltip>
+            <Badge
+              cursor="pointer"
+              onClick={handleToggleQuickZoom}
+              bg="whiteAlpha.200"
+              color="white"
+              px={2.5}
+              py={0.5}
+              borderRadius="full"
+              fontSize="11px"
+              fontWeight="800"
+              minW="48px"
+              textAlign="center"
+              title="Clic para alternar entre Encajar y 100%"
+            >
+              {Math.round(zoomLevel * 100)}%
+            </Badge>
+            <Tooltip label="Acercar (+)">
+              <IconButton
+                size="xs"
+                variant="ghost"
+                color="white"
+                _hover={{ bg: "whiteAlpha.200" }}
+                borderRadius="full"
+                icon={<ZoomIn className="w-3.5 h-3.5" />}
+                onClick={() => handleSetZoomManual(zoomLevel + 0.12)}
+                aria-label="Acercar"
+              />
+            </Tooltip>
+            <Button
+              size="xs"
+              variant={zoomMode === "fit" ? "solid" : "ghost"}
+              bg={zoomMode === "fit" ? "whiteAlpha.300" : "transparent"}
+              color="white"
+              _hover={{ bg: "whiteAlpha.300" }}
+              borderRadius="full"
+              h="24px"
+              px={2.5}
+              fontSize="11px"
+              fontWeight="700"
+              leftIcon={<Maximize2 className="w-3 h-3" />}
+              onClick={handleAutoFit}
+            >
+              Encajar
+            </Button>
+            <Button
+              size="xs"
+              variant={zoomMode === "manual" && Math.abs(zoomLevel - 1) < 0.03 ? "solid" : "ghost"}
+              bg={zoomMode === "manual" && Math.abs(zoomLevel - 1) < 0.03 ? "whiteAlpha.300" : "transparent"}
+              color="white"
+              _hover={{ bg: "whiteAlpha.300" }}
+              borderRadius="full"
+              h="24px"
+              px={2.5}
+              fontSize="11px"
+              fontWeight="700"
+              onClick={() => handleSetZoomManual(1)}
+            >
+              100%
+            </Button>
+          </HStack>
+
+          {/* Acciones Derecha */}
+          <HStack spacing={2} flexShrink={0}>
+            <Button
+              size="xs"
+              variant={showTableDetails ? "solid" : "outline"}
+              bg={showTableDetails ? "white" : "whiteAlpha.100"}
+              color={showTableDetails ? "#0b4622" : "white"}
+              borderColor="whiteAlpha.400"
+              _hover={{ bg: showTableDetails ? "gray.100" : "whiteAlpha.250" }}
+              borderRadius="full"
+              h={{ base: "30px", md: "32px" }}
+              px={{ base: 2.5, md: 3 }}
+              fontSize="11px"
+              fontWeight="800"
+              leftIcon={<List className="w-3.5 h-3.5" />}
+              onClick={() => setShowTableDetails((v) => !v)}
+            >
+              {showTableDetails ? "Cerrar" : `Ítems (${products.length})`}
+            </Button>
+
+            <Button
+              size="sm"
+              variant="outline"
+              color="white"
+              borderColor="whiteAlpha.400"
+              _hover={{ bg: "whiteAlpha.200" }}
+              fontWeight="700"
+              leftIcon={<Printer className="w-4 h-4" />}
+              onClick={handlePrint}
+              fontSize="xs"
+              h="32px"
+              borderRadius="full"
+              display={{ base: "none", lg: "inline-flex" }}
+            >
+              Imprimir
+            </Button>
+
+            {/* En escritorio el botón principal vive en la cabecera; en móvil vive en el dock inferior */}
+            <Button
+              size="sm"
+              bg="#22c55e"
+              _hover={{ bg: "#16a34a" }}
+              color="white"
+              fontWeight="900"
+              leftIcon={isDownloadingPdf ? <Spinner size="xs" /> : <Download className="w-4 h-4" />}
+              onClick={handleDownloadPdf}
+              isLoading={isDownloadingPdf}
+              loadingText="Generando..."
+              boxShadow="0 2px 10px rgba(34, 197, 94, 0.45)"
+              fontSize="xs"
+              h="34px"
+              px={4}
+              borderRadius="full"
+              display={{ base: "none", md: "inline-flex" }}
+            >
+              Descargar PDF
+            </Button>
+          </HStack>
+        </Flex>
+      </Box>
+
+      {/* ─── ÁREA CENTRAL DEL VISOR A4 (Encaje Exacto sin Scroll Fantasma) ─── */}
+      <Box
+        ref={stageRef}
+        flex={1}
+        minH={0}
+        w="full"
+        position="relative"
+        overflow="auto"
+        display="flex"
+        p={{ base: "8px", md: "16px" }}
+        className="share-print-stage"
+        sx={{
+          WebkitOverflowScrolling: "touch",
+          background: "radial-gradient(circle at 50% 18%, #28364a 0%, #172133 65%, #0f172a 100%)",
+        }}
+      >
+        {/* Panel flotante de desglose rápido (no empuja ni deforma el documento) */}
+        {showTableDetails && (
+          <Box
+            position="fixed"
+            top={{ base: "58px", md: "64px" }}
+            left="50%"
+            transform="translateX(-50%)"
+            w={{ base: "calc(100% - 20px)", md: "760px" }}
+            maxW="96vw"
+            bg="white"
+            borderRadius="2xl"
+            border="1px solid"
+            borderColor="gray.200"
+            boxShadow="0 25px 50px -12px rgba(0, 0, 0, 0.55)"
+            zIndex={45}
+            overflow="hidden"
+            className="no-print"
+          >
+            <Flex
+              px={4}
+              py={3}
+              bg="#f8fafc"
+              borderBottom="1px solid"
+              borderColor="gray.200"
+              justify="space-between"
+              align="center"
+            >
               <Box>
-                <HStack spacing={2} align="center">
-                  <Text fontSize={{ base: "15px", md: "17px" }} fontWeight="900">
-                    {docTypeName} Oficial: {docNumber}
-                  </Text>
-                  <Badge
-                    bg={isEmittedToSap ? "#10b981" : "#f59e0b"}
-                    color="white"
-                    fontSize="10.5px"
-                    px={2.5}
-                    py={0.5}
-                    borderRadius="full"
-                    fontWeight="800"
-                  >
-                    {isEmittedToSap ? "EMITIDA EN SAP" : "COTIZACIÓN VIGENTE"}
-                  </Badge>
-                </HStack>
-                <Text fontSize="11.5px" opacity={0.9} fontWeight="500">
-                  Autopartes S.A. • RUC 20100140228 • Emisión: {quoteDateFormatted}
+                <Text fontSize="xs" fontWeight="900" color="gray.800">
+                  Detalle de Artículos ({products.length}) • {totalFormatted}
+                </Text>
+                <Text fontSize="11px" color="gray.500" fontWeight="600">
+                  Condición: {paymentDesc} • Entrega: {deliveryDesc} • Asesor: {sellerName}
                 </Text>
               </Box>
-            </HStack>
-
-            <HStack spacing={2}>
-              <Button
-                size="sm"
-                bg="#25d366"
-                _hover={{ bg: "#20bd5a" }}
-                color="white"
-                fontWeight="900"
-                leftIcon={isDownloadingPdf ? <Spinner size="xs" /> : <Download className="w-4 h-4" />}
-                onClick={handleDownloadPdf}
-                isLoading={isDownloadingPdf}
-                loadingText="Descargando..."
-                boxShadow="0 2px 8px rgba(37, 211, 102, 0.4)"
-                fontSize="xs"
-                px={4}
-              >
-                Descargar PDF
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                color="white"
-                borderColor="whiteAlpha.400"
-                _hover={{ bg: "whiteAlpha.200" }}
-                fontWeight="700"
-                leftIcon={<Printer className="w-4 h-4" />}
-                onClick={handlePrint}
-                fontSize="xs"
-                display={{ base: "none", sm: "inline-flex" }}
-              >
-                Imprimir
-              </Button>
-            </HStack>
-          </Flex>
-        </Container>
-      </Box>
-
-      {/* ─── BARRA SECUNDARIA DE CONTROLES Y RESUMEN ─── */}
-      <Box bg="#2d3748" color="white" py={2.5} px={{ base: 4, md: 8 }} borderBottom="1px solid" borderColor="gray.600">
-        <Container maxW="container.xl" px={0}>
-          <Flex justify="space-between" align="center" wrap="wrap" gap={2}>
-            <HStack spacing={4} fontSize="xs" fontWeight="700">
-              <Text color="gray.300">
-                Cliente: <strong style={{ color: "#ffffff" }}>{clientName}</strong>
-              </Text>
-              <Text color="gray.300" display={{ base: "none", md: "inline" }}>
-                Total: <strong style={{ color: "#38a169", fontSize: "14px" }}>{totalFormatted}</strong>
-              </Text>
-            </HStack>
-
-            <HStack spacing={1.5}>
-              <Tooltip label="Reducir zoom">
-                <IconButton
-                  size="xs"
-                  variant="ghost"
-                  color="white"
-                  icon={<ZoomOut className="w-3.5 h-3.5" />}
-                  onClick={() => setZoomLevel((z) => Math.max(0.35, Number((z - 0.1).toFixed(2))))}
-                  aria-label="Zoom out"
-                />
-              </Tooltip>
-              <Text fontSize="xs" fontWeight="700" color="gray.300" minW="45px" textAlign="center">
-                {Math.round(zoomLevel * 100)}%
-              </Text>
-              <Tooltip label="Aumentar zoom">
-                <IconButton
-                  size="xs"
-                  variant="ghost"
-                  color="white"
-                  icon={<ZoomIn className="w-3.5 h-3.5" />}
-                  onClick={() => setZoomLevel((z) => Math.min(1.5, Number((z + 0.1).toFixed(2))))}
-                  aria-label="Zoom in"
-                />
-              </Tooltip>
-              <Button
+              <IconButton
                 size="xs"
-                variant="outline"
-                color="white"
-                borderColor="gray.500"
-                onClick={handleAutoFit}
-                fontSize="10.5px"
-                fontWeight="700"
-                h="24px"
-                leftIcon={<Maximize2 className="w-3 h-3" />}
-              >
-                Ajustar
-              </Button>
-              <Button
-                size="xs"
-                variant={showTableDetails ? "solid" : "ghost"}
-                colorScheme="teal"
-                color="white"
-                onClick={() => setShowTableDetails(!showTableDetails)}
-                fontSize="10.5px"
-                fontWeight="700"
-                h="24px"
-              >
-                {showTableDetails ? "Ocultar Desglose" : "Ver Desglose"}
-              </Button>
-            </HStack>
-          </Flex>
-        </Container>
-      </Box>
-
-      {/* ─── DESGLOSE OPCIONAL DE ARTÍCULOS ─── */}
-      {showTableDetails && (
-        <Container maxW="container.xl" pt={4} px={{ base: 4, md: 6 }}>
-          <Box bg="white" borderRadius="2xl" border="1px solid" borderColor="gray.300" overflow="hidden" boxShadow="md" mb={4}>
-            <Box p={3.5} borderBottom="1px solid" borderColor="gray.100" bg="#f7fafc">
-              <Text fontSize="xs" fontWeight="900" color="gray.800">
-                📦 Detalle de Artículos ({products.length}) • Total: {totalFormatted}
-              </Text>
-            </Box>
-            <TableContainer maxH="280px" overflowY="auto">
+                variant="ghost"
+                icon={<X className="w-4 h-4" />}
+                onClick={() => setShowTableDetails(false)}
+                aria-label="Cerrar desglose"
+              />
+            </Flex>
+            <TableContainer maxH={{ base: "52vh", md: "340px" }} overflowY="auto">
               <Table size="sm" variant="simple">
-                <Thead bg="gray.50">
+                <Thead bg="gray.50" position="sticky" top={0} zIndex={1}>
                   <Tr>
-                    <Th fontSize="10.5px">#</Th>
-                    <Th fontSize="10.5px">Cant.</Th>
-                    <Th fontSize="10.5px">Código</Th>
-                    <Th fontSize="10.5px">Descripción</Th>
-                    <Th fontSize="10.5px" isNumeric>P. Unit.</Th>
-                    <Th fontSize="10.5px" isNumeric>Total</Th>
+                    <Th fontSize="10px">#</Th>
+                    <Th fontSize="10px">Cant.</Th>
+                    <Th fontSize="10px">Código</Th>
+                    <Th fontSize="10px">Descripción</Th>
+                    <Th fontSize="10px" isNumeric>P. Unit.</Th>
+                    <Th fontSize="10px" isNumeric>Total</Th>
                   </Tr>
                 </Thead>
                 <Tbody>
                   {products.map((p, idx) => {
                     const qty = Math.max(1, Number(p.quantity ?? p.Quantity ?? 1));
-                    const code = p.productCode || p.itemCode || p.ItemCode || p.code || "—";
+                    const pCode = p.productCode || p.itemCode || p.ItemCode || p.code || "—";
                     const name = p.productName || p.name || p.description || p.sigla || "Artículo";
                     const unitPrice = Number(p.unitPrice ?? p.price ?? p.UnitPrice ?? 0);
                     const finalPrice = Number(p.finalPrice ?? p.discountedUnitPrice ?? unitPrice);
-                    const lineTotal = Number(p.lineTotal ?? p.totalPrice ?? (qty * finalPrice));
+                    const lineTotal = Number(p.lineTotal ?? p.totalPrice ?? qty * finalPrice);
                     return (
                       <Tr key={idx}>
                         <Td fontSize="11px" color="gray.500">{idx + 1}</Td>
                         <Td fontSize="11.5px" fontWeight="800" color="#126C36">{qty}</Td>
-                        <Td fontSize="11px" fontWeight="700">{code}</Td>
+                        <Td fontSize="11px" fontWeight="700">{pCode}</Td>
                         <Td fontSize="11.5px" fontWeight="700">{name}</Td>
                         <Td fontSize="11px" isNumeric>{isSol ? `S/ ${finalPrice.toFixed(2)}` : `$ ${finalPrice.toFixed(2)}`}</Td>
                         <Td fontSize="11.5px" fontWeight="800" color="#126C36" isNumeric>{isSol ? `S/ ${lineTotal.toFixed(2)}` : `$ ${lineTotal.toFixed(2)}`}</Td>
@@ -572,74 +770,152 @@ export function ClientQuoteSharePage() {
               </Table>
             </TableContainer>
           </Box>
-        </Container>
-      )}
+        )}
 
-      {/* ─── VISOR DEL FORMULARIO OFICIAL IMPRESO A4 (IDÉNTICO AL MODAL) ─── */}
-      <Box
-        py={6}
-        px={{ base: 2, md: 4 }}
-        display="flex"
-        justifyContent="center"
-        alignItems="flex-start"
-        overflowX="auto"
-      >
-        <Box
-          transform={`scale(${zoomLevel})`}
-          transformOrigin="top center"
-          transition="transform 0.15s ease-out"
+        {/* Contenedor con Huella Exacta Escalada (Elimina recortes derechos y espacios vacíos inferiores) */}
+        <div
+          className="share-print-footprint"
+          onDoubleClick={handleToggleQuickZoom}
+          title="Doble toque / clic para acercar o encajar hoja completa"
           style={{
-            width: `${800 * zoomLevel}px`,
-            minHeight: `${1130 * zoomLevel}px`,
+            width: `${scaledWidth}px`,
+            height: `${scaledHeight}px`,
+            position: "relative",
+            margin: "auto",
+            flexShrink: 0,
           }}
         >
-          <QuotePdfDocument
-            quote={quote}
-            ref={pdfRef}
-            isPrintMode={isPrintMode}
-          />
-        </Box>
+          <div
+            className="share-print-scaler"
+            style={{
+              width: `${DOC_BASE_WIDTH}px`,
+              minWidth: `${DOC_BASE_WIDTH}px`,
+              maxWidth: `${DOC_BASE_WIDTH}px`,
+              position: "absolute",
+              top: 0,
+              left: 0,
+              transform: `scale(${zoomLevel})`,
+              transformOrigin: "top left",
+              boxShadow: "0 24px 48px -12px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.1)",
+              borderRadius: "4px",
+              overflow: "hidden",
+              background: "#fffdf7",
+            }}
+          >
+            <QuotePdfDocument
+              quote={quote}
+              ref={pdfRef}
+              isPrintMode={isPrintMode}
+            />
+          </div>
+        </div>
       </Box>
 
-      {/* ─── BARRA FLOTANTE INFERIOR PARA DESCARGA RÁPIDA ─── */}
+      {/* ─── DOCK INFERIOR NATIVO MÓVIL (Nunca tapa el PDF, combina Zoom + Descarga Directa) ─── */}
       <Box
-        position="fixed"
-        bottom={3}
-        left="50%"
-        transform="translateX(-50%)"
-        zIndex={40}
-        bg="rgba(18, 108, 54, 0.95)"
-        backdropFilter="blur(8px)"
-        py={2}
-        px={4}
-        borderRadius="full"
-        boxShadow="0 6px 20px rgba(0, 0, 0, 0.35)"
+        as="footer"
+        display={{ base: "block", md: "none" }}
+        flexShrink={0}
+        className="no-print"
+        bg="#0b1322"
+        borderTop="1px solid rgba(255, 255, 255, 0.12)"
+        px={3}
+        pt={2}
+        style={{
+          paddingBottom: "calc(10px + env(safe-area-inset-bottom, 0px))",
+          boxShadow: "0 -6px 24px rgba(0, 0, 0, 0.35)",
+        }}
+        zIndex={30}
       >
-        <HStack spacing={3}>
-          <Text fontSize="xs" fontWeight="800" color="white" display={{ base: "none", sm: "inline" }}>
-            Total: {totalFormatted}
-          </Text>
+        <Flex align="center" justify="space-between" gap={2.5}>
+          {/* Cluster compacto de Zoom */}
+          <HStack
+            spacing={0.5}
+            bg="whiteAlpha.100"
+            border="1px solid rgba(255,255,255,0.14)"
+            borderRadius="xl"
+            p="3px"
+            flexShrink={0}
+          >
+            <IconButton
+              size="xs"
+              variant="ghost"
+              color="white"
+              _hover={{ bg: "whiteAlpha.200" }}
+              borderRadius="lg"
+              h="32px"
+              w="30px"
+              icon={<ZoomOut className="w-3.5 h-3.5" />}
+              onClick={() => handleSetZoomManual(zoomLevel - 0.12)}
+              aria-label="Alejar documento"
+            />
+            <Box
+              as="button"
+              type="button"
+              onClick={handleToggleQuickZoom}
+              px={1.5}
+              h="32px"
+              minW="42px"
+              fontSize="11px"
+              fontWeight="800"
+              color="white"
+              textAlign="center"
+            >
+              {Math.round(zoomLevel * 100)}%
+            </Box>
+            <IconButton
+              size="xs"
+              variant="ghost"
+              color="white"
+              _hover={{ bg: "whiteAlpha.200" }}
+              borderRadius="lg"
+              h="32px"
+              w="30px"
+              icon={<ZoomIn className="w-3.5 h-3.5" />}
+              onClick={() => handleSetZoomManual(zoomLevel + 0.12)}
+              aria-label="Acercar documento"
+            />
+            <IconButton
+              size="xs"
+              variant={zoomMode === "fit" ? "solid" : "ghost"}
+              bg={zoomMode === "fit" ? "#10b981" : "transparent"}
+              color="white"
+              _hover={{ bg: zoomMode === "fit" ? "#059669" : "whiteAlpha.200" }}
+              borderRadius="lg"
+              h="32px"
+              w="32px"
+              icon={<Maximize2 className="w-3.5 h-3.5" />}
+              onClick={handleAutoFit}
+              aria-label="Encajar página completa"
+              title="Encajar hoja completa"
+            />
+          </HStack>
+
+          {/* Botón Primario Único de Descarga Móvil */}
           <Button
-            size="sm"
-            bg="#25d366"
-            _hover={{ bg: "#20bd5a" }}
+            flex={1}
+            h="38px"
+            borderRadius="xl"
             color="white"
             fontWeight="900"
-            fontSize="xs"
-            borderRadius="full"
-            leftIcon={isDownloadingPdf ? <Spinner size="xs" /> : <Download className="w-3.5 h-3.5" />}
+            fontSize="13px"
+            letterSpacing="0.01em"
+            leftIcon={isDownloadingPdf ? <Spinner size="xs" /> : <Download className="w-4 h-4" />}
             onClick={handleDownloadPdf}
             isLoading={isDownloadingPdf}
             loadingText="Descargando..."
-            boxShadow="sm"
+            style={{
+              background: "linear-gradient(135deg, #16a34a 0%, #10b981 100%)",
+              boxShadow: "0 4px 16px rgba(16, 185, 129, 0.38)",
+            }}
+            _active={{ transform: "scale(0.98)" }}
           >
-            Descargar PDF Oficial
+            Descargar PDF
           </Button>
-        </HStack>
+        </Flex>
       </Box>
-    </Box>
+    </Flex>
   );
 }
 
 export default ClientQuoteSharePage;
-

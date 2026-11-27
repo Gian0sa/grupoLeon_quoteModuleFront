@@ -136,12 +136,8 @@ const normalizeItem = (item, isSol = false, tc = 1) => {
     baseName = item.sigla || code || "Artículo";
   }
 
-  const discParts = [];
-  if (sapDisc > 0) discParts.push(`-${sapDisc}%`);
-  if (promoDisc > 0) discParts.push(`-${promoDisc}% Promo`);
-  if (addDisc > 0) discParts.push(`-${Number(addDisc).toFixed(2)}%`);
-  if (isTaxOnly) discParts.push("TRANSFERENCIA GRATUITA - SOLO IGV");
-  const discTag = discParts.length > 0 ? ` (${discParts.join(" ")})` : "";
+  // Ocultar porcentajes de descuento en el talonario de cara al cliente (solo indicar Transferencia Gratuita si aplica)
+  const discTag = isTaxOnly ? " (TRANSFERENCIA GRATUITA - SOLO IGV)" : "";
 
   return {
     qty: isNaN(qty) || qty < 1 ? 1 : qty,
@@ -170,6 +166,41 @@ const getPriceStyle = (priceStr) => {
   if (len > 7) return { fontSize: "8px" };
   return { fontSize: "8.5px" };
 };
+
+const TalonarioCheckBox = ({ checked }) => (
+  <span
+    style={{
+      width: "15px",
+      height: "15px",
+      border: "1.5px solid #000",
+      background: "#ffffff",
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      boxSizing: "border-box",
+      flexShrink: 0,
+      padding: 0,
+      lineHeight: 0,
+    }}
+  >
+    {checked ? (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="9"
+        height="9"
+        viewBox="0 0 10 10"
+        style={{ display: "block", width: "9px", height: "9px" }}
+      >
+        <path
+          d="M1.6 1.6L8.4 8.4M8.4 1.6L1.6 8.4"
+          stroke="#000000"
+          strokeWidth="2.1"
+          strokeLinecap="round"
+        />
+      </svg>
+    ) : null}
+  </span>
+);
 
 const resolveSellerCode = (q) => {
   if (!q) return "";
@@ -266,7 +297,7 @@ const resolveSellerFullName = (q) => {
 
 export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) {
   const printRef = useRef(null);
-  const [zoomLevel, setZoomLevel] = useState(1);
+  const [zoomLevel, setZoomLevel] = useState(0.97);
   const [isJsonModalOpen, setIsJsonModalOpen] = useState(false);
   const isAdminHook = useIsAdmin();
   const { role } = useAuthStore();
@@ -281,10 +312,10 @@ export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) 
 
   useEffect(() => {
     if (isOpen) {
-      if (window.innerWidth < 800) {
+      if (window.innerWidth < 820) {
         handleAutoFit();
       } else {
-        setZoomLevel(1);
+        setZoomLevel(0.97);
       }
     }
   }, [isOpen]);
@@ -625,6 +656,7 @@ export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) 
                 background: transparent !important;
               }
               #sap-talonario-container {
+                position: static !important;
                 width: 100% !important;
                 max-width: 100% !important;
                 margin: 0 auto !important;
@@ -637,32 +669,50 @@ export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) 
                 page-break-inside: avoid !important;
                 transform: none !important;
               }
+              .sap-talonario-footprint {
+                position: static !important;
+                width: 100% !important;
+                min-height: 0 !important;
+                height: auto !important;
+                margin: 0 !important;
+              }
             }
           `}</style>
 
-          {/* CONTENEDOR TALONARIO FÍSICO BLANCO OFICIAL (Ancho Fijo PC con Soporte de Zoom) */}
-          <Box w="full" display="flex" justifyContent="center" alignItems="flex-start" minW="800px">
-            <Box
-              id="sap-talonario-container"
-              bg="#ffffff"
-              p={{ base: 4, md: 6 }}
-              borderRadius="md"
-              border="1px solid"
-              borderColor="#e5e7eb"
-              boxShadow="2xl"
-              fontFamily="'Arial', 'Helvetica', sans-serif"
-              color="#000000"
-              width="800px"
-              minW="800px"
-              maxW="800px"
-              mx="auto"
+          {/* CONTENEDOR TALONARIO FÍSICO BLANCO OFICIAL (Huella escalada exacta sin scroll horizontal fantasma) */}
+          <Box w="full" display="flex" justifyContent="center" alignItems="flex-start">
+            <div
+              className="sap-talonario-footprint"
               style={{
-                transform: zoomLevel !== 1 ? `scale(${zoomLevel})` : undefined,
-                transformOrigin: "top center",
-                transition: "transform 0.12s ease-out",
-                marginBottom: zoomLevel > 1 ? `${(zoomLevel - 1) * 1150}px` : "0px",
+                width: `${Math.round(800 * zoomLevel)}px`,
+                minHeight: `${Math.round(1132 * zoomLevel)}px`,
+                position: "relative",
+                margin: "0 auto",
+                flexShrink: 0,
               }}
             >
+              <Box
+                id="sap-talonario-container"
+                bg="#ffffff"
+                p={{ base: 4, md: 6 }}
+                borderRadius="md"
+                border="1px solid"
+                borderColor="#e5e7eb"
+                boxShadow="2xl"
+                fontFamily="'Arial', 'Helvetica', sans-serif"
+                color="#000000"
+                width="800px"
+                minW="800px"
+                maxW="800px"
+                style={{
+                  position: zoomLevel !== 1 ? "absolute" : "relative",
+                  top: 0,
+                  left: 0,
+                  transform: zoomLevel !== 1 ? `scale(${zoomLevel})` : undefined,
+                  transformOrigin: "top left",
+                  transition: "transform 0.12s ease-out",
+                }}
+              >
             {/* 1. CABECERA: MEMBRETE AUTOPARTES S.A. (IZQUIERDA) + MARCAS DISTRIBUIDAS (DERECHA) */}
             <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "6px" }}>
               <tbody>
@@ -757,50 +807,54 @@ export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) 
               </tbody>
             </table>
 
-            {/* 4. DATOS DEL CLIENTE Y DESPACHO (LÍNEAS DE FORMULARIO CON LÍNEA PUNTEADA) */}
-            <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "6px", fontSize: "10px", fontWeight: "bold" }}>
+            {/* 4. DATOS DEL CLIENTE Y DESPACHO (LÍNEAS DE FORMULARIO CON LÍNEA PUNTEADA CONTINUA) */}
+            <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, marginBottom: "6px", fontSize: "10px", fontWeight: "bold" }}>
               <tbody>
                 <tr>
-                  <td style={{ width: "50px", padding: "3px 0", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>Sr.(es):</td>
-                  <td style={{ borderBottom: "1px dotted #000", padding: "3px 4px", verticalAlign: "bottom", color: "#000", fontWeight: "900", fontSize: "10.5px" }}>
-                    {clientName}
+                  <td style={{ width: "50px", padding: "3px 4px 3px 0", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>Sr.(es):</td>
+                  <td style={{ padding: "3px 0", verticalAlign: "bottom", color: "#000", fontWeight: "900", fontSize: "10.5px" }}>
+                    <div style={{ borderBottom: "1px dotted #1f2937", padding: "0 4px 2px 4px", width: "100%" }}>{clientName}</div>
                   </td>
-                  <td style={{ width: "95px", padding: "3px 4px 3px 12px", textAlign: "right", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>RUC CLIENTE:</td>
-                  <td style={{ width: "140px", borderBottom: "1px dotted #000", padding: "3px 4px", verticalAlign: "bottom", color: "#000", fontWeight: "900", fontFamily: "monospace", fontSize: "10.5px" }}>
-                    {clientRuc}
-                  </td>
-                </tr>
-                <tr>
-                  <td style={{ padding: "3px 0", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>Dirección:</td>
-                  <td colSpan={3} style={{ borderBottom: "1px dotted #000", padding: "3px 4px", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
-                    {clientAddress}
+                  <td style={{ width: "95px", padding: "3px 6px 3px 12px", textAlign: "right", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>RUC CLIENTE:</td>
+                  <td style={{ width: "140px", padding: "3px 0", verticalAlign: "bottom", color: "#000", fontWeight: "900", fontFamily: "monospace", fontSize: "10.5px" }}>
+                    <div style={{ borderBottom: "1px dotted #1f2937", padding: "0 4px 2px 4px", width: "100%" }}>{clientRuc}</div>
                   </td>
                 </tr>
                 <tr>
-                  <td style={{ padding: "3px 0", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>Punto de Llegada:</td>
-                  <td colSpan={3} style={{ borderBottom: "1px dotted #000", padding: "3px 4px", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
-                    {pointOfArrival}
+                  <td style={{ padding: "3px 4px 3px 0", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>Dirección:</td>
+                  <td colSpan={3} style={{ padding: "3px 0", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
+                    <div style={{ borderBottom: "1px dotted #1f2937", padding: "0 4px 2px 4px", width: "100%" }}>{clientAddress}</div>
                   </td>
                 </tr>
                 <tr>
-                  <td style={{ padding: "3px 0", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>Ag. Transportes:</td>
-                  <td style={{ borderBottom: "1px dotted #000", padding: "3px 4px", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
-                    {transportName}
+                  <td style={{ padding: "3px 4px 3px 0", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>Punto de Llegada:</td>
+                  <td colSpan={3} style={{ padding: "3px 0", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
+                    <div style={{ borderBottom: "1px dotted #1f2937", padding: "0 4px 2px 4px", width: "100%" }}>{pointOfArrival}</div>
                   </td>
-                  <td style={{ padding: "3px 4px 3px 12px", textAlign: "right", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>Dirección:</td>
-                  <td style={{ borderBottom: "1px dotted #000", padding: "3px 4px", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
-                    {transportAddress}
+                </tr>
+                <tr>
+                  <td style={{ padding: "3px 4px 3px 0", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>Ag. Transportes:</td>
+                  <td style={{ padding: "3px 0", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
+                    <div style={{ borderBottom: "1px dotted #1f2937", padding: "0 4px 2px 4px", width: "100%" }}>{transportName}</div>
+                  </td>
+                  <td style={{ padding: "3px 6px 3px 12px", textAlign: "right", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>Dirección:</td>
+                  <td style={{ padding: "3px 0", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
+                    <div style={{ borderBottom: "1px dotted #1f2937", padding: "0 4px 2px 4px", width: "100%" }}>{transportAddress}</div>
                   </td>
                 </tr>
                 {(quote.contactPerson || quote.totals?.contactPerson || quote.refNumber || quote.totals?.refNumber) && (
                   <tr>
-                    <td style={{ padding: "3px 0", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>Contacto:</td>
-                    <td style={{ borderBottom: "1px dotted #000", padding: "3px 4px", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
-                      {quote.contactPerson || quote.totals?.contactPerson || quote.ContactPerson || "—"}
+                    <td style={{ padding: "3px 4px 3px 0", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>Contacto:</td>
+                    <td style={{ padding: "3px 0", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
+                      <div style={{ borderBottom: "1px dotted #1f2937", padding: "0 4px 2px 4px", width: "100%" }}>
+                        {quote.contactPerson || quote.totals?.contactPerson || quote.ContactPerson || "—"}
+                      </div>
                     </td>
-                    <td style={{ padding: "3px 4px 3px 12px", textAlign: "right", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>OC / Ref:</td>
-                    <td style={{ borderBottom: "1px dotted #000", padding: "3px 4px", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
-                      {quote.refNumber || quote.totals?.refNumber || quote.NumAtCard || quote.numAtCard || "—"}
+                    <td style={{ padding: "3px 6px 3px 12px", textAlign: "right", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>OC / Ref:</td>
+                    <td style={{ padding: "3px 0", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
+                      <div style={{ borderBottom: "1px dotted #1f2937", padding: "0 4px 2px 4px", width: "100%" }}>
+                        {quote.refNumber || quote.totals?.refNumber || quote.NumAtCard || quote.numAtCard || "—"}
+                      </div>
                     </td>
                   </tr>
                 )}
@@ -814,46 +868,36 @@ export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) 
                   {/* Columna 1: CONTADO / CREDITO */}
                   <td style={{ padding: "4px 8px", width: "20%", verticalAlign: "middle", borderRight: "1px solid #000" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
-                      <span style={{ fontSize: "9.5px", fontWeight: "900" }}>CONTADO</span>
-                      <span style={{ width: "14px", height: "14px", border: "1.5px solid #000", background: "#ffffff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: "900" }}>
-                        {isContado ? "X" : ""}
-                      </span>
+                      <span style={{ fontSize: "9.5px", fontWeight: "900", lineHeight: "1.15" }}>CONTADO</span>
+                      <TalonarioCheckBox checked={isContado} />
                     </div>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                      <span style={{ fontSize: "9.5px", fontWeight: "900" }}>CREDITO</span>
-                      <span style={{ width: "14px", height: "14px", border: "1.5px solid #000", background: "#ffffff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: "900" }}>
-                        {isCredito ? "X" : ""}
-                      </span>
+                      <span style={{ fontSize: "9.5px", fontWeight: "900", lineHeight: "1.15" }}>CREDITO</span>
+                      <TalonarioCheckBox checked={isCredito} />
                     </div>
                   </td>
 
                   {/* Columna 2: BOLETA / FACTURA */}
                   <td style={{ padding: "4px 8px", width: "20%", verticalAlign: "middle", borderRight: "1px solid #000" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
-                      <span style={{ fontSize: "9.5px", fontWeight: "900" }}>BOLETA</span>
-                      <span style={{ width: "14px", height: "14px", border: "1.5px solid #000", background: "#ffffff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: "900" }}>
-                        {isBoleta ? "X" : ""}
-                      </span>
+                      <span style={{ fontSize: "9.5px", fontWeight: "900", lineHeight: "1.15" }}>BOLETA</span>
+                      <TalonarioCheckBox checked={isBoleta} />
                     </div>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                      <span style={{ fontSize: "9.5px", fontWeight: "900" }}>FACTURA</span>
-                      <span style={{ width: "14px", height: "14px", border: "1.5px solid #000", background: "#ffffff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: "900" }}>
-                        {isFactura ? "X" : ""}
-                      </span>
+                      <span style={{ fontSize: "9.5px", fontWeight: "900", lineHeight: "1.15" }}>FACTURA</span>
+                      <TalonarioCheckBox checked={isFactura} />
                     </div>
                   </td>
 
                   {/* Columna 3: LETRA / PLAZO */}
                   <td style={{ padding: "4px 8px", width: "22%", verticalAlign: "middle", borderRight: "1px solid #000" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
-                      <span style={{ fontSize: "9.5px", fontWeight: "900" }}>LETRA</span>
-                      <span style={{ width: "14px", height: "14px", border: "1.5px solid #000", background: "#ffffff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: "900" }}>
-                        {isLetraDoc ? "X" : ""}
-                      </span>
+                      <span style={{ fontSize: "9.5px", fontWeight: "900", lineHeight: "1.15" }}>LETRA</span>
+                      <TalonarioCheckBox checked={isLetraDoc} />
                     </div>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                      <span style={{ fontSize: "9.5px", fontWeight: "900" }}>PLAZO</span>
-                      <span style={{ border: "1.5px solid #000", background: "#ffffff", padding: "1px 6px", minWidth: "55px", textAlign: "center", fontSize: "9px", fontWeight: "900" }}>
+                      <span style={{ fontSize: "9.5px", fontWeight: "900", lineHeight: "1.15" }}>PLAZO</span>
+                      <span style={{ border: "1.5px solid #000", background: "#ffffff", padding: "1px 6px", minWidth: "55px", minHeight: "15px", display: "inline-flex", alignItems: "center", justifyContent: "center", textAlign: "center", fontSize: "9px", fontWeight: "900", lineHeight: "1.1" }}>
                         {creditTermDoc || (isCredito ? "30 DÍAS" : "—")}
                       </span>
                     </div>
@@ -862,18 +906,18 @@ export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) 
                   {/* Columna 4: ABONO / BANCO */}
                   <td style={{ padding: "4px 8px", width: "38%", verticalAlign: "middle" }}>
                     <div style={{ display: "flex", alignItems: "center", marginBottom: "4px" }}>
-                      <span style={{ fontSize: "8.5px", fontWeight: "900", whiteSpace: "nowrap", marginRight: "6px" }}>ABONO / TRANSF.</span>
-                      <span style={{ flex: 1, border: "1px solid #000", background: "#fef08a", padding: "1px 6px", textAlign: "center", fontSize: "9px", fontFamily: "monospace", fontWeight: "900", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <span style={{ fontSize: "8.5px", fontWeight: "900", whiteSpace: "nowrap", marginRight: "6px", lineHeight: "1.15" }}>ABONO / TRANSF.</span>
+                      <span style={{ flex: 1, border: "1px solid #000", background: "#fef08a", padding: "1px 6px", minHeight: "15px", display: "inline-flex", alignItems: "center", justifyContent: "center", textAlign: "center", fontSize: "9px", fontFamily: "monospace", fontWeight: "900", lineHeight: "1.1", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {opNumberVal || "—"}
                       </span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center" }}>
-                      <span style={{ fontSize: "8.5px", fontWeight: "900", marginRight: "6px" }}>BCQ</span>
-                      <span style={{ flex: 1, border: "1px solid #000", background: "#fef08a", padding: "1px 6px", textAlign: "center", fontSize: "8.5px", fontWeight: "900", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <span style={{ fontSize: "8.5px", fontWeight: "900", marginRight: "6px", lineHeight: "1.15" }}>BCQ</span>
+                      <span style={{ flex: 1, border: "1px solid #000", background: "#fef08a", padding: "1px 6px", minHeight: "15px", display: "inline-flex", alignItems: "center", justifyContent: "center", textAlign: "center", fontSize: "8.5px", fontWeight: "900", lineHeight: "1.1", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {bcqVal}
                       </span>
-                      <span style={{ fontSize: "8.5px", fontWeight: "900", margin: "0 6px" }}>CH/</span>
-                      <span style={{ width: "32px", border: "1px solid #000", background: "#fef08a", padding: "1px 2px", textAlign: "center", fontSize: "8.5px", fontWeight: "900" }}>
+                      <span style={{ fontSize: "8.5px", fontWeight: "900", margin: "0 6px", lineHeight: "1.15" }}>CH/</span>
+                      <span style={{ width: "32px", border: "1px solid #000", background: "#fef08a", padding: "1px 2px", minHeight: "15px", display: "inline-flex", alignItems: "center", justifyContent: "center", textAlign: "center", fontSize: "8.5px", fontWeight: "900", lineHeight: "1.1" }}>
                         —
                       </span>
                     </div>
@@ -882,189 +926,145 @@ export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) 
               </tbody>
             </table>
 
-            {/* 6. TABLA DOBLE DE 30 ARTÍCULOS (GRILLA COMPACTA TOTALMENTE CUADRADA) */}
+            {/* 6. TABLA DOBLE DE 30 ARTÍCULOS (UNIFICADA SIN LÍNEAS VERTICALES INTERNAS) */}
             <table style={{ width: "100%", borderCollapse: "collapse", border: "1.5px solid #000", marginBottom: "6px", background: "#ffffff", tableLayout: "fixed" }}>
+              <colgroup>
+                <col style={{ width: "30px" }} />
+                <col style={{ width: "34px" }} />
+                <col style={{ width: "auto" }} />
+                <col style={{ width: "48px" }} />
+                <col style={{ width: "52px" }} />
+                <col style={{ width: "30px" }} />
+                <col style={{ width: "34px" }} />
+                <col style={{ width: "auto" }} />
+                <col style={{ width: "48px" }} />
+                <col style={{ width: "52px" }} />
+              </colgroup>
+              <thead>
+                <tr style={{ height: "20px" }}>
+                  <th colSpan={5} style={{ background: "#e5e7eb", borderBottom: "1.5px solid #000", borderRight: "1.5px solid #000", textAlign: "center", padding: "2px 0", fontSize: "10px", fontWeight: "900", letterSpacing: "2px" }}>
+                    ARTICULO
+                  </th>
+                  <th colSpan={5} style={{ background: "#e5e7eb", borderBottom: "1.5px solid #000", textAlign: "center", padding: "2px 0", fontSize: "10px", fontWeight: "900", letterSpacing: "2px" }}>
+                    ARTICULO
+                  </th>
+                </tr>
+                <tr style={{ background: "#f3f4f6", borderBottom: "1.5px solid #000", fontSize: "7.5px", fontWeight: "900", height: "19px" }}>
+                  <th style={{ textAlign: "center", padding: "0 3px", whiteSpace: "nowrap" }}>ITEM</th>
+                  <th style={{ textAlign: "center", padding: "0 3px", whiteSpace: "nowrap" }}>CANT.</th>
+                  <th style={{ textAlign: "left", padding: "0 6px", whiteSpace: "nowrap" }}>DESCRIPCION</th>
+                  <th style={{ textAlign: "right", padding: "0 4px", whiteSpace: "nowrap" }}>P. UNIT.</th>
+                  <th style={{ textAlign: "right", borderRight: "1.5px solid #000", padding: "0 6px 0 4px", whiteSpace: "nowrap" }}>P. TOTAL</th>
+                  <th style={{ textAlign: "center", padding: "0 3px 0 5px", whiteSpace: "nowrap" }}>ITEM</th>
+                  <th style={{ textAlign: "center", padding: "0 3px", whiteSpace: "nowrap" }}>CANT.</th>
+                  <th style={{ textAlign: "left", padding: "0 6px", whiteSpace: "nowrap" }}>DESCRIPCION</th>
+                  <th style={{ textAlign: "right", padding: "0 4px", whiteSpace: "nowrap" }}>P. UNIT.</th>
+                  <th style={{ textAlign: "right", padding: "0 6px 0 4px", whiteSpace: "nowrap" }}>P. TOTAL</th>
+                </tr>
+              </thead>
               <tbody>
-                <tr>
-                  {/* Mitad Izquierda: Renglones 1 al 15 */}
-                  <td style={{ width: "50%", verticalAlign: "top", borderRight: "1.5px solid #000", padding: 0 }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-                      <colgroup>
-                        <col style={{ width: "20px" }} />
-                        <col style={{ width: "24px" }} />
-                        <col style={{ width: "auto" }} />
-                        <col style={{ width: "42px" }} />
-                        <col style={{ width: "46px" }} />
-                      </colgroup>
-                      <thead>
-                        <tr style={{ height: "20px" }}>
-                          <th colSpan={5} style={{ background: "#e5e7eb", borderBottom: "1.5px solid #000", textAlign: "center", padding: "2px 0", fontSize: "10px", fontWeight: "900", letterSpacing: "2px" }}>
-                            ARTICULO
-                          </th>
-                        </tr>
-                        <tr style={{ background: "#f3f4f6", borderBottom: "1.5px solid #000", fontSize: "8px", fontWeight: "900", height: "18px" }}>
-                          <th style={{ textAlign: "center", borderRight: "1px solid #000", padding: 0, whiteSpace: "nowrap" }}>ITEM</th>
-                          <th style={{ textAlign: "center", borderRight: "1px solid #000", padding: 0, whiteSpace: "nowrap" }}>CANT.</th>
-                          <th style={{ textAlign: "center", borderRight: "1px solid #000", padding: "0 4px", whiteSpace: "nowrap" }}>DESCRIPCION</th>
-                          <th style={{ textAlign: "center", borderRight: "1px solid #000", padding: 0, whiteSpace: "nowrap" }}>P. UNIT.</th>
-                          <th style={{ textAlign: "center", padding: 0, whiteSpace: "nowrap" }}>P. TOTAL</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {col1Items.map((item, idx) => {
-                          const itemNum = idx + 1;
-                          const qty = item ? item.qty : "";
-                          const name = item ? item.desc : "";
-                          const price = item && item.isOutOfStock ? "Sin Stock" : (item && item.finalUnitPrice ? `${currencySymbol.trim()}${money(item.finalUnitPrice)}` : "");
-                          const lineTotal = item && item.isOutOfStock ? "Back Order" : (item && item.lineTotalNum ? `${currencySymbol.trim()}${money(item.lineTotalNum)}` : "");
-                          const descStyle = getItemDescStyle(name);
-                          const priceStyle = getPriceStyle(price);
-                          const lineTotalStyle = getPriceStyle(lineTotal);
+                {col1Items.map((leftItem, idx) => {
+                  const rightItem = col2Items[idx] || null;
+                  const leftNum = idx + 1;
+                  const rightNum = idx + 16;
 
-                          return (
-                            <tr
-                              key={idx}
-                              style={{
-                                minHeight: "19px",
-                                height: item ? "auto" : "19px",
-                                borderBottom: "1px solid #000",
-                                fontSize: "9px",
-                                boxSizing: "border-box",
-                              }}
-                            >
-                              <td style={{ textAlign: "center", borderRight: "1px solid #000", fontWeight: "bold", color: "#000", padding: "2px 2px", verticalAlign: "middle", whiteSpace: "nowrap", fontSize: "9px" }}>{itemNum}</td>
-                              <td style={{ textAlign: "center", borderRight: "1px solid #000", fontWeight: "bold", color: "#000", padding: "2px 2px", verticalAlign: "middle", whiteSpace: "nowrap", fontSize: "9px" }}>{qty}</td>
-                              <td
-                                style={{
-                                  borderRight: "1px solid #000",
-                                  fontWeight: "bold",
-                                  padding: "2px 4px",
-                                  color: "#000000",
-                                  verticalAlign: "middle",
-                                  whiteSpace: "normal",
-                                  wordBreak: "break-word",
-                                  lineHeight: "1.18",
-                                  ...descStyle,
-                                }}
-                                title={name}
-                              >
-                                {item ? (
-                                  <div>
-                                    <span>{item.baseName || item.desc}</span>
-                                    {item.discTag && (
-                                      <span style={{ color: "#166534", fontSize: "8px", fontWeight: "800", marginLeft: "4px", whiteSpace: "nowrap" }}>
-                                        {item.discTag}
-                                      </span>
-                                    )}
-                                  </div>
-                                ) : ""}
-                              </td>
-                              <td style={{ textAlign: "right", borderRight: "1px solid #000", fontFamily: "monospace", padding: "2px 3px", whiteSpace: "nowrap", fontWeight: "bold", color: "#000000", verticalAlign: "middle", ...priceStyle }}>{price}</td>
-                              <td style={{ textAlign: "right", fontWeight: "bold", fontFamily: "monospace", padding: "2px 3px", whiteSpace: "nowrap", color: "#000000", verticalAlign: "middle", ...lineTotalStyle }}>{lineTotal}</td>
-                            </tr>
-                          );
-                        })}
-                        {/* Fila de Subtotal e IGV en el extremo inferior izquierdo */}
-                        <tr style={{ height: "26px", maxHeight: "26px" }}>
-                          <td colSpan={5} style={{ borderTop: "1.5px solid #000", background: "#f8fafc", textAlign: "right", padding: "0 10px", verticalAlign: "middle", whiteSpace: "nowrap", fontSize: "8px", fontWeight: "bold", color: "#374151" }}>
-                            SUBTOTAL: {currencySymbol.trim()} {money(subtotalDocNum)} &nbsp;|&nbsp; I.G.V. (18%): {currencySymbol.trim()} {money(igvDocNum)}
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
+                  const leftQty = leftItem ? leftItem.qty : "";
+                  const leftName = leftItem ? leftItem.desc : "";
+                  const leftPrice = leftItem && leftItem.isOutOfStock ? "Sin Stock" : (leftItem && leftItem.finalUnitPrice ? `${currencySymbol.trim()}${money(leftItem.finalUnitPrice)}` : "");
+                  const leftLineTotal = leftItem && leftItem.isOutOfStock ? "Back Order" : (leftItem && leftItem.lineTotalNum ? `${currencySymbol.trim()}${money(leftItem.lineTotalNum)}` : "");
+
+                  const rightQty = rightItem ? rightItem.qty : "";
+                  const rightName = rightItem ? rightItem.desc : "";
+                  const rightPrice = rightItem && rightItem.isOutOfStock ? "Sin Stock" : (rightItem && rightItem.finalUnitPrice ? `${currencySymbol.trim()}${money(rightItem.finalUnitPrice)}` : "");
+                  const rightLineTotal = rightItem && rightItem.isOutOfStock ? "Back Order" : (rightItem && rightItem.lineTotalNum ? `${currencySymbol.trim()}${money(rightItem.lineTotalNum)}` : "");
+
+                  const hasAnyItem = Boolean(leftItem || rightItem);
+
+                  return (
+                    <tr
+                      key={idx}
+                      style={{
+                        minHeight: "19px",
+                        height: hasAnyItem ? "auto" : "19px",
+                        borderBottom: idx === 14 ? "none" : "1px solid #9ca3af",
+                        fontSize: "9px",
+                        boxSizing: "border-box",
+                      }}
+                    >
+                      {/* Mitad Izquierda (1..15) */}
+                      <td style={{ textAlign: "center", fontWeight: "bold", color: leftItem ? "#000000" : "#4b5563", padding: "2px 3px", verticalAlign: "middle", whiteSpace: "nowrap", fontSize: "8.5px" }}>{leftNum}</td>
+                      <td style={{ textAlign: "center", fontWeight: "bold", color: "#000000", padding: "2px 3px", verticalAlign: "middle", whiteSpace: "nowrap", fontSize: "9px" }}>{leftQty}</td>
+                      <td
+                        style={{
+                          fontWeight: "bold",
+                          padding: "2px 6px",
+                          color: "#000000",
+                          verticalAlign: "middle",
+                          whiteSpace: "normal",
+                          wordBreak: "break-word",
+                          lineHeight: "1.18",
+                          ...getItemDescStyle(leftName),
+                        }}
+                        title={leftName}
+                      >
+                        {leftItem ? (
+                          <div>
+                            <span>{leftItem.baseName || leftItem.desc}</span>
+                            {leftItem.discTag && (
+                              <span style={{ color: "#166534", fontSize: "8px", fontWeight: "800", marginLeft: "4px", whiteSpace: "nowrap" }}>
+                                {leftItem.discTag}
+                              </span>
+                            )}
+                          </div>
+                        ) : ""}
+                      </td>
+                      <td style={{ textAlign: "right", fontFamily: "monospace", padding: "2px 4px", whiteSpace: "nowrap", fontWeight: "bold", color: "#000000", verticalAlign: "middle", ...getPriceStyle(leftPrice) }}>{leftPrice}</td>
+                      <td style={{ textAlign: "right", borderRight: "1.5px solid #000", fontWeight: "bold", fontFamily: "monospace", padding: "2px 6px 2px 4px", whiteSpace: "nowrap", color: "#000000", verticalAlign: "middle", ...getPriceStyle(leftLineTotal) }}>{leftLineTotal}</td>
+
+                      {/* Mitad Derecha (16..30) */}
+                      <td style={{ textAlign: "center", fontWeight: "bold", color: rightItem ? "#000000" : "#4b5563", padding: "2px 3px 2px 5px", verticalAlign: "middle", whiteSpace: "nowrap", fontSize: "8.5px" }}>{rightNum}</td>
+                      <td style={{ textAlign: "center", fontWeight: "bold", color: "#000000", padding: "2px 3px", verticalAlign: "middle", whiteSpace: "nowrap", fontSize: "9px" }}>{rightQty}</td>
+                      <td
+                        style={{
+                          fontWeight: "bold",
+                          padding: "2px 6px",
+                          color: "#000000",
+                          verticalAlign: "middle",
+                          whiteSpace: "normal",
+                          wordBreak: "break-word",
+                          lineHeight: "1.18",
+                          ...getItemDescStyle(rightName),
+                        }}
+                        title={rightName}
+                      >
+                        {rightItem ? (
+                          <div>
+                            <span>{rightItem.baseName || rightItem.desc}</span>
+                            {rightItem.discTag && (
+                              <span style={{ color: "#166534", fontSize: "8px", fontWeight: "800", marginLeft: "4px", whiteSpace: "nowrap" }}>
+                                {rightItem.discTag}
+                              </span>
+                            )}
+                          </div>
+                        ) : ""}
+                      </td>
+                      <td style={{ textAlign: "right", fontFamily: "monospace", padding: "2px 4px", whiteSpace: "nowrap", fontWeight: "bold", color: "#000000", verticalAlign: "middle", ...getPriceStyle(rightPrice) }}>{rightPrice}</td>
+                      <td style={{ textAlign: "right", fontWeight: "bold", fontFamily: "monospace", padding: "2px 6px 2px 4px", whiteSpace: "nowrap", color: "#000000", verticalAlign: "middle", ...getPriceStyle(rightLineTotal) }}>{rightLineTotal}</td>
+                    </tr>
+                  );
+                })}
+                {/* Fila de Totales Unificada (Subtotal/IGV izquierda + Total amarillo derecha) */}
+                <tr style={{ height: "26px", maxHeight: "26px" }}>
+                  <td colSpan={5} style={{ borderTop: "1.5px solid #000", borderRight: "1.5px solid #000", background: "#f8fafc", textAlign: "right", padding: "0 10px", verticalAlign: "middle", whiteSpace: "nowrap", fontSize: "8px", fontWeight: "bold", color: "#374151" }}>
+                    SUBTOTAL: {currencySymbol.trim()} {money(subtotalDocNum)} &nbsp;|&nbsp; I.G.V. (18%): {currencySymbol.trim()} {money(igvDocNum)}
                   </td>
-
-                  {/* Mitad Derecha: Renglones 16 al 30 */}
-                  <td style={{ width: "50%", verticalAlign: "top", padding: 0 }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-                      <colgroup>
-                        <col style={{ width: "20px" }} />
-                        <col style={{ width: "24px" }} />
-                        <col style={{ width: "auto" }} />
-                        <col style={{ width: "42px" }} />
-                        <col style={{ width: "46px" }} />
-                      </colgroup>
-                      <thead>
-                        <tr style={{ height: "20px" }}>
-                          <th colSpan={5} style={{ background: "#e5e7eb", borderBottom: "1.5px solid #000", textAlign: "center", padding: "2px 0", fontSize: "10px", fontWeight: "900", letterSpacing: "2px" }}>
-                            ARTICULO
-                          </th>
-                        </tr>
-                        <tr style={{ background: "#f3f4f6", borderBottom: "1.5px solid #000", fontSize: "8px", fontWeight: "900", height: "18px" }}>
-                          <th style={{ textAlign: "center", borderRight: "1px solid #000", padding: 0, whiteSpace: "nowrap" }}>ITEM</th>
-                          <th style={{ textAlign: "center", borderRight: "1px solid #000", padding: 0, whiteSpace: "nowrap" }}>CANT.</th>
-                          <th style={{ textAlign: "center", borderRight: "1px solid #000", padding: "0 4px", whiteSpace: "nowrap" }}>DESCRIPCION</th>
-                          <th style={{ textAlign: "center", borderRight: "1px solid #000", padding: 0, whiteSpace: "nowrap" }}>P. UNIT.</th>
-                          <th style={{ textAlign: "center", padding: 0, whiteSpace: "nowrap" }}>P. TOTAL</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {col2Items.map((item, idx) => {
-                          const itemNum = idx + 16;
-                          const qty = item ? item.qty : "";
-                          const name = item ? item.desc : "";
-                          const price = item && item.isOutOfStock ? "Sin Stock" : (item && item.finalUnitPrice ? `${currencySymbol.trim()}${money(item.finalUnitPrice)}` : "");
-                          const lineTotal = item && item.isOutOfStock ? "Back Order" : (item && item.lineTotalNum ? `${currencySymbol.trim()}${money(item.lineTotalNum)}` : "");
-                          const descStyle = getItemDescStyle(name);
-                          const priceStyle = getPriceStyle(price);
-                          const lineTotalStyle = getPriceStyle(lineTotal);
-
-                          return (
-                            <tr
-                              key={idx}
-                              style={{
-                                minHeight: "19px",
-                                height: item ? "auto" : "19px",
-                                borderBottom: "1px solid #000",
-                                fontSize: "9px",
-                                boxSizing: "border-box",
-                              }}
-                            >
-                              <td style={{ textAlign: "center", borderRight: "1px solid #000", fontWeight: "bold", color: "#000", padding: "2px 2px", verticalAlign: "middle", whiteSpace: "nowrap", fontSize: "9px" }}>{itemNum}</td>
-                              <td style={{ textAlign: "center", borderRight: "1px solid #000", fontWeight: "bold", color: "#000", padding: "2px 2px", verticalAlign: "middle", whiteSpace: "nowrap", fontSize: "9px" }}>{qty}</td>
-                              <td
-                                style={{
-                                  borderRight: "1px solid #000",
-                                  fontWeight: "bold",
-                                  padding: "2px 4px",
-                                  color: "#000000",
-                                  verticalAlign: "middle",
-                                  whiteSpace: "normal",
-                                  wordBreak: "break-word",
-                                  lineHeight: "1.18",
-                                  ...descStyle,
-                                }}
-                                title={name}
-                              >
-                                {item ? (
-                                  <div>
-                                    <span>{item.baseName || item.desc}</span>
-                                    {item.discTag && (
-                                      <span style={{ color: "#166534", fontSize: "8px", fontWeight: "800", marginLeft: "4px", whiteSpace: "nowrap" }}>
-                                        {item.discTag}
-                                      </span>
-                                    )}
-                                  </div>
-                                ) : ""}
-                              </td>
-                              <td style={{ textAlign: "right", borderRight: "1px solid #000", fontFamily: "monospace", padding: "2px 3px", whiteSpace: "nowrap", fontWeight: "bold", color: "#000000", verticalAlign: "middle", ...priceStyle }}>{price}</td>
-                              <td style={{ textAlign: "right", fontWeight: "bold", fontFamily: "monospace", padding: "2px 3px", whiteSpace: "nowrap", color: "#000000", verticalAlign: "middle", ...lineTotalStyle }}>{lineTotal}</td>
-                            </tr>
-                          );
-                        })}
-                        {/* Fila del Total Documento en el extremo inferior derecho con fondo amarillo */}
-                        <tr style={{ height: "26px", maxHeight: "26px" }}>
-                          <td colSpan={5} style={{ borderTop: "1.5px solid #000", background: "#fef08a", textAlign: "right", padding: "0 12px", verticalAlign: "middle", whiteSpace: "nowrap" }}>
-                            <span style={{ fontSize: "8px", fontWeight: "bold", color: "#4b5563", marginRight: "6px" }}>
-                              (Inc. 18% IGV)
-                            </span>
-                            <span style={{ fontWeight: "900", fontSize: "12px", letterSpacing: "0.5px", color: "#000000" }}>
-                              TOTAL {currencySymbol.trim()} {money(documentTotalNum)}
-                            </span>
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
+                  <td colSpan={5} style={{ borderTop: "1.5px solid #000", background: "#fef08a", textAlign: "right", padding: "0 12px", verticalAlign: "middle", whiteSpace: "nowrap" }}>
+                    <span style={{ fontSize: "8px", fontWeight: "bold", color: "#4b5563", marginRight: "6px" }}>
+                      (Inc. 18% IGV)
+                    </span>
+                    <span style={{ fontWeight: "900", fontSize: "12px", letterSpacing: "0.5px", color: "#000000" }}>
+                      TOTAL {currencySymbol.trim()} {money(documentTotalNum)}
+                    </span>
                   </td>
                 </tr>
               </tbody>
@@ -1130,9 +1130,10 @@ export function SapQuoteDocumentModal({ isOpen, onClose, quote, onLoadToForm }) 
             <div style={{ textAlign: "center", fontSize: "8px", color: "#000000", fontWeight: "bold", marginTop: "4px" }}>
               1/1
             </div>
+            </Box>
+            </div>
           </Box>
-        </Box>
-      </ModalBody>
+        </ModalBody>
 
         <ModalFooter bg="white" borderTop="1px solid" borderColor="gray.200" py={3} px={6} display="flex" justify="space-between">
           <HStack spacing={2}>

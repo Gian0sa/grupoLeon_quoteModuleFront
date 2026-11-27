@@ -111,12 +111,8 @@ const normalizeItem = (item, isSol = false, tc = 1) => {
     baseName = item.sigla || code || "Artículo";
   }
 
-  const discParts = [];
-  if (sapDisc > 0) discParts.push(`-${sapDisc}%`);
-  if (promoDisc > 0) discParts.push(`-${promoDisc}% Promo`);
-  if (addDisc > 0) discParts.push(`-${Number(addDisc).toFixed(2)}%`);
-  if (isTaxOnly) discParts.push("TRANSFERENCIA GRATUITA - SOLO IGV");
-  const discTag = discParts.length > 0 ? ` (${discParts.join(" ")})` : "";
+  // Ocultar porcentajes de descuento en el documento de cara al cliente (solo indicar Transferencia Gratuita si aplica)
+  const discTag = isTaxOnly ? " (TRANSFERENCIA GRATUITA - SOLO IGV)" : "";
 
   return {
     qty: isNaN(qty) || qty < 1 ? 1 : qty,
@@ -145,6 +141,41 @@ const getPriceStyle = (priceStr) => {
   if (len > 7) return { fontSize: "8px" };
   return { fontSize: "8.5px" };
 };
+
+const TalonarioCheckBox = ({ checked }) => (
+  <span
+    style={{
+      width: "15px",
+      height: "15px",
+      border: "1.5px solid #000",
+      background: "#ffffff",
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      boxSizing: "border-box",
+      flexShrink: 0,
+      padding: 0,
+      lineHeight: 0,
+    }}
+  >
+    {checked ? (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="9"
+        height="9"
+        viewBox="0 0 10 10"
+        style={{ display: "block", width: "9px", height: "9px" }}
+      >
+        <path
+          d="M1.6 1.6L8.4 8.4M8.4 1.6L1.6 8.4"
+          stroke="#000000"
+          strokeWidth="2.1"
+          strokeLinecap="round"
+        />
+      </svg>
+    ) : null}
+  </span>
+);
 
 const resolveSellerCode = (q) => {
   if (!q) return "";
@@ -475,50 +506,54 @@ export const QuotePdfDocument = React.forwardRef(({ quote, isPrintMode = false }
         </tbody>
       </table>
 
-      {/* 4. DATOS DEL CLIENTE Y DESPACHO (LÍNEAS DE FORMULARIO CON LÍNEA PUNTEADA) */}
-      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "6px", fontSize: "10px", fontWeight: "bold" }}>
+      {/* 4. DATOS DEL CLIENTE Y DESPACHO (LÍNEAS DE FORMULARIO CON LÍNEA PUNTEADA CONTINUA) */}
+      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, marginBottom: "6px", fontSize: "10px", fontWeight: "bold" }}>
         <tbody>
           <tr>
-            <td style={{ width: "50px", padding: "3px 0", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>Sr.(es):</td>
-            <td style={{ borderBottom: "1px dotted #000", padding: "3px 4px", verticalAlign: "bottom", color: "#000", fontWeight: "900", fontSize: "10.5px" }}>
-              {clientName}
+            <td style={{ width: "50px", padding: "3px 4px 3px 0", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>Sr.(es):</td>
+            <td style={{ padding: "3px 0", verticalAlign: "bottom", color: "#000", fontWeight: "900", fontSize: "10.5px" }}>
+              <div style={{ borderBottom: "1px dotted #1f2937", padding: "0 4px 2px 4px", width: "100%" }}>{clientName}</div>
             </td>
-            <td style={{ width: "95px", padding: "3px 4px 3px 12px", textAlign: "right", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>RUC CLIENTE:</td>
-            <td style={{ width: "140px", borderBottom: "1px dotted #000", padding: "3px 4px", verticalAlign: "bottom", color: "#000", fontWeight: "900", fontFamily: "monospace", fontSize: "10.5px" }}>
-              {clientRuc}
-            </td>
-          </tr>
-          <tr>
-            <td style={{ padding: "3px 0", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>Dirección:</td>
-            <td colSpan={3} style={{ borderBottom: "1px dotted #000", padding: "3px 4px", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
-              {clientAddress}
+            <td style={{ width: "95px", padding: "3px 6px 3px 12px", textAlign: "right", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>RUC CLIENTE:</td>
+            <td style={{ width: "140px", padding: "3px 0", verticalAlign: "bottom", color: "#000", fontWeight: "900", fontFamily: "monospace", fontSize: "10.5px" }}>
+              <div style={{ borderBottom: "1px dotted #1f2937", padding: "0 4px 2px 4px", width: "100%" }}>{clientRuc}</div>
             </td>
           </tr>
           <tr>
-            <td style={{ padding: "3px 0", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>Punto de Llegada:</td>
-            <td colSpan={3} style={{ borderBottom: "1px dotted #000", padding: "3px 4px", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
-              {pointOfArrival}
+            <td style={{ padding: "3px 4px 3px 0", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>Dirección:</td>
+            <td colSpan={3} style={{ padding: "3px 0", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
+              <div style={{ borderBottom: "1px dotted #1f2937", padding: "0 4px 2px 4px", width: "100%" }}>{clientAddress}</div>
             </td>
           </tr>
           <tr>
-            <td style={{ padding: "3px 0", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>Ag. Transportes:</td>
-            <td style={{ borderBottom: "1px dotted #000", padding: "3px 4px", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
-              {transportName}
+            <td style={{ padding: "3px 4px 3px 0", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>Punto de Llegada:</td>
+            <td colSpan={3} style={{ padding: "3px 0", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
+              <div style={{ borderBottom: "1px dotted #1f2937", padding: "0 4px 2px 4px", width: "100%" }}>{pointOfArrival}</div>
             </td>
-            <td style={{ padding: "3px 4px 3px 12px", textAlign: "right", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>Dirección:</td>
-            <td style={{ borderBottom: "1px dotted #000", padding: "3px 4px", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
-              {transportAddress}
+          </tr>
+          <tr>
+            <td style={{ padding: "3px 4px 3px 0", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>Ag. Transportes:</td>
+            <td style={{ padding: "3px 0", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
+              <div style={{ borderBottom: "1px dotted #1f2937", padding: "0 4px 2px 4px", width: "100%" }}>{transportName}</div>
+            </td>
+            <td style={{ padding: "3px 6px 3px 12px", textAlign: "right", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>Dirección:</td>
+            <td style={{ padding: "3px 0", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
+              <div style={{ borderBottom: "1px dotted #1f2937", padding: "0 4px 2px 4px", width: "100%" }}>{transportAddress}</div>
             </td>
           </tr>
           {(quote.contactPerson || quote.totals?.contactPerson || quote.refNumber || quote.totals?.refNumber) && (
             <tr>
-              <td style={{ padding: "3px 0", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>Contacto:</td>
-              <td style={{ borderBottom: "1px dotted #000", padding: "3px 4px", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
-                {quote.contactPerson || quote.totals?.contactPerson || quote.ContactPerson || "—"}
+              <td style={{ padding: "3px 4px 3px 0", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>Contacto:</td>
+              <td style={{ padding: "3px 0", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
+                <div style={{ borderBottom: "1px dotted #1f2937", padding: "0 4px 2px 4px", width: "100%" }}>
+                  {quote.contactPerson || quote.totals?.contactPerson || quote.ContactPerson || "—"}
+                </div>
               </td>
-              <td style={{ padding: "3px 4px 3px 12px", textAlign: "right", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>OC / Ref:</td>
-              <td style={{ borderBottom: "1px dotted #000", padding: "3px 4px", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
-                {quote.refNumber || quote.totals?.refNumber || quote.NumAtCard || quote.numAtCard || "—"}
+              <td style={{ padding: "3px 6px 3px 12px", textAlign: "right", verticalAlign: "bottom", color: "#000", whiteSpace: "nowrap" }}>OC / Ref:</td>
+              <td style={{ padding: "3px 0", verticalAlign: "bottom", color: "#000", fontWeight: "600" }}>
+                <div style={{ borderBottom: "1px dotted #1f2937", padding: "0 4px 2px 4px", width: "100%" }}>
+                  {quote.refNumber || quote.totals?.refNumber || quote.NumAtCard || quote.numAtCard || "—"}
+                </div>
               </td>
             </tr>
           )}
@@ -532,46 +567,36 @@ export const QuotePdfDocument = React.forwardRef(({ quote, isPrintMode = false }
             {/* Columna 1: CONTADO / CREDITO */}
             <td style={{ padding: "4px 8px", width: "20%", verticalAlign: "middle", borderRight: "1px solid #000" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
-                <span style={{ fontSize: "9.5px", fontWeight: "900" }}>CONTADO</span>
-                <span style={{ width: "14px", height: "14px", border: "1.5px solid #000", background: "#ffffff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: "900" }}>
-                  {isContado ? "X" : ""}
-                </span>
+                <span style={{ fontSize: "9.5px", fontWeight: "900", lineHeight: "1.15" }}>CONTADO</span>
+                <TalonarioCheckBox checked={isContado} />
               </div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontSize: "9.5px", fontWeight: "900" }}>CREDITO</span>
-                <span style={{ width: "14px", height: "14px", border: "1.5px solid #000", background: "#ffffff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: "900" }}>
-                  {isCredito ? "X" : ""}
-                </span>
+                <span style={{ fontSize: "9.5px", fontWeight: "900", lineHeight: "1.15" }}>CREDITO</span>
+                <TalonarioCheckBox checked={isCredito} />
               </div>
             </td>
 
             {/* Columna 2: BOLETA / FACTURA */}
             <td style={{ padding: "4px 8px", width: "20%", verticalAlign: "middle", borderRight: "1px solid #000" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
-                <span style={{ fontSize: "9.5px", fontWeight: "900" }}>BOLETA</span>
-                <span style={{ width: "14px", height: "14px", border: "1.5px solid #000", background: "#ffffff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: "900" }}>
-                  {isBoleta ? "X" : ""}
-                </span>
+                <span style={{ fontSize: "9.5px", fontWeight: "900", lineHeight: "1.15" }}>BOLETA</span>
+                <TalonarioCheckBox checked={isBoleta} />
               </div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontSize: "9.5px", fontWeight: "900" }}>FACTURA</span>
-                <span style={{ width: "14px", height: "14px", border: "1.5px solid #000", background: "#ffffff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: "900" }}>
-                  {isFactura ? "X" : ""}
-                </span>
+                <span style={{ fontSize: "9.5px", fontWeight: "900", lineHeight: "1.15" }}>FACTURA</span>
+                <TalonarioCheckBox checked={isFactura} />
               </div>
             </td>
 
             {/* Columna 3: LETRA / PLAZO */}
             <td style={{ padding: "4px 8px", width: "22%", verticalAlign: "middle", borderRight: "1px solid #000" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
-                <span style={{ fontSize: "9.5px", fontWeight: "900" }}>LETRA</span>
-                <span style={{ width: "14px", height: "14px", border: "1.5px solid #000", background: "#ffffff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: "900" }}>
-                  {isLetraDoc ? "X" : ""}
-                </span>
+                <span style={{ fontSize: "9.5px", fontWeight: "900", lineHeight: "1.15" }}>LETRA</span>
+                <TalonarioCheckBox checked={isLetraDoc} />
               </div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontSize: "9.5px", fontWeight: "900" }}>PLAZO</span>
-                <span style={{ border: "1.5px solid #000", background: "#ffffff", padding: "1px 6px", minWidth: "55px", textAlign: "center", fontSize: "9px", fontWeight: "900" }}>
+                <span style={{ fontSize: "9.5px", fontWeight: "900", lineHeight: "1.15" }}>PLAZO</span>
+                <span style={{ border: "1.5px solid #000", background: "#ffffff", padding: "1px 6px", minWidth: "55px", minHeight: "15px", display: "inline-flex", alignItems: "center", justifyContent: "center", textAlign: "center", fontSize: "9px", fontWeight: "900", lineHeight: "1.1" }}>
                   {creditTermDoc || (isCredito ? "30 DÍAS" : "—")}
                 </span>
               </div>
@@ -580,18 +605,18 @@ export const QuotePdfDocument = React.forwardRef(({ quote, isPrintMode = false }
             {/* Columna 4: ABONO / BANCO */}
             <td style={{ padding: "4px 8px", width: "38%", verticalAlign: "middle" }}>
               <div style={{ display: "flex", alignItems: "center", marginBottom: "4px" }}>
-                <span style={{ fontSize: "8.5px", fontWeight: "900", whiteSpace: "nowrap", marginRight: "6px" }}>ABONO / TRANSF.</span>
-                <span style={{ flex: 1, border: "1px solid #000", background: "#fef08a", padding: "1px 6px", textAlign: "center", fontSize: "9px", fontFamily: "monospace", fontWeight: "900", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                <span style={{ fontSize: "8.5px", fontWeight: "900", whiteSpace: "nowrap", marginRight: "6px", lineHeight: "1.15" }}>ABONO / TRANSF.</span>
+                <span style={{ flex: 1, border: "1px solid #000", background: "#fef08a", padding: "1px 6px", minHeight: "15px", display: "inline-flex", alignItems: "center", justifyContent: "center", textAlign: "center", fontSize: "9px", fontFamily: "monospace", fontWeight: "900", lineHeight: "1.1", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {opNumberVal || "—"}
                 </span>
               </div>
               <div style={{ display: "flex", alignItems: "center" }}>
-                <span style={{ fontSize: "8.5px", fontWeight: "900", marginRight: "6px" }}>BCQ</span>
-                <span style={{ flex: 1, border: "1px solid #000", background: "#fef08a", padding: "1px 6px", textAlign: "center", fontSize: "8.5px", fontWeight: "900", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                <span style={{ fontSize: "8.5px", fontWeight: "900", marginRight: "6px", lineHeight: "1.15" }}>BCQ</span>
+                <span style={{ flex: 1, border: "1px solid #000", background: "#fef08a", padding: "1px 6px", minHeight: "15px", display: "inline-flex", alignItems: "center", justifyContent: "center", textAlign: "center", fontSize: "8.5px", fontWeight: "900", lineHeight: "1.1", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {bcqVal}
                 </span>
-                <span style={{ fontSize: "8.5px", fontWeight: "900", margin: "0 6px" }}>CH/</span>
-                <span style={{ width: "32px", border: "1px solid #000", background: "#fef08a", padding: "1px 2px", textAlign: "center", fontSize: "8.5px", fontWeight: "900" }}>
+                <span style={{ fontSize: "8.5px", fontWeight: "900", margin: "0 6px", lineHeight: "1.15" }}>CH/</span>
+                <span style={{ width: "32px", border: "1px solid #000", background: "#fef08a", padding: "1px 2px", minHeight: "15px", display: "inline-flex", alignItems: "center", justifyContent: "center", textAlign: "center", fontSize: "8.5px", fontWeight: "900", lineHeight: "1.1" }}>
                   —
                 </span>
               </div>
@@ -600,189 +625,145 @@ export const QuotePdfDocument = React.forwardRef(({ quote, isPrintMode = false }
         </tbody>
       </table>
 
-      {/* 6. TABLA DOBLE DE 30 ARTÍCULOS (GRILLA COMPACTA TOTALMENTE CUADRADA) */}
+      {/* 6. TABLA DOBLE DE 30 ARTÍCULOS (UNIFICADA SIN LÍNEAS VERTICALES INTERNAS) */}
       <table style={{ width: "100%", borderCollapse: "collapse", border: "1.5px solid #000", marginBottom: "6px", background: "#ffffff", tableLayout: "fixed" }}>
+        <colgroup>
+          <col style={{ width: "30px" }} />
+          <col style={{ width: "34px" }} />
+          <col style={{ width: "auto" }} />
+          <col style={{ width: "48px" }} />
+          <col style={{ width: "52px" }} />
+          <col style={{ width: "30px" }} />
+          <col style={{ width: "34px" }} />
+          <col style={{ width: "auto" }} />
+          <col style={{ width: "48px" }} />
+          <col style={{ width: "52px" }} />
+        </colgroup>
+        <thead>
+          <tr style={{ height: "20px" }}>
+            <th colSpan={5} style={{ background: "#e5e7eb", borderBottom: "1.5px solid #000", borderRight: "1.5px solid #000", textAlign: "center", padding: "2px 0", fontSize: "10px", fontWeight: "900", letterSpacing: "2px" }}>
+              ARTICULO
+            </th>
+            <th colSpan={5} style={{ background: "#e5e7eb", borderBottom: "1.5px solid #000", textAlign: "center", padding: "2px 0", fontSize: "10px", fontWeight: "900", letterSpacing: "2px" }}>
+              ARTICULO
+            </th>
+          </tr>
+          <tr style={{ background: "#f3f4f6", borderBottom: "1.5px solid #000", fontSize: "7.5px", fontWeight: "900", height: "19px" }}>
+            <th style={{ textAlign: "center", padding: "0 3px", whiteSpace: "nowrap" }}>ITEM</th>
+            <th style={{ textAlign: "center", padding: "0 3px", whiteSpace: "nowrap" }}>CANT.</th>
+            <th style={{ textAlign: "left", padding: "0 6px", whiteSpace: "nowrap" }}>DESCRIPCION</th>
+            <th style={{ textAlign: "right", padding: "0 4px", whiteSpace: "nowrap" }}>P. UNIT.</th>
+            <th style={{ textAlign: "right", borderRight: "1.5px solid #000", padding: "0 6px 0 4px", whiteSpace: "nowrap" }}>P. TOTAL</th>
+            <th style={{ textAlign: "center", padding: "0 3px 0 5px", whiteSpace: "nowrap" }}>ITEM</th>
+            <th style={{ textAlign: "center", padding: "0 3px", whiteSpace: "nowrap" }}>CANT.</th>
+            <th style={{ textAlign: "left", padding: "0 6px", whiteSpace: "nowrap" }}>DESCRIPCION</th>
+            <th style={{ textAlign: "right", padding: "0 4px", whiteSpace: "nowrap" }}>P. UNIT.</th>
+            <th style={{ textAlign: "right", padding: "0 6px 0 4px", whiteSpace: "nowrap" }}>P. TOTAL</th>
+          </tr>
+        </thead>
         <tbody>
-          <tr>
-            {/* Mitad Izquierda: Renglones 1 al 15 */}
-            <td style={{ width: "50%", verticalAlign: "top", borderRight: "1.5px solid #000", padding: 0 }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-                <colgroup>
-                  <col style={{ width: "20px" }} />
-                  <col style={{ width: "24px" }} />
-                  <col style={{ width: "auto" }} />
-                  <col style={{ width: "42px" }} />
-                  <col style={{ width: "46px" }} />
-                </colgroup>
-                <thead>
-                  <tr style={{ height: "20px" }}>
-                    <th colSpan={5} style={{ background: "#e5e7eb", borderBottom: "1.5px solid #000", textAlign: "center", padding: "2px 0", fontSize: "10px", fontWeight: "900", letterSpacing: "2px" }}>
-                      ARTICULO
-                    </th>
-                  </tr>
-                  <tr style={{ background: "#f3f4f6", borderBottom: "1.5px solid #000", fontSize: "8px", fontWeight: "900", height: "18px" }}>
-                    <th style={{ textAlign: "center", borderRight: "1px solid #000", padding: 0, whiteSpace: "nowrap" }}>ITEM</th>
-                    <th style={{ textAlign: "center", borderRight: "1px solid #000", padding: 0, whiteSpace: "nowrap" }}>CANT.</th>
-                    <th style={{ textAlign: "center", borderRight: "1px solid #000", padding: "0 4px", whiteSpace: "nowrap" }}>DESCRIPCION</th>
-                    <th style={{ textAlign: "center", borderRight: "1px solid #000", padding: 0, whiteSpace: "nowrap" }}>P. UNIT.</th>
-                    <th style={{ textAlign: "center", padding: 0, whiteSpace: "nowrap" }}>P. TOTAL</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {col1Items.map((item, idx) => {
-                    const itemNum = idx + 1;
-                    const qty = item ? item.qty : "";
-                    const name = item ? item.desc : "";
-                    const price = item && item.isOutOfStock ? "Sin Stock" : (item && item.finalUnitPrice ? `${currencySymbol.trim()}${money(item.finalUnitPrice)}` : "");
-                    const lineTotal = item && item.isOutOfStock ? "Back Order" : (item && item.lineTotalNum ? `${currencySymbol.trim()}${money(item.lineTotalNum)}` : "");
-                    const descStyle = getItemDescStyle(name);
-                    const priceStyle = getPriceStyle(price);
-                    const lineTotalStyle = getPriceStyle(lineTotal);
+          {col1Items.map((leftItem, idx) => {
+            const rightItem = col2Items[idx] || null;
+            const leftNum = idx + 1;
+            const rightNum = idx + 16;
 
-                    return (
-                      <tr
-                        key={idx}
-                        style={{
-                          minHeight: "19px",
-                          height: item ? "auto" : "19px",
-                          borderBottom: "1px solid #000",
-                          fontSize: "9px",
-                          boxSizing: "border-box",
-                        }}
-                      >
-                        <td style={{ textAlign: "center", borderRight: "1px solid #000", fontWeight: "bold", color: "#000", padding: "2px 2px", verticalAlign: "middle", whiteSpace: "nowrap", fontSize: "9px" }}>{itemNum}</td>
-                        <td style={{ textAlign: "center", borderRight: "1px solid #000", fontWeight: "bold", color: "#000", padding: "2px 2px", verticalAlign: "middle", whiteSpace: "nowrap", fontSize: "9px" }}>{qty}</td>
-                        <td
-                          style={{
-                            borderRight: "1px solid #000",
-                            fontWeight: "bold",
-                            padding: "2px 4px",
-                            color: "#000000",
-                            verticalAlign: "middle",
-                            whiteSpace: "normal",
-                            wordBreak: "break-word",
-                            lineHeight: "1.18",
-                            ...descStyle,
-                          }}
-                          title={name}
-                        >
-                          {item ? (
-                            <div>
-                              <span>{item.baseName || item.desc}</span>
-                              {item.discTag && (
-                                <span style={{ color: "#166534", fontSize: "8px", fontWeight: "800", marginLeft: "4px", whiteSpace: "nowrap" }}>
-                                  {item.discTag}
-                                </span>
-                              )}
-                            </div>
-                          ) : ""}
-                        </td>
-                        <td style={{ textAlign: "right", borderRight: "1px solid #000", fontFamily: "monospace", padding: "2px 3px", whiteSpace: "nowrap", fontWeight: "bold", color: "#000000", verticalAlign: "middle", ...priceStyle }}>{price}</td>
-                        <td style={{ textAlign: "right", fontWeight: "bold", fontFamily: "monospace", padding: "2px 3px", whiteSpace: "nowrap", color: "#000000", verticalAlign: "middle", ...lineTotalStyle }}>{lineTotal}</td>
-                      </tr>
-                    );
-                  })}
-                  {/* Fila de Subtotal e IGV en el extremo inferior izquierdo */}
-                  <tr style={{ height: "26px", maxHeight: "26px" }}>
-                    <td colSpan={5} style={{ borderTop: "1.5px solid #000", background: "#f8fafc", textAlign: "right", padding: "0 10px", verticalAlign: "middle", whiteSpace: "nowrap", fontSize: "8px", fontWeight: "bold", color: "#374151" }}>
-                      SUBTOTAL: {currencySymbol.trim()} {money(subtotalDocNum)} &nbsp;|&nbsp; I.G.V. (18%): {currencySymbol.trim()} {money(igvDocNum)}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+            const leftQty = leftItem ? leftItem.qty : "";
+            const leftName = leftItem ? leftItem.desc : "";
+            const leftPrice = leftItem && leftItem.isOutOfStock ? "Sin Stock" : (leftItem && leftItem.finalUnitPrice ? `${currencySymbol.trim()}${money(leftItem.finalUnitPrice)}` : "");
+            const leftLineTotal = leftItem && leftItem.isOutOfStock ? "Back Order" : (leftItem && leftItem.lineTotalNum ? `${currencySymbol.trim()}${money(leftItem.lineTotalNum)}` : "");
+
+            const rightQty = rightItem ? rightItem.qty : "";
+            const rightName = rightItem ? rightItem.desc : "";
+            const rightPrice = rightItem && rightItem.isOutOfStock ? "Sin Stock" : (rightItem && rightItem.finalUnitPrice ? `${currencySymbol.trim()}${money(rightItem.finalUnitPrice)}` : "");
+            const rightLineTotal = rightItem && rightItem.isOutOfStock ? "Back Order" : (rightItem && rightItem.lineTotalNum ? `${currencySymbol.trim()}${money(rightItem.lineTotalNum)}` : "");
+
+            const hasAnyItem = Boolean(leftItem || rightItem);
+
+            return (
+              <tr
+                key={idx}
+                style={{
+                  minHeight: "19px",
+                  height: hasAnyItem ? "auto" : "19px",
+                  borderBottom: idx === 14 ? "none" : "1px solid #9ca3af",
+                  fontSize: "9px",
+                  boxSizing: "border-box",
+                }}
+              >
+                {/* Mitad Izquierda (1..15) */}
+                <td style={{ textAlign: "center", fontWeight: "bold", color: leftItem ? "#000000" : "#4b5563", padding: "2px 3px", verticalAlign: "middle", whiteSpace: "nowrap", fontSize: "8.5px" }}>{leftNum}</td>
+                <td style={{ textAlign: "center", fontWeight: "bold", color: "#000000", padding: "2px 3px", verticalAlign: "middle", whiteSpace: "nowrap", fontSize: "9px" }}>{leftQty}</td>
+                <td
+                  style={{
+                    fontWeight: "bold",
+                    padding: "2px 6px",
+                    color: "#000000",
+                    verticalAlign: "middle",
+                    whiteSpace: "normal",
+                    wordBreak: "break-word",
+                    lineHeight: "1.18",
+                    ...getItemDescStyle(leftName),
+                  }}
+                  title={leftName}
+                >
+                  {leftItem ? (
+                    <div>
+                      <span>{leftItem.baseName || leftItem.desc}</span>
+                      {leftItem.discTag && (
+                        <span style={{ color: "#166534", fontSize: "8px", fontWeight: "800", marginLeft: "4px", whiteSpace: "nowrap" }}>
+                          {leftItem.discTag}
+                        </span>
+                      )}
+                    </div>
+                  ) : ""}
+                </td>
+                <td style={{ textAlign: "right", fontFamily: "monospace", padding: "2px 4px", whiteSpace: "nowrap", fontWeight: "bold", color: "#000000", verticalAlign: "middle", ...getPriceStyle(leftPrice) }}>{leftPrice}</td>
+                <td style={{ textAlign: "right", borderRight: "1.5px solid #000", fontWeight: "bold", fontFamily: "monospace", padding: "2px 6px 2px 4px", whiteSpace: "nowrap", color: "#000000", verticalAlign: "middle", ...getPriceStyle(leftLineTotal) }}>{leftLineTotal}</td>
+
+                {/* Mitad Derecha (16..30) */}
+                <td style={{ textAlign: "center", fontWeight: "bold", color: rightItem ? "#000000" : "#4b5563", padding: "2px 3px 2px 5px", verticalAlign: "middle", whiteSpace: "nowrap", fontSize: "8.5px" }}>{rightNum}</td>
+                <td style={{ textAlign: "center", fontWeight: "bold", color: "#000000", padding: "2px 3px", verticalAlign: "middle", whiteSpace: "nowrap", fontSize: "9px" }}>{rightQty}</td>
+                <td
+                  style={{
+                    fontWeight: "bold",
+                    padding: "2px 6px",
+                    color: "#000000",
+                    verticalAlign: "middle",
+                    whiteSpace: "normal",
+                    wordBreak: "break-word",
+                    lineHeight: "1.18",
+                    ...getItemDescStyle(rightName),
+                  }}
+                  title={rightName}
+                >
+                  {rightItem ? (
+                    <div>
+                      <span>{rightItem.baseName || rightItem.desc}</span>
+                      {rightItem.discTag && (
+                        <span style={{ color: "#166534", fontSize: "8px", fontWeight: "800", marginLeft: "4px", whiteSpace: "nowrap" }}>
+                          {rightItem.discTag}
+                        </span>
+                      )}
+                    </div>
+                  ) : ""}
+                </td>
+                <td style={{ textAlign: "right", fontFamily: "monospace", padding: "2px 4px", whiteSpace: "nowrap", fontWeight: "bold", color: "#000000", verticalAlign: "middle", ...getPriceStyle(rightPrice) }}>{rightPrice}</td>
+                <td style={{ textAlign: "right", fontWeight: "bold", fontFamily: "monospace", padding: "2px 6px 2px 4px", whiteSpace: "nowrap", color: "#000000", verticalAlign: "middle", ...getPriceStyle(rightLineTotal) }}>{rightLineTotal}</td>
+              </tr>
+            );
+          })}
+          {/* Fila de Totales Unificada (Subtotal/IGV izquierda + Total amarillo derecha) */}
+          <tr style={{ height: "26px", maxHeight: "26px" }}>
+            <td colSpan={5} style={{ borderTop: "1.5px solid #000", borderRight: "1.5px solid #000", background: "#f8fafc", textAlign: "right", padding: "0 10px", verticalAlign: "middle", whiteSpace: "nowrap", fontSize: "8px", fontWeight: "bold", color: "#374151" }}>
+              SUBTOTAL: {currencySymbol.trim()} {money(subtotalDocNum)} &nbsp;|&nbsp; I.G.V. (18%): {currencySymbol.trim()} {money(igvDocNum)}
             </td>
-
-            {/* Mitad Derecha: Renglones 16 al 30 */}
-            <td style={{ width: "50%", verticalAlign: "top", padding: 0 }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-                <colgroup>
-                  <col style={{ width: "20px" }} />
-                  <col style={{ width: "24px" }} />
-                  <col style={{ width: "auto" }} />
-                  <col style={{ width: "42px" }} />
-                  <col style={{ width: "46px" }} />
-                </colgroup>
-                <thead>
-                  <tr style={{ height: "20px" }}>
-                    <th colSpan={5} style={{ background: "#e5e7eb", borderBottom: "1.5px solid #000", textAlign: "center", padding: "2px 0", fontSize: "10px", fontWeight: "900", letterSpacing: "2px" }}>
-                      ARTICULO
-                    </th>
-                  </tr>
-                  <tr style={{ background: "#f3f4f6", borderBottom: "1.5px solid #000", fontSize: "8px", fontWeight: "900", height: "18px" }}>
-                    <th style={{ textAlign: "center", borderRight: "1px solid #000", padding: 0, whiteSpace: "nowrap" }}>ITEM</th>
-                    <th style={{ textAlign: "center", borderRight: "1px solid #000", padding: 0, whiteSpace: "nowrap" }}>CANT.</th>
-                    <th style={{ textAlign: "center", borderRight: "1px solid #000", padding: "0 4px", whiteSpace: "nowrap" }}>DESCRIPCION</th>
-                    <th style={{ textAlign: "center", borderRight: "1px solid #000", padding: 0, whiteSpace: "nowrap" }}>P. UNIT.</th>
-                    <th style={{ textAlign: "center", padding: 0, whiteSpace: "nowrap" }}>P. TOTAL</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {col2Items.map((item, idx) => {
-                    const itemNum = idx + 16;
-                    const qty = item ? item.qty : "";
-                    const name = item ? item.desc : "";
-                    const price = item && item.isOutOfStock ? "Sin Stock" : (item && item.finalUnitPrice ? `${currencySymbol.trim()}${money(item.finalUnitPrice)}` : "");
-                    const lineTotal = item && item.isOutOfStock ? "Back Order" : (item && item.lineTotalNum ? `${currencySymbol.trim()}${money(item.lineTotalNum)}` : "");
-                    const descStyle = getItemDescStyle(name);
-                    const priceStyle = getPriceStyle(price);
-                    const lineTotalStyle = getPriceStyle(lineTotal);
-
-                    return (
-                      <tr
-                        key={idx}
-                        style={{
-                          minHeight: "19px",
-                          height: item ? "auto" : "19px",
-                          borderBottom: "1px solid #000",
-                          fontSize: "9px",
-                          boxSizing: "border-box",
-                        }}
-                      >
-                        <td style={{ textAlign: "center", borderRight: "1px solid #000", fontWeight: "bold", color: "#000", padding: "2px 2px", verticalAlign: "middle", whiteSpace: "nowrap", fontSize: "9px" }}>{itemNum}</td>
-                        <td style={{ textAlign: "center", borderRight: "1px solid #000", fontWeight: "bold", color: "#000", padding: "2px 2px", verticalAlign: "middle", whiteSpace: "nowrap", fontSize: "9px" }}>{qty}</td>
-                        <td
-                          style={{
-                            borderRight: "1px solid #000",
-                            fontWeight: "bold",
-                            padding: "2px 4px",
-                            color: "#000000",
-                            verticalAlign: "middle",
-                            whiteSpace: "normal",
-                            wordBreak: "break-word",
-                            lineHeight: "1.18",
-                            ...descStyle,
-                          }}
-                          title={name}
-                        >
-                          {item ? (
-                            <div>
-                              <span>{item.baseName || item.desc}</span>
-                              {item.discTag && (
-                                <span style={{ color: "#166534", fontSize: "8px", fontWeight: "800", marginLeft: "4px", whiteSpace: "nowrap" }}>
-                                  {item.discTag}
-                                </span>
-                              )}
-                            </div>
-                          ) : ""}
-                        </td>
-                        <td style={{ textAlign: "right", borderRight: "1px solid #000", fontFamily: "monospace", padding: "2px 3px", whiteSpace: "nowrap", fontWeight: "bold", color: "#000000", verticalAlign: "middle", ...priceStyle }}>{price}</td>
-                        <td style={{ textAlign: "right", fontWeight: "bold", fontFamily: "monospace", padding: "2px 3px", whiteSpace: "nowrap", color: "#000000", verticalAlign: "middle", ...lineTotalStyle }}>{lineTotal}</td>
-                      </tr>
-                    );
-                  })}
-                  {/* Fila del Total Documento en el extremo inferior derecho con fondo amarillo */}
-                  <tr style={{ height: "26px", maxHeight: "26px" }}>
-                    <td colSpan={5} style={{ borderTop: "1.5px solid #000", background: "#fef08a", textAlign: "right", padding: "0 12px", verticalAlign: "middle", whiteSpace: "nowrap" }}>
-                      <span style={{ fontSize: "8px", fontWeight: "bold", color: "#4b5563", marginRight: "6px" }}>
-                        (Inc. 18% IGV)
-                      </span>
-                      <span style={{ fontWeight: "900", fontSize: "12px", letterSpacing: "0.5px", color: "#000000" }}>
-                        TOTAL {currencySymbol.trim()} {money(documentTotalNum)}
-                      </span>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+            <td colSpan={5} style={{ borderTop: "1.5px solid #000", background: "#fef08a", textAlign: "right", padding: "0 12px", verticalAlign: "middle", whiteSpace: "nowrap" }}>
+              <span style={{ fontSize: "8px", fontWeight: "bold", color: "#4b5563", marginRight: "6px" }}>
+                (Inc. 18% IGV)
+              </span>
+              <span style={{ fontWeight: "900", fontSize: "12px", letterSpacing: "0.5px", color: "#000000" }}>
+                TOTAL {currencySymbol.trim()} {money(documentTotalNum)}
+              </span>
             </td>
           </tr>
         </tbody>
@@ -851,6 +832,252 @@ export const QuotePdfDocument = React.forwardRef(({ quote, isPrintMode = false }
     </div>
   );
 });
+
+let cachedPdfLibsPromise = null;
+
+/**
+ * Precarga html2canvas y jspdf apenas se abre el visor para que al pulsar
+ * "Descargar PDF" en teléfonos móviles la generación sea inmediata (< 0.4s)
+ * sin perder el permiso táctil (Transient User Activation).
+ */
+export function preloadQuotePdfLibs() {
+  if (!cachedPdfLibsPromise) {
+    cachedPdfLibsPromise = Promise.all([
+      import("html2canvas"),
+      import("jspdf"),
+    ]).catch((err) => {
+      cachedPdfLibsPromise = null;
+      throw err;
+    });
+  }
+  return cachedPdfLibsPromise;
+}
+
+const blobToDataUrl = (blob, mimeOverride = "application/octet-stream") =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const res = String(reader.result || "");
+      if (!res) {
+        reject(new Error("No se pudo codificar el PDF para descarga móvil."));
+        return;
+      }
+      const normalized = mimeOverride
+        ? res.replace(/^data:[^;]+;/, `data:${mimeOverride};`)
+        : res;
+      resolve(normalized);
+    };
+    reader.onerror = () => reject(new Error("Error leyendo el archivo PDF generado."));
+    reader.readAsDataURL(blob);
+  });
+
+/**
+ * Renderiza el documento en un clon A4 limpio fuera de pantalla (sin recortes de scroll
+ * ni transform scale móvil) y ejecuta una descarga universal compatible con Android,
+ * Samsung Internet, Xiaomi/MIUI, iOS Safari/Chrome y WebViews (WhatsApp).
+ */
+export async function downloadQuoteElementAsPdf(element, rawFileName = "Autopartes_Cotizacion.pdf") {
+  if (!element) {
+    throw new Error("No se encontró el documento para generar el PDF.");
+  }
+
+  const [{ default: html2canvas }, { default: jsPDF }] = await preloadQuotePdfLibs();
+
+  const safeFileName =
+    String(rawFileName || "Autopartes_Cotizacion.pdf")
+      .trim()
+      .replace(/[\/\\:*?"<>|\s]+/g, "_")
+      .replace(/\.pdf$/i, "") + ".pdf";
+
+  const ua = typeof navigator !== "undefined" ? navigator.userAgent || "" : "";
+  const isIOS =
+    /iPad|iPhone|iPod/.test(ua) ||
+    (typeof navigator !== "undefined" && navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const isIOSAltBrowser = isIOS && /CriOS|FxiOS|EdgiOS|OPiOS/i.test(ua);
+  const isInAppWebView = /FBAN|FBAV|Instagram|WhatsApp|Line\/|; wv\)|\bwv\b/i.test(ua);
+  const isMobileDevice =
+    isIOS ||
+    isInAppWebView ||
+    /Android|webOS|BlackBerry|IEMobile|Opera Mini|Mobile|SamsungBrowser|MiuiBrowser|HuaweiBrowser/i.test(ua) ||
+    (typeof window !== "undefined" && window.innerWidth < 820);
+
+  // Clonar documento fuera del modal para evitar recortes por overflow/scale en pantallas móviles
+  const sandbox = document.createElement("div");
+  sandbox.style.position = "fixed";
+  sandbox.style.left = "-10000px";
+  sandbox.style.top = "0";
+  sandbox.style.width = "800px";
+  sandbox.style.minWidth = "800px";
+  sandbox.style.maxWidth = "800px";
+  sandbox.style.background = "#fffdf7";
+  sandbox.style.zIndex = "-9999";
+  sandbox.style.pointerEvents = "none";
+  sandbox.style.overflow = "visible";
+  sandbox.style.transform = "none";
+
+  const cloned = element.cloneNode(true);
+  cloned.style.width = "800px";
+  cloned.style.minWidth = "800px";
+  cloned.style.maxWidth = "800px";
+  cloned.style.minHeight = "1130px";
+  cloned.style.margin = "0";
+  cloned.style.boxShadow = "none";
+  cloned.style.transform = "none";
+
+  // Corregir bug de html2canvas@1.4.1 con resets globales (`img { display: block }`):
+  // FontMetrics.parseMetrics(document) inserta un <img> sonda 1x1 para medir el baseline;
+  // si hereda `display: block`, salta de línea y desplaza todos los textos ~4px hacia abajo.
+  const H2C_BASELINE_CSS =
+    'img[src^="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP"]{display:inline!important;width:1px!important;height:1px!important;max-width:none!important;vertical-align:baseline!important;}';
+  const baselineFixStyle = document.createElement("style");
+  baselineFixStyle.setAttribute("data-h2c-baseline-fix", "true");
+  baselineFixStyle.textContent = H2C_BASELINE_CSS;
+  if (document.head) {
+    document.head.appendChild(baselineFixStyle);
+  }
+
+  sandbox.appendChild(cloned);
+  document.body.appendChild(sandbox);
+
+  let imgData = "";
+  try {
+    const imgs = Array.from(cloned.querySelectorAll("img"));
+    const pendingImgs = imgs.filter((img) => !img.complete);
+    if (pendingImgs.length > 0) {
+      await Promise.race([
+        Promise.all(
+          pendingImgs.map(
+            (img) =>
+              new Promise((resolve) => {
+                img.onload = resolve;
+                img.onerror = resolve;
+              })
+          )
+        ),
+        new Promise((resolve) => setTimeout(resolve, 600)),
+      ]);
+    }
+
+    const scalesToTry = isMobileDevice ? [2.2, 1.6] : [3.0, 2.0];
+    for (const scale of scalesToTry) {
+      try {
+        const canvas = await html2canvas(cloned, {
+          scale,
+          useCORS: true,
+          allowTaint: false,
+          logging: false,
+          backgroundColor: "#fffdf7",
+          width: 800,
+          windowWidth: 1200,
+          scrollX: 0,
+          scrollY: 0,
+          onclone: (clonedDoc) => {
+            if (clonedDoc?.head) {
+              const cloneStyle = clonedDoc.createElement("style");
+              cloneStyle.textContent = H2C_BASELINE_CSS;
+              clonedDoc.head.appendChild(cloneStyle);
+            }
+          },
+        });
+        if (canvas && canvas.width > 100 && canvas.height > 100) {
+          const candidate = canvas.toDataURL("image/jpeg", 0.95);
+          if (candidate && candidate.startsWith("data:image/") && candidate.length > 2000) {
+            imgData = candidate;
+            break;
+          }
+        }
+      } catch (_) {}
+    }
+  } finally {
+    try {
+      if (sandbox.parentNode) {
+        sandbox.parentNode.removeChild(sandbox);
+      }
+    } catch (_) {}
+    try {
+      if (baselineFixStyle.parentNode) {
+        baselineFixStyle.parentNode.removeChild(baselineFixStyle);
+      }
+    } catch (_) {}
+  }
+
+  if (!imgData) {
+    throw new Error("No se pudo renderizar el documento en la memoria del dispositivo.");
+  }
+
+  const pdf = new jsPDF("p", "mm", "a4");
+  pdf.addImage(imgData, "JPEG", 0, 0, 210, 297, undefined, "FAST");
+  const rawBlob = pdf.output("blob");
+  if (!rawBlob || rawBlob.size < 1000) {
+    throw new Error("El archivo PDF generado está incompleto o vacío.");
+  }
+
+  const pdfBlob = new Blob([rawBlob], { type: "application/pdf" });
+
+  // 1. Navegadores internos (WhatsApp / Instagram / Android WebView) o Chrome en iOS (CriOS):
+  //    blob: download suele ser bloqueado; priorizar Web Share nativo de archivos o Data URL.
+  if (isInAppWebView || isIOSAltBrowser) {
+    if (typeof navigator !== "undefined" && typeof navigator.share === "function" && typeof File !== "undefined") {
+      try {
+        const pdfFile = new File([pdfBlob], safeFileName, { type: "application/pdf" });
+        if (!navigator.canShare || navigator.canShare({ files: [pdfFile] })) {
+          await navigator.share({
+            files: [pdfFile],
+            title: safeFileName,
+          });
+          return { fileName: safeFileName, method: "share" };
+        }
+      } catch (shareErr) {
+        if (shareErr?.name === "AbortError") {
+          return { fileName: safeFileName, cancelled: true };
+        }
+      }
+    }
+
+    const dataUrl = await blobToDataUrl(pdfBlob, "application/octet-stream");
+    const dlLink = document.createElement("a");
+    dlLink.style.display = "none";
+    dlLink.href = dataUrl;
+    dlLink.download = safeFileName;
+    document.body.appendChild(dlLink);
+    dlLink.click();
+    setTimeout(() => {
+      try {
+        if (dlLink.parentNode) dlLink.parentNode.removeChild(dlLink);
+      } catch (_) {}
+    }, 4000);
+    return { fileName: safeFileName, method: "data-url" };
+  }
+
+  // 2. Android Chrome, Samsung Internet, Xiaomi/MIUI, iOS Safari 15+ y Escritorio:
+  //    Anclar <a> real al DOM y ejecutar .click() SÍNCRONO (sin el setTimeout de jsPDF que pierde el permiso móvil)
+  const blobUrl = window.URL.createObjectURL(pdfBlob);
+  if ("download" in HTMLAnchorElement.prototype) {
+    const link = document.createElement("a");
+    link.style.display = "none";
+    link.href = blobUrl;
+    link.download = safeFileName;
+    link.rel = "noopener";
+    document.body.appendChild(link);
+    link.click();
+
+    setTimeout(() => {
+      try {
+        if (link.parentNode) link.parentNode.removeChild(link);
+        window.URL.revokeObjectURL(blobUrl);
+      } catch (_) {}
+    }, 60000);
+  } else {
+    window.open(blobUrl, "_blank", "noopener,noreferrer");
+    setTimeout(() => {
+      try {
+        window.URL.revokeObjectURL(blobUrl);
+      } catch (_) {}
+    }, 60000);
+  }
+
+  return { fileName: safeFileName, method: "blob" };
+}
 
 export default QuotePdfDocument;
 

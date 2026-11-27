@@ -43,7 +43,8 @@ import {
   Menu,
   MenuButton,
   MenuList,
-  MenuItem
+  MenuItem,
+  Portal
 } from "@chakra-ui/react";
 import {
   Search,
@@ -3117,32 +3118,34 @@ export function QuoteApprovalPage() {
                 >
                   Compartir
                 </MenuButton>
-                <MenuList minW="190px" py={1.5} borderRadius="xl" boxShadow="xl" borderColor="gray.200" zIndex={30}>
-                  <MenuItem
-                    icon={<FileText className="w-4 h-4 text-teal-600" />}
-                    onClick={() => {
-                      markAsViewedByAdmin(q);
-                      setPdfQuote(q);
-                    }}
-                    fontSize="xs"
-                    fontWeight="700"
-                    py={2}
-                  >
-                    Ver Talonario (PDF)
-                  </MenuItem>
-                  <MenuItem
-                    icon={<MessageSquare className="w-4 h-4 text-green-600" />}
-                    onClick={() => {
-                      markAsViewedByAdmin(q);
-                      setWhatsAppQuote(q);
-                    }}
-                    fontSize="xs"
-                    fontWeight="700"
-                    py={2}
-                  >
-                    Enviar por WhatsApp
-                  </MenuItem>
-                </MenuList>
+                <Portal>
+                  <MenuList minW="190px" py={1.5} borderRadius="xl" boxShadow="xl" borderColor="gray.200" zIndex={1800} rootProps={{ zIndex: 1800 }}>
+                    <MenuItem
+                      icon={<FileText className="w-4 h-4 text-teal-600" />}
+                      onClick={() => {
+                        markAsViewedByAdmin(q);
+                        setPdfQuote(q);
+                      }}
+                      fontSize="xs"
+                      fontWeight="700"
+                      py={2}
+                    >
+                      Ver Talonario (PDF)
+                    </MenuItem>
+                    <MenuItem
+                      icon={<MessageSquare className="w-4 h-4 text-green-600" />}
+                      onClick={() => {
+                        markAsViewedByAdmin(q);
+                        setWhatsAppQuote(q);
+                      }}
+                      fontSize="xs"
+                      fontWeight="700"
+                      py={2}
+                    >
+                      Enviar por WhatsApp
+                    </MenuItem>
+                  </MenuList>
+                </Portal>
               </Menu>
 
               <IconButton
@@ -3304,33 +3307,35 @@ export function QuoteApprovalPage() {
                     >
                       Compartir
                     </MenuButton>
-                    <MenuList minW="190px" py={1.5} borderRadius="xl" boxShadow="xl" borderColor="gray.200" zIndex={30}>
-                    <MenuItem
-                      icon={<FileText className="w-4 h-4 text-teal-600" />}
-                      onClick={() => {
-                        markAsViewedByAdmin(q);
-                        setPdfQuote(q);
-                      }}
-                      fontSize="xs"
-                      fontWeight="700"
-                      py={2}
-                    >
-                      Ver Talonario (PDF)
-                    </MenuItem>
-                    <MenuItem
-                      icon={<MessageSquare className="w-4 h-4 text-green-600" />}
-                      onClick={() => {
-                        markAsViewedByAdmin(q);
-                        setWhatsAppQuote(q);
-                      }}
-                      fontSize="xs"
-                      fontWeight="700"
-                      py={2}
-                    >
-                      Enviar por WhatsApp
-                    </MenuItem>
-                  </MenuList>
-                </Menu>
+                    <Portal>
+                      <MenuList minW="190px" py={1.5} borderRadius="xl" boxShadow="xl" borderColor="gray.200" zIndex={1800} rootProps={{ zIndex: 1800 }}>
+                        <MenuItem
+                          icon={<FileText className="w-4 h-4 text-teal-600" />}
+                          onClick={() => {
+                            markAsViewedByAdmin(q);
+                            setPdfQuote(q);
+                          }}
+                          fontSize="xs"
+                          fontWeight="700"
+                          py={2}
+                        >
+                          Ver Talonario (PDF)
+                        </MenuItem>
+                        <MenuItem
+                          icon={<MessageSquare className="w-4 h-4 text-green-600" />}
+                          onClick={() => {
+                            markAsViewedByAdmin(q);
+                            setWhatsAppQuote(q);
+                          }}
+                          fontSize="xs"
+                          fontWeight="700"
+                          py={2}
+                        >
+                          Enviar por WhatsApp
+                        </MenuItem>
+                      </MenuList>
+                    </Portal>
+                  </Menu>
                 </Box>
               )}
 
@@ -3456,32 +3461,34 @@ export function QuoteApprovalPage() {
                 >
                   Compartir
                 </MenuButton>
-              <MenuList minW="200px" py={1.5} borderRadius="xl" boxShadow="xl" borderColor="gray.200" zIndex={30}>
-                <MenuItem
-                  icon={<FileText className="w-4 h-4 text-teal-600" />}
-                  onClick={() => {
-                    markAsViewedByAdmin(q);
-                    setPdfQuote(q);
-                  }}
-                  fontSize="sm"
-                  fontWeight="700"
-                  py={2.5}
-                >
-                  Ver Talonario (PDF)
-                </MenuItem>
-                <MenuItem
-                  icon={<MessageSquare className="w-4 h-4 text-green-600" />}
-                  onClick={() => {
-                    markAsViewedByAdmin(q);
-                    setWhatsAppQuote(q);
-                  }}
-                  fontSize="sm"
-                  fontWeight="700"
-                  py={2.5}
-                >
-                  Enviar por WhatsApp
-                </MenuItem>
-                </MenuList>
+                <Portal>
+                  <MenuList minW="200px" py={1.5} borderRadius="xl" boxShadow="xl" borderColor="gray.200" zIndex={1800} rootProps={{ zIndex: 1800 }}>
+                    <MenuItem
+                      icon={<FileText className="w-4 h-4 text-teal-600" />}
+                      onClick={() => {
+                        markAsViewedByAdmin(q);
+                        setPdfQuote(q);
+                      }}
+                      fontSize="sm"
+                      fontWeight="700"
+                      py={2.5}
+                    >
+                      Ver Talonario (PDF)
+                    </MenuItem>
+                    <MenuItem
+                      icon={<MessageSquare className="w-4 h-4 text-green-600" />}
+                      onClick={() => {
+                        markAsViewedByAdmin(q);
+                        setWhatsAppQuote(q);
+                      }}
+                      fontSize="sm"
+                      fontWeight="700"
+                      py={2.5}
+                    >
+                      Enviar por WhatsApp
+                    </MenuItem>
+                  </MenuList>
+                </Portal>
               </Menu>
             </Box>
 
@@ -3521,50 +3528,55 @@ export function QuoteApprovalPage() {
 
                   {/* Botón Compartir Mobile (PDF y WhatsApp unificados en menú desplegable) */}
                   {canViewPdfOrShare && (
-                    <Menu isLazy placement="bottom-end">
-                      <MenuButton
-                        as={Button}
-                        size="sm"
-                        h="40px"
-                        variant="outline"
-                        borderColor="#bbf7d0"
-                        color="#15803d"
-                        bg="#f0fdf4"
-                        _hover={{ bg: "#dcfce7", borderColor: "#86efac" }}
-                        leftIcon={<Share2 className="w-4 h-4 text-emerald-600" />}
-                        rightIcon={<ChevronDown className="w-3.5 h-3.5 text-emerald-600" />}
-                        fontWeight="800"
-                        borderRadius="xl"
-                      >
-                        Compartir
-                      </MenuButton>
-                      <MenuList minW="200px" py={1.5} borderRadius="xl" boxShadow="xl" borderColor="gray.200" zIndex={30}>
-                        <MenuItem
-                          icon={<FileText className="w-4 h-4 text-teal-600" />}
-                          onClick={() => {
-                            markAsViewedByAdmin(q);
-                            setPdfQuote(q);
-                          }}
-                          fontSize="sm"
-                          fontWeight="700"
-                          py={2.5}
+                    <Box minW={0}>
+                      <Menu isLazy placement="bottom-end">
+                        <MenuButton
+                          as={Button}
+                          size="sm"
+                          h="40px"
+                          w="full"
+                          variant="outline"
+                          borderColor="#bbf7d0"
+                          color="#15803d"
+                          bg="#f0fdf4"
+                          _hover={{ bg: "#dcfce7", borderColor: "#86efac" }}
+                          leftIcon={<Share2 className="w-4 h-4 text-emerald-600" />}
+                          rightIcon={<ChevronDown className="w-3.5 h-3.5 text-emerald-600" />}
+                          fontWeight="800"
+                          borderRadius="xl"
                         >
-                          Ver Talonario (PDF)
-                        </MenuItem>
-                        <MenuItem
-                          icon={<MessageSquare className="w-4 h-4 text-green-600" />}
-                          onClick={() => {
-                            markAsViewedByAdmin(q);
-                            setWhatsAppQuote(q);
-                          }}
-                          fontSize="sm"
-                          fontWeight="700"
-                          py={2.5}
-                        >
-                          Enviar por WhatsApp
-                        </MenuItem>
-                      </MenuList>
-                    </Menu>
+                          Compartir
+                        </MenuButton>
+                        <Portal>
+                          <MenuList minW="200px" py={1.5} borderRadius="xl" boxShadow="xl" borderColor="gray.200" zIndex={1800} rootProps={{ zIndex: 1800 }}>
+                            <MenuItem
+                              icon={<FileText className="w-4 h-4 text-teal-600" />}
+                              onClick={() => {
+                                markAsViewedByAdmin(q);
+                                setPdfQuote(q);
+                              }}
+                              fontSize="sm"
+                              fontWeight="700"
+                              py={2.5}
+                            >
+                              Ver Talonario (PDF)
+                            </MenuItem>
+                            <MenuItem
+                              icon={<MessageSquare className="w-4 h-4 text-green-600" />}
+                              onClick={() => {
+                                markAsViewedByAdmin(q);
+                                setWhatsAppQuote(q);
+                              }}
+                              fontSize="sm"
+                              fontWeight="700"
+                              py={2.5}
+                            >
+                              Enviar por WhatsApp
+                            </MenuItem>
+                          </MenuList>
+                        </Portal>
+                      </Menu>
+                    </Box>
                   )}
 
                   {/* Botón Corregir para cotizaciones observadas (Mobile - SOLO PARA VENDEDOR) */}
