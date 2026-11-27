@@ -115,6 +115,7 @@ export const useClientSpecialPrices = (cardCode) => {
         queryFn: () => fetchClientSpecialPrices(cleanCardCode),
         enabled: Boolean(cleanCardCode),
         staleTime: 5 * 60 * 1000,
+        retry: 1,
         refetchOnWindowFocus: false,
     });
 

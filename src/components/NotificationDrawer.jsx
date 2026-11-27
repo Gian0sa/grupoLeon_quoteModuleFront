@@ -27,7 +27,7 @@ import { markNotificationAsRead, deleteNotification, clearNotifications, updateQ
 import { checkQuoteLock, forceUnlockQuote } from "../features/quotes/services/quoteLockService";
 import { Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, ModalCloseButton, Alert, AlertIcon } from "@chakra-ui/react";
 import { Lock, Eye } from "lucide-react";
-import { useIsAdmin, useCanEmitTaxOnlyToSap } from "../shared/utils/permissions";
+import { useIsAdmin, useCanEmitTaxOnlyToSap, useCanForceUnlockQuote } from "../shared/utils/permissions";
 import {
   getNotificationCanonicalKey,
   getNotificationTimestampMs,
@@ -97,6 +97,7 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
 
   const isAdminHook = useIsAdmin();
   const canApproveGerencia = useCanEmitTaxOnlyToSap();
+  const canForceUnlock = useCanForceUnlockQuote();
   const sessionRoleUpper = String(role || localStorage.getItem("role") || "").trim().toUpperCase();
   const isVerifierOrAdminRole =
     isAdminHook ||
@@ -930,9 +931,9 @@ export function NotificationDrawer({ isOpen, onClose, finalFocusRef }) {
                 }
               }}
             >
-              👁️ Ver Solo Lectura
+              Ver Solo Lectura
             </Button>
-            {isAdmin && (
+            {canForceUnlock && (
               <Button
                 colorScheme="teal"
                 size="sm"

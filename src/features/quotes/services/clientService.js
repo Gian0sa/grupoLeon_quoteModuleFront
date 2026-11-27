@@ -34,8 +34,11 @@ export async function fetchClientSpecialPrices(cardCode) {
       map: (payload.map && typeof payload.map === "object") ? payload.map : {},
     };
   } catch (error) {
+    if (error?.response?.status === 404) {
+      return { cardCode: cardCode.trim(), count: 0, list: [], map: {} };
+    }
     console.error(`[fetchClientSpecialPrices] Error al consultar precios especiales para ${cardCode}:`, error);
-    return { cardCode: cardCode.trim(), count: 0, list: [], map: {} };
+    throw error;
   }
 }
 

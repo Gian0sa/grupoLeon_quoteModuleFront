@@ -106,7 +106,7 @@ import { useAuthStore } from "../../../features/auth/stores/useAuthStore";
 import { useGetQuoteById } from "../hooks/queries/quotesQueries";
 import { useQueryClient } from "@tanstack/react-query";
 import { axiosInstance } from "../../../shared/lib/axiosInstance";
-import { useIsAdmin, useHasAccess, checkIsAdmin, useCanEmitTaxOnlyToSap } from "../../../shared/utils/permissions";
+import { useIsAdmin, useHasAccess, checkIsAdmin, useCanEmitTaxOnlyToSap, useCanForceUnlockQuote } from "../../../shared/utils/permissions";
 import {
   formatDeliveryForm,
   formatTransportName,
@@ -187,6 +187,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
     ));
   const isRealAdmin = Boolean(isRoleAdmin || (!isSellerUser && roleUpper.startsWith("ADMIN")));
   const canApproveTaxOnlySap = useCanEmitTaxOnlyToSap() || isRealAdmin;
+  const canForceUnlock = useCanForceUnlockQuote();
   const activeRole = isAdminUser ? "ADMIN" : "SELLER";
   const adminUsername = authUsername || "Administrador";
   const [isUpdatingTaxOnly, setIsUpdatingTaxOnly] = useState(false);
@@ -553,7 +554,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
   const handleToggleItemTaxOnly = async (targetItemOrIndex, nextVal) => {
     const targetDoc = effectiveQuote || quote;
-    if (!targetDoc || isUpdatingTaxOnly) return;
+    if (!targetDoc || isUpdatingTaxOnly || drawerLockCheck?.isLocked) return;
     const baseProducts = targetDoc?.products || targetDoc?.items || targetDoc?.totals?.products || targetDoc?.totals?.normalizedProducts || [];
     if (!Array.isArray(baseProducts) || baseProducts.length === 0) return;
 
@@ -745,7 +746,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
 
     if (isOpen && quoteId && isAdminUser && isPendingDoc) {
       if (lockedQuoteIdRef.current !== quoteId) {
-        acquireQuoteLock(quoteId, {
+        const lockRes = acquireQuoteLock(quoteId, {
           id: useAuthStore.getState().userId,
           username: authUsername,
           role: authRole,
@@ -753,7 +754,9 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
           salesEmployeeCode: authSalesCode,
           isAdmin: isAdminUser
         }, secId);
-        lockedQuoteIdRef.current = quoteId;
+        if (lockRes?.success) {
+          lockedQuoteIdRef.current = quoteId;
+        }
         setDrawerLockCheck(checkQuoteLock(quoteId, useAuthStore.getState().userId, authUsername));
       }
 
@@ -2288,7 +2291,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                       </Text>
                     </Box>
                   </HStack>
-                  {isAdminUser && (
+                  {canForceUnlock && (
                     <Button
                       size="xs"
                       colorScheme="amber"
@@ -3889,7 +3892,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                         </Badge>
                       )}
                     </HStack>
-                    {canToggleTaxOnly && (
+                    {canToggleTaxOnly && !isDrawerLockedByOther && (
                       <Flex
                         align="center"
                         gap={2}
