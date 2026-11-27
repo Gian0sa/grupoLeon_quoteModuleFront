@@ -1,5 +1,6 @@
 import { socket } from "../../../shared/lib/socket";
-import { checkIsAdmin } from "../../../shared/utils/permissions";
+import { checkIsAdmin, canForceUnlockQuote } from "../../../shared/utils/permissions";
+import { useAuthStore } from "../../../features/auth/stores/useAuthStore";
 import { axiosInstance } from "../../../shared/lib/axiosInstance";
 
 const STORAGE_KEY = "grupoLeon_quote_locks";
@@ -79,25 +80,32 @@ export function getActiveQuoteLocks() {
   }
 }
 
+const buildAliasQuoteKeys = (rawKey) => {
+  const idStr = String(rawKey || "").trim();
+  if (!idStr) return [];
+  const keys = new Set([idStr]);
+  if (/^COT-/i.test(idStr)) {
+    const numPart = idStr.replace(/^COT-(?:WEB-)?0*/i, "");
+    if (numPart && /^\d+$/.test(numPart)) {
+      keys.add(numPart);
+      keys.add(`COT-${numPart.padStart(6, "0")}`);
+      keys.add(`COT-WEB-${numPart.padStart(6, "0")}`);
+    }
+  } else if (/^\d+$/.test(idStr)) {
+    keys.add(`COT-${idStr.padStart(6, "0")}`);
+    keys.add(`COT-WEB-${idStr.padStart(6, "0")}`);
+  }
+  return Array.from(keys);
+};
+
 /**
  * Verifica si una cotización está bloqueada por otro usuario
  */
 export function checkQuoteLock(quoteId, currentUserId, currentUsername = null) {
   if (!quoteId) return { isLocked: false, isOwnLock: false, hasActiveLock: false, lockInfo: null };
-  const idStr = String(quoteId);
   const locks = getActiveQuoteLocks();
-  let lockInfo = locks[idStr];
-
-  // Chequeo bidireccional si no se encontró directamente
-  if (!lockInfo) {
-    if (idStr.startsWith("COT-")) {
-      const numPart = idStr.replace(/^COT-0*/, "");
-      if (numPart && locks[numPart]) lockInfo = locks[numPart];
-    } else if (/^\d+$/.test(idStr)) {
-      const cotPart = `COT-${String(idStr).padStart(6, "0")}`;
-      if (locks[cotPart]) lockInfo = locks[cotPart];
-    }
-  }
+  const aliasKeys = buildAliasQuoteKeys(quoteId);
+  const lockInfo = aliasKeys.map((k) => locks[k]).find(Boolean) || null;
 
   if (!lockInfo) {
     return { isLocked: false, isOwnLock: false, hasActiveLock: false, lockInfo: null };
@@ -172,7 +180,7 @@ export function acquireQuoteLock(quoteId, currentUser = {}, secondaryId = null) 
     return { success: false, reason: "Solo personal administrativo/digitador puede adquirir candado de revisión" };
   }
 
-  const currentCheck = checkQuoteLock(idStr, userId);
+  const currentCheck = checkQuoteLock(idStr, userId, currentUser.username);
   if (currentCheck.isLocked) {
     return { success: false, lockedBy: currentCheck.lockInfo };
   }
@@ -189,24 +197,13 @@ export function acquireQuoteLock(quoteId, currentUser = {}, secondaryId = null) 
   };
 
   const locks = getActiveQuoteLocks();
-  locks[idStr] = lockInfo;
-  if (idStr.startsWith("COT-")) {
-    const numPart = idStr.replace(/^COT-0*/, "");
-    if (numPart) locks[numPart] = lockInfo;
-  } else if (/^\d+$/.test(idStr)) {
-    const cotPart = `COT-${String(idStr).padStart(6, "0")}`;
-    locks[cotPart] = lockInfo;
+  for (const k of buildAliasQuoteKeys(idStr)) {
+    locks[k] = lockInfo;
   }
 
   if (secondaryId) {
-    const secStr = String(secondaryId);
-    locks[secStr] = lockInfo;
-    if (secStr.startsWith("COT-")) {
-      const numPart = secStr.replace(/^COT-0*/, "");
-      if (numPart) locks[numPart] = lockInfo;
-    } else if (/^\d+$/.test(secStr)) {
-      const cotPart = `COT-${String(secStr).padStart(6, "0")}`;
-      locks[cotPart] = lockInfo;
+    for (const k of buildAliasQuoteKeys(secondaryId)) {
+      locks[k] = lockInfo;
     }
   }
 
@@ -224,54 +221,37 @@ export function acquireQuoteLock(quoteId, currentUser = {}, secondaryId = null) 
 }
 
 /**
- * Libera el bloqueo de una cotización
+ * Libera el bloqueo de una cotización (solo por el propio dueño del candado)
  */
 export function releaseQuoteLock(quoteId, currentUserId = null, secondaryId = null) {
   if (!quoteId && !secondaryId) return;
-  const idStr = String(quoteId || "");
+  const idStr = String(quoteId || secondaryId || "");
   const locks = getActiveQuoteLocks();
-  let lockInfo = idStr ? locks[idStr] : null;
-  if (!lockInfo && idStr.startsWith("COT-")) {
-    const numPart = idStr.replace(/^COT-0*/, "");
-    if (numPart) lockInfo = locks[numPart];
-  } else if (!lockInfo && /^\d+$/.test(idStr)) {
-    const cotPart = `COT-${String(idStr).padStart(6, "0")}`;
-    lockInfo = locks[cotPart];
-  }
-  if (!lockInfo && secondaryId) {
-    const secStr = String(secondaryId);
-    lockInfo = locks[secStr];
-  }
+  const allKeys = [
+    ...buildAliasQuoteKeys(quoteId),
+    ...(secondaryId ? buildAliasQuoteKeys(secondaryId) : []),
+  ];
+  const lockInfo = allKeys.map((k) => locks[k]).find(Boolean) || null;
 
   if (!lockInfo) return;
 
-  // Solo el dueño del candado o si no se especificó usuario puede liberarlo
+  const authState = useAuthStore.getState?.() || {};
   const lockUserId = lockInfo.lockedByUserId ? String(lockInfo.lockedByUserId) : null;
-  const currentUid = currentUserId ? String(currentUserId) : null;
-  if (currentUid && lockUserId && currentUid !== lockUserId) {
+  const currentUid = (currentUserId ?? authState.userId ?? localStorage.getItem("userId"))
+    ? String(currentUserId ?? authState.userId ?? localStorage.getItem("userId"))
+    : null;
+  const currentUsername = String(authState.username || localStorage.getItem("username") || "").toLowerCase().trim();
+  const lockUsername = String(lockInfo.lockedByUsername || "").toLowerCase().trim();
+
+  const isOwnerById = Boolean(currentUid && lockUserId && currentUid === lockUserId);
+  const isOwnerByName = Boolean(currentUsername && lockUsername && currentUsername === lockUsername);
+
+  if ((lockUserId || lockUsername) && (currentUid || currentUsername) && !isOwnerById && !isOwnerByName) {
     return; // No es el dueño del candado
   }
 
-  if (idStr) {
-    delete locks[idStr];
-    if (idStr.startsWith("COT-")) {
-      const numPart = idStr.replace(/^COT-0*/, "");
-      if (numPart) delete locks[numPart];
-    } else if (/^\d+$/.test(idStr)) {
-      const cotPart = `COT-${String(idStr).padStart(6, "0")}`;
-      delete locks[cotPart];
-    }
-  }
-  if (secondaryId) {
-    const secStr = String(secondaryId);
-    delete locks[secStr];
-    if (secStr.startsWith("COT-")) {
-      const numPart = secStr.replace(/^COT-0*/, "");
-      if (numPart) delete locks[numPart];
-    } else if (/^\d+$/.test(secStr)) {
-      const cotPart = `COT-${String(secStr).padStart(6, "0")}`;
-      delete locks[cotPart];
-    }
+  for (const k of allKeys) {
+    delete locks[k];
   }
 
   localStorage.setItem(STORAGE_KEY, JSON.stringify(locks));
@@ -279,25 +259,33 @@ export function releaseQuoteLock(quoteId, currentUserId = null, secondaryId = nu
   window.dispatchEvent(new CustomEvent("quoteLocksUpdated", { detail: { quoteId: idStr, type: "unlock" } }));
   try {
     if (socket && socket.connected) {
-      socket.emit("quote:unlock", { quoteId: idStr, userId: currentUserId });
+      socket.emit("quote:unlock", { quoteId: idStr, userId: currentUid });
     }
   } catch (e) {}
 }
 
 /**
- * Desbloqueo forzado por un Administrador
+ * Desbloqueo forzado exclusivamente por un Administrador
  */
 export function forceUnlockQuote(quoteId) {
-  if (!quoteId) return;
+  if (!quoteId) return false;
+
+  const authState = useAuthStore.getState?.() || {};
+  const allowed = canForceUnlockQuote({
+    userId: authState.userId ?? localStorage.getItem("userId"),
+    role: authState.role || localStorage.getItem("role"),
+    username: authState.username || localStorage.getItem("username"),
+    endpoints: authState.endpoints || [],
+  });
+  if (!allowed) {
+    console.warn("⛔ [QuoteLock] Desbloqueo forzado denegado: solo Administradores pueden liberar revisiones de terceros.");
+    return false;
+  }
+
   const idStr = String(quoteId);
   const locks = getActiveQuoteLocks();
-  delete locks[idStr];
-  if (idStr.startsWith("COT-")) {
-    const numPart = idStr.replace(/^COT-0*/, "");
-    if (numPart) delete locks[numPart];
-  } else if (/^\d+$/.test(idStr)) {
-    const cotPart = `COT-${String(idStr).padStart(6, "0")}`;
-    delete locks[cotPart];
+  for (const k of buildAliasQuoteKeys(idStr)) {
+    delete locks[k];
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(locks));
 
@@ -307,6 +295,7 @@ export function forceUnlockQuote(quoteId) {
       socket.emit("quote:unlock", { quoteId: idStr, forced: true });
     }
   } catch (e) {}
+  return true;
 }
 
 /**
@@ -335,7 +324,9 @@ export function initQuoteLockSocketListeners() {
   const handleSocketLock = (lockInfo) => {
     if (!lockInfo || !lockInfo.quoteId) return;
     const locks = getActiveQuoteLocks();
-    locks[String(lockInfo.quoteId)] = lockInfo;
+    for (const k of buildAliasQuoteKeys(lockInfo.quoteId)) {
+      locks[k] = lockInfo;
+    }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(locks));
     window.dispatchEvent(new CustomEvent("quoteLocksUpdated", { detail: { lockInfo, type: "lock" } }));
   };
@@ -343,7 +334,9 @@ export function initQuoteLockSocketListeners() {
   const handleSocketUnlock = (data) => {
     if (!data || !data.quoteId) return;
     const locks = getActiveQuoteLocks();
-    delete locks[String(data.quoteId)];
+    for (const k of buildAliasQuoteKeys(data.quoteId)) {
+      delete locks[k];
+    }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(locks));
     window.dispatchEvent(new CustomEvent("quoteLocksUpdated", { detail: { quoteId: String(data.quoteId), type: "unlock" } }));
   };

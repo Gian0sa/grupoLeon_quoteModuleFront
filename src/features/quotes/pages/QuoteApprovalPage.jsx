@@ -74,7 +74,7 @@ import {
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuoteStore } from "../stores/quoteStore";
-import { useHasAccess, useIsAdmin, useCanEmitTaxOnlyToSap, isDraftOwnedByUser, useIsDraftMasterAdmin } from "../../../shared/utils/permissions";
+import { useHasAccess, useIsAdmin, useCanEmitTaxOnlyToSap, useCanForceUnlockQuote, isDraftOwnedByUser, useIsDraftMasterAdmin } from "../../../shared/utils/permissions";
 import { isItemTaxOnly } from "../../../shared/utils/quoteCalculator";
 import { TopHeaderBanner } from "../../../components/TopHeaderBanner";
 import { QuoteStepper, getStageIndex } from "../components/QuoteStepper";
@@ -674,6 +674,7 @@ export function QuoteApprovalPage() {
   const isRoleAdmin = isVerifierOrAdminRole || isAdmin;
   const isAdminUser = Boolean(isRoleAdmin || hasApprovalPrivileges || isMasterAdminId);
   const canApproveTaxOnlySap = useCanEmitTaxOnlyToSap();
+  const canForceUnlock = useCanForceUnlockQuote();
   // Únicos Administradores Maestros para ver/gestionar borradores globales: Misael (12) y Enrique (10)
   const isMasterAdminUser = useIsDraftMasterAdmin();
   const isSellerUser = !isAdminUser;
@@ -982,17 +983,38 @@ export function QuoteApprovalPage() {
           return sqClient && qClient && !sqClient.includes(qClient) && !qClient.includes(sqClient);
         });
 
-        // Purgar borradores locales con COT-PENDIENTE si ya existe una cotización en servidor con el mismo cliente y total
-        const isPlaceholder = !q.docNumber || ["COT-PENDIENTE", "COT-NUEVA", "COT-000000"].includes(String(q.docNumber).toUpperCase().trim());
+        // Purgar borradores locales con COT-PENDIENTE / sin correlativo oficial:
+        // 1) Si ya existe el borrador oficial en servidor (por draftSessionKey o mismo cliente/usuario, aunque haya cambiado el total al agregar ítems)
+        // 2) O si el temporal sin número ya tiene > 15s de antigüedad y serverQuotes ya cargó (evita fantasmas COT-PENDIENTE heredados)
+        const rawDocNorm = String(q.docNumber || "").toUpperCase().trim();
+        const rawIdNorm = String(q.id || "").toUpperCase().trim();
+        const isPlaceholder =
+          !rawDocNorm ||
+          ["COT-PENDIENTE", "COT-NUEVA", "COT-000000", "PENDIENTE"].includes(rawDocNorm) ||
+          rawIdNorm.startsWith("DRAFT-");
+        const qDraftKey = q.draftSessionKey || q._tempDraftKey || q.totals?.draftSessionKey || "";
+        const qTs = new Date(q.updatedAt || q.createdAt || 0).getTime();
+        const isExpiredPlaceholder =
+          isPlaceholder &&
+          Array.isArray(serverQuotes) &&
+          (isNaN(qTs) || qTs <= 0 || Date.now() - qTs > 15000);
+
         const isStaleDraftLaunched = isPlaceholder && Array.isArray(serverQuotes) && serverQuotes.some(sq => {
+          const sqDraftKey = sq.draftSessionKey || sq.totals?.draftSessionKey || "";
+          if (qDraftKey && sqDraftKey && String(qDraftKey) === String(sqDraftKey)) {
+            return true;
+          }
           const sqClient = String(sq.clientDocument || sq.clientRuc || sq.clientName || "").toUpperCase().trim();
           const qClient = String(q.clientDocument || q.clientRuc || q.clientName || "").toUpperCase().trim();
           const sameClient = sqClient && qClient && (sqClient === qClient || sqClient.includes(qClient) || qClient.includes(sqClient));
+          if (!sameClient) return false;
+          const sqIsDraft = isDraftState(sq.approvalStatus || sq.state || sq.status);
+          if (sqIsDraft) return true;
           const sameTotal = Math.abs(Number(sq.totals?.grandTotalUSD || sq.grandTotalUSD || 0) - Number(q.totals?.grandTotalUSD || q.grandTotalUSD || 0)) < 0.15;
-          return sameClient && sameTotal;
+          return sameTotal;
         });
 
-        if (isEmitted || isTakenInServer || isStaleDraftLaunched) {
+        if (isEmitted || isTakenInServer || isStaleDraftLaunched || isExpiredPlaceholder) {
           hadChanges = true;
           return false;
         }
@@ -1034,11 +1056,18 @@ export function QuoteApprovalPage() {
           if (!isDraft) return false;
           const notInServer = !validServerQuotes.some(sq => {
             if (isMatchingDoc(sq, q)) return true;
-            const isPlaceholderDoc = !q.docNumber || ["COT-PENDIENTE", "COT-NUEVA"].includes(String(q.docNumber).toUpperCase().trim());
+            const qDraftKey = q.draftSessionKey || q._tempDraftKey || q.totals?.draftSessionKey || "";
+            const sqDraftKey = sq.draftSessionKey || sq.totals?.draftSessionKey || "";
+            if (qDraftKey && sqDraftKey && String(qDraftKey) === String(sqDraftKey)) return true;
+            const isPlaceholderDoc =
+              !q.docNumber ||
+              ["COT-PENDIENTE", "COT-NUEVA", "COT-000000", "PENDIENTE"].includes(String(q.docNumber).toUpperCase().trim()) ||
+              String(q.id || "").toUpperCase().trim().startsWith("DRAFT-");
             if (isPlaceholderDoc) {
               const sqClient = String(sq.clientDocument || sq.clientRuc || sq.clientName || "").toUpperCase().trim();
               const qClient = String(q.clientDocument || q.clientRuc || q.clientName || "").toUpperCase().trim();
               const sameClient = sqClient && qClient && (sqClient === qClient || sqClient.includes(qClient) || qClient.includes(sqClient));
+              if (sameClient && isDraftState(sq.approvalStatus || sq.state || sq.status)) return true;
               const sameTotal = Math.abs(Number(sq.totals?.grandTotalUSD || sq.grandTotalUSD || 0) - Number(q.totals?.grandTotalUSD || q.grandTotalUSD || 0)) < 0.15;
               if (sameClient && sameTotal) return true;
             }
@@ -1329,17 +1358,36 @@ export function QuoteApprovalPage() {
             };
           });
 
-          // Agregar docs locales que no estén en servidor (solo borradores nuevos en vuelo propios, nunca borradores ya eliminados de BD ni de otros usuarios)
+          // Agregar docs locales que no estén en servidor (solo borradores nuevos en vuelo propios, nunca COT-PENDIENTE viejos ni borradores eliminados)
           const unsyncedLocal = local.filter(q => {
             if (isQuoteMarkedDeleted(q)) return false;
-            const notInServer = !activeServerQuotes.some(sq => isMatchingDoc(sq, q));
-            if (!notInServer) return false;
             const docStr = String(q.docNumber || "").toUpperCase().trim();
+            const idStr = String(q.id || "").toUpperCase().trim();
+            const isPlaceholderDoc =
+              !docStr ||
+              ["COT-PENDIENTE", "COT-NUEVA", "COT-000000", "PENDIENTE"].includes(docStr) ||
+              idStr.startsWith("DRAFT-");
+            const qDraftKey = q.draftSessionKey || q._tempDraftKey || q.totals?.draftSessionKey || "";
+
+            const notInServer = !activeServerQuotes.some(sq => {
+              if (isMatchingDoc(sq, q)) return true;
+              const sqDraftKey = sq.draftSessionKey || sq.totals?.draftSessionKey || "";
+              if (qDraftKey && sqDraftKey && String(qDraftKey) === String(sqDraftKey)) return true;
+              if (isPlaceholderDoc) {
+                const sqClient = String(sq.clientDocument || sq.clientRuc || sq.clientName || "").toUpperCase().trim();
+                const qClient = String(q.clientDocument || q.clientRuc || q.clientName || "").toUpperCase().trim();
+                const sameClient = sqClient && qClient && (sqClient === qClient || sqClient.includes(qClient) || qClient.includes(sqClient));
+                if (sameClient && isDraftState(sq.approvalStatus || sq.state || sq.status)) return true;
+              }
+              return false;
+            });
+            if (!notInServer) return false;
+
+            const lastTs = new Date(q.updatedAt || q.createdAt || 0).getTime();
+            const isJustCreatedInFlight = !isNaN(lastTs) && (Date.now() - lastTs < 12000);
             const hasServerWebCorrelative = /^COT-WEB-\d+$/i.test(docStr) || (q.id && !isNaN(Number(q.id)) && Number(q.id) > 0);
-            if (hasServerWebCorrelative) {
-              const lastTs = new Date(q.updatedAt || q.createdAt || 0).getTime();
-              const isJustCreatedInFlight = !isNaN(lastTs) && (Date.now() - lastTs < 12000);
-              if (!isJustCreatedInFlight) return false;
+            if ((hasServerWebCorrelative || isPlaceholderDoc) && !isJustCreatedInFlight) {
+              return false;
             }
             const qSt = q?.approvalStatus || q?.state || q?.status || "GENERADO";
             if (isDraftState(qSt)) {
@@ -1866,9 +1914,12 @@ export function QuoteApprovalPage() {
       ])
     );
     setObserveQuoteTarget(null);
-    forceUnlockQuote(docId);
-    if (target?.id) forceUnlockQuote(target.id);
-    if (numericId) forceUnlockQuote(numericId);
+    releaseQuoteLock(docId, authUserId, target?.id || numericId);
+    if (canForceUnlock) {
+      forceUnlockQuote(docId);
+      if (target?.id) forceUnlockQuote(target.id);
+      if (numericId) forceUnlockQuote(numericId);
+    }
 
     // 4. Persistir en Backend + actualizar caché de React Query optimistamente
     queryClient.setQueriesData({ queryKey: ["quotes"] }, (old) => {
@@ -1988,9 +2039,12 @@ export function QuoteApprovalPage() {
       ])
     );
     window.dispatchEvent(new Event("localNotificationsUpdated"));
-    forceUnlockQuote(docId);
-    if (target?.id) forceUnlockQuote(target.id);
-    if (numericId) forceUnlockQuote(numericId);
+    releaseQuoteLock(docId, authUserId, target?.id || numericId);
+    if (canForceUnlock) {
+      forceUnlockQuote(docId);
+      if (target?.id) forceUnlockQuote(target.id);
+      if (numericId) forceUnlockQuote(numericId);
+    }
 
     // Actualizar caché de React Query optimistamente (antes de invalidar)
     queryClient.setQueriesData({ queryKey: ["quotes"] }, (old) => {
@@ -2989,7 +3043,10 @@ export function QuoteApprovalPage() {
     const isSap = isQuoteFromSap(q);
     const isAlreadyAnulado = isCancelledState(status);
     const isApprovedOrder = status === "APROBADO" || status === "APROBADO_COMERCIAL" || status === "FACTURADO" || status === "PEDIDO_EMITIDO" || status === "EMITIDO" || status === "EMITIDO_SAP" || status === "COMPLETADO" || Boolean(q.sapDocNum);
-    const canShowQuickObserve = isAdminUser && !isAlreadyAnulado && !isApprovedOrder && (
+    const lockCheck = checkQuoteLock(docId, authUserId, authUsername) || (q?.id ? checkQuoteLock(q.id, authUserId, authUsername) : { isLocked: false, isOwnLock: false, hasActiveLock: false });
+    const isLockedByOther = Boolean(lockCheck.isLocked);
+
+    const canShowQuickObserve = isAdminUser && !isLockedByOther && !isAlreadyAnulado && !isApprovedOrder && (
       status === "PENDIENTE" ||
       status === "ENVIADO" ||
       status === "PENDIENTE_APROBACION" ||
@@ -3000,9 +3057,6 @@ export function QuoteApprovalPage() {
     );
     const canViewPdfOrShare = !isAdminUser && Boolean(isApprovedOrder || isPendingApproval || isPendingBilling || isPendingGerenciaRow || status === "PENDIENTE" || status === "EN_VALIDACION" || status === "APROBADO_CREDITOS");
     const canShowTrashIcon = false; // 🚫 SOLO BORRADORES PUEDEN ELIMINARSE (manejado arriba en isDraft)
-
-    const lockCheck = checkQuoteLock(docId, authUserId, authUsername) || (q?.id ? checkQuoteLock(q.id, authUserId, authUsername) : { isLocked: false, isOwnLock: false, hasActiveLock: false });
-    const isLockedByOther = Boolean(lockCheck.isLocked);
     const hasAdminViewHistory = Array.isArray(q?.historyLog) && q.historyLog.some(h => 
       h.status === "VISTO" || (h.note && (h.note.includes("abierta y leída") || h.note.includes("👁️")))
     );
@@ -3023,7 +3077,7 @@ export function QuoteApprovalPage() {
     // ─────────────────────────────────────────────────────────────
     if (!stack) {
       return (
-        <Flex w="full" minW={0} gap={1.5} justify="flex-end" align="center" flexWrap="wrap">
+        <Flex w="full" minW={0} gap={isDraft ? 1 : 1.5} justify="flex-end" align="center" flexWrap={isDraft ? "nowrap" : "wrap"}>
           {/* Si es Borrador: Editar, Compartir y Borrar */}
           {isDraft ? (
             <>
@@ -4569,9 +4623,9 @@ export function QuoteApprovalPage() {
                 }
               }}
             >
-              👁️ Ver Solo Lectura
+              Ver Solo Lectura
             </Button>
-            {isAdminUser && (
+            {canForceUnlock && (
               <Button
                 colorScheme="teal"
                 size="sm"

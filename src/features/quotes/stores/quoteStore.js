@@ -223,8 +223,12 @@ export const normalizeQuoteClient = (clientData) => {
   };
 };
 
+const generateDraftSessionKey = () =>
+  `DRAFT-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+
 const initialQuoteState = {
   quoteId: null,
+  draftSessionKey: null,
   client: null,
   products: [],
   opNum: null,
@@ -387,6 +391,7 @@ const saveDraftToStorage = (state) => {
       const { userId: sessUserId, username: sessUsername } = getCurrentSessionIdentity();
       const dataToSave = {
         quoteId: state.quoteId,
+        draftSessionKey: state.draftSessionKey || null,
         client: state.client,
         products: state.products,
         currency: state.currency || "USD",
@@ -488,6 +493,13 @@ export const useQuoteStore = create((set, get) => {
       });
     },
     setQuoteId: (id) => customSet({ quoteId: id }),
+    ensureDraftSessionKey: () => {
+      const currentKey = get().draftSessionKey;
+      if (currentKey) return currentKey;
+      const nextKey = generateDraftSessionKey();
+      customSet({ draftSessionKey: nextKey });
+      return nextKey;
+    },
     setApprovalStatus: (status) => customSet({ approvalStatus: status }),
 
     setSelectedPoint: (point) => customSet({ selectedPoint: point }),
@@ -753,10 +765,15 @@ export const useQuoteStore = create((set, get) => {
 
       const resolvedQuoteId = resolvedNumId || quoteData.docNumber || quoteData.id || null;
       const resolvedApprovalStatus = quoteData.approvalStatus || quoteData.state || quoteData.status || "BORRADOR";
+      const resolvedDraftSessionKey =
+        quoteData.draftSessionKey ||
+        totalsObj?.draftSessionKey ||
+        (resolvedQuoteId ? `DRAFT-ID-${resolvedQuoteId}` : generateDraftSessionKey());
 
       customSet({
         ...initialQuoteState,
         quoteId: resolvedQuoteId,
+        draftSessionKey: resolvedDraftSessionKey,
         client,
         products: Array.from(uniqueMap.values()),
         opNum: quoteData.opNum || quoteData.U_VS_OPNUM || quoteData.totals?.opNum || quoteData.totals?.U_VS_OPNUM || null,

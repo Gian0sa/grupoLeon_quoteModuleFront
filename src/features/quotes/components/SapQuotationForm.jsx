@@ -26,7 +26,7 @@ import { createQuote, updateQuote, getNextDocNumber, warmUpUserSapSession } from
 import { useQuoteStore, normalizeQuoteClient } from "../stores/quoteStore";
 import { useAuthStore } from "../../auth/stores/useAuthStore";
 import { useExchangeRate } from "../../dashboard/hooks/queries/dashboardQueries";
-import { useGetTransports, useGetPaymentType, useGetDeliveryForms, useGetPromotions } from "../hooks/queries/quotesQueries";
+import { useGetTransports, useGetPaymentType, useGetDeliveryForms, useGetPromotions, useClientSpecialPrices } from "../hooks/queries/quotesQueries";
 import { calculateQuoteTotals, formatThousands, isItemTaxOnly } from "../../../shared/utils/quoteCalculator";
 import { isQuoteMarkedDeleted } from "../pages/QuoteApprovalPage";
 import { useNavigate } from "react-router-dom";
@@ -220,10 +220,12 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   const [lastAutoSavedTime, setLastAutoSavedTime] = useState(null);
   const [isAutoSaving, setIsAutoSaving] = useState(false);
   const autoSaveTimeoutRef = useRef(null);
+  const inFlightSavePromiseRef = useRef(null);
   const handleSaveActionRef = useRef(null);
 
   const {
     quoteId, setQuoteId,
+    draftSessionKey: storeDraftSessionKey, ensureDraftSessionKey,
     client, setClient,
     products, addProduct, removeProduct, updateProduct, setProducts,
     selectedPoint, setSelectedPoint,
@@ -708,6 +710,11 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
   const { dataDeliveryForms } = useGetDeliveryForms();
   const { dataPaymentTypes } = useGetPaymentType();
   const { promotionsMap } = useGetPromotions();
+  const {
+    specialPricesMap: formSpecialPricesMap = {},
+    isLoading: isLoadingClientSpecialPrices,
+  } = useClientSpecialPrices(clientCardCode);
+  const isSyncingClientConvenios = Boolean(clientCardCode && isLoadingClientSpecialPrices);
 
   const deliveryPoints = useMemo(() => {
     if (!client) return [];
@@ -899,8 +906,14 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                   const pKey = String(p.code || p.productCode || p.itemCode || p.id || "").trim().toUpperCase();
                   if (stockMap.has(pKey)) {
                     const info = stockMap.get(pKey);
+                    const hasClientConvenio = Boolean(
+                      formSpecialPricesMap &&
+                      (formSpecialPricesMap[pKey] || formSpecialPricesMap[p.code || p.productCode || p.id])
+                    );
                     const canRefreshRegularPrice =
                       !isSellerFieldsLocked &&
+                      !isSyncingClientConvenios &&
+                      !hasClientConvenio &&
                       !p.isSpecialPrice &&
                       p.campaignName !== "Convenio Cliente" &&
                       !p.customPriceConIGV &&
@@ -946,12 +959,16 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
 
   // ⚡ Sincronización en tiempo real de Ofertas / Promociones en los artículos de la cotización activa
   useEffect(() => {
-    // Si la cotización está bloqueada (solo lectura / ya emitida en SAP) no alterar retroactivamente
-    if (isSellerFieldsLocked || !products || products.length === 0 || !promotionsMap) return;
+    // Si la cotización está bloqueada (solo lectura / ya emitida en SAP) o sincronizando convenios del cliente, no alterar
+    if (isSellerFieldsLocked || isSyncingClientConvenios || !products || products.length === 0 || !promotionsMap) return;
 
     let hasChanges = false;
     const updatedProducts = products.map((p) => {
-      if (p.isSpecialPrice || p.campaignName === "Convenio Cliente" || isSpecialAgreementItem(p)) return p;
+      const rawCode = String(p.productCode || p.itemCode || p.code || p.id || "").trim();
+      const hasClientConvenio = Boolean(
+        rawCode && formSpecialPricesMap && (formSpecialPricesMap[rawCode] || formSpecialPricesMap[rawCode.toUpperCase()])
+      );
+      if (hasClientConvenio || p.isSpecialPrice || p.campaignName === "Convenio Cliente" || isSpecialAgreementItem(p)) return p;
       const code = String(p.productCode || p.itemCode || p.code || p.id || "").trim();
       if (!code) return p;
 
@@ -1364,7 +1381,20 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       return false;
     }
 
-    const liveStoreQuoteId = useQuoteStore.getState()?.quoteId;
+    if (!silent && autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+      autoSaveTimeoutRef.current = null;
+    }
+
+    const storeSnapshot = useQuoteStore.getState();
+    const sessionDraftKey =
+      (typeof storeSnapshot?.ensureDraftSessionKey === "function"
+        ? storeSnapshot.ensureDraftSessionKey()
+        : null) ||
+      storeSnapshot?.draftSessionKey ||
+      storeDraftSessionKey ||
+      null;
+    const liveStoreQuoteId = storeSnapshot?.quoteId;
     const activeDocNumber = liveStoreQuoteId || quoteId || docNumber;
     if (silent && activeDocNumber && isQuoteMarkedDeleted(activeDocNumber)) {
       return false;
@@ -1409,6 +1439,10 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     const saved = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
     const isMatchingDoc = (q) => {
       if (!q) return false;
+      const qDraftKey = q._tempDraftKey || q.draftSessionKey || q.totals?.draftSessionKey || "";
+      if (sessionDraftKey && qDraftKey && String(qDraftKey) === String(sessionDraftKey)) {
+        return true;
+      }
       const qDocNum = q.docNumber ? String(q.docNumber).trim() : "";
       const qId = q.id !== undefined && q.id !== null ? String(q.id).trim() : "";
       if (activeDocNumber) {
@@ -1566,8 +1600,10 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     };
 
     const newDoc = {
-      id: resolvedNumericId || existingDoc?.id || activeDocNumber,
+      id: resolvedNumericId || existingDoc?.id || activeDocNumber || sessionDraftKey,
       docNumber: resolvedDocNumber,
+      draftSessionKey: sessionDraftKey,
+      _tempDraftKey: sessionDraftKey,
       docType,
       client,
       clientName: clientNameVal,
@@ -1591,6 +1627,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       backOrderItems: finalTotals.backOrderProducts || [],
       totals: {
         ...finalTotals,
+        draftSessionKey: sessionDraftKey,
         currency: currency || "USD",
         DocCurrency: currency || "USD",
         hasDebt: Boolean(clientDebtInfo?.hasTotalDebt),
@@ -1666,23 +1703,27 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       observations: observations || existingDoc?.observations || null,
     };
 
-    const isExisting = Boolean(existingDoc);
-    let updated;
-    if (isExisting) {
-      updated = saved.map((q) => (isMatchingDoc(q) ? newDoc : q));
-    } else {
-      const cleanedSaved = saved.filter((q) => !isMatchingDoc(q));
-      updated = [newDoc, ...cleanedSaved];
-    }
-    // Deduplicar para garantizar que nunca haya dos borradores del mismo documento
-    const dedupedLocal = [];
-    for (const q of updated) {
-      if (!dedupedLocal.some((existing) => isMatchingDoc(existing) && isMatchingDoc(q))) {
-        dedupedLocal.push(q);
+    // 🚫 NUNCA insertar un borrador fantasma sin número (COT-PENDIENTE) en grupoLeon_local_quotes durante autoguardado silencioso inicial;
+    // se escribe en grupoLeon_local_quotes solo si ya posee correlativo oficial (COT-WEB-XXXXXX / id numérico) o cuando responda el servidor.
+    const hasAssignedCorrelative = Boolean(resolvedNumericId || resolvedDocNumber);
+    if (hasAssignedCorrelative || !silent) {
+      const isExisting = Boolean(existingDoc);
+      let updated;
+      if (isExisting) {
+        updated = saved.map((q) => (isMatchingDoc(q) ? newDoc : q));
+      } else {
+        const cleanedSaved = saved.filter((q) => !isMatchingDoc(q));
+        updated = [newDoc, ...cleanedSaved];
       }
+      const dedupedLocal = [];
+      for (const q of updated) {
+        if (!dedupedLocal.some((existing) => isMatchingDoc(existing) && isMatchingDoc(q))) {
+          dedupedLocal.push(q);
+        }
+      }
+      localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(dedupedLocal.slice(0, 80)));
+      window.dispatchEvent(new Event("localQuotesUpdated"));
     }
-    localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(dedupedLocal.slice(0, 80)));
-    window.dispatchEvent(new Event("localQuotesUpdated"));
 
     const clientName = client?.CardName || client?.name || "Cliente General";
     const totalUsdStr = finalTotals?.grandTotalUSD ? `$${formatThousands(finalTotals.grandTotalUSD)}` : "$0.00";
@@ -1691,7 +1732,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     const maxAdic = (products || []).reduce((max, it) => Math.max(max, Number(it.lineDiscount || it.LineDiscount || 0)), 0);
     const discountNotice = maxAdic > 0 ? ' • ⚠️ CON DESCUENTO ADICIONAL APLICADO' : '';
 
-    // Persistencia centralizada en MySQL vía Backend
+    // Persistencia centralizada en MySQL vía Backend con cola en serie (evita duplicar COT-WEB-XXXXXX si hay request en vuelo)
     const isStillActiveDraftSession = () => {
       if (!silent) return true;
       if (typeof window !== "undefined") {
@@ -1707,7 +1748,53 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       return true;
     };
 
-    const savePromise = createQuote(newDoc).then((res) => {
+    const previousInFlight = inFlightSavePromiseRef.current;
+    const rawSavePromise = (async () => {
+      let inheritedId = null;
+      let inheritedDocNumber = null;
+      if (previousInFlight) {
+        try {
+          const prevRes = await previousInFlight;
+          if (
+            prevRes &&
+            !prevRes.deleted &&
+            !prevRes.ignoredLateDraftSave &&
+            (!sessionDraftKey || !prevRes?.totals?.draftSessionKey || prevRes.totals.draftSessionKey === sessionDraftKey)
+          ) {
+            if (prevRes.id && !isNaN(Number(prevRes.id))) inheritedId = Number(prevRes.id);
+            if (prevRes.docNumber) inheritedDocNumber = prevRes.docNumber;
+          }
+        } catch (_) {}
+      }
+
+      const currentStore = useQuoteStore.getState();
+      const sameSessionInStore = !sessionDraftKey || !currentStore?.draftSessionKey || currentStore.draftSessionKey === sessionDraftKey;
+      const storeNumericId =
+        sameSessionInStore && currentStore?.quoteId && !isNaN(Number(currentStore.quoteId))
+          ? Number(currentStore.quoteId)
+          : null;
+      const effectiveId = resolvedNumericId || inheritedId || storeNumericId || null;
+      const effectiveDocNumber =
+        resolvedDocNumber ||
+        inheritedDocNumber ||
+        (effectiveId ? `COT-WEB-${String(effectiveId).padStart(6, "0")}` : null);
+
+      const payloadToPersist = {
+        ...newDoc,
+        id: effectiveId || undefined,
+        docNumber: effectiveDocNumber || null,
+        draftSessionKey: sessionDraftKey,
+      };
+      return await createQuote(payloadToPersist);
+    })();
+    inFlightSavePromiseRef.current = rawSavePromise;
+    rawSavePromise.finally(() => {
+      if (inFlightSavePromiseRef.current === rawSavePromise) {
+        inFlightSavePromiseRef.current = null;
+      }
+    });
+
+    const savePromise = rawSavePromise.then((res) => {
       if (res?.deleted || res?.ignoredLateDraftSave) {
         return res;
       }
@@ -1715,45 +1802,63 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
 
       const assignedNumber = res?.docNumber || (res?.id ? `COT-WEB-${String(res.id).padStart(6, "0")}` : activeDocNumber);
-      if (
-        silent &&
-        (!isStillActiveDraftSession() ||
-          isQuoteMarkedDeleted(assignedNumber) ||
-          isQuoteMarkedDeleted(res?.id) ||
-          isQuoteMarkedDeleted(activeDocNumber))
-      ) {
-        return res;
-      }
-      if (assignedNumber) {
-        console.log(`🔄 [Correlativo Asignado] Oficial: ${assignedNumber}`);
-        setDocNumber(assignedNumber);
-        if (setQuoteId) setQuoteId(res?.id || assignedNumber);
-        if (setApprovalStatus) setApprovalStatus(currentStatus);
+      const wasDeleted = Boolean(
+        isQuoteMarkedDeleted(assignedNumber) ||
+        isQuoteMarkedDeleted(res?.id) ||
+        (activeDocNumber && isQuoteMarkedDeleted(activeDocNumber))
+      );
 
-        // Guardar/Actualizar en localStorage con el docNumber oficial asignado
+      // Siempre purgar cualquier temporal COT-PENDIENTE / DRAFT-* de grupoLeon_local_quotes aunque el usuario ya haya navegado a /historyquotes
+      if (assignedNumber && !wasDeleted) {
         try {
           const freshLocal = JSON.parse(localStorage.getItem("grupoLeon_local_quotes") || "[]");
+          const normClientKey = String(clientRucVal || clientNameVal || "").toUpperCase().trim();
           const cleaned = freshLocal.filter(item => {
-            const iDoc = item.docNumber ? String(item.docNumber) : "";
-            const iId = item.id !== undefined && item.id !== null ? String(item.id) : "";
-            const isColliding = (iDoc && iDoc === String(assignedNumber)) || (iId && iId === String(res?.id));
-            const isPreviousActive = activeDocNumber && (iDoc === String(activeDocNumber) || iId === String(activeDocNumber));
-            const isSameDraft = isMatchingDoc(item);
-            const isSameNumeric = res?.id && (cleanNumFast(item.docNumber) === res.id || cleanNumFast(item.id) === res.id);
-            return !isColliding && !isPreviousActive && !isSameDraft && !isSameNumeric;
+            if (!item) return false;
+            const iDoc = item.docNumber ? String(item.docNumber).trim() : "";
+            const iId = item.id !== undefined && item.id !== null ? String(item.id).trim() : "";
+            const iDraftKey = item._tempDraftKey || item.draftSessionKey || item.totals?.draftSessionKey || "";
+            const isColliding = (iDoc && iDoc === String(assignedNumber)) || (res?.id && iId === String(res.id));
+            const isPreviousActive = Boolean(activeDocNumber && (iDoc === String(activeDocNumber) || iId === String(activeDocNumber)));
+            const isSameDraft = isMatchingDoc(item) || Boolean(sessionDraftKey && iDraftKey && String(iDraftKey) === String(sessionDraftKey));
+            const isSameNumeric = Boolean(res?.id && (cleanNumFast(item.docNumber) === Number(res.id) || cleanNumFast(item.id) === Number(res.id)));
+            const isUnnumberedSameClient =
+              (!iDoc || ["COT-PENDIENTE", "COT-NUEVA", "COT-000000"].includes(iDoc.toUpperCase()) || iId.toUpperCase().startsWith("DRAFT-")) &&
+              normClientKey &&
+              String(item.clientRuc || item.clientDocument || item.clientName || "").toUpperCase().trim() === normClientKey;
+            return !isColliding && !isPreviousActive && !isSameDraft && !isSameNumeric && !isUnnumberedSameClient;
           });
           const persistedDoc = {
             ...newDoc,
             id: res?.id || assignedNumber,
             docNumber: assignedNumber,
+            draftSessionKey: sessionDraftKey,
             status: currentStatus,
             state: currentStatus,
             approvalStatus: currentStatus,
           };
+          delete persistedDoc._tempDraftKey;
           cleaned.unshift(persistedDoc);
           localStorage.setItem("grupoLeon_local_quotes", JSON.stringify(cleaned.slice(0, 80)));
           window.dispatchEvent(new Event("localQuotesUpdated"));
         } catch (e) {}
+
+        // Sincronizar quoteId en el store si sigue siendo la misma sesión de borrador (evita que grupoLeon_active_draft quede con quoteId: null)
+        const latestStore = useQuoteStore.getState();
+        if (latestStore && sessionDraftKey && latestStore.draftSessionKey === sessionDraftKey && !latestStore.quoteId && res?.id) {
+          if (setQuoteId) setQuoteId(res.id);
+        }
+      }
+
+      if (silent && (!isStillActiveDraftSession() || wasDeleted)) {
+        return res;
+      }
+
+      if (assignedNumber) {
+        console.log(`🔄 [Correlativo Asignado] Oficial: ${assignedNumber}`);
+        setDocNumber(assignedNumber);
+        if (setQuoteId) setQuoteId(res?.id || assignedNumber);
+        if (setApprovalStatus) setApprovalStatus(currentStatus);
 
         // Si se ENVIÓ a validación, generar la notificación oficial para Facturación y para el Vendedor
         if (targetStatus === "ENVIADO") {
@@ -1914,11 +2019,31 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
     isAdminReviewing
   ]);
 
-  // 2. Cancelar timer pendiente al salir de la pantalla (NO disparar nuevo POST en desmontaje para evitar revivir borradores que el usuario eliminará enseguida)
+  // 2. Al salir de la pantalla: si había un cambio pendiente de menos de 2.5s sobre un borrador activo (no borrado ni enviado), hacer flush
   useEffect(() => {
     return () => {
+      const hadPendingTimer = Boolean(autoSaveTimeoutRef.current);
       if (autoSaveTimeoutRef.current) {
         clearTimeout(autoSaveTimeoutRef.current);
+        autoSaveTimeoutRef.current = null;
+      }
+      if (
+        hadPendingTimer &&
+        !isExplicitlySubmittingRef.current &&
+        !isExplicitlyClearedRef.current
+      ) {
+        const st = useQuoteStore.getState();
+        const activeId = st?.quoteId;
+        if (
+          st?.client &&
+          Array.isArray(st?.products) &&
+          st.products.length > 0 &&
+          (!activeId || !isQuoteMarkedDeleted(activeId))
+        ) {
+          try {
+            handleSaveActionRef.current?.("BORRADOR", { silent: true });
+          } catch (_) {}
+        }
       }
     };
   }, []);
@@ -4556,7 +4681,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                   onClick={handleSaveDraft}
                   fontWeight="700"
                   isLoading={isSavingDraft}
-                  isDisabled={isSendingToValidation || isSavingDraft}
+                  isDisabled={isSendingToValidation || isSavingDraft || isSyncingClientConvenios}
                 >
                   {quoteId ? "💾 Guardar Borrador" : "💾 Guardar como Borrador"}
                 </Button>
@@ -4576,7 +4701,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                 fontWeight="900"
                 boxShadow="0 4px 12px rgba(22,101,52,0.25)"
                 isLoading={isSendingToValidation}
-                isDisabled={isSendingToValidation || isSavingDraft}
+                isDisabled={isSendingToValidation || isSavingDraft || isSyncingClientConvenios}
               >
                 {isObservedOrInCorrection
                   ? "💾 Guardar y Reenviar a Validación"
@@ -4596,7 +4721,7 @@ export default function SapQuotationForm({ sellerName = "Vendedor Autorizado", i
                   onClick={handleSaveDraft}
                   fontWeight="700"
                   isLoading={isSavingDraft}
-                  isDisabled={isSendingToValidation || isSavingDraft}
+                  isDisabled={isSendingToValidation || isSavingDraft || isSyncingClientConvenios}
                 >
                   {quoteId ? "💾 Guardar Borrador" : "💾 Guardar como Borrador"}
                 </Button>

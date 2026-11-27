@@ -118,6 +118,59 @@ export function useCanEmitTaxOnlyToSap() {
 }
 
 /**
+ * Determina si el usuario tiene privilegios exclusivos de Administrador para
+ * forzar el desbloqueo ("Desbloquear y Entrar" / "Tomar Control") de una cotización
+ * que está siendo verificada por otra persona.
+ * Excluye estrictamente a Facturación (ej. Angela, Celia), Digitación, Supervisores y Ventas.
+ */
+export function canForceUnlockQuote({ userId, role, username, endpoints = [] } = {}) {
+  const roleUpper = String(role || "").toUpperCase().trim();
+  if (
+    roleUpper.includes("FACTUR") ||
+    roleUpper.includes("DIGIT") ||
+    roleUpper.includes("VENDEDOR") ||
+    roleUpper.includes("ASESOR") ||
+    roleUpper.includes("COMERCIAL") ||
+    roleUpper.includes("CREDIT") ||
+    roleUpper.includes("COBRAN") ||
+    roleUpper.includes("SUPERVIS")
+  ) {
+    return false;
+  }
+
+  const numericId = Number(userId);
+  if (!Number.isNaN(numericId) && numericId > 0 && MASTER_ADMIN_IDS.includes(numericId)) {
+    return true;
+  }
+
+  if (
+    roleUpper === "ADMIN" ||
+    roleUpper === "ADMINISTRADOR" ||
+    roleUpper.startsWith("ADMIN") ||
+    roleUpper.includes("GERENC") ||
+    roleUpper === "MASTER"
+  ) {
+    return true;
+  }
+
+  return checkIsAdmin(endpoints, username);
+}
+
+export function useCanForceUnlockQuote() {
+  const userId = useAuthStore((state) => state.userId);
+  const role = useAuthStore((state) => state.role);
+  const username = useAuthStore((state) => state.username);
+  const endpoints = useAuthStore((state) => state.endpoints);
+
+  return canForceUnlockQuote({
+    userId: userId ?? localStorage.getItem("userId"),
+    role: role || localStorage.getItem("role"),
+    username: username || localStorage.getItem("username"),
+    endpoints,
+  });
+}
+
+/**
  * Propiedad estricta de borradores por creador real (userId / createdByUsername).
  * NUNCA compara por sellerName ("001.Ofic Administración") para garantizar que
  * dos cuentas de Facturación (ej. Angela y Celia) NO vean ni borren borradores entre sí.

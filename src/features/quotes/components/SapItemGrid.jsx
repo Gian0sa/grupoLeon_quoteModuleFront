@@ -2,9 +2,9 @@ import React, { useState, useEffect } from "react";
 import {
   Box, Table, Thead, Tbody, Tr, Th, Td, TableContainer,
   IconButton, Input, Text, Button, Select,
-  HStack, Badge, Flex, VStack, Divider, Grid, Switch
+  HStack, Badge, Flex, VStack, Divider, Grid, Switch, Spinner
 } from "@chakra-ui/react";
-import { Trash2, Package, Sparkles, Flame, Building2, Star } from "lucide-react";
+import { Trash2, Package, Sparkles, Flame, Building2, Star, RefreshCw, AlertTriangle } from "lucide-react";
 import ItemAutocomplete from "./ItemAutocomplete";
 import { DiscountPopoverModal } from "./DiscountPopoverModal";
 import { ClientSpecialPricesModal } from "./ClientSpecialPricesModal";
@@ -12,6 +12,7 @@ import { TaxOnlyConfirmModal } from "./TaxOnlyConfirmModal";
 import PackagingHelper from "./PackagingHelper";
 import { useIsAdmin } from "../../../shared/utils/permissions";
 import { useAuthStore } from "../../../features/auth/stores/useAuthStore";
+import { useQuoteStore } from "../stores/quoteStore";
 import { formatThousands, isItemTaxOnly } from "../../../shared/utils/quoteCalculator";
 import { useGetPromotions, useClientSpecialPrices } from "../hooks/queries/quotesQueries";
 import { isSpecialAgreementItem, resolveSpecialDiscountPct } from "../utils/discountBreakdown";
@@ -71,23 +72,29 @@ export default function SapItemGrid({
     specialPricesList = [],
     specialPricesMap = {},
     specialPricesCount = 0,
+    isLoading: isLoadingSpecialPrices,
+    error: specialPricesError,
+    refetch: refetchSpecialPrices,
   } = useClientSpecialPrices(clientCardCode);
+  const isSyncingClientSpecialPrices = Boolean(clientCardCode && isLoadingSpecialPrices);
 
   // Si el mapa de Convenios llega después de haber agregado artículos (o al cargar borrador),
-  // aplicar automáticamente el convenio correspondiente a ítems sin ajuste manual.
+  // reconciliar de forma ATÓMICA en un solo paso todos los ítems de convenio del cliente.
   useEffect(() => {
     if (isReadOnly || !products || products.length === 0 || !specialPricesMap) return;
-    if (Object.keys(specialPricesMap).length === 0 || typeof onUpdateProduct !== "function") return;
+    if (Object.keys(specialPricesMap).length === 0) return;
 
-    products.forEach((p) => {
-      if (!p || p.isSpecialPrice || p.campaignName === "Convenio Cliente" || p.customPriceConIGV || Number(p.lineDiscount || 0) !== 0) {
-        return;
+    let hasAnyChange = false;
+    const nextProducts = products.map((p) => {
+      if (!p || p.isSpecialPrice || p.campaignName === "Convenio Cliente" || p.customPriceConIGV) {
+        return p;
       }
       const code = String(p.code || p.productCode || p.itemCode || p.id || "").trim();
-      if (!code) return;
+      if (!code) return p;
       const sp = specialPricesMap[code] || specialPricesMap[code.toUpperCase()];
-      if (!sp) return;
+      if (!sp) return p;
 
+      hasAnyChange = true;
       const spDisc = Number(sp.discountPercent || 0);
       const spPrice = Number(sp.specialPrice || 0);
       const spPriceConIGV = Number(sp.specialPriceConIGV || 0);
@@ -97,18 +104,22 @@ export default function SapItemGrid({
         rawBaseList !== undefined && rawBaseList !== null && rawBaseList !== "" && !isNaN(Number(rawBaseList))
           ? Number(rawBaseList)
           : null;
+      const clampedLineDiscount = Math.min(0, Number(p.lineDiscount || 0));
 
-      onUpdateProduct(p.id, {
+      return {
+        ...p,
         isSpecialPrice: true,
         campaignName: "Convenio Cliente",
         price: listPrice > 0 ? listPrice : p.price,
         unitPrice: listPrice > 0 ? listPrice : p.unitPrice,
         discount: spDisc,
+        sapDiscount: spDisc,
         specialDiscount: spDisc,
         specialPrice: spPrice,
         specialPriceNeto: spPrice,
         specialPriceConIGV: spPriceConIGV,
         baseListDiscount: parsedBaseList,
+        lineDiscount: clampedLineDiscount,
         totalDiscountPct: spDisc,
         promoDiscount: 0,
         promoPrice: null,
@@ -116,8 +127,21 @@ export default function SapItemGrid({
         promoPriceConIGV: null,
         U_US_PROMO: null,
         importe: spPrice > 0 ? spPrice : p.importe,
-      });
+      };
     });
+
+    if (hasAnyChange) {
+      const storeSetter = useQuoteStore.getState?.()?.setProducts;
+      if (typeof storeSetter === "function") {
+        storeSetter(nextProducts);
+      } else if (typeof onUpdateProduct === "function") {
+        nextProducts.forEach((np, idx) => {
+          if (np !== products[idx]) {
+            onUpdateProduct(np.id, np);
+          }
+        });
+      }
+    }
   }, [specialPricesMap, products, isReadOnly, onUpdateProduct]);
 
   const inStockProducts = products.filter((p) => !isItemOutOfStock(p));
@@ -444,10 +468,64 @@ export default function SapItemGrid({
                 </Flex>
               )}
             </Flex>
+            {isSyncingClientSpecialPrices && (
+              <Flex
+                align="center"
+                gap={2}
+                mb={2.5}
+                px={3}
+                py={2}
+                bg="teal.50"
+                border="1px solid"
+                borderColor="teal.200"
+                borderRadius="lg"
+              >
+                <Spinner size="xs" color="teal.600" thickness="2px" />
+                <Text fontSize="11.5px" fontWeight="700" color="teal.800">
+                  Sincronizando descuentos y convenios SAP (OSPP) del cliente...
+                </Text>
+              </Flex>
+            )}
+            {Boolean(clientCardCode && specialPricesError && !isLoadingSpecialPrices) && (
+              <Flex
+                align="center"
+                justify="space-between"
+                wrap="wrap"
+                gap={2}
+                mb={2.5}
+                px={3}
+                py={2}
+                bg="orange.50"
+                border="1px solid"
+                borderColor="orange.300"
+                borderRadius="lg"
+              >
+                <HStack spacing={2}>
+                  <AlertTriangle size={15} color="#c2410c" />
+                  <Text fontSize="11.5px" fontWeight="700" color="orange.900">
+                    No se pudieron verificar los precios de convenio SAP del cliente.
+                  </Text>
+                </HStack>
+                <Button
+                  size="xs"
+                  h="26px"
+                  px={2.5}
+                  colorScheme="orange"
+                  onClick={() => refetchSpecialPrices()}
+                  leftIcon={<RefreshCw size={12} />}
+                >
+                  Reintentar
+                </Button>
+              </Flex>
+            )}
             <ItemAutocomplete 
               onSelect={handleItemSelect} 
-              isDisabled={isReadOnly}
-              placeholder="Escribe código o nombre del Artículo" 
+              isDisabled={isReadOnly || isSyncingClientSpecialPrices}
+              placeholder={
+                isSyncingClientSpecialPrices
+                  ? "Verificando descuentos especiales SAP del cliente..."
+                  : "Escribe código o nombre del Artículo"
+              }
               specialPricesMap={specialPricesMap}
             />
           </Box>
