@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect, useCallback } from "react";
 import {
   Modal,
   ModalOverlay,
@@ -13,113 +13,156 @@ import {
   HStack,
   Text,
   Badge,
-  Stack,
   Flex,
+  IconButton,
+  Spinner,
 } from "@chakra-ui/react";
-import { Download, Printer, FileText, ZoomIn, ZoomOut } from "lucide-react";
-import QuotePdfDocument from "./QuotePdfDocument";
+import { Download, Printer, FileText, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
+import QuotePdfDocument, {
+  preloadQuotePdfLibs,
+  downloadQuoteElementAsPdf,
+} from "./QuotePdfDocument";
+
+const DOC_BASE_WIDTH = 800;
+const DOC_DEFAULT_HEIGHT = 1132;
 
 export default function QuotePdfModal({ isOpen, onClose, quote }) {
-  const pdfRef = useRef();
+  const pdfRef = useRef(null);
+  const stageRef = useRef(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isPrintMode, setIsPrintMode] = useState(false);
-  const [zoomLevel, setZoomLevel] = useState(1);
+  const [zoomMode, setZoomMode] = useState(() =>
+    typeof window !== "undefined" && window.innerWidth >= 820 ? "manual" : "fit"
+  ); // "fit" | "manual"
+  const [zoomLevel, setZoomLevel] = useState(() =>
+    typeof window !== "undefined" && window.innerWidth >= 820 ? 0.97 : 0.5
+  );
+  const [docNaturalHeight, setDocNaturalHeight] = useState(DOC_DEFAULT_HEIGHT);
   const toast = useToast();
 
-  const handleAutoFit = () => {
-    const availableW = window.innerWidth - 32;
-    const fitScale = Math.min(1, Math.max(0.38, availableW / 800));
-    setZoomLevel(Number(fitScale.toFixed(2)));
-  };
+  const computeFitScale = useCallback((stageEl, naturalH = DOC_DEFAULT_HEIGHT) => {
+    if (!stageEl) {
+      const vw = typeof window !== "undefined" ? window.innerWidth : 390;
+      const vh = typeof window !== "undefined" ? window.innerHeight : 760;
+      const scaleW = (vw - 20) / DOC_BASE_WIDTH;
+      const scaleH = (vh - 150) / naturalH;
+      return Number(Math.min(1, Math.max(0.32, Math.min(scaleW, scaleH))).toFixed(3));
+    }
+    const isMobile = stageEl.clientWidth < 768;
+    const padX = isMobile ? 16 : 32;
+    const padY = isMobile ? 16 : 24;
+    const availW = Math.max(240, stageEl.clientWidth - padX);
+    const availH = Math.max(240, stageEl.clientHeight - padY);
+    const scaleW = availW / DOC_BASE_WIDTH;
+    const scaleH = availH < 380 ? scaleW : availH / naturalH;
+    const fit = Math.min(1, Math.max(0.3, Math.min(scaleW, scaleH)));
+    return Number(fit.toFixed(3));
+  }, []);
+
+  const handleAutoFit = useCallback(() => {
+    setZoomMode("fit");
+    setZoomLevel(computeFitScale(stageRef.current, docNaturalHeight));
+  }, [computeFitScale, docNaturalHeight]);
+
+  const handleSetZoomManual = useCallback((nextZoom) => {
+    const clamped = Number(Math.min(2.0, Math.max(0.3, nextZoom)).toFixed(2));
+    setZoomMode("manual");
+    setZoomLevel(clamped);
+  }, []);
+
+  const handleToggleQuickZoom = useCallback(() => {
+    if (zoomMode === "fit" || zoomLevel < 0.85) {
+      handleSetZoomManual(1);
+    } else {
+      handleAutoFit();
+    }
+  }, [zoomMode, zoomLevel, handleSetZoomManual, handleAutoFit]);
 
   useEffect(() => {
-    if (isOpen) {
-      if (window.innerWidth < 800) {
-        handleAutoFit();
-      } else {
-        setZoomLevel(1);
-      }
+    if (!isOpen) return;
+    preloadQuotePdfLibs().catch(() => {});
+    if (typeof window !== "undefined" && window.innerWidth >= 820) {
+      setZoomMode("manual");
+      setZoomLevel(0.97);
+    } else {
+      setZoomMode("fit");
     }
   }, [isOpen]);
 
-  if (!quote) return null;
+  useEffect(() => {
+    if (!isOpen || !quote) return;
+    let rafId = null;
+    let ro = null;
+
+    const syncDimensions = () => {
+      const stageEl = stageRef.current;
+      const docEl = pdfRef.current;
+      let measuredH = docNaturalHeight;
+      if (docEl && docEl.offsetHeight > 400) {
+        measuredH = docEl.offsetHeight;
+        if (Math.abs(measuredH - docNaturalHeight) > 2) {
+          setDocNaturalHeight(measuredH);
+        }
+      }
+      if (zoomMode === "fit") {
+        setZoomLevel(computeFitScale(stageEl, measuredH));
+      }
+    };
+
+    rafId = requestAnimationFrame(syncDimensions);
+
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(() => syncDimensions());
+      if (stageRef.current) ro.observe(stageRef.current);
+      if (pdfRef.current) ro.observe(pdfRef.current);
+    }
+    window.addEventListener("resize", syncDimensions);
+
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      if (ro) ro.disconnect();
+      window.removeEventListener("resize", syncDimensions);
+    };
+  }, [isOpen, quote, zoomMode, docNaturalHeight, computeFitScale]);
+
+  const lastQuoteRef = useRef(null);
+  if (quote) {
+    lastQuoteRef.current = quote;
+  }
+  const activeQuote = quote || lastQuoteRef.current;
+  if (!activeQuote) return null;
 
   const isEmittedToSap = Boolean(
-    (quote.sapDocNum && String(quote.sapDocNum).trim() !== "") ||
-    (quote.DocNum && !String(quote.DocNum).startsWith("COT-")) ||
-    (quote.docNum && !String(quote.docNum).startsWith("COT-")) ||
-    quote.status === "EMITIDO" ||
-    quote.status === "EMITIDO_SAP" ||
-    quote.status === "APROBADO_SAP" ||
-    quote.isSyncedToSap === true
+    (activeQuote.sapDocNum && String(activeQuote.sapDocNum).trim() !== "") ||
+    (activeQuote.DocNum && !String(activeQuote.DocNum).startsWith("COT-")) ||
+    (activeQuote.docNum && !String(activeQuote.docNum).startsWith("COT-")) ||
+    activeQuote.status === "EMITIDO" ||
+    activeQuote.status === "EMITIDO_SAP" ||
+    activeQuote.status === "APROBADO_SAP" ||
+    activeQuote.isSyncedToSap === true
   );
 
   const documentTitle = isEmittedToSap ? "Orden_de_Venta" : "Cotizacion";
   const docTitleDisplay = isEmittedToSap ? "Orden de Venta" : "Cotización";
   const docNumber = isEmittedToSap
-    ? (quote.sapDocNum || quote.DocNum || quote.docNum || quote.docNumber || "OV-PENDIENTE")
-    : (quote.docNumber || (quote.id ? `COT-${String(quote.id).padStart(5, "0")}` : "COT-PENDIENTE"));
+    ? (activeQuote.sapDocNum || activeQuote.DocNum || activeQuote.docNum || activeQuote.docNumber || "OV-PENDIENTE")
+    : (activeQuote.docNumber || (activeQuote.id ? `COT-${String(activeQuote.id).padStart(5, "0")}` : "COT-PENDIENTE"));
 
   const handleDownloadPdf = async () => {
     try {
       setIsGenerating(true);
-      setIsPrintMode(true);
-      
-      await new Promise((res) => setTimeout(res, 100));
-
       const element = pdfRef.current;
-      if (!element) return;
-
-      const origWidth = element.style.width;
-      const origMaxW = element.style.maxWidth;
-      const origMinH = element.style.minHeight;
-      const origBoxShadow = element.style.boxShadow;
-      const wrapperEl = element.parentElement;
-      const origTransform = wrapperEl ? wrapperEl.style.transform : "";
-
-      if (wrapperEl) {
-        wrapperEl.style.transform = "none";
+      if (!element) {
+        throw new Error("No se encontró la vista previa del documento.");
       }
 
-      // Dimensiones A4 fijas y ultra nítidas
-      element.style.width = "800px";
-      element.style.maxWidth = "800px";
-      element.style.minHeight = "1130px";
-      element.style.boxShadow = "none";
-
-      // jspdf + html2canvas (~600 KB) se descargan solo al pedir el PDF: este modal
-      // cuelga del header (notificaciones) y antes los arrastraba al arranque de la app.
-      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
-        import("html2canvas"),
-        import("jspdf"),
-      ]);
-      const canvas = await html2canvas(element, {
-        scale: 3.5, // 300+ DPI Ultra High Definition
-        useCORS: true,
-        logging: false,
-        backgroundColor: "#fffdf7",
-        windowWidth: 1200,
-      });
-
-      element.style.width = origWidth;
-      element.style.maxWidth = origMaxW;
-      element.style.minHeight = origMinH;
-      element.style.boxShadow = origBoxShadow;
-      if (wrapperEl) {
-        wrapperEl.style.transform = origTransform;
-      }
-      setIsPrintMode(false);
-
-      const imgData = canvas.toDataURL("image/png", 1.0);
-      const pdf = new jsPDF("p", "mm", "a4");
-      
-      // Ajustar perfectamente a 1 página A4 estándar (210mm x 297mm)
-      pdf.addImage(imgData, "PNG", 0, 0, 210, 297, undefined, "FAST");
-      pdf.save(`Autopartes_${documentTitle}_${docNumber}.pdf`);
+      const targetFileName = `Autopartes_${documentTitle}_${docNumber}.pdf`;
+      const result = await downloadQuoteElementAsPdf(element, targetFileName);
+      if (result?.cancelled) return;
 
       toast({
         title: "✅ PDF Descargado en Alta Calidad",
-        description: `Se ha guardado Autopartes_${documentTitle}_${docNumber}.pdf en tus descargas.`,
+        description: `Se ha guardado ${result?.fileName || targetFileName} en tus descargas.`,
         status: "success",
         duration: 3500,
         isClosable: true,
@@ -142,16 +185,31 @@ export default function QuotePdfModal({ isOpen, onClose, quote }) {
     window.print();
   };
 
+  const scaledWidth = Math.round(DOC_BASE_WIDTH * zoomLevel);
+  const scaledHeight = Math.round(docNaturalHeight * zoomLevel);
+
   return (
     <Modal
-      isOpen={isOpen}
+      isOpen={Boolean(isOpen && quote)}
       onClose={onClose}
       size={{ base: "full", sm: "4xl", md: "5xl" }}
       scrollBehavior="inside"
       motionPreset="slideInBottom"
+      blockScrollOnMount={false}
+      trapFocus={false}
     >
-      <ModalOverlay bg="blackAlpha.700" className="no-print" />
-      <ModalContent borderRadius={{ base: "none", sm: "2xl" }} overflow="hidden" maxH={{ base: "100vh", md: "92vh" }}>
+      <ModalOverlay bg="blackAlpha.750" backdropFilter="blur(3px)" className="no-print" />
+      <ModalContent
+        borderRadius={{ base: "none", sm: "2xl" }}
+        overflow="hidden"
+        h={{ base: "100vh", sm: "92vh" }}
+        maxH={{ base: "100vh", sm: "92vh" }}
+        my={{ base: 0, sm: "auto" }}
+        display="flex"
+        flexDirection="column"
+        bg="#0f172a"
+        style={{ height: typeof window !== "undefined" && window.innerWidth < 480 ? "100dvh" : undefined }}
+      >
         {/* Estilos de Impresión A4 Profesionales */}
         <style>{`
           @media print {
@@ -178,46 +236,25 @@ export default function QuotePdfModal({ isOpen, onClose, quote }) {
               display: none !important;
             }
             .chakra-portal,
-            .chakra-portal > * {
-              display: block !important;
-              position: static !important;
-              overflow: visible !important;
-              height: auto !important;
-              width: 100% !important;
-            }
-            .chakra-modal__content-container {
-              position: static !important;
-              display: block !important;
-              width: 100% !important;
-              height: auto !important;
-              max-height: none !important;
-              overflow: visible !important;
-              padding: 0 !important;
-              margin: 0 !important;
-            }
-            .chakra-modal__content {
+            .chakra-portal > *,
+            .chakra-modal__content-container,
+            .chakra-modal__content,
+            .chakra-modal__body,
+            .pdf-modal-footprint,
+            .pdf-modal-scaler {
               position: static !important;
               display: block !important;
               width: 100% !important;
               max-width: 100% !important;
               height: auto !important;
               max-height: none !important;
+              min-height: 0 !important;
               overflow: visible !important;
+              transform: none !important;
               box-shadow: none !important;
               border: none !important;
               margin: 0 !important;
               padding: 0 !important;
-              background: transparent !important;
-            }
-            .chakra-modal__body {
-              position: static !important;
-              display: block !important;
-              width: 100% !important;
-              height: auto !important;
-              max-height: none !important;
-              overflow: visible !important;
-              padding: 0 !important;
-              margin: 0 !important;
               background: transparent !important;
             }
             #printable-autopartes-document {
@@ -236,185 +273,287 @@ export default function QuotePdfModal({ isOpen, onClose, quote }) {
           }
         `}</style>
 
-        <ModalHeader bg="emerald.900" color="white" py={{ base: 3, md: 3.5 }} px={{ base: 3, md: 6 }} className="no-print">
-          <Flex justify="space-between" align="center" pr={8}>
-            <HStack spacing={2}>
-              <FileText className="w-5 h-5 text-emerald-400" />
-              <Text fontSize={{ base: "xs", sm: "sm", md: "md" }} fontWeight="800" isTruncated maxW={{ base: "190px", sm: "350px", md: "full" }}>
-                Vista Previa de {docTitleDisplay} Electrónica
-              </Text>
-            </HStack>
-            <Badge colorScheme="green" fontSize={{ base: "2xs", sm: "xs" }} px={2.5} py={0.5} borderRadius="full">
-              {docNumber}
-            </Badge>
-          </Flex>
-        </ModalHeader>
-        <ModalCloseButton color="white" top={3} right={3} />
-
-        {/* BARRA SUPERIOR DE HERRAMIENTAS: ZOOM Y DESCARGA (Fija y siempre visible en Móvil y PC) */}
-        <Box
-          bg="#0f172a"
-          px={{ base: 3, md: 5 }}
-          py={2}
-          borderBottom="1px solid rgba(255, 255, 255, 0.12)"
+        {/* CABECERA COMPACTA */}
+        <ModalHeader
+          color="white"
+          py={{ base: 2.5, md: 3 }}
+          px={{ base: 3.5, md: 5 }}
+          flexShrink={0}
           className="no-print"
+          borderBottom="1px solid rgba(255,255,255,0.12)"
+          style={{
+            background: "linear-gradient(135deg, #0b4622 0%, #126C36 60%, #15803d 100%)",
+          }}
         >
-          <Flex justify="space-between" align="center" gap={2}>
-            {/* Controles de Zoom */}
-            <HStack spacing={1.5}>
-              <Button
-                size="xs"
-                variant="ghost"
-                color="white"
-                _hover={{ bg: "whiteAlpha.300" }}
-                onClick={() => setZoomLevel((z) => Math.max(0.35, Number((z - 0.15).toFixed(2))))}
-                title="Alejar (-)"
-              >
-                <ZoomOut className="w-3.5 h-3.5" />
-              </Button>
+          <Flex justify="space-between" align="center" pr={8} gap={2}>
+            <HStack spacing={2.5} minW={0}>
+              <FileText className="w-4 h-4 md:w-5 md:h-5 text-emerald-300 shrink-0" />
+              <Text fontSize={{ base: "13px", sm: "sm", md: "md" }} fontWeight="800" isTruncated>
+                Vista Previa de {docTitleDisplay}
+              </Text>
               <Badge
-                cursor="pointer"
-                onClick={() => setZoomLevel(1)}
-                bg="emerald.500"
+                bg="whiteAlpha.250"
                 color="white"
-                px={2}
+                fontSize={{ base: "10px", sm: "xs" }}
+                px={2.5}
                 py={0.5}
                 borderRadius="full"
-                fontSize="xs"
                 fontWeight="800"
-                title="Restablecer 100%"
+                flexShrink={0}
               >
-                {Math.round(zoomLevel * 100)}%
+                {docNumber}
               </Badge>
-              <Button
-                size="xs"
-                variant="ghost"
-                color="white"
-                _hover={{ bg: "whiteAlpha.300" }}
-                onClick={() => setZoomLevel((z) => Math.min(2.0, Number((z + 0.15).toFixed(2))))}
-                title="Acercar (+)"
-              >
-                <ZoomIn className="w-3.5 h-3.5" />
-              </Button>
-              <Button
-                size="xs"
-                variant="outline"
-                colorScheme="teal"
-                color="emerald.200"
-                borderColor="emerald.500"
-                px={2}
-                h="24px"
-                fontSize="11px"
-                fontWeight="700"
-                _hover={{ bg: "emerald.900" }}
-                onClick={handleAutoFit}
-              >
-                Ajustar
-              </Button>
-              <Button
-                size="xs"
-                variant="outline"
-                colorScheme="teal"
-                color="emerald.200"
-                borderColor="emerald.500"
-                px={2}
-                h="24px"
-                fontSize="11px"
-                fontWeight="700"
-                _hover={{ bg: "emerald.900" }}
-                onClick={() => setZoomLevel(1)}
-              >
-                100%
-              </Button>
             </HStack>
 
-            {/* Botón de Descarga Directa */}
-            <Button
-              size="xs"
-              colorScheme="green"
-              bg="#10b981"
-              _hover={{ bg: "#059669" }}
-              color="white"
-              fontWeight="800"
-              px={3}
-              h="26px"
-              leftIcon={<Download className="w-3.5 h-3.5" />}
-              onClick={handleDownloadPdf}
-              isLoading={isGenerating}
-              loadingText="..."
-            >
-              Descargar PDF
-            </Button>
-          </Flex>
-        </Box>
+            {/* Controles de Zoom y Acciones en Escritorio */}
+            <HStack spacing={2} display={{ base: "none", sm: "flex" }}>
+              <HStack
+                spacing={0.5}
+                bg="blackAlpha.400"
+                border="1px solid rgba(255,255,255,0.16)"
+                borderRadius="full"
+                px={1.5}
+                py="2px"
+              >
+                <IconButton
+                  size="xs"
+                  variant="ghost"
+                  color="white"
+                  _hover={{ bg: "whiteAlpha.200" }}
+                  borderRadius="full"
+                  icon={<ZoomOut className="w-3.5 h-3.5" />}
+                  onClick={() => handleSetZoomManual(zoomLevel - 0.12)}
+                  aria-label="Alejar"
+                />
+                <Badge
+                  cursor="pointer"
+                  onClick={handleToggleQuickZoom}
+                  bg="transparent"
+                  color="white"
+                  px={2}
+                  fontSize="11px"
+                  fontWeight="800"
+                  title="Alternar Encajar / 100%"
+                >
+                  {Math.round(zoomLevel * 100)}%
+                </Badge>
+                <IconButton
+                  size="xs"
+                  variant="ghost"
+                  color="white"
+                  _hover={{ bg: "whiteAlpha.200" }}
+                  borderRadius="full"
+                  icon={<ZoomIn className="w-3.5 h-3.5" />}
+                  onClick={() => handleSetZoomManual(zoomLevel + 0.12)}
+                  aria-label="Acercar"
+                />
+                <Button
+                  size="xs"
+                  variant={zoomMode === "fit" ? "solid" : "ghost"}
+                  bg={zoomMode === "fit" ? "whiteAlpha.300" : "transparent"}
+                  color="white"
+                  _hover={{ bg: "whiteAlpha.300" }}
+                  borderRadius="full"
+                  h="22px"
+                  px={2}
+                  fontSize="10.5px"
+                  fontWeight="700"
+                  onClick={handleAutoFit}
+                >
+                  Encajar
+                </Button>
+                <Button
+                  size="xs"
+                  variant={zoomMode === "manual" && Math.abs(zoomLevel - 1) < 0.03 ? "solid" : "ghost"}
+                  bg={zoomMode === "manual" && Math.abs(zoomLevel - 1) < 0.03 ? "whiteAlpha.300" : "transparent"}
+                  color="white"
+                  _hover={{ bg: "whiteAlpha.300" }}
+                  borderRadius="full"
+                  h="22px"
+                  px={2}
+                  fontSize="10.5px"
+                  fontWeight="700"
+                  onClick={() => handleSetZoomManual(1)}
+                >
+                  100%
+                </Button>
+              </HStack>
 
-        <ModalBody p={{ base: 2, sm: 4, md: 6 }} bg="#1e293b" overflowY="auto" overflowX="auto" sx={{ WebkitOverflowScrolling: "touch" }}>
-          {/* Lienzo del Documento con Zoom y Ancho Fijo de PC (Nunca comprimido en móvil) */}
-          <Box
-            w="full"
-            display="flex"
-            justifyContent="center"
-            alignItems="flex-start"
-            minW="800px"
-          >
-            <Box
-              w="800px"
-              minW="800px"
-              maxW="800px"
-              boxShadow="2xl"
-              borderRadius="md"
-              overflow="hidden"
-              bg="white"
-              style={{
-                transform: zoomLevel !== 1 ? `scale(${zoomLevel})` : undefined,
-                transformOrigin: "top center",
-                transition: "transform 0.12s ease-out",
-                marginBottom: zoomLevel > 1 ? `${(zoomLevel - 1) * 1150}px` : "0px",
-              }}
-            >
-              <QuotePdfDocument ref={pdfRef} quote={quote} isPrintMode={isPrintMode} />
-            </Box>
-          </Box>
-        </ModalBody>
-
-        <ModalFooter bg="gray.50" borderTop="1px solid" borderColor="gray.200" py={{ base: 3, md: 3.5 }} px={{ base: 3, md: 6 }} className="no-print">
-          <Stack
-            direction={{ base: "column", sm: "row" }}
-            justify="space-between"
-            align={{ base: "stretch", sm: "center" }}
-            spacing={{ base: 3, sm: 4 }}
-            w="100%"
-          >
-            <Text fontSize="2xs" color="gray.500" fontWeight="600" textAlign={{ base: "center", sm: "left" }}>
-              💡 Documento formateado con el diseño impreso oficial de Autopartes S.A.
-            </Text>
-            <HStack spacing={2.5} w={{ base: "full", sm: "auto" }}>
               <Button
+                size="xs"
                 variant="outline"
-                size={{ base: "md", sm: "sm" }}
-                flex={{ base: 1, sm: "initial" }}
-                leftIcon={<Printer className="w-4 h-4" />}
+                color="white"
+                borderColor="whiteAlpha.400"
+                _hover={{ bg: "whiteAlpha.200" }}
+                borderRadius="full"
+                h="28px"
+                px={3}
+                leftIcon={<Printer className="w-3.5 h-3.5" />}
                 onClick={handlePrint}
                 fontWeight="700"
               >
                 Imprimir
               </Button>
+
               <Button
-                colorScheme="green"
-                bg="#126C36"
-                _hover={{ bg: "#0d5228" }}
-                size={{ base: "md", sm: "sm" }}
-                flex={{ base: 1, sm: "initial" }}
-                leftIcon={<Download className="w-4 h-4" />}
+                size="xs"
+                bg="#22c55e"
+                _hover={{ bg: "#16a34a" }}
+                color="white"
+                borderRadius="full"
+                h="28px"
+                px={3.5}
+                fontWeight="800"
+                leftIcon={isGenerating ? <Spinner size="xs" /> : <Download className="w-3.5 h-3.5" />}
                 onClick={handleDownloadPdf}
                 isLoading={isGenerating}
-                loadingText="Generando..."
-                fontWeight="800"
+                loadingText="PDF..."
+                boxShadow="0 2px 8px rgba(34,197,94,0.4)"
               >
                 Descargar PDF
               </Button>
             </HStack>
-          </Stack>
+          </Flex>
+        </ModalHeader>
+        <ModalCloseButton color="white" top={{ base: 2, md: 2.5 }} right={2.5} className="no-print" />
+
+        {/* LIENZO CENTRAL DEL DOCUMENTO (Huella escalada exacta, 0 scroll fantasma) */}
+        <ModalBody
+          ref={stageRef}
+          flex={1}
+          minH={0}
+          p={{ base: "8px", sm: "16px" }}
+          overflow="auto"
+          display="flex"
+          sx={{
+            WebkitOverflowScrolling: "touch",
+            background: "radial-gradient(circle at 50% 18%, #28364a 0%, #172133 65%, #0f172a 100%)",
+          }}
+        >
+          <div
+            className="pdf-modal-footprint"
+            onDoubleClick={handleToggleQuickZoom}
+            title="Doble toque / clic para acercar o encajar hoja completa"
+            style={{
+              width: `${scaledWidth}px`,
+              height: `${scaledHeight}px`,
+              position: "relative",
+              margin: "auto",
+              flexShrink: 0,
+            }}
+          >
+            <div
+              className="pdf-modal-scaler"
+              style={{
+                width: `${DOC_BASE_WIDTH}px`,
+                minWidth: `${DOC_BASE_WIDTH}px`,
+                maxWidth: `${DOC_BASE_WIDTH}px`,
+                position: "absolute",
+                top: 0,
+                left: 0,
+                transform: `scale(${zoomLevel})`,
+                transformOrigin: "top left",
+                boxShadow: "0 24px 48px -12px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.1)",
+                borderRadius: "4px",
+                overflow: "hidden",
+                background: "#fffdf7",
+              }}
+            >
+              <QuotePdfDocument ref={pdfRef} quote={activeQuote} isPrintMode={isPrintMode} />
+            </div>
+          </div>
+        </ModalBody>
+
+        {/* DOCK INFERIOR SOLO EN MÓVIL (Zoom + Descarga sin tapar jamás el PDF) */}
+        <ModalFooter
+          display={{ base: "block", sm: "none" }}
+          flexShrink={0}
+          bg="#0b1322"
+          borderTop="1px solid rgba(255, 255, 255, 0.12)"
+          px={3}
+          pt={2}
+          className="no-print"
+          style={{
+            paddingBottom: "calc(10px + env(safe-area-inset-bottom, 0px))",
+          }}
+        >
+          <Flex align="center" justify="space-between" gap={2.5} w="full">
+            <HStack
+              spacing={0.5}
+              bg="whiteAlpha.100"
+              border="1px solid rgba(255,255,255,0.14)"
+              borderRadius="xl"
+              p="3px"
+              flexShrink={0}
+            >
+              <IconButton
+                size="xs"
+                variant="ghost"
+                color="white"
+                borderRadius="lg"
+                h="32px"
+                w="30px"
+                icon={<ZoomOut className="w-3.5 h-3.5" />}
+                onClick={() => handleSetZoomManual(zoomLevel - 0.12)}
+                aria-label="Alejar"
+              />
+              <Box
+                as="button"
+                type="button"
+                onClick={handleToggleQuickZoom}
+                px={1.5}
+                h="32px"
+                minW="42px"
+                fontSize="11px"
+                fontWeight="800"
+                color="white"
+              >
+                {Math.round(zoomLevel * 100)}%
+              </Box>
+              <IconButton
+                size="xs"
+                variant="ghost"
+                color="white"
+                borderRadius="lg"
+                h="32px"
+                w="30px"
+                icon={<ZoomIn className="w-3.5 h-3.5" />}
+                onClick={() => handleSetZoomManual(zoomLevel + 0.12)}
+                aria-label="Acercar"
+              />
+              <IconButton
+                size="xs"
+                variant={zoomMode === "fit" ? "solid" : "ghost"}
+                bg={zoomMode === "fit" ? "#10b981" : "transparent"}
+                color="white"
+                borderRadius="lg"
+                h="32px"
+                w="32px"
+                icon={<Maximize2 className="w-3.5 h-3.5" />}
+                onClick={handleAutoFit}
+                aria-label="Encajar página"
+              />
+            </HStack>
+
+            <Button
+              flex={1}
+              h="38px"
+              borderRadius="xl"
+              color="white"
+              fontWeight="900"
+              fontSize="13px"
+              leftIcon={isGenerating ? <Spinner size="xs" /> : <Download className="w-4 h-4" />}
+              onClick={handleDownloadPdf}
+              isLoading={isGenerating}
+              loadingText="Generando..."
+              style={{
+                background: "linear-gradient(135deg, #16a34a 0%, #10b981 100%)",
+                boxShadow: "0 4px 16px rgba(16, 185, 129, 0.38)",
+              }}
+            >
+              Descargar PDF
+            </Button>
+          </Flex>
         </ModalFooter>
       </ModalContent>
     </Modal>

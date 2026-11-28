@@ -472,11 +472,13 @@ Puede ver y descargar el formulario oficial en el enlace adjunto. Cualquier duda
   return (
     <>
       <Modal
-        isOpen={isOpen}
+        isOpen={Boolean(isOpen && quote)}
         onClose={onClose}
         size={{ base: "full", md: "xl" }}
         isCentered
         scrollBehavior="inside"
+        blockScrollOnMount={false}
+        trapFocus={false}
       >
         <ModalOverlay backdropFilter="blur(4px)" bg="blackAlpha.600" />
         <ModalContent borderRadius={{ base: "none", md: "2xl" }} overflow="hidden" boxShadow="2xl">

@@ -54,6 +54,7 @@ import {
   MenuButton,
   MenuList,
   MenuItem,
+  Portal,
 } from "@chakra-ui/react";
 import {
   FileText,
@@ -2157,6 +2158,7 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
         blockScrollOnMount={false}
         preserveScrollBarGap={false}
         autoFocus={false}
+        trapFocus={false}
       >
         <DrawerOverlay bg="blackAlpha.600" />
         <DrawerContent
@@ -4761,73 +4763,77 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
               );
             })()}
           </DrawerBody>
-          <DrawerFooter bg="gray.50" borderTop="1px solid" borderColor="gray.200" py={{ base: 2, md: 2.5 }} px={{ base: 3, md: 5 }}>
+          <DrawerFooter bg="gray.50" borderTop="1px solid" borderColor="gray.200" py={{ base: 2.5, md: 2.5 }} px={{ base: 3, md: 5 }}>
             <Flex
               display={{ base: "grid", md: "flex" }}
-              gridTemplateColumns={{ base: "repeat(2, 1fr)", md: "none" }}
+              gridTemplateColumns={{ base: "repeat(2, minmax(0, 1fr))", md: "none" }}
+              flexWrap={{ md: "wrap" }}
               justify="space-between"
               align="center"
               w="100%"
               gap={{ base: 2, md: 3 }}
             >
               <HStack display={{ base: "contents", md: "flex" }} spacing={{ base: 2, md: 2.5 }} wrap="wrap" align="center">
-
-
-
                 {/* Botón Unificado Compartir: Ver Talonario (PDF) y Enviar por WhatsApp */}
-                <Menu isLazy placement="top-end">
-                  <MenuButton
-                    as={Button}
-                    size="sm"
-                    variant="outline"
-                    borderColor="#bbf7d0"
-                    color="#15803d"
-                    bg="#f0fdf4"
-                    _hover={{ bg: "#dcfce7", borderColor: "#86efac", transform: "translateY(-1px)" }}
-                    leftIcon={<Share2 className="w-4 h-4 text-emerald-600" />}
-                    rightIcon={<ChevronDown className="w-3.5 h-3.5 text-emerald-600" />}
-                    fontWeight="800"
-                    borderRadius="lg"
-                    px={{ base: 3, md: 5 }}
-                    h={{ base: "34px", md: "42px" }}
-                    w={{ base: "full", md: "auto" }}
-                    fontSize={{ base: "11.5px", md: "14px" }}
-                  >
-                    Compartir
-                  </MenuButton>
-                  <MenuList minW="210px" py={1.5} borderRadius="xl" boxShadow="xl" borderColor="gray.200" zIndex={1500}>
-                    <MenuItem
-                      icon={<FileText className="w-4 h-4 text-teal-600" />}
-                      onClick={() =>
-                        setPdfQuote({
-                          ...effectiveQuote,
-                          products: displayProducts,
-                          totals: { ...effectiveQuote.totals, ...calcRes },
-                        })
-                      }
-                      fontSize="sm"
-                      fontWeight="700"
-                      py={2}
+                <Box minW={0} w={{ base: "full", md: "auto" }}>
+                  <Menu isLazy placement="top-start">
+                    <MenuButton
+                      as={Button}
+                      size="sm"
+                      variant="outline"
+                      borderColor="#bbf7d0"
+                      color="#15803d"
+                      bg="#f0fdf4"
+                      _hover={{ bg: "#dcfce7", borderColor: "#86efac", transform: "translateY(-1px)" }}
+                      leftIcon={<Share2 className="w-3.5 h-3.5 md:w-4 md:h-4 text-emerald-600 shrink-0" />}
+                      rightIcon={<ChevronDown className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
+                      fontWeight="800"
+                      borderRadius="lg"
+                      px={{ base: 2.5, md: 5 }}
+                      h={{ base: "36px", md: "42px" }}
+                      w={{ base: "full", md: "auto" }}
+                      minW={0}
+                      maxW="100%"
+                      fontSize={{ base: "11.5px", md: "13.5px" }}
                     >
-                      Ver Talonario (PDF)
-                    </MenuItem>
-                    <MenuItem
-                      icon={<MessageSquare className="w-4 h-4 text-green-600" />}
-                      onClick={() =>
-                        setWhatsAppQuote({
-                          ...effectiveQuote,
-                          products: displayProducts,
-                          totals: { ...effectiveQuote.totals, ...calcRes },
-                        })
-                      }
-                      fontSize="sm"
-                      fontWeight="700"
-                      py={2}
-                    >
-                      Enviar por WhatsApp
-                    </MenuItem>
-                  </MenuList>
-                </Menu>
+                      Compartir
+                    </MenuButton>
+                    <Portal>
+                      <MenuList minW="210px" py={1.5} borderRadius="xl" boxShadow="xl" borderColor="gray.200" zIndex={2000} rootProps={{ zIndex: 2000 }}>
+                        <MenuItem
+                          icon={<FileText className="w-4 h-4 text-teal-600" />}
+                          onClick={() =>
+                            setPdfQuote({
+                              ...effectiveQuote,
+                              products: displayProducts,
+                              totals: { ...effectiveQuote.totals, ...calcRes },
+                            })
+                          }
+                          fontSize="sm"
+                          fontWeight="700"
+                          py={2}
+                        >
+                          Ver Talonario (PDF)
+                        </MenuItem>
+                        <MenuItem
+                          icon={<MessageSquare className="w-4 h-4 text-green-600" />}
+                          onClick={() =>
+                            setWhatsAppQuote({
+                              ...effectiveQuote,
+                              products: displayProducts,
+                              totals: { ...effectiveQuote.totals, ...calcRes },
+                            })
+                          }
+                          fontSize="sm"
+                          fontWeight="700"
+                          py={2}
+                        >
+                          Enviar por WhatsApp
+                        </MenuItem>
+                      </MenuList>
+                    </Portal>
+                  </Menu>
+                </Box>
 
                 {/* Botón exclusivo para Administrador: Ver Trama JSON SAP */}
                 {isRealAdmin && (
@@ -4835,21 +4841,25 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                     colorScheme="purple"
                     variant="outline"
                     size="sm"
-                    leftIcon={<Code2 className="w-4 h-4 text-purple-600" />}
+                    leftIcon={<Code2 className="w-3.5 h-3.5 md:w-4 md:h-4 text-purple-600 shrink-0" />}
                     onClick={() => setIsJsonModalOpen(true)}
                     fontWeight="800"
-                    h={{ base: "34px", md: "42px" }}
+                    borderRadius="lg"
+                    h={{ base: "36px", md: "42px" }}
                     w={{ base: "full", md: "auto" }}
-                    px={{ base: 3, md: 5 }}
-                    fontSize={{ base: "11.5px", md: "14px" }}
+                    minW={0}
+                    maxW="100%"
+                    overflow="hidden"
+                    px={{ base: 2.5, md: 5 }}
+                    fontSize={{ base: "11.5px", md: "13.5px" }}
                     title="Inspector Técnico: Ver Trama JSON para SAP Service Layer (Solo Administrador)"
                   >
-                    <Text as="span" display={{ base: "inline", sm: "none" }}>JSON SAP</Text>
-                    <Text as="span" display={{ base: "none", sm: "inline" }}>Ver JSON SAP</Text>
+                    <Text as="span" isTruncated display={{ base: "inline", md: "none" }}>JSON SAP</Text>
+                    <Text as="span" isTruncated display={{ base: "none", md: "inline" }}>Ver JSON SAP</Text>
                   </Button>
                 )}
               </HStack>
-              <HStack display={{ base: "contents", md: "flex" }} spacing={{ base: 1.5, md: 2.5 }} align="center">
+              <HStack display={{ base: "contents", md: "flex" }} spacing={{ base: 2, md: 2.5 }} wrap="wrap" align="center">
                 {isAdminUser && !isAlreadySyncedToSap && (isPendingQuote || isApprovedQuote) && (
                   requiresGerenciaForTaxOnly ? (
                     isPendingGerencia ? (
@@ -4860,16 +4870,21 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                         borderColor="purple.400"
                         color="purple.800"
                         bg="purple.50"
-                        leftIcon={<Clock className="w-3.5 h-3.5 md:w-4 md:h-4 text-purple-600" />}
+                        leftIcon={<Clock className="w-3.5 h-3.5 md:w-4 md:h-4 text-purple-600 shrink-0" />}
                         isDisabled={true}
                         _disabled={{ opacity: 0.95, cursor: "default" }}
                         fontWeight="800"
-                        h={{ base: "34px", md: "42px" }}
+                        borderRadius="lg"
+                        h={{ base: "36px", md: "42px" }}
                         w={{ base: "full", md: "auto" }}
-                        px={{ base: 3, md: 5 }}
+                        minW={0}
+                        maxW="100%"
+                        overflow="hidden"
+                        px={{ base: 2.5, md: 5 }}
                         fontSize={{ base: "11.5px", md: "13.5px" }}
                       >
-                        ⏳ Esperando Aprobación de Juan (SAP)
+                        <Text as="span" isTruncated display={{ base: "inline", md: "none" }}>En espera (Juan)</Text>
+                        <Text as="span" isTruncated display={{ base: "none", md: "inline" }}>Esperando Aprobación de Juan (SAP)</Text>
                       </Button>
                     ) : (
                       <Button
@@ -4877,21 +4892,25 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                         bg="#7e22ce"
                         _hover={{ bg: "#6b21a8" }}
                         color="white"
-                        leftIcon={<ShieldCheck className="w-3.5 h-3.5 md:w-4 md:h-4" />}
+                        leftIcon={<ShieldCheck className="w-3.5 h-3.5 md:w-4 md:h-4 shrink-0" />}
                         isLoading={isEscalatingGerencia}
-                        loadingText="Enviando a Juan..."
+                        loadingText="Enviando..."
                         isDisabled={isDrawerLockedByOther || isEscalatingGerencia}
                         title={isDrawerLockedByOther ? `Bloqueado: En revisión activa por ${drawerLockCheck.lockInfo?.lockedByUsername}` : "Transferencia Gratuita: valida y deriva a Gerencia (Juan) para emisión final a SAP"}
                         onClick={handleEscalateTaxOnlyToGerencia}
                         fontWeight="900"
-                        h={{ base: "34px", md: "42px" }}
+                        borderRadius="lg"
+                        h={{ base: "36px", md: "42px" }}
                         w={{ base: "full", md: "auto" }}
-                        px={{ base: 3, md: 6 }}
-                        fontSize={{ base: "11.5px", md: "14px" }}
+                        minW={0}
+                        maxW="100%"
+                        overflow="hidden"
+                        px={{ base: 2.5, md: 6 }}
+                        fontSize={{ base: "11.5px", md: "13.5px" }}
                         boxShadow="0 4px 12px rgba(126,34,206,0.3)"
                       >
-                        <Text as="span" display={{ base: "inline", sm: "none" }}>Enviar a Juan</Text>
-                        <Text as="span" display={{ base: "none", sm: "inline" }}>👑 Validar y Enviar a Gerencia (Juan)</Text>
+                        <Text as="span" isTruncated display={{ base: "inline", md: "none" }}>Enviar a Juan</Text>
+                        <Text as="span" isTruncated display={{ base: "none", md: "inline" }}>👑 Validar y Enviar a Gerencia (Juan)</Text>
                       </Button>
                     )
                   ) : (
@@ -4900,21 +4919,25 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                       bg="#0f5132"
                       _hover={{ bg: "#093822" }}
                       color="white"
-                      leftIcon={<Zap className="w-3.5 h-3.5 md:w-4 md:h-4" />}
+                      leftIcon={<Zap className="w-3.5 h-3.5 md:w-4 md:h-4 shrink-0" />}
                       isLoading={isSyncingSap}
                       loadingText="Emitiendo..."
                       isDisabled={isDrawerLockedByOther || isSyncingSap}
                       title={isDrawerLockedByOther ? `Bloqueado: En revisión activa por ${drawerLockCheck.lockInfo?.lockedByUsername}` : ""}
                       onClick={handleSyncToSap}
                       fontWeight="900"
-                      h={{ base: "34px", md: "42px" }}
+                      borderRadius="lg"
+                      h={{ base: "36px", md: "42px" }}
                       w={{ base: "full", md: "auto" }}
-                      px={{ base: 3, md: 6 }}
-                      fontSize={{ base: "11.5px", md: "14px" }}
+                      minW={0}
+                      maxW="100%"
+                      overflow="hidden"
+                      px={{ base: 2.5, md: 6 }}
+                      fontSize={{ base: "11.5px", md: "13.5px" }}
                       boxShadow="0 4px 12px rgba(15,81,50,0.3)"
                     >
-                      <Text as="span" display={{ base: "inline", sm: "none" }}>Aprobar y Emitir</Text>
-                      <Text as="span" display={{ base: "none", sm: "inline" }}>
+                      <Text as="span" isTruncated display={{ base: "inline", md: "none" }}>Aprobar y Emitir</Text>
+                      <Text as="span" isTruncated display={{ base: "none", md: "inline" }}>
                         {isPendingGerencia ? "👑 Aprobar (Gerencia) y Emitir a SAP" : "⚡ Aprobar y Emitir a SAP"}
                       </Text>
                     </Button>
@@ -4929,12 +4952,26 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                     borderColor="green.500"
                     color="green.700"
                     bg="green.50"
-                    leftIcon={<CheckCircle2 className="w-4 h-4 text-green-600" />}
+                    leftIcon={<CheckCircle2 className="w-3.5 h-3.5 md:w-4 md:h-4 text-green-600 shrink-0" />}
                     isDisabled={true}
                     _disabled={{ opacity: 0.95, cursor: "default" }}
                     fontWeight="800"
+                    borderRadius="lg"
+                    h={{ base: "36px", md: "42px" }}
+                    w={{ base: "full", md: "auto" }}
+                    minW={0}
+                    maxW="100%"
+                    overflow="hidden"
+                    px={{ base: 2.5, md: 4 }}
+                    fontSize={{ base: "11.5px", md: "13.5px" }}
+                    title={`Emitido en SAP (Doc #${syncedDocNum || effectiveQuote.sapDocNum || "OK"})`}
                   >
-                    ✅ Emitido en SAP (Doc #{syncedDocNum || effectiveQuote.sapDocNum || "OK"})
+                    <Text as="span" isTruncated display={{ base: "inline", md: "none" }}>
+                      Emitido #{syncedDocNum || effectiveQuote.sapDocNum || "OK"}
+                    </Text>
+                    <Text as="span" isTruncated display={{ base: "none", md: "inline" }}>
+                      Emitido en SAP (Doc #{syncedDocNum || effectiveQuote.sapDocNum || "OK"})
+                    </Text>
                   </Button>
                 )}
 
@@ -4946,16 +4983,49 @@ export function QuoteDetailDrawer({ isOpen, onClose, quote, onUpdateStatus, onDe
                     _hover={{ bg: "#093822" }}
                     color="white"
                     fontWeight="900"
-                    rightIcon={<ArrowRight className="w-4 h-4" />}
+                    borderRadius="lg"
+                    h={{ base: "36px", md: "42px" }}
+                    w={{ base: "full", md: "auto" }}
+                    minW={0}
+                    maxW="100%"
+                    overflow="hidden"
+                    px={{ base: 2.5, md: 5 }}
+                    fontSize={{ base: "11.5px", md: "13.5px" }}
+                    gridColumn={{
+                      base: !isRealAdmin ? "span 2" : "auto",
+                      md: "auto",
+                    }}
+                    rightIcon={<ArrowRight className="w-3.5 h-3.5 md:w-4 md:h-4 shrink-0" />}
                     onClick={() => {
                       onClose();
                       navigate("/historyquotes");
                     }}
                   >
-                    Ir al Historial de Cotizaciones
+                    <Text as="span" isTruncated display={{ base: "inline", md: "none" }}>
+                      Ir al Historial
+                    </Text>
+                    <Text as="span" isTruncated display={{ base: "none", md: "inline" }}>
+                      Ir al Historial de Cotizaciones
+                    </Text>
                   </Button>
                 ) : (
-                  <Button size="sm" h={{ base: "34px", md: "42px" }} w={{ base: "full", md: "auto" }} px={{ base: 3, md: 5 }} fontSize={{ base: "11.5px", md: "14px" }} onClick={onClose} fontWeight="700">
+                  <Button
+                    size="sm"
+                    borderRadius="lg"
+                    h={{ base: "36px", md: "42px" }}
+                    w={{ base: "full", md: "auto" }}
+                    minW={0}
+                    maxW="100%"
+                    overflow="hidden"
+                    px={{ base: 2.5, md: 5 }}
+                    fontSize={{ base: "11.5px", md: "13.5px" }}
+                    gridColumn={{
+                      base: !isRealAdmin && isAdminUser && (isPendingQuote || isApprovedQuote) ? "span 2" : "auto",
+                      md: "auto",
+                    }}
+                    onClick={onClose}
+                    fontWeight="700"
+                  >
                     Cerrar
                   </Button>
                 )}
